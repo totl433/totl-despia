@@ -41,6 +41,54 @@ export type RevenueCatV2Purchase = {
   store_purchase_identifier?: string | null;
 };
 
+export type RevenueCatV1Entitlement = {
+  expires_date?: string | null;
+  product_identifier?: string | null;
+  purchase_date?: string | null;
+  is_sandbox?: boolean | null;
+};
+
+export type RevenueCatV1Subscription = {
+  auto_resume_date?: string | null;
+  billing_issues_detected_at?: string | null;
+  expires_date?: string | null;
+  grace_period_expires_date?: string | null;
+  original_purchase_date?: string | null;
+  ownership_type?: string | null;
+  period_type?: string | null;
+  purchase_date?: string | null;
+  refunded_at?: string | null;
+  store?: string | null;
+  store_transaction_id?: string | number | null;
+  unsubscribe_detected_at?: string | null;
+  is_sandbox?: boolean | null;
+};
+
+export type RevenueCatV1Purchase = {
+  id?: string | number | null;
+  store_transaction_id?: string | number | null;
+  purchase_date?: string | null;
+  store?: string | null;
+  is_sandbox?: boolean | null;
+};
+
+export type RevenueCatV1Subscriber = {
+  entitlements?: Record<string, RevenueCatV1Entitlement | null> | null;
+  non_subscriptions?: Record<string, RevenueCatV1Purchase[] | null> | null;
+  original_app_user_id?: string | null;
+  other_purchases?: Record<string, RevenueCatV1Purchase[] | null> | null;
+  subscriptions?: Record<string, RevenueCatV1Subscription | null> | null;
+};
+
+export type RevenueCatCustomerSnapshot = {
+  activeEntitlementIds: string[];
+  activeEntitlementProductIds: string[];
+  environment: 'sandbox' | 'production' | 'mixed' | 'unknown';
+  originalAppUserId: string | null;
+  purchases: RevenueCatV2Purchase[];
+  subscriptions: RevenueCatV2Subscription[];
+};
+
 export type RevenueCatRedemptionCandidate = {
   productId: string;
   redemptionIdentifier: string;
@@ -122,6 +170,102 @@ export function getExpectedLeaderboardProductIds(input: {
 function normalizeIdentifier(value: string | null | undefined): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
+}
+
+function normalizeUnknownIdentifier(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return normalizeIdentifier(value);
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function recordSandboxState(
+  target: Set<'sandbox' | 'production'>,
+  isSandbox: boolean | null | undefined
+) {
+  if (isSandbox === true) {
+    target.add('sandbox');
+  } else if (isSandbox === false) {
+    target.add('production');
+  }
+}
+
+export function mapRevenueCatV1SubscriberToSnapshot(input: {
+  now?: Date;
+  subscriber?: RevenueCatV1Subscriber | null | undefined;
+}): RevenueCatCustomerSnapshot {
+  const now = input.now ?? new Date();
+  const subscriber = input.subscriber ?? null;
+  const environmentFlags = new Set<'sandbox' | 'production'>();
+  const activeEntitlementIds: string[] = [];
+  const activeEntitlementProductIds = new Set<string>();
+
+  for (const [entitlementId, entitlement] of Object.entries(subscriber?.entitlements ?? {})) {
+    if (!entitlement) continue;
+    recordSandboxState(environmentFlags, entitlement.is_sandbox);
+    const productId = normalizeIdentifier(entitlement.product_identifier);
+    if (!productId) continue;
+    if (isActiveAt(entitlement.expires_date, now)) {
+      activeEntitlementIds.push(entitlementId);
+      activeEntitlementProductIds.add(productId);
+    }
+  }
+
+  const subscriptions: RevenueCatV2Subscription[] = [];
+  for (const [productId, subscription] of Object.entries(subscriber?.subscriptions ?? {})) {
+    if (!subscription) continue;
+    recordSandboxState(environmentFlags, subscription.is_sandbox);
+    const expiresAt = subscription.grace_period_expires_date ?? subscription.expires_date ?? null;
+    const refunded = Boolean(subscription.refunded_at);
+    const active = !refunded && isActiveAt(expiresAt, now);
+    subscriptions.push({
+      product_id: productId,
+      store_subscription_identifier: normalizeUnknownIdentifier(subscription.store_transaction_id),
+      gives_access: active,
+      current_period_ends_at: expiresAt,
+      expires_at: subscription.expires_date ?? null,
+      status: refunded ? 'refunded' : active ? 'active' : 'expired',
+    });
+  }
+
+  const purchases: RevenueCatV2Purchase[] = [];
+  const appendPurchases = (collection?: Record<string, RevenueCatV1Purchase[] | null> | null) => {
+    for (const [productId, entries] of Object.entries(collection ?? {})) {
+      for (const entry of entries ?? []) {
+        if (!entry) continue;
+        recordSandboxState(environmentFlags, entry.is_sandbox);
+        purchases.push({
+          product_id: productId,
+          store_purchase_identifier:
+            normalizeUnknownIdentifier(entry.store_transaction_id) ?? normalizeUnknownIdentifier(entry.id),
+        });
+      }
+    }
+  };
+
+  appendPurchases(subscriber?.non_subscriptions);
+  appendPurchases(subscriber?.other_purchases);
+
+  const environment =
+    environmentFlags.size === 0
+      ? 'unknown'
+      : environmentFlags.size > 1
+        ? 'mixed'
+        : environmentFlags.has('sandbox')
+          ? 'sandbox'
+          : 'production';
+
+  return {
+    activeEntitlementIds,
+    activeEntitlementProductIds: Array.from(activeEntitlementProductIds),
+    environment,
+    originalAppUserId: normalizeIdentifier(subscriber?.original_app_user_id),
+    purchases,
+    subscriptions,
+  };
 }
 
 export function hasVerifiedRevenueCatV2ProductAccess(input: {

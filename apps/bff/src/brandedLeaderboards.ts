@@ -9,11 +9,12 @@ import {
   canJoinBrandedLeaderboard,
   getExpectedLeaderboardProductIds,
   hasVerifiedRevenueCatV2ProductAccess,
+  mapRevenueCatV1SubscriberToSnapshot,
   selectRedeemableRevenueCatGrant,
   summarizeBrandedLeaderboardAccess,
-  type RevenueCatV2Purchase,
+  type RevenueCatCustomerSnapshot,
   type RevenueCatRedemptionCandidate,
-  type RevenueCatV2Subscription,
+  type RevenueCatV1Subscriber,
 } from './brandedLeaderboardAccess.js';
 
 function getAuthedSupa(req: FastifyRequest, env: Env) {
@@ -206,6 +207,10 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+  }
+
   function normalizeBrandedLeaderboardRow(row: any) {
     if (!row) return row;
     return {
@@ -254,50 +259,31 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     return { leaderboard, membership, subscription, access };
   }
 
-  async function fetchRevenueCatV2Items<T>(path: string): Promise<T[]> {
-    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) return [];
+  async function fetchRevenueCatCustomerSnapshot(appUserId: string): Promise<RevenueCatCustomerSnapshot> {
+    if (!env.REVENUECAT_SECRET_KEY) {
+      return mapRevenueCatV1SubscriberToSnapshot({ subscriber: null });
+    }
 
-    const items: T[] = [];
-    let nextUrl: string | null = new URL(path, 'https://api.revenuecat.com').toString();
+    const res = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`, {
+      headers: {
+        Authorization: `Bearer ${env.REVENUECAT_SECRET_KEY}`,
+        Accept: 'application/json',
+      },
+    });
 
-    while (nextUrl) {
-      const res = await fetch(nextUrl, {
-        headers: {
-          Authorization: `Bearer ${env.REVENUECAT_SECRET_KEY}`,
-          Accept: 'application/json',
-        },
+    if (!res.ok) {
+      const body = await res.text();
+      throw Object.assign(new Error(`RevenueCat v1 lookup failed: ${res.status} ${body || res.statusText}`), {
+        statusCode: 502,
       });
-
-      if (!res.ok) {
-        const body = await res.text();
-        throw Object.assign(new Error(`RevenueCat v2 lookup failed: ${res.status} ${body || res.statusText}`), {
-          statusCode: 502,
-        });
-      }
-
-      const body = (await res.json()) as { items?: T[]; next_page?: string | null };
-      items.push(...(body.items ?? []));
-      nextUrl = body.next_page ? new URL(body.next_page, 'https://api.revenuecat.com').toString() : null;
     }
 
-    return items;
-  }
-
-  async function fetchRevenueCatV2CustomerAccess(appUserId: string): Promise<{
-    subscriptions: RevenueCatV2Subscription[];
-    purchases: RevenueCatV2Purchase[];
-  }> {
-    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) {
-      return { subscriptions: [], purchases: [] };
-    }
-
-    const basePath = `/v2/projects/${encodeURIComponent(env.REVENUECAT_PROJECT_ID)}/customers/${encodeURIComponent(appUserId)}`;
-    const [subscriptions, purchases] = await Promise.all([
-      fetchRevenueCatV2Items<RevenueCatV2Subscription>(`${basePath}/subscriptions`),
-      fetchRevenueCatV2Items<RevenueCatV2Purchase>(`${basePath}/purchases`),
-    ]);
-
-    return { subscriptions, purchases };
+    const body = (await res.json()) as {
+      subscriber?: RevenueCatV1Subscriber | null;
+      value?: { subscriber?: RevenueCatV1Subscriber | null } | null;
+    };
+    const subscriber = body.subscriber ?? body.value?.subscriber ?? null;
+    return mapRevenueCatV1SubscriberToSnapshot({ subscriber });
   }
 
   async function getUsedRedemptionIdentifiers(supa: SupabaseClient, userId: string): Promise<Set<string>> {
@@ -329,16 +315,15 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       throw Object.assign(new Error('Purchase does not match this leaderboard price tier.'), { statusCode: 403 });
     }
 
-    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) {
+    if (!env.REVENUECAT_SECRET_KEY) {
       opts.req.log.warn(
         {
           leaderboardId: opts.leaderboard.id,
           userId: opts.userId,
           productId: opts.purchasedProductId,
           hasSecret: Boolean(env.REVENUECAT_SECRET_KEY),
-          hasProjectId: Boolean(env.REVENUECAT_PROJECT_ID),
         },
-        'Skipping RevenueCat server verification because RevenueCat v2 env is incomplete'
+        'Skipping RevenueCat server verification because RevenueCat secret is missing'
       );
       return {
         productId: opts.purchasedProductId,
@@ -347,7 +332,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       };
     }
 
-    const activationRetryDelaysMs = [0, 1200, 2500, 4000];
+    const activationRetryDelaysMs = [0, 1000, 2000];
     let sawVerifiedPurchase = false;
 
     for (let attempt = 0; attempt < activationRetryDelaysMs.length; attempt += 1) {
@@ -356,14 +341,14 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         await sleep(delayMs);
       }
 
-      const [customerAccess, usedRedemptionIdentifiers] = await Promise.all([
-        fetchRevenueCatV2CustomerAccess(opts.userId),
+      const [customerSnapshot, usedRedemptionIdentifiers] = await Promise.all([
+        fetchRevenueCatCustomerSnapshot(opts.userId),
         getUsedRedemptionIdentifiers(opts.supa, opts.userId),
       ]);
 
       const verified = hasVerifiedRevenueCatV2ProductAccess({
-        subscriptions: customerAccess.subscriptions,
-        purchases: customerAccess.purchases,
+        subscriptions: customerSnapshot.subscriptions,
+        purchases: customerSnapshot.purchases,
         productId: opts.purchasedProductId,
       });
       if (verified) {
@@ -372,8 +357,8 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
 
       const redemption = verified
         ? selectRedeemableRevenueCatGrant({
-            subscriptions: customerAccess.subscriptions,
-            purchases: customerAccess.purchases,
+            subscriptions: customerSnapshot.subscriptions,
+            purchases: customerSnapshot.purchases,
             allowedProductIds,
             preferredProductId: opts.purchasedProductId,
             usedRedemptionIdentifiers,
@@ -385,9 +370,18 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
           leaderboardId: opts.leaderboard.id,
           userId: opts.userId,
           productId: opts.purchasedProductId,
+          allowedProductIds,
           attempt: attempt + 1,
           delayMs,
           verified,
+          verificationSource: 'revenuecat_v1_subscriber',
+          rcOriginalAppUserId: customerSnapshot.originalAppUserId,
+          rcEnvironment: customerSnapshot.environment,
+          activeEntitlementIds: customerSnapshot.activeEntitlementIds,
+          activeEntitlementProductIds: customerSnapshot.activeEntitlementProductIds,
+          subscriptionProductIds: uniqueStrings(customerSnapshot.subscriptions.map((item) => item.product_id ?? null)),
+          purchaseProductIds: uniqueStrings(customerSnapshot.purchases.map((item) => item.product_id ?? null)),
+          usedRedemptionIdentifiers: Array.from(usedRedemptionIdentifiers),
           redemptionIdentifier: redemption?.redemptionIdentifier ?? null,
           redemptionSource: redemption?.source ?? null,
         },
@@ -408,6 +402,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
 
     throw Object.assign(new Error('No verified purchase was found for this leaderboard yet. Please try again shortly.'), {
       statusCode: 403,
+      code: 'PURCHASE_NOT_VISIBLE_YET',
     });
   }
 
@@ -1165,7 +1160,30 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         .maybeSingle();
 
       if (redeemedSubscriptionErr) throw redeemedSubscriptionErr;
-      if (!redeemedSubscription?.leaderboard_id) {
+      let matchedSubscription = redeemedSubscription ?? null;
+      if (!matchedSubscription?.leaderboard_id) {
+        const { data: aliasedSubscription, error: aliasedSubscriptionErr } = await (serviceSupa as any)
+          .from('branded_leaderboard_subscriptions')
+          .select('leaderboard_id, user_id, rc_subscription_id')
+          .eq('rc_subscription_id', redemptionIdentifier)
+          .maybeSingle();
+        if (aliasedSubscriptionErr) throw aliasedSubscriptionErr;
+        matchedSubscription = aliasedSubscription ?? null;
+        if (matchedSubscription?.leaderboard_id && matchedSubscription.user_id !== appUserId) {
+          req.log.warn(
+            {
+              appUserId,
+              matchedUserId: matchedSubscription.user_id,
+              productId,
+              eventType,
+              redemptionIdentifier,
+            },
+            'RC webhook: matched redeemed leaderboard purchase via redemption identifier alias fallback'
+          );
+        }
+      }
+
+      if (!matchedSubscription?.leaderboard_id) {
         req.log.warn(
           { appUserId, productId, eventType, redemptionIdentifier },
           'RC webhook: purchase not yet redeemed to a leaderboard'
@@ -1184,8 +1202,8 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       const newStatus = statusMap[eventType];
       if (newStatus && normalizedProductId) {
         const updatePayload: any = {
-          leaderboard_id: redeemedSubscription.leaderboard_id,
-          user_id: appUserId,
+          leaderboard_id: matchedSubscription.leaderboard_id,
+          user_id: matchedSubscription.user_id,
           rc_subscription_id: redemptionIdentifier,
           rc_product_id: normalizedProductId,
           status: newStatus,
@@ -1213,8 +1231,8 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         await (serviceSupa as any)
           .from('branded_leaderboard_revenue_events')
           .insert({
-            leaderboard_id: redeemedSubscription.leaderboard_id,
-            user_id: appUserId,
+            leaderboard_id: matchedSubscription.leaderboard_id,
+            user_id: matchedSubscription.user_id,
             event_type: revType,
             rc_event_id: event.id ?? null,
             amount_cents: Math.round((event.price ?? 0) * 100),

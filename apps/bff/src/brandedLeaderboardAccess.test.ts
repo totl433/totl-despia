@@ -5,6 +5,7 @@ import {
   getDefaultTierConfig,
   getExpectedLeaderboardProductIds,
   hasVerifiedRevenueCatV2ProductAccess,
+  mapRevenueCatV1SubscriberToSnapshot,
   selectRedeemableRevenueCatGrant,
   summarizeBrandedLeaderboardAccess,
 } from './brandedLeaderboardAccess';
@@ -96,6 +97,66 @@ describe('hasVerifiedRevenueCatV2ProductAccess', () => {
       hasVerifiedRevenueCatV2ProductAccess({
         productId: 'lb_green_peace',
         purchases: [{ product_id: 'lb_green_peace' }],
+      })
+    ).toBe(true);
+  });
+});
+
+describe('mapRevenueCatV1SubscriberToSnapshot', () => {
+  it('maps a v1 non-subscription purchase into a redeemable access snapshot', () => {
+    const snapshot = mapRevenueCatV1SubscriberToSnapshot({
+      subscriber: {
+        original_app_user_id: 'user-1',
+        entitlements: {
+          play_totl_pro: {
+            product_identifier: 'totl_season_sub_099',
+            expires_date: null,
+            is_sandbox: true,
+          },
+        },
+        non_subscriptions: {
+          totl_season_sub_099: [
+            {
+              id: 'txn_1',
+              is_sandbox: true,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(snapshot).toMatchObject({
+      originalAppUserId: 'user-1',
+      environment: 'sandbox',
+      activeEntitlementIds: ['play_totl_pro'],
+      activeEntitlementProductIds: ['totl_season_sub_099'],
+    });
+    expect(snapshot.purchases).toEqual([
+      {
+        product_id: 'totl_season_sub_099',
+        store_purchase_identifier: 'txn_1',
+      },
+    ]);
+  });
+
+  it('keeps the paid leaderboard product visible when v1 subscriber data arrives before v2 catches up', () => {
+    const snapshot = mapRevenueCatV1SubscriberToSnapshot({
+      subscriber: {
+        subscriptions: {
+          totl_season_sub_099: {
+            expires_date: '2099-01-01T00:00:00Z',
+            store_transaction_id: 'sub_txn_1',
+            is_sandbox: false,
+          },
+        },
+      },
+    });
+
+    expect(
+      hasVerifiedRevenueCatV2ProductAccess({
+        productId: 'totl_season_sub_099',
+        subscriptions: snapshot.subscriptions,
+        purchases: snapshot.purchases,
       })
     ).toBe(true);
   });

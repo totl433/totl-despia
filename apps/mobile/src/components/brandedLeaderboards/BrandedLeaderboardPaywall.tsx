@@ -5,11 +5,18 @@ import { TotlText, useTokens } from '@totl/ui';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useOffering, usePurchases } from '../../hooks/usePurchases';
 import { api } from '../../lib/api';
+import { retryBrandedLeaderboardActivation } from '../../lib/brandedLeaderboardActivation';
 import type { PurchasesPackage } from 'react-native-purchases';
+
+const DEFAULT_TIER_OFFERINGS: Record<number, string> = {
+  99: 'totl_season_sub_099',
+  199: 'totl_season_sub_199',
+};
 
 type Props = {
   leaderboardId: string;
   offeringId: string | null | undefined;
+  joinCode?: string;
   displayName: string;
   description: string | null | undefined;
   priceCents: number;
@@ -22,6 +29,7 @@ type Props = {
 export default function BrandedLeaderboardPaywall({
   leaderboardId,
   offeringId,
+  joinCode,
   displayName,
   description,
   priceCents,
@@ -33,7 +41,8 @@ export default function BrandedLeaderboardPaywall({
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const { purchasePackage } = usePurchases();
-  const { offering, loading: offeringLoading } = useOffering(offeringId);
+  const effectiveOfferingId = offeringId ?? DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
+  const { offering, loading: offeringLoading } = useOffering(effectiveOfferingId);
   const [purchasing, setPurchasing] = useState(false);
 
   const packages = offering?.availablePackages ?? [];
@@ -53,21 +62,49 @@ export default function BrandedLeaderboardPaywall({
       }
 
       try {
-        await api.activateBrandedLeaderboardSubscription(leaderboardId, {
-          rc_subscription_id: pkg.identifier,
-          rc_product_id: pkg.product.identifier,
+        await retryBrandedLeaderboardActivation({
+          runAttempt: () =>
+            api.activateBrandedLeaderboardSubscription(leaderboardId, {
+              rc_subscription_id: pkg.identifier,
+              rc_product_id: pkg.product.identifier,
+            }),
+          onRetryableError: (err, meta) => {
+            console.warn('[Paywall] Activation attempt failed after successful purchase', {
+              leaderboardId,
+              productId: pkg.product.identifier,
+              attempt: meta.attempt,
+              delayMs: meta.delayMs,
+              finalAttempt: meta.finalAttempt,
+              status: (err as any)?.status ?? null,
+              message: (err as any)?.message ?? String(err),
+            });
+          },
         });
-      } catch (err: any) {
-        console.warn('[Paywall] Activation failed after successful purchase, will retry on refresh', err);
+      } catch (activationError) {
+        console.warn('[Paywall] Activation failed after successful purchase, will retry on refresh', activationError);
         Alert.alert(
           'Almost there',
           'Your purchase was successful but we couldn\'t activate it right now. Pull to refresh the leaderboard to try again.',
         );
+        return;
+      }
+
+      if (joinCode) {
+        try {
+          await api.joinBrandedLeaderboard(leaderboardId, joinCode);
+        } catch (err: any) {
+          console.warn('[Paywall] Join failed after successful activation', err);
+          Alert.alert(
+            'Purchase confirmed',
+            'Your payment went through, but we could not finish joining this leaderboard. Please try your join code again.',
+          );
+          return;
+        }
       }
 
       onSuccess();
     },
-    [purchasePackage, leaderboardId, onSuccess],
+    [purchasePackage, leaderboardId, joinCode, onSuccess],
   );
 
   const priceDisplay = `£${(priceCents / 100).toFixed(2)}`;

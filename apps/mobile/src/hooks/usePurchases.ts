@@ -42,8 +42,9 @@ export function usePurchases() {
     const Purchases = getPurchases();
     if (!Purchases) throw new Error('Purchases not available');
     const { customerInfo: updated } = await Purchases.purchasePackage(pkg);
-    setCustomerInfo(updated);
-    return updated;
+    const refreshed = await syncPurchasesForCurrentSession();
+    setCustomerInfo(refreshed ?? updated);
+    return refreshed ?? updated;
   }, []);
 
   return { customerInfo, loading, refresh, purchasePackage };
