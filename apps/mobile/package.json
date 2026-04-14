@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "1.0.0",
+  "version": "2.0.5",
   "main": "index.ts",
   "scripts": {
     "start": "CI=0 REACT_NATIVE_PACKAGER_HOSTNAME=127.0.0.1 expo start --localhost",
@@ -31,8 +31,9 @@
     "@totl/api-client": "^0.0.0",
     "@totl/domain": "^0.0.0",
     "@totl/ui": "^0.0.0",
-    "expo": "~54.0.31",
+    "expo": "~54.0.33",
     "expo-av": "~16.0.8",
+    "expo-blur": "~15.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-dev-client": "~6.0.20",
     "expo-device": "^8.0.10",
@@ -54,13 +55,15 @@
     "react-native-gifted-chat": "^3.3.2",
     "react-native-keyboard-controller": "1.18.5",
     "react-native-onesignal": "^5.3.1",
+    "react-native-purchases": "^9.15.1",
+    "react-native-purchases-ui": "^9.15.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-reanimated-carousel": "4.0.3",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-view-shot": "4.0.3",
-    "react-native-webview": "^13.16.0",
+    "react-native-webview": "13.15.0",
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {

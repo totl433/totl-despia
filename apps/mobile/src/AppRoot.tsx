@@ -2,16 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Button, Card, Screen, ThemeProvider, TotlText } from '@totl/ui';
-import { AppState } from 'react-native';
+import { AppState, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
+
+LogBox.ignoreLogs([
+  '[RevenueCat]',
+  'RevenueCat',
+]);
 
 import { queryClient, queryPersister } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
 import { initPushSdk, registerForPushNotifications, resetPushSessionState, updateHeartbeat } from './lib/push';
+import { configurePurchases, loginPurchases, logoutPurchases } from './lib/purchases';
 import { ConfettiProvider } from './lib/confetti';
 import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext';
+import { JoinIntentProvider } from './context/JoinIntentContext';
 import { ThemePreferenceProvider, useThemePreference } from './context/ThemePreferenceContext';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
@@ -74,6 +81,7 @@ export default function AppRoot() {
 
   useEffect(() => {
     initPushSdk();
+    configurePurchases();
   }, []);
 
   useEffect(() => {
@@ -132,6 +140,21 @@ export default function AppRoot() {
   useEffect(() => {
     if (authed) return;
     resetPushSessionState();
+    logoutPurchases();
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user?.id;
+      if (!userId || cancelled) return;
+      await loginPurchases(userId);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [authed]);
 
   if (!fontsReady || !sessionReady) return null;
@@ -169,13 +192,15 @@ function ThemedApp({ authed }: { authed: boolean }) {
             <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
           </Screen>
         ) : authed ? (
-          <ConfettiProvider>
-            <LeagueUnreadCountsProvider>
-              <PopupCardsProvider>
-                <AppNavigator />
-              </PopupCardsProvider>
-            </LeagueUnreadCountsProvider>
-          </ConfettiProvider>
+          <JoinIntentProvider>
+            <ConfettiProvider>
+              <LeagueUnreadCountsProvider>
+                <PopupCardsProvider>
+                  <AppNavigator />
+                </PopupCardsProvider>
+              </LeagueUnreadCountsProvider>
+            </ConfettiProvider>
+          </JoinIntentProvider>
         ) : (
           <AuthScreen />
         )}
