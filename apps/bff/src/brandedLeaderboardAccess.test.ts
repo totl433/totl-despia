@@ -246,4 +246,46 @@ describe('selectRedeemableRevenueCatGrant', () => {
       })
     ).toBeNull();
   });
+
+  it('treats legacy product rows as already consuming the first matching purchase', () => {
+    expect(
+      selectRedeemableRevenueCatGrant({
+        allowedProductIds: ['totl_season_sub_099'],
+        purchases: [
+          {
+            product_id: 'totl_season_sub_099',
+            store_purchase_identifier: 'txn_1',
+          },
+          {
+            product_id: 'totl_season_sub_099',
+            store_purchase_identifier: 'txn_2',
+          },
+        ],
+        legacyUsedProductCounts: {
+          totl_season_sub_099: 1,
+        },
+      })
+    ).toEqual({
+      productId: 'totl_season_sub_099',
+      redemptionIdentifier: 'txn_2',
+      source: 'purchase',
+    });
+  });
+
+  it('requires a fresh purchase when only a legacy-consumed transaction exists', () => {
+    expect(
+      selectRedeemableRevenueCatGrant({
+        allowedProductIds: ['totl_season_sub_099'],
+        purchases: [
+          {
+            product_id: 'totl_season_sub_099',
+            store_purchase_identifier: 'txn_1',
+          },
+        ],
+        legacyUsedProductCounts: {
+          totl_season_sub_099: 1,
+        },
+      })
+    ).toBeNull();
+  });
 });

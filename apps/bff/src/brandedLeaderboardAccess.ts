@@ -307,11 +307,15 @@ export function selectRedeemableRevenueCatGrant(input: {
   allowedProductIds: string[];
   preferredProductId?: string | null;
   usedRedemptionIdentifiers?: Iterable<string>;
+  legacyUsedProductCounts?: Record<string, number> | null | undefined;
   now?: Date;
 }): RevenueCatRedemptionCandidate | null {
   const now = input.now ?? new Date();
   const allowed = new Set(input.allowedProductIds.filter(Boolean));
   const used = new Set(Array.from(input.usedRedemptionIdentifiers ?? []).filter(Boolean));
+  const legacyUsedProductCounts = new Map(
+    Object.entries(input.legacyUsedProductCounts ?? {}).filter(([, count]) => Number(count) > 0)
+  );
   const preferredProductId = normalizeIdentifier(input.preferredProductId);
 
   const purchases = (input.purchases ?? []).filter((purchase) => allowed.has(String(purchase.product_id ?? '')));
@@ -337,14 +341,23 @@ export function selectRedeemableRevenueCatGrant(input: {
       }
     );
 
+  const availablePurchaseCandidates = purchaseCandidates.filter((candidate) => {
+    const remainingLegacyUses = legacyUsedProductCounts.get(candidate.productId) ?? 0;
+    if (remainingLegacyUses > 0) {
+      legacyUsedProductCounts.set(candidate.productId, remainingLegacyUses - 1);
+      return false;
+    }
+    return true;
+  });
+
   const preferredPurchase = preferredProductId
-    ? purchaseCandidates.find((candidate) => candidate.productId === preferredProductId)
+    ? availablePurchaseCandidates.find((candidate) => candidate.productId === preferredProductId)
     : null;
   if (preferredPurchase) {
     return preferredPurchase;
   }
-  if (purchaseCandidates.length > 0) {
-    return purchaseCandidates[0];
+  if (availablePurchaseCandidates.length > 0) {
+    return availablePurchaseCandidates[0];
   }
 
   const subscriptionCandidates = subscriptions

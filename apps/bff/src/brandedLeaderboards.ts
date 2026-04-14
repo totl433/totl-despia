@@ -211,6 +211,26 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
   }
 
+  function countLegacyUsedProducts(input: {
+    allowedProductIds: string[];
+    currentRevenueCatIdentifiers: Iterable<string>;
+    existingRedemptions: Array<{ leaderboardId: string; productId: string | null; redemptionIdentifier: string | null }>;
+    currentLeaderboardId: string;
+  }): Record<string, number> {
+    const allowed = new Set(input.allowedProductIds.filter(Boolean));
+    const currentIdentifiers = new Set(Array.from(input.currentRevenueCatIdentifiers).filter(Boolean));
+    const counts: Record<string, number> = {};
+
+    for (const redemption of input.existingRedemptions) {
+      if (redemption.leaderboardId === input.currentLeaderboardId) continue;
+      if (!redemption.productId || !allowed.has(redemption.productId)) continue;
+      if (redemption.redemptionIdentifier && currentIdentifiers.has(redemption.redemptionIdentifier)) continue;
+      counts[redemption.productId] = (counts[redemption.productId] ?? 0) + 1;
+    }
+
+    return counts;
+  }
+
   function normalizeBrandedLeaderboardRow(row: any) {
     if (!row) return row;
     return {
@@ -286,14 +306,20 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     return mapRevenueCatV1SubscriberToSnapshot({ subscriber });
   }
 
-  async function getUsedRedemptionIdentifiers(supa: SupabaseClient, userId: string): Promise<Set<string>> {
+  async function getExistingRedemptions(
+    supa: SupabaseClient,
+    userId: string
+  ): Promise<Array<{ leaderboardId: string; productId: string | null; redemptionIdentifier: string | null }>> {
     const { data, error } = await (supa as any)
       .from('branded_leaderboard_subscriptions')
-      .select('rc_subscription_id')
-      .eq('user_id', userId)
-      .not('rc_subscription_id', 'is', null);
+      .select('leaderboard_id, rc_product_id, rc_subscription_id')
+      .eq('user_id', userId);
     if (error) throw error;
-    return new Set((data ?? []).map((row: any) => String(row.rc_subscription_id)).filter(Boolean));
+    return (data ?? []).map((row: any) => ({
+      leaderboardId: String(row.leaderboard_id),
+      productId: normalizeProductId(row.rc_product_id),
+      redemptionIdentifier: normalizeProductId(row.rc_subscription_id),
+    }));
   }
 
   async function verifyLeaderboardPurchase(opts: {
@@ -341,10 +367,23 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         await sleep(delayMs);
       }
 
-      const [customerSnapshot, usedRedemptionIdentifiers] = await Promise.all([
+      const [customerSnapshot, existingRedemptions] = await Promise.all([
         fetchRevenueCatCustomerSnapshot(opts.userId),
-        getUsedRedemptionIdentifiers(opts.supa, opts.userId),
+        getExistingRedemptions(opts.supa, opts.userId),
       ]);
+      const usedRedemptionIdentifiers = new Set(
+        existingRedemptions.map((item) => item.redemptionIdentifier).filter((value): value is string => Boolean(value))
+      );
+      const currentRevenueCatIdentifiers = uniqueStrings([
+        ...customerSnapshot.purchases.map((item) => item.store_purchase_identifier ?? null),
+        ...customerSnapshot.subscriptions.map((item) => item.store_subscription_identifier ?? null),
+      ]);
+      const legacyUsedProductCounts = countLegacyUsedProducts({
+        allowedProductIds,
+        currentRevenueCatIdentifiers,
+        existingRedemptions,
+        currentLeaderboardId: opts.leaderboard.id,
+      });
 
       const verified = hasVerifiedRevenueCatV2ProductAccess({
         subscriptions: customerSnapshot.subscriptions,
@@ -362,6 +401,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
             allowedProductIds,
             preferredProductId: opts.purchasedProductId,
             usedRedemptionIdentifiers,
+            legacyUsedProductCounts,
           })
         : null;
 
@@ -381,7 +421,9 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
           activeEntitlementProductIds: customerSnapshot.activeEntitlementProductIds,
           subscriptionProductIds: uniqueStrings(customerSnapshot.subscriptions.map((item) => item.product_id ?? null)),
           purchaseProductIds: uniqueStrings(customerSnapshot.purchases.map((item) => item.product_id ?? null)),
+          currentRevenueCatIdentifiers,
           usedRedemptionIdentifiers: Array.from(usedRedemptionIdentifiers),
+          legacyUsedProductCounts,
           redemptionIdentifier: redemption?.redemptionIdentifier ?? null,
           redemptionSource: redemption?.source ?? null,
         },
