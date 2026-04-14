@@ -30,6 +30,7 @@ export default function AppRoot() {
   const [fontsReady, setFontsReady] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
     initSentry().catch(() => {});
@@ -68,10 +69,12 @@ export default function AppRoot() {
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
       setAuthed(!!data.session);
+      setSessionUserId(data.session?.user?.id ?? null);
       setSessionReady(true);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthed(!!session);
+      setSessionUserId(session?.user?.id ?? null);
     });
     return () => {
       alive = false;
@@ -81,7 +84,6 @@ export default function AppRoot() {
 
   useEffect(() => {
     initPushSdk();
-    configurePurchases();
   }, []);
 
   useEffect(() => {
@@ -138,24 +140,27 @@ export default function AppRoot() {
   }, [authed]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     if (authed) return;
     resetPushSessionState();
-    logoutPurchases();
-  }, [authed]);
+    void logoutPurchases();
+  }, [authed, sessionReady]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     if (!authed) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      const userId = data.session?.user?.id;
+      const userId = sessionUserId;
       if (!userId || cancelled) return;
+      await configurePurchases(userId);
+      if (cancelled) return;
       await loginPurchases(userId);
     })();
     return () => {
       cancelled = true;
     };
-  }, [authed]);
+  }, [authed, sessionReady, sessionUserId]);
 
   if (!fontsReady || !sessionReady) return null;
 

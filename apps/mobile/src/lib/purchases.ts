@@ -9,6 +9,11 @@ let available = false;
 let configurePromise: Promise<void> | null = null;
 let currentPurchasesUserId: string | null = null;
 
+function normalizeUserId(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
 function getPurchases() {
   if (!NativeModules.RNPurchases) {
     return null;
@@ -21,9 +26,11 @@ function getPurchases() {
   }
 }
 
-export async function configurePurchases() {
+export async function configurePurchases(appUserId?: string | null) {
   if (configured) return;
   if (configurePromise) return configurePromise;
+
+  const normalizedAppUserId = normalizeUserId(appUserId);
 
   configurePromise = (async () => {
     if (!NativeModules.RNPurchases) {
@@ -42,15 +49,24 @@ export async function configurePurchases() {
     try {
       const { LOG_LEVEL } = require('react-native-purchases');
       Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-      Purchases.configure({ apiKey: RC_API_KEY });
+      Purchases.configure({
+        apiKey: RC_API_KEY,
+        appUserID: normalizedAppUserId ?? undefined,
+      });
       configured = true;
       available = true;
-      console.info('[Purchases] configured successfully');
+      currentPurchasesUserId = normalizedAppUserId;
+      console.info('[Purchases] configured successfully', {
+        appUserId: normalizedAppUserId,
+      });
     } catch (err: any) {
       if (err?.message?.includes('already') || err?.message?.includes('instance')) {
         configured = true;
         available = true;
-        console.info('[Purchases] SDK already configured, reusing existing instance');
+        currentPurchasesUserId = normalizedAppUserId ?? currentPurchasesUserId;
+        console.info('[Purchases] SDK already configured, reusing existing instance', {
+          appUserId: normalizedAppUserId,
+        });
       } else {
         console.warn('[Purchases] configure failed:', err?.message ?? err);
       }
@@ -65,22 +81,24 @@ export async function configurePurchases() {
 }
 
 export async function loginPurchases(userId: string) {
-  await configurePurchases();
+  const normalizedUserId = normalizeUserId(userId);
+  if (!normalizedUserId) return null;
+  await configurePurchases(normalizedUserId);
   if (!available) return null;
   try {
     const Purchases = getPurchases();
     if (!Purchases) return null;
     const currentAppUserId =
       typeof Purchases.getAppUserID === 'function' ? await Purchases.getAppUserID().catch(() => null) : null;
-    if (currentPurchasesUserId === userId || currentAppUserId === userId) {
+    if (currentPurchasesUserId === normalizedUserId || currentAppUserId === normalizedUserId) {
       const info = await Purchases.getCustomerInfo();
-      currentPurchasesUserId = userId;
-      console.info('[Purchases] user already synced', { userId, appUserId: currentAppUserId });
+      currentPurchasesUserId = normalizedUserId;
+      console.info('[Purchases] user already synced', { userId: normalizedUserId, appUserId: currentAppUserId });
       return info;
     }
-    const { customerInfo } = await Purchases.logIn(userId);
-    currentPurchasesUserId = userId;
-    console.info('[Purchases] logged in user', { userId, previousAppUserId: currentAppUserId });
+    const { customerInfo } = await Purchases.logIn(normalizedUserId);
+    currentPurchasesUserId = normalizedUserId;
+    console.info('[Purchases] logged in user', { userId: normalizedUserId, previousAppUserId: currentAppUserId });
     return customerInfo;
   } catch (err) {
     console.warn('[Purchases] logIn failed', err);
@@ -94,6 +112,12 @@ export async function logoutPurchases() {
   try {
     const Purchases = getPurchases();
     if (!Purchases) return null;
+    const currentAppUserId =
+      typeof Purchases.getAppUserID === 'function' ? await Purchases.getAppUserID().catch(() => null) : null;
+    if (!currentAppUserId || String(currentAppUserId).startsWith('$RCAnonymousID:')) {
+      currentPurchasesUserId = null;
+      return await Purchases.getCustomerInfo().catch(() => null);
+    }
     const info = await Purchases.logOut();
     currentPurchasesUserId = null;
     return info;
@@ -104,7 +128,8 @@ export async function logoutPurchases() {
 }
 
 export async function getCustomerInfo(): Promise<CustomerInfo | null> {
-  await configurePurchases();
+  const { data } = await supabase.auth.getSession();
+  await configurePurchases(data.session?.user?.id ?? null);
   if (!available) return null;
   try {
     const Purchases = getPurchases();
@@ -117,11 +142,11 @@ export async function getCustomerInfo(): Promise<CustomerInfo | null> {
 }
 
 export async function syncPurchasesForCurrentSession(): Promise<CustomerInfo | null> {
-  await configurePurchases();
-  if (!available) return null;
   try {
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id ?? null;
+    await configurePurchases(userId);
+    if (!available) return null;
     if (!userId) {
       return await getCustomerInfo();
     }
@@ -133,7 +158,11 @@ export async function syncPurchasesForCurrentSession(): Promise<CustomerInfo | n
 }
 
 export async function fetchOffering(offeringId: string): Promise<PurchasesOffering | null> {
-  await configurePurchases();
+  const { data } = await supabase.auth.getSession();
+  await configurePurchases(data.session?.user?.id ?? null);
+  if (data.session?.user?.id) {
+    await loginPurchases(data.session.user.id);
+  }
   if (!available) return null;
   try {
     const Purchases = getPurchases();
@@ -147,7 +176,8 @@ export async function fetchOffering(offeringId: string): Promise<PurchasesOfferi
 }
 
 export async function restorePurchases(): Promise<CustomerInfo | null> {
-  await configurePurchases();
+  const { data } = await supabase.auth.getSession();
+  await configurePurchases(data.session?.user?.id ?? null);
   if (!available) return null;
   try {
     const Purchases = getPurchases();
