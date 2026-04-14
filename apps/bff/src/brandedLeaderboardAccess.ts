@@ -193,6 +193,16 @@ function recordSandboxState(
   }
 }
 
+function coerceRevenueCatV1PurchaseEntries(entries: unknown): RevenueCatV1Purchase[] {
+  if (Array.isArray(entries)) {
+    return entries.filter((entry): entry is RevenueCatV1Purchase => Boolean(entry) && typeof entry === 'object');
+  }
+  if (entries && typeof entries === 'object') {
+    return [entries as RevenueCatV1Purchase];
+  }
+  return [];
+}
+
 export function mapRevenueCatV1SubscriberToSnapshot(input: {
   now?: Date;
   subscriber?: RevenueCatV1Subscriber | null | undefined;
@@ -232,9 +242,11 @@ export function mapRevenueCatV1SubscriberToSnapshot(input: {
   }
 
   const purchases: RevenueCatV2Purchase[] = [];
-  const appendPurchases = (collection?: Record<string, RevenueCatV1Purchase[] | null> | null) => {
+  const appendPurchases = (
+    collection?: Record<string, RevenueCatV1Purchase[] | RevenueCatV1Purchase | null> | null
+  ) => {
     for (const [productId, entries] of Object.entries(collection ?? {})) {
-      for (const entry of entries ?? []) {
+      for (const entry of coerceRevenueCatV1PurchaseEntries(entries)) {
         if (!entry) continue;
         recordSandboxState(environmentFlags, entry.is_sandbox);
         purchases.push({

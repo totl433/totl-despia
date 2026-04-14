@@ -160,6 +160,30 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
       })
     ).toBe(true);
   });
+
+  it('tolerates non-array v1 purchase payloads without crashing', () => {
+    const snapshot = mapRevenueCatV1SubscriberToSnapshot({
+      subscriber: {
+        non_subscriptions: {
+          totl_season_sub_099: {
+            id: 'txn_single',
+            is_sandbox: true,
+          } as any,
+        },
+        other_purchases: {
+          totl_season_sub_199: null,
+        },
+      },
+    });
+
+    expect(snapshot.purchases).toEqual([
+      {
+        product_id: 'totl_season_sub_099',
+        store_purchase_identifier: 'txn_single',
+      },
+    ]);
+    expect(snapshot.environment).toBe('sandbox');
+  });
 });
 
 describe('price tier defaults', () => {
