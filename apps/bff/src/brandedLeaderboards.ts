@@ -5,6 +5,16 @@ import { requireUser } from './auth.js';
 import { createSupabaseClient } from './supabase.js';
 import { captureException } from './sentry.js';
 import type { Env } from './env.js';
+import {
+  canJoinBrandedLeaderboard,
+  getExpectedLeaderboardProductIds,
+  hasVerifiedRevenueCatV2ProductAccess,
+  selectRedeemableRevenueCatGrant,
+  summarizeBrandedLeaderboardAccess,
+  type RevenueCatV2Purchase,
+  type RevenueCatRedemptionCandidate,
+  type RevenueCatV2Subscription,
+} from './brandedLeaderboardAccess.js';
 
 function getAuthedSupa(req: FastifyRequest, env: Env) {
   const userId = (req as any).userId as string;
@@ -27,6 +37,38 @@ async function requireAdmin(req: FastifyRequest, supabase: SupabaseClient, env: 
   return { userId, supa };
 }
 
+async function requireHostOrAdminForLeaderboard(
+  req: FastifyRequest,
+  supabase: SupabaseClient,
+  env: Env,
+  leaderboardId: string
+) {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req, env);
+
+  const [{ data: userRow, error: userError }, { data: hostRow, error: hostError }] = await Promise.all([
+    (supa as any).from('users').select('is_admin').eq('id', userId).maybeSingle(),
+    (supa as any)
+      .from('branded_leaderboard_hosts')
+      .select('id')
+      .eq('leaderboard_id', leaderboardId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ]);
+
+  if (userError) throw userError;
+  if (hostError) throw hostError;
+
+  const isAdmin = Boolean(userRow?.is_admin);
+  const isHost = Boolean(hostRow);
+
+  if (!isAdmin && !isHost) {
+    throw Object.assign(new Error('Host or admin access required'), { statusCode: 403 });
+  }
+
+  return { userId, supa, isAdmin, isHost };
+}
+
 function generateJoinCode(length = 5): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -34,6 +76,23 @@ function generateJoinCode(length = 5): string {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
+}
+
+const JOIN_CODE_REGEX = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{3,50}$/;
+
+function normalizeJoinCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function parseJoinCode(value: string): string {
+  const normalized = normalizeJoinCode(value);
+  if (!JOIN_CODE_REGEX.test(normalized)) {
+    throw Object.assign(
+      new Error('Join codes must be 3-50 characters and use only A-Z letters and digits 2-9.'),
+      { statusCode: 400 }
+    );
+  }
+  return normalized;
 }
 
 function slugify(text: string): string {
@@ -69,6 +128,7 @@ const CreateLeaderboardBodySchema = z.object({
   start_gw: z.number().int().positive().nullable().optional(),
   rc_offering_id: z.string().nullable().optional(),
   rc_entitlement_id: z.string().nullable().optional(),
+  rc_product_id: z.string().nullable().optional(),
   header_image_url: z.string().nullable().optional(),
 });
 
@@ -80,11 +140,13 @@ const AddHostBodySchema = z.object({
 });
 
 const CreateCodeBodySchema = z.object({
+  code: z.string().optional(),
   expires_at: z.string().optional(),
   max_uses: z.number().int().positive().optional(),
 });
 
 const UpdateCodeBodySchema = z.object({
+  code: z.string().optional(),
   active: z.boolean().optional(),
   expires_at: z.string().nullable().optional(),
   max_uses: z.number().int().positive().nullable().optional(),
@@ -115,6 +177,240 @@ const UpdatePayoutBodySchema = z.object({
 export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env) {
   const supabase = createSupabaseClient(env);
 
+  async function isJoinCodeTaken(supa: SupabaseClient, code: string, excludeId?: string) {
+    let query = (supa as any).from('branded_leaderboard_join_codes').select('id').eq('code', code);
+    if (excludeId) query = query.neq('id', excludeId);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+
+  async function getDefaultJoinCodeId(supa: SupabaseClient, leaderboardId: string) {
+    const { data, error } = await (supa as any)
+      .from('branded_leaderboard_join_codes')
+      .select('id')
+      .eq('leaderboard_id', leaderboardId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.id ? String(data.id) : null;
+  }
+
+  function normalizeProductId(value: string | null | undefined): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function normalizeBrandedLeaderboardRow(row: any) {
+    if (!row) return row;
+    return {
+      ...row,
+      rc_product_id: row.rc_product_id ?? null,
+    };
+  }
+
+  async function getLeaderboardAccessContext(
+    supa: SupabaseClient,
+    leaderboardId: string,
+    userId: string
+  ) {
+    const [lbRes, memRes, subRes] = await Promise.all([
+      (supa as any).from('branded_leaderboards').select('*').eq('id', leaderboardId).maybeSingle(),
+      (supa as any)
+        .from('branded_leaderboard_memberships')
+        .select('*')
+        .eq('leaderboard_id', leaderboardId)
+        .eq('user_id', userId)
+        .is('left_at', null)
+        .maybeSingle(),
+      (supa as any)
+        .from('branded_leaderboard_subscriptions')
+        .select('*')
+        .eq('leaderboard_id', leaderboardId)
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .maybeSingle(),
+    ]);
+
+    if (lbRes.error) throw lbRes.error;
+    if (!lbRes.data) throw Object.assign(new Error('Leaderboard not found'), { statusCode: 404 });
+    if (memRes.error) throw memRes.error;
+    if (subRes.error) throw subRes.error;
+
+    const leaderboard = normalizeBrandedLeaderboardRow(lbRes.data as any);
+    const membership = memRes.data ?? null;
+    const subscription = subRes.data ?? null;
+    const access = summarizeBrandedLeaderboardAccess({
+      priceType: leaderboard.price_type,
+      isMember: Boolean(membership),
+      hasActivePurchase: Boolean(subscription),
+    });
+
+    return { leaderboard, membership, subscription, access };
+  }
+
+  async function fetchRevenueCatV2Items<T>(path: string): Promise<T[]> {
+    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) return [];
+
+    const items: T[] = [];
+    let nextUrl: string | null = new URL(path, 'https://api.revenuecat.com').toString();
+
+    while (nextUrl) {
+      const res = await fetch(nextUrl, {
+        headers: {
+          Authorization: `Bearer ${env.REVENUECAT_SECRET_KEY}`,
+          Accept: 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        throw Object.assign(new Error(`RevenueCat v2 lookup failed: ${res.status} ${body || res.statusText}`), {
+          statusCode: 502,
+        });
+      }
+
+      const body = (await res.json()) as { items?: T[]; next_page?: string | null };
+      items.push(...(body.items ?? []));
+      nextUrl = body.next_page ? new URL(body.next_page, 'https://api.revenuecat.com').toString() : null;
+    }
+
+    return items;
+  }
+
+  async function fetchRevenueCatV2CustomerAccess(appUserId: string): Promise<{
+    subscriptions: RevenueCatV2Subscription[];
+    purchases: RevenueCatV2Purchase[];
+  }> {
+    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) {
+      return { subscriptions: [], purchases: [] };
+    }
+
+    const basePath = `/v2/projects/${encodeURIComponent(env.REVENUECAT_PROJECT_ID)}/customers/${encodeURIComponent(appUserId)}`;
+    const [subscriptions, purchases] = await Promise.all([
+      fetchRevenueCatV2Items<RevenueCatV2Subscription>(`${basePath}/subscriptions`),
+      fetchRevenueCatV2Items<RevenueCatV2Purchase>(`${basePath}/purchases`),
+    ]);
+
+    return { subscriptions, purchases };
+  }
+
+  async function getUsedRedemptionIdentifiers(supa: SupabaseClient, userId: string): Promise<Set<string>> {
+    const { data, error } = await (supa as any)
+      .from('branded_leaderboard_subscriptions')
+      .select('rc_subscription_id')
+      .eq('user_id', userId)
+      .not('rc_subscription_id', 'is', null);
+    if (error) throw error;
+    return new Set((data ?? []).map((row: any) => String(row.rc_subscription_id)).filter(Boolean));
+  }
+
+  async function verifyLeaderboardPurchase(opts: {
+    userId: string;
+    leaderboard: any;
+    purchasedProductId: string;
+    req: FastifyRequest;
+    supa: SupabaseClient;
+  }): Promise<RevenueCatRedemptionCandidate | null> {
+    const allowedProductIds = getExpectedLeaderboardProductIds({
+      configuredProductId: opts.leaderboard.rc_product_id,
+      priceCents: opts.leaderboard.season_price_cents,
+    });
+    if (allowedProductIds.length === 0) {
+      throw Object.assign(new Error('This leaderboard is missing a RevenueCat product mapping.'), { statusCode: 409 });
+    }
+
+    if (!allowedProductIds.includes(opts.purchasedProductId)) {
+      throw Object.assign(new Error('Purchase does not match this leaderboard price tier.'), { statusCode: 403 });
+    }
+
+    if (!env.REVENUECAT_SECRET_KEY || !env.REVENUECAT_PROJECT_ID) {
+      opts.req.log.warn(
+        {
+          leaderboardId: opts.leaderboard.id,
+          userId: opts.userId,
+          productId: opts.purchasedProductId,
+          hasSecret: Boolean(env.REVENUECAT_SECRET_KEY),
+          hasProjectId: Boolean(env.REVENUECAT_PROJECT_ID),
+        },
+        'Skipping RevenueCat server verification because RevenueCat v2 env is incomplete'
+      );
+      return {
+        productId: opts.purchasedProductId,
+        redemptionIdentifier: opts.purchasedProductId,
+        source: 'purchase',
+      };
+    }
+
+    const activationRetryDelaysMs = [0, 1200, 2500, 4000];
+    let sawVerifiedPurchase = false;
+
+    for (let attempt = 0; attempt < activationRetryDelaysMs.length; attempt += 1) {
+      const delayMs = activationRetryDelaysMs[attempt];
+      if (delayMs > 0) {
+        await sleep(delayMs);
+      }
+
+      const [customerAccess, usedRedemptionIdentifiers] = await Promise.all([
+        fetchRevenueCatV2CustomerAccess(opts.userId),
+        getUsedRedemptionIdentifiers(opts.supa, opts.userId),
+      ]);
+
+      const verified = hasVerifiedRevenueCatV2ProductAccess({
+        subscriptions: customerAccess.subscriptions,
+        purchases: customerAccess.purchases,
+        productId: opts.purchasedProductId,
+      });
+      if (verified) {
+        sawVerifiedPurchase = true;
+      }
+
+      const redemption = verified
+        ? selectRedeemableRevenueCatGrant({
+            subscriptions: customerAccess.subscriptions,
+            purchases: customerAccess.purchases,
+            allowedProductIds,
+            preferredProductId: opts.purchasedProductId,
+            usedRedemptionIdentifiers,
+          })
+        : null;
+
+      opts.req.log.info(
+        {
+          leaderboardId: opts.leaderboard.id,
+          userId: opts.userId,
+          productId: opts.purchasedProductId,
+          attempt: attempt + 1,
+          delayMs,
+          verified,
+          redemptionIdentifier: redemption?.redemptionIdentifier ?? null,
+          redemptionSource: redemption?.source ?? null,
+        },
+        'branded leaderboard activation verification attempt'
+      );
+
+      if (redemption) {
+        return redemption;
+      }
+    }
+
+    if (sawVerifiedPurchase) {
+      throw Object.assign(new Error('A fresh purchase is required for this leaderboard.'), {
+        statusCode: 402,
+        code: 'PURCHASE_REQUIRED',
+      });
+    }
+
+    throw Object.assign(new Error('No verified purchase was found for this leaderboard yet. Please try again shortly.'), {
+      statusCode: 403,
+    });
+  }
+
   // ============================================
   // ADMIN ENDPOINTS
   // ============================================
@@ -144,7 +440,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .select('*')
       .single();
     if (error) throw error;
-    return { leaderboard: data };
+    return { leaderboard: normalizeBrandedLeaderboardRow(data) };
   });
 
   app.get('/v1/admin/branded-leaderboards/:id', async (req) => {
@@ -178,7 +474,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       avatar_url: h.users?.avatar_url ?? null,
     }));
 
-    return { leaderboard: lbRes.data, hosts, codes: codesRes.data ?? [] };
+    return { leaderboard: normalizeBrandedLeaderboardRow(lbRes.data), hosts, codes: codesRes.data ?? [] };
   });
 
   app.put('/v1/admin/branded-leaderboards/:id', async (req) => {
@@ -193,7 +489,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .select('*')
       .single();
     if (error) throw error;
-    return { leaderboard: data };
+    return { leaderboard: normalizeBrandedLeaderboardRow(data) };
   });
 
   app.delete('/v1/admin/branded-leaderboards/:id', async (req) => {
@@ -249,17 +545,18 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const { id } = IdParamSchema.parse((req as any).params);
     const body = CreateCodeBodySchema.parse((req as any).body);
 
-    let code = generateJoinCode();
-    let attempts = 0;
-    while (attempts < 10) {
-      const { data: existing } = await (supa as any)
-        .from('branded_leaderboard_join_codes')
-        .select('id')
-        .eq('code', code)
-        .maybeSingle();
-      if (!existing) break;
-      code = generateJoinCode();
-      attempts++;
+    let code = body.code ? parseJoinCode(body.code) : generateJoinCode();
+    if (body.code) {
+      if (await isJoinCodeTaken(supa, code)) {
+        throw Object.assign(new Error('That join code is already taken.'), { statusCode: 409 });
+      }
+    } else {
+      let attempts = 0;
+      while (attempts < 10) {
+        if (!(await isJoinCodeTaken(supa, code))) break;
+        code = generateJoinCode();
+        attempts++;
+      }
     }
 
     const { data, error } = await (supa as any)
@@ -273,21 +570,42 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       })
       .select('*')
       .single();
+    if ((error as any)?.code === '23505') {
+      throw Object.assign(new Error('That join code is already taken.'), { statusCode: 409 });
+    }
     if (error) throw error;
     return { joinCode: data };
   });
 
   app.put('/v1/admin/branded-leaderboards/:id/codes/:codeId', async (req) => {
     const { supa } = await requireAdmin(req, supabase, env);
-    const { codeId } = CodeIdParamSchema.parse((req as any).params);
+    const { id, codeId } = CodeIdParamSchema.parse((req as any).params);
     const body = UpdateCodeBodySchema.parse((req as any).body);
+    const nextBody = {
+      ...body,
+      ...(body.code ? { code: parseJoinCode(body.code) } : {}),
+    };
+
+    if (nextBody.code) {
+      const defaultCodeId = await getDefaultJoinCodeId(supa, id);
+      if (!defaultCodeId || defaultCodeId !== codeId) {
+        throw Object.assign(new Error('Only the default join code can be renamed.'), { statusCode: 403 });
+      }
+    }
+
+    if (nextBody.code && (await isJoinCodeTaken(supa, nextBody.code, codeId))) {
+      throw Object.assign(new Error('That join code is already taken.'), { statusCode: 409 });
+    }
 
     const { data, error } = await (supa as any)
       .from('branded_leaderboard_join_codes')
-      .update(body)
+      .update(nextBody)
       .eq('id', codeId)
       .select('*')
       .single();
+    if ((error as any)?.code === '23505') {
+      throw Object.assign(new Error('That join code is already taken.'), { statusCode: 409 });
+    }
     if (error) throw error;
     return { joinCode: data };
   });
@@ -383,6 +701,51 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     return { users: data ?? [] };
   });
 
+  app.get('/v1/host/branded-leaderboards/:id/review', async (req) => {
+    const { id } = IdParamSchema.parse((req as any).params);
+    const { supa, isAdmin, isHost } = await requireHostOrAdminForLeaderboard(req, supabase, env, id);
+
+    const [lbRes, hostsRes, defaultCodeRes] = await Promise.all([
+      (supa as any).from('branded_leaderboards').select('*').eq('id', id).maybeSingle(),
+      (supa as any)
+        .from('branded_leaderboard_hosts')
+        .select('*, users:user_id(id, name, avatar_url)')
+        .eq('leaderboard_id', id)
+        .order('display_order', { ascending: true }),
+      (supa as any)
+        .from('branded_leaderboard_join_codes')
+        .select('*')
+        .eq('leaderboard_id', id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (lbRes.error) throw lbRes.error;
+    if (!lbRes.data) throw Object.assign(new Error('Leaderboard not found'), { statusCode: 404 });
+    if (hostsRes.error) throw hostsRes.error;
+    if (defaultCodeRes.error) throw defaultCodeRes.error;
+
+    const hosts = (hostsRes.data ?? []).map((h: any) => ({
+      id: h.id,
+      leaderboard_id: h.leaderboard_id,
+      user_id: h.user_id,
+      display_order: h.display_order,
+      name: h.users?.name ?? null,
+      avatar_url: h.users?.avatar_url ?? null,
+    }));
+
+    return {
+      leaderboard: normalizeBrandedLeaderboardRow(lbRes.data),
+      hosts,
+      defaultJoinCode: defaultCodeRes.data ?? null,
+      viewer: {
+        isAdmin,
+        isHost,
+      },
+    };
+  });
+
   // ============================================
   // PUBLIC ENDPOINTS
   // ============================================
@@ -417,7 +780,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     if (lbErr) throw lbErr;
     if (!lb) throw Object.assign(new Error('Leaderboard not found or inactive'), { statusCode: 404 });
 
-    return { leaderboard: lb };
+    return { leaderboard: normalizeBrandedLeaderboardRow(lb) };
   });
 
   app.get('/v1/branded-leaderboards/mine', async (req) => {
@@ -450,18 +813,33 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       if (!existing || s.status === 'active') subByLb.set(s.leaderboard_id, s);
     });
 
-    const items = memberships.map((m: any) => ({
-      leaderboard: m.branded_leaderboards,
-      membership: {
-        id: m.id,
-        leaderboard_id: m.leaderboard_id,
-        user_id: m.user_id,
-        joined_at: m.joined_at,
-        left_at: m.left_at,
-        source: m.source,
-      },
-      subscription: subByLb.get(m.leaderboard_id) ?? null,
-    }));
+    const items = memberships
+      .map((m: any) => {
+        const subscription = subByLb.get(m.leaderboard_id) ?? null;
+        const access = summarizeBrandedLeaderboardAccess({
+          priceType: m.branded_leaderboards?.price_type ?? 'free',
+          isMember: true,
+          hasActivePurchase: Boolean(subscription),
+        });
+
+        if (!access.hasAccess) {
+          return null;
+        }
+
+        return {
+          leaderboard: normalizeBrandedLeaderboardRow(m.branded_leaderboards),
+          membership: {
+            id: m.id,
+            leaderboard_id: m.leaderboard_id,
+            user_id: m.user_id,
+            joined_at: m.joined_at,
+            left_at: m.left_at,
+            source: m.source,
+          },
+          subscription,
+        };
+      })
+      .filter(Boolean);
 
     return { leaderboards: items };
   });
@@ -483,30 +861,15 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const lb = lbRes.data;
     const lbId = lb.id;
 
-    const [hostsRes, memRes, subRes] = await Promise.all([
+    const [hostsRes, accessCtx] = await Promise.all([
       (supa as any)
         .from('branded_leaderboard_hosts')
         .select('*, users:user_id(id, name, avatar_url)')
         .eq('leaderboard_id', lbId)
         .order('display_order', { ascending: true }),
-      (supa as any)
-        .from('branded_leaderboard_memberships')
-        .select('*')
-        .eq('leaderboard_id', lbId)
-        .eq('user_id', userId)
-        .is('left_at', null)
-        .maybeSingle(),
-      (supa as any)
-        .from('branded_leaderboard_subscriptions')
-        .select('*')
-        .eq('leaderboard_id', lbId)
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle(),
+      getLeaderboardAccessContext(supa, lbId, userId),
     ]);
     if (hostsRes.error) throw hostsRes.error;
-    if (memRes.error) throw memRes.error;
-    if (subRes.error) throw subRes.error;
 
     const hosts = (hostsRes.data ?? []).map((h: any) => ({
       id: h.id,
@@ -516,18 +879,30 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       name: h.users?.name ?? null,
       avatar_url: h.users?.avatar_url ?? null,
     }));
+    const { membership, subscription, access } = accessCtx;
 
-    const isMember = !!memRes.data;
-    const hasActiveSub = !!subRes.data;
-    const isFree = lb.price_type === 'free';
-    const hasAccess = isFree ? isMember : isMember && hasActiveSub;
+    req.log.info(
+      {
+        leaderboardId: lbId,
+        userId,
+        priceType: lb.price_type,
+        membership: Boolean(membership),
+        hasActivePurchase: access.hasActivePurchase,
+        hasAccess: access.hasAccess,
+        accessReason: access.accessReason,
+      },
+      'branded leaderboard access decision'
+    );
 
     return {
-      leaderboard: lb,
+      leaderboard: normalizeBrandedLeaderboardRow(lb),
       hosts,
-      membership: memRes.data ?? null,
-      subscription: subRes.data ?? null,
-      hasAccess,
+      membership,
+      subscription,
+      hasAccess: access.hasAccess,
+      hasActivePurchase: access.hasActivePurchase,
+      requiresPurchase: access.requiresPurchase,
+      accessReason: access.accessReason,
     };
   });
 
@@ -552,6 +927,31 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     }
     if (codeData.max_uses && codeData.use_count >= codeData.max_uses) {
       throw Object.assign(new Error('Join code has reached its usage limit'), { statusCode: 410 });
+    }
+
+    const { leaderboard, access } = await getLeaderboardAccessContext(supa, id, userId);
+    const canJoin = canJoinBrandedLeaderboard({
+      priceType: leaderboard.price_type,
+      hasActivePurchase: access.hasActivePurchase,
+    });
+
+    req.log.info(
+      {
+        leaderboardId: id,
+        userId,
+        code: body.code.toUpperCase(),
+        priceType: leaderboard.price_type,
+        hasActivePurchase: access.hasActivePurchase,
+        canJoin,
+      },
+      'branded leaderboard join decision'
+    );
+
+    if (!canJoin) {
+      throw Object.assign(new Error('Purchase required for this leaderboard.'), {
+        statusCode: 402,
+        code: 'PURCHASE_REQUIRED',
+      });
     }
 
     const { data: membership, error: memErr } = await (supa as any)
@@ -597,30 +997,26 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const { userId, supa } = getAuthedSupa(req, env);
     const { id } = IdParamSchema.parse((req as any).params);
     const body = ActivateBodySchema.parse((req as any).body);
+    const { leaderboard } = await getLeaderboardAccessContext(supa, id, userId);
 
-    const { data: membership } = await (supa as any)
-      .from('branded_leaderboard_memberships')
-      .select('id')
-      .eq('leaderboard_id', id)
-      .eq('user_id', userId)
-      .is('left_at', null)
-      .maybeSingle();
+    const redemption = await verifyLeaderboardPurchase({
+      userId,
+      leaderboard,
+      purchasedProductId: body.rc_product_id,
+      req,
+      supa,
+    });
 
-    if (!membership) {
-      const { error: memErr } = await (supa as any)
-        .from('branded_leaderboard_memberships')
-        .upsert(
-          {
-            leaderboard_id: id,
-            user_id: userId,
-            joined_at: new Date().toISOString(),
-            left_at: null,
-            source: 'deep_link',
-          },
-          { onConflict: 'leaderboard_id,user_id' }
-        );
-      if (memErr) throw memErr;
-    }
+    req.log.info(
+      {
+        leaderboardId: id,
+        userId,
+        productId: body.rc_product_id,
+        redemptionIdentifier: redemption?.redemptionIdentifier ?? null,
+        redemptionSource: redemption?.source ?? null,
+      },
+      'branded leaderboard purchase verified'
+    );
 
     const { data: sub, error: subErr } = await (supa as any)
       .from('branded_leaderboard_subscriptions')
@@ -628,8 +1024,8 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         {
           leaderboard_id: id,
           user_id: userId,
-          rc_subscription_id: body.rc_subscription_id,
-          rc_product_id: body.rc_product_id,
+          rc_subscription_id: redemption?.redemptionIdentifier ?? body.rc_subscription_id,
+          rc_product_id: redemption?.productId ?? body.rc_product_id,
           status: 'active',
           started_at: new Date().toISOString(),
         },
@@ -647,6 +1043,13 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const { userId, supa } = getAuthedSupa(req, env);
     const { id } = IdParamSchema.parse((req as any).params);
     const query = StandingsQuerySchema.parse((req as any).query);
+    const { access } = await getLeaderboardAccessContext(supa, id, userId);
+
+    if (!access.hasAccess) {
+      throw Object.assign(new Error('You do not have access to this leaderboard yet.'), {
+        statusCode: access.requiresPurchase ? 402 : 403,
+      });
+    }
 
     const { data: members, error: memErr } = await (supa as any)
       .from('branded_leaderboard_memberships')
@@ -743,16 +1146,30 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const serviceSupa = supabase;
 
     try {
-      const { data: sub } = await (serviceSupa as any)
+      const normalizedProductId = normalizeProductId(productId);
+      const redemptionIdentifier = normalizeProductId(event.original_transaction_id ?? event.transaction_id ?? null);
+      if (!normalizedProductId) {
+        return { ok: true };
+      }
+
+      if (!redemptionIdentifier) {
+        req.log.warn({ appUserId, productId, eventType }, 'RC webhook: no redemption identifier supplied');
+        return { ok: true };
+      }
+
+      const { data: redeemedSubscription, error: redeemedSubscriptionErr } = await (serviceSupa as any)
         .from('branded_leaderboard_subscriptions')
-        .select('id, leaderboard_id')
+        .select('leaderboard_id, user_id, rc_subscription_id')
         .eq('user_id', appUserId)
-        .eq('rc_product_id', productId ?? '')
-        .order('created_at', { ascending: false })
+        .eq('rc_subscription_id', redemptionIdentifier)
         .maybeSingle();
 
-      if (!sub) {
-        req.log.warn({ appUserId, productId, eventType }, 'RC webhook: no matching subscription found');
+      if (redeemedSubscriptionErr) throw redeemedSubscriptionErr;
+      if (!redeemedSubscription?.leaderboard_id) {
+        req.log.warn(
+          { appUserId, productId, eventType, redemptionIdentifier },
+          'RC webhook: purchase not yet redeemed to a leaderboard'
+        );
         return { ok: true };
       }
 
@@ -765,15 +1182,23 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       };
 
       const newStatus = statusMap[eventType];
-      if (newStatus) {
-        const updatePayload: any = { status: newStatus };
+      if (newStatus && normalizedProductId) {
+        const updatePayload: any = {
+          leaderboard_id: redeemedSubscription.leaderboard_id,
+          user_id: appUserId,
+          rc_subscription_id: redemptionIdentifier,
+          rc_product_id: normalizedProductId,
+          status: newStatus,
+          started_at: event.purchased_at_ms
+            ? new Date(event.purchased_at_ms).toISOString()
+            : new Date().toISOString(),
+        };
         if (eventType === 'CANCELLATION') updatePayload.cancelled_at = new Date().toISOString();
         if (event.expiration_at_ms) updatePayload.expires_at = new Date(event.expiration_at_ms).toISOString();
 
         await (serviceSupa as any)
           .from('branded_leaderboard_subscriptions')
-          .update(updatePayload)
-          .eq('id', sub.id);
+          .upsert(updatePayload, { onConflict: 'leaderboard_id,user_id' });
       }
 
       const revenueEventTypes: Record<string, string> = {
@@ -788,7 +1213,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         await (serviceSupa as any)
           .from('branded_leaderboard_revenue_events')
           .insert({
-            leaderboard_id: sub.leaderboard_id,
+            leaderboard_id: redeemedSubscription.leaderboard_id,
             user_id: appUserId,
             event_type: revType,
             rc_event_id: event.id ?? null,

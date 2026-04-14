@@ -6,11 +6,15 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   CORS_ORIGIN: z.string().optional(),
   SITE_URL: z.string().url().optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
+  REVENUECAT_SECRET_KEY: z.string().min(1).optional(),
+  REVENUECAT_PROJECT_ID: z.string().min(1).optional(),
   REPORT_EMAIL_TO: z.string().email().default('hello+onlinesafety@playtotl.com'),
   REPORT_EMAIL_FROM: z.string().email().default('hello@playtotl.com'),
+  REPORT_EMAIL_FROM_NAME: z.string().min(1).default('Top of the League'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
