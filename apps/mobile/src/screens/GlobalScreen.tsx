@@ -419,9 +419,11 @@ export default function GlobalScreen() {
       score: Number(score ?? 0),
     }));
 
-    if (tab === 'gw') return tableScores.length > 0 ? tableScores : fallbackScores;
-    return fallbackScores.length > 0 ? fallbackScores : tableScores;
-  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows, tab]);
+    // Keep the global leaderboard aligned with the BFF live-table source used elsewhere
+    // (e.g. mini-league live cards). Fall back to local reconstruction only if that API
+    // returns nothing.
+    return tableScores.length > 0 ? tableScores : fallbackScores;
+  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows]);
   const liveGwByUser = React.useMemo(
     () => new Map(liveGwScores.map((row) => [row.user_id, row.score])),
     [liveGwScores]
@@ -558,8 +560,8 @@ export default function GlobalScreen() {
       const pts = gwPoints ?? [];
       const byUser = new Map<string, { name: string; sum: number }>();
       const activeGwInMonth =
-        currentGwIsLive &&
         typeof activeLeaderboardGw === 'number' &&
+        liveGwByUser.size > 0 &&
         activeLeaderboardGw >= month.startGw &&
         activeLeaderboardGw <= month.endGw;
 
@@ -611,14 +613,14 @@ export default function GlobalScreen() {
         }))
         .sort(byValueThenName);
     },
-    [activeLeaderboardGw, currentGwIsLive, gwPoints, liveGwByUser, nameByUserId, overall]
+    [activeLeaderboardGw, gwPoints, liveGwByUser, nameByUserId, overall]
   );
 
   const rowsBase: LeaderboardRow[] = React.useMemo(() => {
     const gw = activeLeaderboardGw ?? null;
     if (!overall || !gwPoints) return [];
     const gwPointsByUser = new Map<string, number>();
-    const hasLiveGwScores = liveGwByUser.size > 0;
+    const hasActiveGwScores = !!gw && liveGwByUser.size > 0;
     if (gw) {
       gwPoints
         .filter((p) => p.gw === gw)
@@ -641,7 +643,7 @@ export default function GlobalScreen() {
 
     if (tab === 'overall') {
       const liveBaseOcpByUser = new Map<string, number>();
-      if (currentGwIsLive && gw) {
+      if (hasActiveGwScores && gw) {
         gwPoints
           .filter((p) => p.gw < gw)
           .forEach((p) => {
@@ -653,12 +655,12 @@ export default function GlobalScreen() {
           user_id: o.user_id,
           name: o.name ?? 'User',
           value:
-            currentGwIsLive && hasLiveGwScores
+            hasActiveGwScores
               ? (liveBaseOcpByUser.get(o.user_id) ?? 0) + (liveGwByUser.get(o.user_id) ?? 0)
               : Math.round(Number(o.ocp ?? 0)),
           secondaryValue:
             gw
-              ? currentGwIsLive && hasLiveGwScores
+              ? hasActiveGwScores
                 ? (liveGwByUser.get(o.user_id) ?? 0)
                 : (gwPointsByUser.get(o.user_id) ?? 0)
               : undefined,
@@ -677,7 +679,7 @@ export default function GlobalScreen() {
 
     // GW tab: last completed gameweek
     if (!gw) return [];
-    if (currentGwIsLive && hasLiveGwScores) {
+    if (hasActiveGwScores) {
       const r = Array.from(liveGwByUser.entries())
         .map(([uid, score]) => ({
           user_id: uid,

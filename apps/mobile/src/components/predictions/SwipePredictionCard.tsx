@@ -47,6 +47,7 @@ const STRIPE_COLORS: Record<string, { primary: string; secondary: string }> = {
 const STRIPE_ANGLE = 35;
 const STRIPE_BAND_WIDTH = 14;
 const STRIPE_BAND_STEP = 28;
+const DEFAULT_DIAGONAL_ANGLE = 34;
 
 function SwipePredictionCard({
   fixture,
@@ -60,6 +61,7 @@ function SwipePredictionCard({
   showSwipeHint?: boolean;
 }) {
   const t = useTokens();
+  const clipPathBaseId = React.useId();
 
   const homeCode = normalizeTeamCode(fixture.home_code);
   const awayCode = normalizeTeamCode(fixture.away_code);
@@ -81,17 +83,18 @@ function SwipePredictionCard({
   const bothHaveStripes = homeHasStripes && awayHasStripes;
   const awaySolidColor = bothHaveStripes ? getStripedPatternFallbackColor(awayCode) : null;
   const finalAwayPatternUri = bothHaveStripes ? null : awayPatternUri;
-  const [diagonalAngle, setDiagonalAngle] = React.useState(45);
   // Match Despia/web behavior:
   // - striped patterns use fixed 35deg
   // - non-striped follow card diagonal
   // - away side offset by +45deg
-  const homeAngle = homeHasStripes ? STRIPE_ANGLE : diagonalAngle;
-  const awayAngle = awayHasStripes ? STRIPE_ANGLE : diagonalAngle + 45;
+  const homeAngle = homeHasStripes ? STRIPE_ANGLE : DEFAULT_DIAGONAL_ANGLE;
+  const awayAngle = awayHasStripes ? STRIPE_ANGLE : DEFAULT_DIAGONAL_ANGLE + 45;
   const homeScale = homeHasStripes ? 1 : 1.85;
   const awayScale = awayHasStripes ? 1 : 1.85;
   const homeStripe = STRIPE_COLORS[homeCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
   const awayStripe = STRIPE_COLORS[awayCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
+  const homeClipId = `${clipPathBaseId}-home`;
+  const awayClipId = `${clipPathBaseId}-away`;
   const stripeBandOffsets = React.useMemo(
     () => Array.from({ length: 32 }, (_, i) => -260 + i * STRIPE_BAND_STEP),
     []
@@ -144,26 +147,19 @@ function SwipePredictionCard({
           minHeight: 160,
           backgroundColor: '#EEF4F3',
         }}
-        onLayout={(e) => {
-          const { width, height } = e.nativeEvent.layout;
-          if (width > 0 && height > 0) {
-            const nextAngle = (Math.atan2(height, width) * 180) / Math.PI;
-            setDiagonalAngle(nextAngle);
-          }
-        }}
       >
         <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
           <Defs>
-            <ClipPath id="homeClip">
+            <ClipPath id={homeClipId}>
               <Polygon points="0,0 0,100 100,100" />
             </ClipPath>
-            <ClipPath id="awayClip">
+            <ClipPath id={awayClipId}>
               <Polygon points="0,0 100,0 100,100" />
             </ClipPath>
           </Defs>
 
           {homeHasStripes ? (
-            <G clipPath="url(#homeClip)">
+            <G clipPath={`url(#${homeClipId})`}>
               <Rect x={0} y={0} width={100} height={100} fill={homeStripe.secondary} />
               <G transform={`translate(50 50) rotate(${homeAngle}) translate(-50 -50)`}>
                 {stripeBandOffsets.map((x) => (
@@ -179,7 +175,7 @@ function SwipePredictionCard({
               </G>
             </G>
           ) : homePatternUri ? (
-            <G clipPath="url(#homeClip)">
+            <G clipPath={`url(#${homeClipId})`}>
               <G transform={`translate(50 50) rotate(${homeAngle}) scale(${homeScale}) translate(-50 -50)`}>
                 <SvgUri uri={homePatternUri} x={0} y={0} width={100} height={100} />
               </G>
@@ -189,7 +185,7 @@ function SwipePredictionCard({
           )}
 
           {awayHasStripes && !bothHaveStripes ? (
-            <G clipPath="url(#awayClip)">
+            <G clipPath={`url(#${awayClipId})`}>
               <Rect x={0} y={0} width={100} height={100} fill={awayStripe.secondary} />
               <G transform={`translate(50 50) rotate(${awayAngle}) translate(-50 -50)`}>
                 {stripeBandOffsets.map((x) => (
@@ -205,7 +201,7 @@ function SwipePredictionCard({
               </G>
             </G>
           ) : finalAwayPatternUri ? (
-            <G clipPath="url(#awayClip)">
+            <G clipPath={`url(#${awayClipId})`}>
               <G transform={`translate(50 50) rotate(${awayAngle}) scale(${awayScale}) translate(-50 -50)`}>
                 <SvgUri uri={finalAwayPatternUri} x={0} y={0} width={100} height={100} />
               </G>
