@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS branded_leaderboards (
 );
 
 ALTER TABLE branded_leaderboards
+  ADD COLUMN IF NOT EXISTS header_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS revenue_share_pct NUMERIC(5,2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS start_gw INTEGER,
+  ADD COLUMN IF NOT EXISTS rc_offering_id TEXT,
+  ADD COLUMN IF NOT EXISTS rc_entitlement_id TEXT,
   ADD COLUMN IF NOT EXISTS rc_product_id TEXT;
 
 -- ============================================

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 type FormData = {
   name: string;
@@ -65,10 +66,62 @@ function getTierByPriceCents(priceCents: number) {
   return PRICE_TIERS.find((tier) => tier.priceCents === priceCents) ?? null;
 }
 
-function shouldRetryWithoutRcProductId(message: string | undefined) {
-  if (!message) return false;
-  const normalized = message.toLowerCase();
-  return normalized.includes('rc_product_id') && (normalized.includes('column') || normalized.includes('schema cache'));
+const RETRYABLE_OPTIONAL_COLUMNS = [
+  'header_image_url',
+  'revenue_share_pct',
+  'start_gw',
+  'rc_offering_id',
+  'rc_entitlement_id',
+  'rc_product_id',
+  'updated_at',
+] as const;
+
+function getRetryableMissingColumn(error: PostgrestError | null) {
+  if (!error) return null;
+  const combined = [error.message, error.details, error.hint].filter(Boolean).join(' ').toLowerCase();
+  if (
+    error.code !== 'PGRST204' &&
+    !combined.includes('column') &&
+    !combined.includes('schema cache')
+  ) {
+    return null;
+  }
+
+  return RETRYABLE_OPTIONAL_COLUMNS.find((column) => combined.includes(column)) ?? null;
+}
+
+function omitPayloadColumn(payload: Record<string, unknown>, column: string) {
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => key !== column));
+}
+
+async function insertLeaderboardWithSchemaFallback(payload: Record<string, unknown>) {
+  let nextPayload = payload;
+
+  while (true) {
+    const result = await supabase.from('branded_leaderboards').insert(nextPayload).select('id').single();
+    const missingColumn = getRetryableMissingColumn(result.error);
+
+    if (!result.error || !missingColumn || !(missingColumn in nextPayload)) {
+      return result;
+    }
+
+    nextPayload = omitPayloadColumn(nextPayload, missingColumn);
+  }
+}
+
+async function updateLeaderboardWithSchemaFallback(id: string, payload: Record<string, unknown>) {
+  let nextPayload = payload;
+
+  while (true) {
+    const result = await supabase.from('branded_leaderboards').update(nextPayload).eq('id', id);
+    const missingColumn = getRetryableMissingColumn(result.error);
+
+    if (!result.error || !missingColumn || !(missingColumn in nextPayload)) {
+      return result;
+    }
+
+    nextPayload = omitPayloadColumn(nextPayload, missingColumn);
+  }
 }
 
 function slugify(text: string): string {
@@ -252,23 +305,8 @@ export default function AdminLeaderboardForm() {
       updated_at: new Date().toISOString(),
     };
 
-    const payloadWithoutRcProductId = Object.fromEntries(
-      Object.entries(payload).filter(([key]) => key !== 'rc_product_id')
-    );
-
     if (isNew) {
-      let { data, error: err } = await supabase
-        .from('branded_leaderboards')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (err && shouldRetryWithoutRcProductId(err.message)) {
-        ({ data, error: err } = await supabase
-          .from('branded_leaderboards')
-          .insert(payloadWithoutRcProductId)
-          .select('id')
-          .single());
-      }
+      const { data, error: err } = await insertLeaderboardWithSchemaFallback(payload);
       if (err) {
         setError(err.message);
         setSaving(false);
@@ -281,16 +319,7 @@ export default function AdminLeaderboardForm() {
       }
       navigate(`/admin/leaderboards/${data.id}`);
     } else {
-      let { error: err } = await supabase
-        .from('branded_leaderboards')
-        .update(payload)
-        .eq('id', id!);
-      if (err && shouldRetryWithoutRcProductId(err.message)) {
-        ({ error: err } = await supabase
-          .from('branded_leaderboards')
-          .update(payloadWithoutRcProductId)
-          .eq('id', id!));
-      }
+      const { error: err } = await updateLeaderboardWithSchemaFallback(id!, payload);
       if (err) {
         setError(err.message);
         setSaving(false);
