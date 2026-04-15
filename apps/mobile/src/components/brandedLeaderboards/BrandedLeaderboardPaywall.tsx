@@ -9,8 +9,8 @@ import { retryBrandedLeaderboardActivation } from '../../lib/brandedLeaderboardA
 import type { PurchasesPackage } from 'react-native-purchases';
 
 const DEFAULT_TIER_OFFERINGS: Record<number, string> = {
-  99: 'totl_season_sub_099',
-  199: 'totl_season_sub_199',
+  99: 'totl_access_099',
+  199: 'totl_access_199',
 };
 
 type Props = {

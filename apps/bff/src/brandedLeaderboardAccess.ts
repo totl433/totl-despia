@@ -2,12 +2,12 @@ export type BrandedLeaderboardPriceType = 'free' | 'paid';
 
 export const DEFAULT_BRANDED_LEADERBOARD_PRICE_TIERS = {
   99: {
-    offeringId: 'totl_season_sub_099',
-    productId: 'totl_season_sub_099',
+    offeringId: 'totl_access_099',
+    productId: 'totl_access_099',
   },
   199: {
-    offeringId: 'totl_season_sub_199',
-    productId: 'totl_season_sub_199',
+    offeringId: 'totl_access_199',
+    productId: 'totl_access_199',
   },
 } as const;
 

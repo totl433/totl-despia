@@ -45,14 +45,14 @@ const initialForm: FormData = {
 
 const PRICE_TIERS = [
   {
-    offeringId: 'totl_season_sub_099',
-    productId: 'totl_season_sub_099',
+    offeringId: 'totl_access_099',
+    productId: 'totl_access_099',
     priceCents: 99,
     label: '£0.99 / $0.99 — Season Access',
   },
   {
-    offeringId: 'totl_season_sub_199',
-    productId: 'totl_season_sub_199',
+    offeringId: 'totl_access_199',
+    productId: 'totl_access_199',
     priceCents: 199,
     label: '£1.99 / $2.99 — Season Access',
   },

@@ -553,6 +553,21 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .select('*')
       .single();
     if (error) throw error;
+
+    const { error: membershipError } = await (supa as any)
+      .from('branded_leaderboard_memberships')
+      .upsert(
+        {
+          leaderboard_id: id,
+          user_id: body.user_id,
+          joined_at: new Date().toISOString(),
+          left_at: null,
+          source: 'admin',
+        },
+        { onConflict: 'leaderboard_id,user_id' }
+      );
+    if (membershipError) throw membershipError;
+
     return { host: data };
   });
 

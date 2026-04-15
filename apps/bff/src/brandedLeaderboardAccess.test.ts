@@ -109,13 +109,13 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
         original_app_user_id: 'user-1',
         entitlements: {
           play_totl_pro: {
-            product_identifier: 'totl_season_sub_099',
+            product_identifier: 'totl_access_099',
             expires_date: null,
             is_sandbox: true,
           },
         },
         non_subscriptions: {
-          totl_season_sub_099: [
+          totl_access_099: [
             {
               id: 'txn_1',
               is_sandbox: true,
@@ -129,11 +129,11 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
       originalAppUserId: 'user-1',
       environment: 'sandbox',
       activeEntitlementIds: ['play_totl_pro'],
-      activeEntitlementProductIds: ['totl_season_sub_099'],
+      activeEntitlementProductIds: ['totl_access_099'],
     });
     expect(snapshot.purchases).toEqual([
       {
-        product_id: 'totl_season_sub_099',
+        product_id: 'totl_access_099',
         store_purchase_identifier: 'txn_1',
       },
     ]);
@@ -143,7 +143,7 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
     const snapshot = mapRevenueCatV1SubscriberToSnapshot({
       subscriber: {
         subscriptions: {
-          totl_season_sub_099: {
+          totl_access_099: {
             expires_date: '2099-01-01T00:00:00Z',
             store_transaction_id: 'sub_txn_1',
             is_sandbox: false,
@@ -154,7 +154,7 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
 
     expect(
       hasVerifiedRevenueCatV2ProductAccess({
-        productId: 'totl_season_sub_099',
+        productId: 'totl_access_099',
         subscriptions: snapshot.subscriptions,
         purchases: snapshot.purchases,
       })
@@ -165,20 +165,20 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
     const snapshot = mapRevenueCatV1SubscriberToSnapshot({
       subscriber: {
         non_subscriptions: {
-          totl_season_sub_099: {
+          totl_access_099: {
             id: 'txn_single',
             is_sandbox: true,
           } as any,
         },
         other_purchases: {
-          totl_season_sub_199: null,
+          totl_access_199: null,
         },
       },
     });
 
     expect(snapshot.purchases).toEqual([
       {
-        product_id: 'totl_season_sub_099',
+        product_id: 'totl_access_099',
         store_purchase_identifier: 'txn_single',
       },
     ]);
@@ -189,12 +189,12 @@ describe('mapRevenueCatV1SubscriberToSnapshot', () => {
 describe('price tier defaults', () => {
   it('provides generic offering and product defaults for supported price tiers', () => {
     expect(getDefaultTierConfig(99)).toEqual({
-      offeringId: 'totl_season_sub_099',
-      productId: 'totl_season_sub_099',
+      offeringId: 'totl_access_099',
+      productId: 'totl_access_099',
     });
     expect(getDefaultTierConfig(199)).toEqual({
-      offeringId: 'totl_season_sub_199',
-      productId: 'totl_season_sub_199',
+      offeringId: 'totl_access_199',
+      productId: 'totl_access_199',
     });
     expect(getDefaultTierConfig(299)).toBeNull();
   });
@@ -203,7 +203,7 @@ describe('price tier defaults', () => {
     expect(getExpectedLeaderboardProductIds({ configuredProductId: 'custom_lb_product', priceCents: 99 })).toEqual([
       'custom_lb_product',
     ]);
-    expect(getExpectedLeaderboardProductIds({ priceCents: 99 })).toEqual(['totl_season_sub_099']);
+    expect(getExpectedLeaderboardProductIds({ priceCents: 99 })).toEqual(['totl_access_099']);
   });
 });
 
@@ -211,22 +211,22 @@ describe('selectRedeemableRevenueCatGrant', () => {
   it('returns an unused purchase for the exact product so each paid leaderboard needs its own redemption', () => {
     expect(
       selectRedeemableRevenueCatGrant({
-        allowedProductIds: ['totl_season_sub_099'],
-        preferredProductId: 'totl_season_sub_099',
+        allowedProductIds: ['totl_access_099'],
+        preferredProductId: 'totl_access_099',
         purchases: [
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_1',
           },
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_2',
           },
         ],
         usedRedemptionIdentifiers: ['txn_1'],
       })
     ).toEqual({
-      productId: 'totl_season_sub_099',
+      productId: 'totl_access_099',
       redemptionIdentifier: 'txn_2',
       source: 'purchase',
     });
@@ -235,10 +235,10 @@ describe('selectRedeemableRevenueCatGrant', () => {
   it('does not allow a previously redeemed purchase to unlock another leaderboard', () => {
     expect(
       selectRedeemableRevenueCatGrant({
-        allowedProductIds: ['totl_season_sub_099'],
+        allowedProductIds: ['totl_access_099'],
         purchases: [
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_1',
           },
         ],
@@ -250,23 +250,23 @@ describe('selectRedeemableRevenueCatGrant', () => {
   it('treats legacy product rows as already consuming the first matching purchase', () => {
     expect(
       selectRedeemableRevenueCatGrant({
-        allowedProductIds: ['totl_season_sub_099'],
+        allowedProductIds: ['totl_access_099'],
         purchases: [
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_1',
           },
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_2',
           },
         ],
         legacyUsedProductCounts: {
-          totl_season_sub_099: 1,
+          totl_access_099: 1,
         },
       })
     ).toEqual({
-      productId: 'totl_season_sub_099',
+      productId: 'totl_access_099',
       redemptionIdentifier: 'txn_2',
       source: 'purchase',
     });
@@ -275,15 +275,15 @@ describe('selectRedeemableRevenueCatGrant', () => {
   it('requires a fresh purchase when only a legacy-consumed transaction exists', () => {
     expect(
       selectRedeemableRevenueCatGrant({
-        allowedProductIds: ['totl_season_sub_099'],
+        allowedProductIds: ['totl_access_099'],
         purchases: [
           {
-            product_id: 'totl_season_sub_099',
+            product_id: 'totl_access_099',
             store_purchase_identifier: 'txn_1',
           },
         ],
         legacyUsedProductCounts: {
-          totl_season_sub_099: 1,
+          totl_access_099: 1,
         },
       })
     ).toBeNull();

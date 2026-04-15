@@ -53,6 +53,56 @@ async function sendHostReviewReadyEmail(leaderboardId: string, hostUserId: strin
   }
 }
 
+async function getAdminBffRequestContext() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('No session token available for admin host request');
+  }
+
+  const envBff = typeof import.meta.env.VITE_BFF_URL === 'string' ? import.meta.env.VITE_BFF_URL.trim() : '';
+  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const productionBase = 'https://totl-despia-production.up.railway.app';
+  const primaryBase = envBff || (isDevelopment ? 'http://localhost:8787' : productionBase);
+
+  return {
+    isDevelopment,
+    primaryBase,
+    productionBase,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+  };
+}
+
+async function requestAdminHostMutation(init: { method: 'POST' | 'DELETE'; path: string; body?: unknown }) {
+  const { isDevelopment, primaryBase, productionBase, headers } = await getAdminBffRequestContext();
+  const primaryUrl = `${primaryBase.replace(/\/$/, '')}${init.path}`;
+  const fallbackUrl = `${productionBase}${init.path}`;
+  const requestInit: RequestInit = {
+    method: init.method,
+    headers,
+  };
+
+  if (typeof init.body !== 'undefined') {
+    requestInit.body = JSON.stringify(init.body);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(primaryUrl, requestInit);
+  } catch (error) {
+    if (!isDevelopment || primaryBase === productionBase) throw error;
+    console.warn('[AdminLeaderboardDetail] Local BFF unavailable, retrying host mutation via production', error);
+    response = await fetch(fallbackUrl, requestInit);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Host mutation failed: ${response.status} ${errorText}`);
+  }
+}
+
 export default function AdminLeaderboardDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -105,13 +155,17 @@ export default function AdminLeaderboardDetail() {
 
   async function addHost(userId: string) {
     const nextOrder = hosts.length;
-    const { error } = await supabase.from('branded_leaderboard_hosts').insert({
-      leaderboard_id: id,
-      user_id: userId,
-      display_order: nextOrder,
-    });
-    if (error) {
-      alert(error.message ?? 'Could not add host.');
+    try {
+      await requestAdminHostMutation({
+        method: 'POST',
+        path: `/v1/admin/branded-leaderboards/${encodeURIComponent(id!)}/hosts`,
+        body: {
+          user_id: userId,
+          display_order: nextOrder,
+        },
+      });
+    } catch (error: any) {
+      alert(error?.message ?? 'Could not add host.');
       return;
     }
     setHostSearch('');
@@ -123,7 +177,15 @@ export default function AdminLeaderboardDetail() {
   }
 
   async function removeHost(hostId: string) {
-    await supabase.from('branded_leaderboard_hosts').delete().eq('id', hostId);
+    try {
+      await requestAdminHostMutation({
+        method: 'DELETE',
+        path: `/v1/admin/branded-leaderboards/${encodeURIComponent(id!)}/hosts/${encodeURIComponent(hostId)}`,
+      });
+    } catch (error: any) {
+      alert(error?.message ?? 'Could not remove host.');
+      return;
+    }
     loadData();
   }
 
