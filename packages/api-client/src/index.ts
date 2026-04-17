@@ -9,6 +9,7 @@ import {
   UnicornCardSchema,
   UserStatsDataSchema,
   BrandedLeaderboardDetailSchema,
+  BrandedLeaderboardBroadcastMessagesSchema,
   BrandedLeaderboardStandingsSchema,
   type GwResults,
   type EmailPreferences,
@@ -20,6 +21,8 @@ import {
   type UserStatsData,
   type BrandedLeaderboard,
   type BrandedLeaderboardDetail,
+  type BrandedLeaderboardBroadcastMessage,
+  type BrandedLeaderboardBroadcastMessages,
   type BrandedLeaderboardStandings,
   type BrandedLeaderboardMyItem,
   type BrandedLeaderboardMembership,
@@ -298,6 +301,33 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/standings${q}`, {
         method: 'GET',
         validate: (data) => BrandedLeaderboardStandingsSchema.parse(data),
+      });
+    },
+
+    async getBrandedLeaderboardBroadcastMessages(id: string): Promise<BrandedLeaderboardBroadcastMessages> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages`, {
+        method: 'GET',
+        validate: (data) => BrandedLeaderboardBroadcastMessagesSchema.parse(data),
+      });
+    },
+
+    async sendBrandedLeaderboardBroadcastMessage(
+      id: string,
+      input: { content: string }
+    ): Promise<{ message: BrandedLeaderboardBroadcastMessage }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+
+    async markBrandedLeaderboardBroadcastRead(
+      id: string,
+      input?: { lastReadAt?: string | null }
+    ): Promise<{ ok: true; lastReadAt: string }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/read`, {
+        method: 'POST',
+        body: JSON.stringify(input ?? {}),
       });
     },
 

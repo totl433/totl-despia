@@ -16,6 +16,13 @@ import {
   type RevenueCatRedemptionCandidate,
   type RevenueCatV1Subscriber,
 } from './brandedLeaderboardAccess.js';
+import {
+  BRANDED_BROADCAST_VOLLEY_USER_ID,
+  BRANDED_LEADERBOARD_BROADCAST_WELCOME_SEED_KEY,
+  canAccessBrandedBroadcast,
+  canPostBrandedBroadcast,
+  seedBrandedBroadcastWelcomeIfMissing,
+} from './brandedLeaderboardBroadcast.js';
 
 function getAuthedSupa(req: FastifyRequest, env: Env) {
   const userId = (req as any).userId as string;
@@ -160,6 +167,14 @@ const ActivateBodySchema = z.object({
   rc_product_id: z.string().min(1),
 });
 
+const BroadcastMessageBodySchema = z.object({
+  content: z.string().trim().min(1).max(4000),
+});
+
+const BroadcastReadBodySchema = z.object({
+  lastReadAt: z.string().datetime().nullable().optional(),
+});
+
 const StandingsQuerySchema = z.object({
   scope: z.enum(['gw', 'month', 'season']).optional().default('gw'),
   gw: z.coerce.number().int().positive().optional(),
@@ -277,6 +292,138 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     });
 
     return { leaderboard, membership, subscription, access };
+  }
+
+  async function getBrandedBroadcastViewerRole(
+    supa: SupabaseClient,
+    leaderboardId: string,
+    userId: string
+  ) {
+    const [{ data: userRow, error: userError }, { data: hostRow, error: hostError }] = await Promise.all([
+      (supa as any).from('users').select('is_admin').eq('id', userId).maybeSingle(),
+      (supa as any)
+        .from('branded_leaderboard_hosts')
+        .select('id')
+        .eq('leaderboard_id', leaderboardId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ]);
+    if (userError) throw userError;
+    if (hostError) throw hostError;
+    return {
+      isAdmin: Boolean(userRow?.is_admin),
+      isHost: Boolean(hostRow),
+    };
+  }
+
+  function normalizeBroadcastMessageRow(row: any) {
+    return {
+      id: row.id,
+      leaderboard_id: row.leaderboard_id,
+      user_id: row.user_id,
+      content: row.content,
+      message_type: row.message_type,
+      seed_key: row.seed_key ?? null,
+      created_at: row.created_at,
+      user_name: row.users?.name ?? null,
+      user_avatar_url: row.users?.avatar_url ?? null,
+    };
+  }
+
+  async function listBrandedBroadcastMessages(supa: SupabaseClient, leaderboardId: string) {
+    const { data, error } = await (supa as any)
+      .from('branded_leaderboard_broadcast_messages')
+      .select('*, users:user_id(name, avatar_url)')
+      .eq('leaderboard_id', leaderboardId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(normalizeBroadcastMessageRow);
+  }
+
+  async function ensureBrandedBroadcastWelcomeMessage(input: {
+    leaderboard: { id: string; display_name: string; created_at?: string | null };
+    hostNames: Array<string | null | undefined>;
+  }) {
+    await seedBrandedBroadcastWelcomeIfMissing({
+      hasExistingWelcome: async () => {
+        const { data: existing, error } = await (supabase as any)
+          .from('branded_leaderboard_broadcast_messages')
+          .select('id')
+          .eq('leaderboard_id', input.leaderboard.id)
+          .eq('seed_key', BRANDED_LEADERBOARD_BROADCAST_WELCOME_SEED_KEY)
+          .maybeSingle();
+        if (error) throw error;
+        return Boolean(existing?.id);
+      },
+      insertWelcome: async (payload) => {
+        const { error } = await (supabase as any).from('branded_leaderboard_broadcast_messages').insert({
+          leaderboard_id: input.leaderboard.id,
+          user_id: payload.userId,
+          content: payload.content,
+          message_type: 'system',
+          seed_key: payload.seedKey,
+          created_at: payload.createdAt,
+        });
+        if (error) throw error;
+      },
+      leaderboardName: input.leaderboard.display_name,
+      leaderboardCreatedAt: input.leaderboard.created_at,
+      hostNames: input.hostNames,
+    });
+  }
+
+  async function getBrandedBroadcastLastReadAt(supa: SupabaseClient, leaderboardId: string, userId: string) {
+    const { data, error } = await (supa as any)
+      .from('branded_leaderboard_broadcast_reads')
+      .select('last_read_at')
+      .eq('leaderboard_id', leaderboardId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.last_read_at ? String(data.last_read_at) : null;
+  }
+
+  async function getBrandedBroadcastUnreadCount(supa: SupabaseClient, leaderboardId: string, userId: string) {
+    const lastReadAt = await getBrandedBroadcastLastReadAt(supa, leaderboardId, userId);
+
+    let query = (supa as any)
+      .from('branded_leaderboard_broadcast_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('leaderboard_id', leaderboardId)
+      .neq('user_id', userId)
+      .neq('user_id', BRANDED_BROADCAST_VOLLEY_USER_ID);
+
+    if (lastReadAt) {
+      query = query.gt('created_at', lastReadAt);
+    }
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  async function requireBrandedBroadcastAccess(supa: SupabaseClient, leaderboardId: string, userId: string) {
+    const [accessCtx, viewerRole] = await Promise.all([
+      getLeaderboardAccessContext(supa, leaderboardId, userId),
+      getBrandedBroadcastViewerRole(supa, leaderboardId, userId),
+    ]);
+
+    if (
+      !canAccessBrandedBroadcast({
+        hasAccess: accessCtx.access.hasAccess,
+        isHost: viewerRole.isHost,
+        isAdmin: viewerRole.isAdmin,
+      })
+    ) {
+      throw Object.assign(new Error('You do not have access to this broadcast yet.'), {
+        statusCode: accessCtx.access.requiresPurchase ? 402 : 403,
+      });
+    }
+
+    return {
+      ...accessCtx,
+      ...viewerRole,
+    };
   }
 
   async function fetchRevenueCatCustomerSnapshot(appUserId: string): Promise<RevenueCatCustomerSnapshot> {
@@ -913,13 +1060,14 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const lb = lbRes.data;
     const lbId = lb.id;
 
-    const [hostsRes, accessCtx] = await Promise.all([
+    const [hostsRes, accessCtx, viewerRole] = await Promise.all([
       (supa as any)
         .from('branded_leaderboard_hosts')
         .select('*, users:user_id(id, name, avatar_url)')
         .eq('leaderboard_id', lbId)
         .order('display_order', { ascending: true }),
       getLeaderboardAccessContext(supa, lbId, userId),
+      getBrandedBroadcastViewerRole(supa, lbId, userId),
     ]);
     if (hostsRes.error) throw hostsRes.error;
 
@@ -932,6 +1080,13 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       avatar_url: h.users?.avatar_url ?? null,
     }));
     const { membership, subscription, access } = accessCtx;
+    const canPostBroadcastValue = canPostBrandedBroadcast(viewerRole);
+    const canReadBroadcast =
+      access.hasAccess ||
+      canPostBroadcastValue;
+    const broadcastUnreadCount = canReadBroadcast
+      ? await getBrandedBroadcastUnreadCount(supa, lbId, userId)
+      : 0;
 
     req.log.info(
       {
@@ -955,6 +1110,8 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       hasActivePurchase: access.hasActivePurchase,
       requiresPurchase: access.requiresPurchase,
       accessReason: access.accessReason,
+      canPostBroadcast: canPostBroadcastValue,
+      broadcastUnreadCount,
     };
   });
 
@@ -1088,6 +1245,87 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     if (subErr) throw subErr;
 
     return { subscription: sub };
+  });
+
+  app.get('/v1/branded-leaderboards/:id/broadcast/messages', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    const { id } = IdParamSchema.parse((req as any).params);
+    const viewer = await requireBrandedBroadcastAccess(supa, id, userId);
+
+    const { data: hosts, error: hostsError } = await (supa as any)
+      .from('branded_leaderboard_hosts')
+      .select('users:user_id(name)')
+      .eq('leaderboard_id', id)
+      .order('display_order', { ascending: true });
+    if (hostsError) throw hostsError;
+
+    await ensureBrandedBroadcastWelcomeMessage({
+      leaderboard: viewer.leaderboard,
+      hostNames: (hosts ?? []).map((host: any) => host.users?.name ?? null),
+    });
+
+    const [messages, lastReadAt] = await Promise.all([
+      listBrandedBroadcastMessages(supa, id),
+      getBrandedBroadcastLastReadAt(supa, id, userId),
+    ]);
+
+    return {
+      messages,
+      lastReadAt,
+    };
+  });
+
+  app.post('/v1/branded-leaderboards/:id/broadcast/messages', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    const { id } = IdParamSchema.parse((req as any).params);
+    const body = BroadcastMessageBodySchema.parse((req as any).body);
+    const viewer = await requireBrandedBroadcastAccess(supa, id, userId);
+
+    if (!canPostBrandedBroadcast(viewer)) {
+      throw Object.assign(new Error('Only hosts can send broadcast messages.'), { statusCode: 403 });
+    }
+
+    const { data, error } = await (supa as any)
+      .from('branded_leaderboard_broadcast_messages')
+      .insert({
+        leaderboard_id: id,
+        user_id: userId,
+        content: body.content,
+        message_type: 'host',
+      })
+      .select('*, users:user_id(name, avatar_url)')
+      .single();
+    if (error) throw error;
+
+    return { message: normalizeBroadcastMessageRow(data) };
+  });
+
+  app.post('/v1/branded-leaderboards/:id/broadcast/read', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    const { id } = IdParamSchema.parse((req as any).params);
+    const body = BroadcastReadBodySchema.parse((req as any).body);
+    await requireBrandedBroadcastAccess(supa, id, userId);
+
+    const lastReadAt = body.lastReadAt ?? new Date().toISOString();
+    const { error } = await (supa as any)
+      .from('branded_leaderboard_broadcast_reads')
+      .upsert(
+        {
+          leaderboard_id: id,
+          user_id: userId,
+          last_read_at: lastReadAt,
+        },
+        { onConflict: 'leaderboard_id,user_id' }
+      );
+    if (error) throw error;
+
+    return {
+      ok: true,
+      lastReadAt,
+    };
   });
 
   app.get('/v1/branded-leaderboards/:id/standings', async (req) => {

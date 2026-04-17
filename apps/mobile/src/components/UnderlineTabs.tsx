@@ -5,7 +5,12 @@ import Animated, { Easing, Extrapolation, interpolate, interpolateColor, useAnim
 
 const AnimatedText = Animated.createAnimatedComponent(Text);
 
-export type UnderlineTabItem<K extends string> = { key: K; label: string; showLiveDot?: boolean };
+export type UnderlineTabItem<K extends string> = {
+  key: K;
+  label: string;
+  showLiveDot?: boolean;
+  unreadCount?: number;
+};
 
 function TabButton({
   label,
@@ -16,6 +21,7 @@ function TabButton({
   onPress,
   onLayout,
   showLiveDot = false,
+  unreadCount = 0,
 }: {
   label: string;
   index: number;
@@ -25,8 +31,11 @@ function TabButton({
   onPress: () => void;
   onLayout: (e: LayoutChangeEvent) => void;
   showLiveDot?: boolean;
+  unreadCount?: number;
 }) {
   const t = useTokens();
+  const showUnreadBadge = unreadCount > 0;
+  const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
   const labelStyle = useAnimatedStyle(() => {
     const x = activeIndexSV.value;
     const opacity = interpolate(x, [index - 0.6, index, index + 0.6], [0.75, 1, 0.75], Extrapolation.CLAMP);
@@ -46,7 +55,30 @@ function TabButton({
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        {showLiveDot ? (
+        {showUnreadBadge ? (
+          <View
+            style={{
+              minWidth: unreadLabel.length === 1 ? 18 : 20,
+              height: 18,
+              borderRadius: 999,
+              paddingHorizontal: unreadLabel.length === 1 ? 0 : 5,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#DC2626',
+            }}
+          >
+            <Text
+              style={{
+                color: '#FFFFFF',
+                fontSize: unreadLabel.length > 2 ? 9 : 10,
+                lineHeight: unreadLabel.length > 2 ? 10 : 11,
+                fontFamily: t.font.body,
+              }}
+            >
+              {unreadLabel}
+            </Text>
+          </View>
+        ) : showLiveDot ? (
           <View
             style={{
               width: 8,
@@ -61,7 +93,7 @@ function TabButton({
             {
               fontSize: 14,
               lineHeight: 20,
-              fontFamily: t.font.medium,
+              fontFamily: t.font.body,
             },
             labelStyle,
           ]}
@@ -157,6 +189,7 @@ export default function UnderlineTabs<K extends string>({
             key={item.key}
             label={item.label}
             showLiveDot={item.showLiveDot}
+            unreadCount={item.unreadCount}
             index={index}
             activeIndexSV={activeIndexSV}
             activeColor={t.color.brand}

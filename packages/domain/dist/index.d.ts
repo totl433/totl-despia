@@ -467,8 +467,43 @@ export declare const BrandedLeaderboardDetailSchema: z.ZodObject<{
         paid_purchased_not_joined: "paid_purchased_not_joined";
         paid_full_access: "paid_full_access";
     }>;
+    canPostBroadcast: z.ZodDefault<z.ZodBoolean>;
+    broadcastUnreadCount: z.ZodDefault<z.ZodNumber>;
 }, z.core.$strip>;
 export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
+export declare const BrandedLeaderboardBroadcastMessageSchema: z.ZodObject<{
+    id: z.ZodString;
+    leaderboard_id: z.ZodString;
+    user_id: z.ZodString;
+    content: z.ZodString;
+    message_type: z.ZodEnum<{
+        host: "host";
+        system: "system";
+    }>;
+    seed_key: z.ZodNullable<z.ZodString>;
+    created_at: z.ZodString;
+    user_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    user_avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardBroadcastMessage = z.infer<typeof BrandedLeaderboardBroadcastMessageSchema>;
+export declare const BrandedLeaderboardBroadcastMessagesSchema: z.ZodObject<{
+    messages: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        content: z.ZodString;
+        message_type: z.ZodEnum<{
+            host: "host";
+            system: "system";
+        }>;
+        seed_key: z.ZodNullable<z.ZodString>;
+        created_at: z.ZodString;
+        user_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        user_avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strip>>;
+    lastReadAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export type BrandedLeaderboardBroadcastMessages = z.infer<typeof BrandedLeaderboardBroadcastMessagesSchema>;
 export declare const BrandedLeaderboardStandingsRowSchema: z.ZodObject<{
     rank: z.ZodNumber;
     user_id: z.ZodString;

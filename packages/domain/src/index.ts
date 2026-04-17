@@ -287,8 +287,29 @@ export const BrandedLeaderboardDetailSchema = z.object({
   hasActivePurchase: z.boolean(),
   requiresPurchase: z.boolean(),
   accessReason: BrandedLeaderboardAccessReasonSchema,
+  canPostBroadcast: z.boolean().default(false),
+  broadcastUnreadCount: z.number().int().nonnegative().default(0),
 });
 export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
+
+export const BrandedLeaderboardBroadcastMessageSchema = z.object({
+  id: z.string(),
+  leaderboard_id: z.string(),
+  user_id: z.string(),
+  content: z.string(),
+  message_type: z.enum(['host', 'system']),
+  seed_key: z.string().nullable(),
+  created_at: z.string(),
+  user_name: z.string().nullable().optional(),
+  user_avatar_url: z.string().nullable().optional(),
+});
+export type BrandedLeaderboardBroadcastMessage = z.infer<typeof BrandedLeaderboardBroadcastMessageSchema>;
+
+export const BrandedLeaderboardBroadcastMessagesSchema = z.object({
+  messages: z.array(BrandedLeaderboardBroadcastMessageSchema),
+  lastReadAt: z.string().nullable(),
+});
+export type BrandedLeaderboardBroadcastMessages = z.infer<typeof BrandedLeaderboardBroadcastMessagesSchema>;
 
 export const BrandedLeaderboardStandingsRowSchema = z.object({
   rank: z.number().int().positive(),

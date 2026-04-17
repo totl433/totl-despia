@@ -10,13 +10,17 @@ import { useLeaderboardAccess } from '../../hooks/useLeaderboardAccess';
 import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import BrandedLeaderboardHeader from '../../components/brandedLeaderboards/BrandedLeaderboardHeader';
+import BrandedLeaderboardBroadcastTab from '../../components/brandedLeaderboards/BrandedLeaderboardBroadcastTab';
 import BrandedLeaderboardTable from '../../components/brandedLeaderboards/BrandedLeaderboardTable';
 import BrandedLeaderboardPaywall from '../../components/brandedLeaderboards/BrandedLeaderboardPaywall';
 import AppTopHeader from '../../components/AppTopHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
+import UnderlineTabs from '../../components/UnderlineTabs';
+import { useBrandedLeaderboardBroadcast } from '../../hooks/useBrandedLeaderboardBroadcast';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 
 type ScopeTab = 'gw' | 'month' | 'season';
+type ViewTab = 'leaderboard' | 'broadcast';
 const SCOPE_VALUES: ScopeTab[] = ['gw', 'month', 'season'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -69,6 +73,7 @@ export default function BrandedLeaderboardScreen({
 
   const { detail, accessState, loading: accessLoading, error, refresh } = useLeaderboardAccess(idOrSlug);
   const [scope, setScope] = useState<ScopeTab>('gw');
+  const [viewTab, setViewTab] = useState<ViewTab>('leaderboard');
   const scopeLabels = useMemo(() => getScopeLabels(detail?.leaderboard.season), [detail]);
   const [userId, setUserId] = useState<string | null>(null);
   const [paywallDismissed, setPaywallDismissed] = useState(false);
@@ -88,6 +93,7 @@ export default function BrandedLeaderboardScreen({
 
   const isPaywalled = accessState === 'paywall_required';
   const showPaywallSheet = isPaywalled && !paywallDismissed;
+  const canAccessBroadcast = Boolean(detail && (detail.hasAccess || detail.canPostBroadcast));
 
   const {
     data: standings,
@@ -100,7 +106,38 @@ export default function BrandedLeaderboardScreen({
     staleTime: 30_000,
   });
 
+  const {
+    messages: broadcastMessages,
+    unreadCount: broadcastUnreadCount,
+    isLoading: broadcastLoading,
+    error: broadcastError,
+    sendMessage: sendBroadcastMessage,
+    setLastReadAt: setBroadcastLastReadAt,
+  } = useBrandedLeaderboardBroadcast({
+    leaderboardId: detail?.leaderboard.id ?? null,
+    enabled: canAccessBroadcast,
+    userId,
+    senderName: profileSummary?.name ?? null,
+    senderAvatarUrl: avatarUrl,
+  });
+
+  useEffect(() => {
+    if (!canAccessBroadcast && viewTab === 'broadcast') {
+      setViewTab('leaderboard');
+    }
+  }, [canAccessBroadcast, viewTab]);
+
   const placeholderRows = useMemo(() => generatePlaceholderRows(15), []);
+  const topLevelTabs = useMemo(
+    () =>
+      canAccessBroadcast
+        ? [
+            { key: 'leaderboard' as const, label: 'Leaderboard' },
+            { key: 'broadcast' as const, label: 'Broadcast', unreadCount: broadcastLoading ? detail?.broadcastUnreadCount ?? 0 : broadcastUnreadCount },
+          ]
+        : [],
+    [broadcastLoading, broadcastUnreadCount, canAccessBroadcast, detail?.broadcastUnreadCount]
+  );
 
   const displayRows = useMemo(() => {
     if (standings?.rows && standings.rows.length > 0) return standings.rows;
@@ -193,89 +230,110 @@ export default function BrandedLeaderboardScreen({
         embedded
       />
       <View style={{ flex: 1 }}>
-        <ScrollView
-          refreshControl={<TotlRefreshControl refreshing={false} onRefresh={handleRefresh} />}
-          contentContainerStyle={{ paddingBottom: isPaywalled ? 320 : 100 }}
-          scrollEnabled={!showPaywallSheet}
-        >
-          <BrandedLeaderboardHeader
-            imageUrl={detail.leaderboard.header_image_url}
-            displayName={detail.leaderboard.display_name}
-          />
+        {viewTab === 'broadcast' && canAccessBroadcast ? (
+          <View style={{ flex: 1 }}>
+            <BrandedLeaderboardHeader
+              imageUrl={detail.leaderboard.header_image_url}
+              displayName={detail.leaderboard.display_name}
+            />
+            <UnderlineTabs items={topLevelTabs} value={viewTab} onChange={setViewTab} />
+            <BrandedLeaderboardBroadcastTab
+              leaderboardId={detail.leaderboard.id}
+              currentUserId={userId}
+              visible={viewTab === 'broadcast'}
+              canPost={detail.canPostBroadcast}
+              messages={broadcastMessages}
+              isLoading={broadcastLoading}
+              error={broadcastError}
+              onSend={sendBroadcastMessage}
+              setLastReadAt={setBroadcastLastReadAt}
+            />
+          </View>
+        ) : (
+          <ScrollView
+            refreshControl={<TotlRefreshControl refreshing={false} onRefresh={handleRefresh} />}
+            contentContainerStyle={{ paddingBottom: isPaywalled ? 320 : 100 }}
+            scrollEnabled={!showPaywallSheet}
+          >
+            <BrandedLeaderboardHeader
+              imageUrl={detail.leaderboard.header_image_url}
+              displayName={detail.leaderboard.display_name}
+            />
+            {canAccessBroadcast ? <UnderlineTabs items={topLevelTabs} value={viewTab} onChange={setViewTab} /> : null}
 
-          {accessState === 'not_joined' && (
-            <View style={{ padding: 24, alignItems: 'center' }}>
-              <TotlText variant="heading" style={{ marginBottom: 8 }}>
-                Join this leaderboard
-              </TotlText>
-              <TotlText variant="muted" style={{ textAlign: 'center', marginBottom: 16 }}>
-                {detail.leaderboard.price_type === 'free' || !detail.requiresPurchase
-                  ? 'Enter your join code to compete.'
-                  : `Subscribe to compete — ${(detail.leaderboard.season_price_cents / 100).toFixed(2)} ${detail.leaderboard.currency}/season`}
-              </TotlText>
-              <Pressable
-                onPress={() => {
-                  (navigation as any).navigate('JoinLeaderboard', {
-                    leaderboardId: detail.leaderboard.id,
-                    leaderboardName: detail.leaderboard.display_name,
-                  });
-                }}
-                style={{
-                  paddingHorizontal: 24,
-                  paddingVertical: 12,
-                  backgroundColor: '#1C8376',
-                  borderRadius: 10,
-                }}
-              >
-                <TotlText style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Join</TotlText>
-              </Pressable>
-            </View>
-          )}
-
-          {showStandings && (
-            <View>
-              <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-                <SegmentedControl
-                  values={scopeLabels}
-                  selectedIndex={SCOPE_VALUES.indexOf(scope)}
-                  onChange={(e) => {
-                    const idx = e.nativeEvent.selectedSegmentIndex;
-                    setScope(SCOPE_VALUES[idx]);
+            {accessState === 'not_joined' && (
+              <View style={{ padding: 24, alignItems: 'center' }}>
+                <TotlText variant="heading" style={{ marginBottom: 8 }}>
+                  Join this leaderboard
+                </TotlText>
+                <TotlText variant="muted" style={{ textAlign: 'center', marginBottom: 16 }}>
+                  {detail.leaderboard.price_type === 'free' || !detail.requiresPurchase
+                    ? 'Enter your join code to compete.'
+                    : `Subscribe to compete — ${(detail.leaderboard.season_price_cents / 100).toFixed(2)} ${detail.leaderboard.currency}/season`}
+                </TotlText>
+                <Pressable
+                  onPress={() => {
+                    (navigation as any).navigate('JoinLeaderboard', {
+                      leaderboardId: detail.leaderboard.id,
+                      leaderboardName: detail.leaderboard.display_name,
+                    });
                   }}
-                />
+                  style={{
+                    paddingHorizontal: 24,
+                    paddingVertical: 12,
+                    backgroundColor: '#1C8376',
+                    borderRadius: 10,
+                  }}
+                >
+                  <TotlText style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Join</TotlText>
+                </Pressable>
               </View>
+            )}
 
-              {/* Standings — blurred when paywalled */}
-              <View style={{ overflow: 'hidden' }}>
-                {standingsLoading ? (
-                  <View style={{ paddingVertical: 40 }}>
-                    <ActivityIndicator />
-                  </View>
-                ) : displayRows.length > 0 ? (
-                  <BrandedLeaderboardTable
-                    rows={displayRows}
-                    highlightUserId={isPaywalled ? null : userId}
-                    valueLabel="Pts"
-                  />
-                ) : null}
-
-                {isPaywalled && (
-                  <BlurView
-                    intensity={25}
-                    tint="light"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
+            {showStandings && (
+              <View>
+                <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                  <SegmentedControl
+                    values={scopeLabels}
+                    selectedIndex={SCOPE_VALUES.indexOf(scope)}
+                    onChange={(e) => {
+                      const idx = e.nativeEvent.selectedSegmentIndex;
+                      setScope(SCOPE_VALUES[idx]);
                     }}
                   />
-                )}
+                </View>
+
+                <View style={{ overflow: 'hidden' }}>
+                  {standingsLoading ? (
+                    <View style={{ paddingVertical: 40 }}>
+                      <ActivityIndicator />
+                    </View>
+                  ) : displayRows.length > 0 ? (
+                    <BrandedLeaderboardTable
+                      rows={displayRows}
+                      highlightUserId={isPaywalled ? null : userId}
+                      valueLabel="Pts"
+                    />
+                  ) : null}
+
+                  {isPaywalled && (
+                    <BlurView
+                      intensity={25}
+                      tint="light"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                      }}
+                    />
+                  )}
+                </View>
               </View>
-            </View>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
+        )}
 
         {/* Paywall sheet — floats at the bottom over content */}
         {showPaywallSheet && (

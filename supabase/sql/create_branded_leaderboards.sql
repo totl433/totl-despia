@@ -101,7 +101,36 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_join_codes (
 );
 
 -- ============================================
--- 6. payouts
+-- 6. branded_leaderboard_broadcast_messages
+-- ============================================
+CREATE TABLE IF NOT EXISTS branded_leaderboard_broadcast_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  leaderboard_id UUID NOT NULL REFERENCES branded_leaderboards(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  message_type TEXT NOT NULL DEFAULT 'host' CHECK (message_type IN ('host', 'system')),
+  seed_key TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bl_broadcast_seed_unique
+  ON branded_leaderboard_broadcast_messages(leaderboard_id, seed_key)
+  WHERE seed_key IS NOT NULL;
+
+-- ============================================
+-- 7. branded_leaderboard_broadcast_reads
+-- ============================================
+CREATE TABLE IF NOT EXISTS branded_leaderboard_broadcast_reads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  leaderboard_id UUID NOT NULL REFERENCES branded_leaderboards(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(leaderboard_id, user_id)
+);
+
+-- ============================================
+-- 8. payouts
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_payouts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -119,7 +148,7 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_payouts (
 );
 
 -- ============================================
--- 7. revenue_events
+-- 9. revenue_events
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_revenue_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -133,7 +162,7 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_revenue_events (
 );
 
 -- ============================================
--- 8. leaderboard_metrics
+-- 10. leaderboard_metrics
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_metrics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -175,6 +204,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bl_subscriptions_rc_unique
 CREATE INDEX IF NOT EXISTS idx_bl_join_codes_code ON branded_leaderboard_join_codes(code);
 CREATE INDEX IF NOT EXISTS idx_bl_join_codes_leaderboard ON branded_leaderboard_join_codes(leaderboard_id);
 
+CREATE INDEX IF NOT EXISTS idx_bl_broadcast_messages_leaderboard_created
+  ON branded_leaderboard_broadcast_messages(leaderboard_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_bl_broadcast_messages_user
+  ON branded_leaderboard_broadcast_messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_bl_broadcast_reads_user_leaderboard
+  ON branded_leaderboard_broadcast_reads(user_id, leaderboard_id);
+
 CREATE INDEX IF NOT EXISTS idx_bl_payouts_leaderboard ON branded_leaderboard_payouts(leaderboard_id);
 CREATE INDEX IF NOT EXISTS idx_bl_revenue_events_leaderboard ON branded_leaderboard_revenue_events(leaderboard_id);
 CREATE INDEX IF NOT EXISTS idx_bl_metrics_leaderboard ON branded_leaderboard_metrics(leaderboard_id, period, period_start);
@@ -187,6 +223,8 @@ ALTER TABLE branded_leaderboard_hosts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_join_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branded_leaderboard_broadcast_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branded_leaderboard_broadcast_reads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_payouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_revenue_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_metrics ENABLE ROW LEVEL SECURITY;
@@ -257,6 +295,73 @@ CREATE POLICY "Admins can manage join codes" ON branded_leaderboard_join_codes
     EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
   );
 
+-- branded_leaderboard_broadcast_messages: members/hosts/admin can read, only hosts/admin can insert
+CREATE POLICY "Members can read branded broadcast messages" ON branded_leaderboard_broadcast_messages
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1
+      FROM branded_leaderboard_memberships m
+      WHERE m.leaderboard_id = branded_leaderboard_broadcast_messages.leaderboard_id
+        AND m.user_id = auth.uid()
+        AND m.left_at IS NULL
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM branded_leaderboard_hosts h
+      WHERE h.leaderboard_id = branded_leaderboard_broadcast_messages.leaderboard_id
+        AND h.user_id = auth.uid()
+    )
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+CREATE POLICY "Hosts can insert branded broadcast messages" ON branded_leaderboard_broadcast_messages
+  FOR INSERT WITH CHECK (
+    (
+      auth.uid() = user_id
+      AND message_type = 'host'
+      AND EXISTS (
+        SELECT 1
+        FROM branded_leaderboard_hosts h
+        WHERE h.leaderboard_id = branded_leaderboard_broadcast_messages.leaderboard_id
+          AND h.user_id = auth.uid()
+      )
+    )
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+-- branded_leaderboard_broadcast_reads: members/hosts/admin can read, users manage their own read state
+CREATE POLICY "Users can read branded broadcast reads" ON branded_leaderboard_broadcast_reads
+  FOR SELECT USING (
+    auth.uid() = user_id
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+CREATE POLICY "Users can insert branded broadcast reads" ON branded_leaderboard_broadcast_reads
+  FOR INSERT WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM branded_leaderboard_memberships m
+        WHERE m.leaderboard_id = branded_leaderboard_broadcast_reads.leaderboard_id
+          AND m.user_id = auth.uid()
+          AND m.left_at IS NULL
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM branded_leaderboard_hosts h
+        WHERE h.leaderboard_id = branded_leaderboard_broadcast_reads.leaderboard_id
+          AND h.user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY "Users can update branded broadcast reads" ON branded_leaderboard_broadcast_reads
+  FOR UPDATE USING (
+    auth.uid() = user_id
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
 -- branded_leaderboard_payouts: admin only
 CREATE POLICY "Admins can manage payouts" ON branded_leaderboard_payouts
   FOR ALL USING (
@@ -311,6 +416,8 @@ COMMENT ON TABLE branded_leaderboard_hosts IS 'Host accounts attached to branded
 COMMENT ON TABLE branded_leaderboard_memberships IS 'User memberships in branded leaderboards';
 COMMENT ON TABLE branded_leaderboard_subscriptions IS 'Paid subscription records synced with RevenueCat';
 COMMENT ON TABLE branded_leaderboard_join_codes IS 'Join codes for branded leaderboard access';
+COMMENT ON TABLE branded_leaderboard_broadcast_messages IS 'Host-authored and system broadcast messages for branded leaderboards';
+COMMENT ON TABLE branded_leaderboard_broadcast_reads IS 'Per-user read cursor for branded leaderboard broadcast messages';
 COMMENT ON TABLE branded_leaderboard_payouts IS 'Payout records for influencer revenue share';
 COMMENT ON TABLE branded_leaderboard_revenue_events IS 'Individual revenue events from RevenueCat webhooks';
 COMMENT ON TABLE branded_leaderboard_metrics IS 'Aggregated performance metrics per leaderboard';
