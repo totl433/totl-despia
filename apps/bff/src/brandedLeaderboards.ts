@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requireUser } from './auth.js';
-import { createSupabaseClient } from './supabase.js';
+import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 import { captureException } from './sentry.js';
 import type { Env } from './env.js';
 import {
@@ -192,6 +192,7 @@ const UpdatePayoutBodySchema = z.object({
 
 export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env) {
   const supabase = createSupabaseClient(env);
+  const adminSupabase = env.SUPABASE_SERVICE_ROLE_KEY ? createSupabaseAdminClient(env) : null;
 
   async function isJoinCodeTaken(supa: SupabaseClient, code: string, excludeId?: string) {
     let query = (supa as any).from('branded_leaderboard_join_codes').select('id').eq('code', code);
@@ -344,9 +345,11 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     leaderboard: { id: string; display_name: string; created_at?: string | null };
     hostNames: Array<string | null | undefined>;
   }) {
+    if (!adminSupabase) return;
+
     await seedBrandedBroadcastWelcomeIfMissing({
       hasExistingWelcome: async () => {
-        const { data: existing, error } = await (supabase as any)
+        const { data: existing, error } = await (adminSupabase as any)
           .from('branded_leaderboard_broadcast_messages')
           .select('id')
           .eq('leaderboard_id', input.leaderboard.id)
@@ -356,7 +359,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         return Boolean(existing?.id);
       },
       insertWelcome: async (payload) => {
-        const { error } = await (supabase as any).from('branded_leaderboard_broadcast_messages').insert({
+        const { error } = await (adminSupabase as any).from('branded_leaderboard_broadcast_messages').insert({
           leaderboard_id: input.leaderboard.id,
           user_id: payload.userId,
           content: payload.content,
