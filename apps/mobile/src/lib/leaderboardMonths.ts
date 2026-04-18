@@ -12,6 +12,13 @@ export interface MonthAllocation {
   endGw: number;
 }
 
+/** Passed from GlobalScreen live GW query — used to decide if a month’s first GW has “started”. */
+export type GwLiveStateForMonth = {
+  hasActiveLiveGames?: boolean;
+  isCurrentGwComplete?: boolean;
+  hasGwKickoffStarted?: boolean;
+};
+
 const SEASON_2025_26: MonthAllocation[] = [
   { monthKey: '2025-08', label: 'August 2025', startGw: 1, endGw: 3 },
   { monthKey: '2025-09', label: 'September 2025', startGw: 4, endGw: 7 },
@@ -46,15 +53,18 @@ export function getCurrentMonthKey(latestGw: number | null): MonthKey | null {
 export function isMonthAvailable(
   month: MonthAllocation,
   latestGw: number | null,
-  gwLiveState: { hasActiveLiveGames?: boolean; isCurrentGwComplete?: boolean } | null | undefined
+  gwLiveState: GwLiveStateForMonth | null | undefined
 ): boolean {
   if (latestGw == null) return false;
   if (latestGw > month.startGw) return true; // past first GW of month
   if (latestGw < month.startGw) return false; // future month
-  // latestGw === month.startGw: available only when first kickoff has happened or GW is complete
+  // latestGw === month.startGw: available once any match in that GW has kicked off, or GW is complete.
+  // (Avoid slipping back to the previous month between matchdays when nothing is IN_PLAY but some games
+  // have already finished — hasGwKickoffStarted covers FINISHED / schedule.)
   const hasLive = gwLiveState?.hasActiveLiveGames === true;
   const isComplete = gwLiveState?.isCurrentGwComplete === true;
-  return hasLive || isComplete;
+  const kickoffStarted = gwLiveState?.hasGwKickoffStarted === true;
+  return hasLive || isComplete || kickoffStarted;
 }
 
 /**
@@ -63,7 +73,7 @@ export function isMonthAvailable(
  */
 export function getEffectiveCurrentMonthKey(
   latestGw: number | null,
-  gwLiveState: { hasActiveLiveGames?: boolean; isCurrentGwComplete?: boolean } | null | undefined
+  gwLiveState: GwLiveStateForMonth | null | undefined
 ): MonthKey | null {
   if (!latestGw) return null;
   const months = getMonthAllocations();

@@ -14,7 +14,7 @@ import LeaderboardsTabs, { type LeaderboardsTab, type FormScope } from '../compo
 import { getMonthAllocations, getMonthForGw, getEffectiveCurrentMonthKey, isMonthAvailable, type MonthAllocation } from '../lib/leaderboardMonths';
 import { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
-import LeaderboardPlayerPicksSheet from '../components/leaderboards/LeaderboardPlayerPicksSheet';
+import LeaderboardPlayerPicksPopup from '../components/leaderboards/LeaderboardPlayerPicksPopup';
 import CenteredSpinner from '../components/CenteredSpinner';
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
@@ -142,6 +142,9 @@ export default function GlobalScreen() {
   const [playerPicksOpen, setPlayerPicksOpen] = React.useState(false);
   const [playerPicksUserId, setPlayerPicksUserId] = React.useState<string | null>(null);
   const [playerPicksUserName, setPlayerPicksUserName] = React.useState<string | null>(null);
+  const [playerPicksOpponentAvatarUrl, setPlayerPicksOpponentAvatarUrl] = React.useState<string | null>(null);
+  const [playerPicksOpponentOcp, setPlayerPicksOpponentOcp] = React.useState<number | null>(null);
+  const [playerPicksOpponentOverallRank, setPlayerPicksOpponentOverallRank] = React.useState<number | null>(null);
   const [filterMenuOpen, setFilterMenuOpen] = React.useState(false);
   const [filterMenuPosition, setFilterMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [calendarMenuOpen, setCalendarMenuOpen] = React.useState(false);
@@ -316,6 +319,8 @@ export default function GlobalScreen() {
     hasActiveLiveGames: boolean;
     isCurrentGwComplete: boolean;
     currentGwCompleteFraction: number;
+    /** True if any fixture in this GW has kicked off (live / finished / or kickoff time in the past). */
+    hasGwKickoffStarted: boolean;
   }>({
     enabled: typeof activeLeaderboardGw === 'number',
     queryKey: ['leaderboards', 'gwLiveFallbackScores', activeLeaderboardGw],
@@ -326,7 +331,7 @@ export default function GlobalScreen() {
         supabase.from('app_picks').select('user_id, fixture_index, pick').eq('gw', gw),
         supabase.from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
         supabase.from('app_gw_results').select('fixture_index, result').eq('gw', gw),
-        supabase.from('app_fixtures').select('fixture_index, api_match_id').eq('gw', gw),
+        supabase.from('app_fixtures').select('fixture_index, api_match_id, kickoff_time').eq('gw', gw),
       ]);
       if (submissionsRes.error) throw submissionsRes.error;
       if (picksRes.error) throw picksRes.error;
@@ -348,9 +353,11 @@ export default function GlobalScreen() {
         if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') apiMatchIdToFixture.set(f.api_match_id, f.fixture_index);
       });
       let hasActiveLiveGames = false;
+      let hasGwKickoffStarted = false;
       (liveScoresRes.data ?? []).forEach((ls: any) => {
         const status = ls?.status;
         const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+        if (started) hasGwKickoffStarted = true;
         if (status === 'IN_PLAY' || status === 'PAUSED') hasActiveLiveGames = true;
         if (!started) return;
         const fixtureIndex =
@@ -388,7 +395,15 @@ export default function GlobalScreen() {
       const isCurrentGwComplete = !hasActiveLiveGames && allFixturesHaveOutcomes;
       const outcomesCount = fixtures.filter((f) => typeof f?.fixture_index === 'number' && outcomeByFixtureIndex.has(f.fixture_index)).length;
       const currentGwCompleteFraction = fixtures.length > 0 ? outcomesCount / fixtures.length : 0;
-      return { scores, hasActiveLiveGames, isCurrentGwComplete, currentGwCompleteFraction };
+      if (!hasGwKickoffStarted) {
+        const nowMs = Date.now();
+        (fixturesRes.data ?? []).forEach((f: any) => {
+          if (typeof f?.kickoff_time !== 'string') return;
+          const t = new Date(f.kickoff_time).getTime();
+          if (!Number.isNaN(t) && t <= nowMs) hasGwKickoffStarted = true;
+        });
+      }
+      return { scores, hasActiveLiveGames, isCurrentGwComplete, currentGwCompleteFraction, hasGwKickoffStarted };
     },
     refetchInterval: tab === 'gw' || tab === 'overall' || tab === 'monthly' ? 10_000 : false,
   });
@@ -484,6 +499,11 @@ export default function GlobalScreen() {
     (overall ?? []).forEach((o) => m.set(o.user_id, o.name ?? 'User'));
     return m;
   }, [overall]);
+  const currentUserDisplayName =
+    (userId ? nameByUserId.get(userId) : null) ??
+    (typeof (userData as any)?.user_metadata?.name === 'string' ? String((userData as any).user_metadata.name) : null) ??
+    (typeof (userData as any)?.user_metadata?.full_name === 'string' ? String((userData as any).user_metadata.full_name) : null) ??
+    null;
 
   const filterScope = React.useCallback(
     (rows: LeaderboardRow[]) => {
@@ -744,6 +764,47 @@ export default function GlobalScreen() {
       avatar_url: m[r.user_id] ?? null,
     }));
   }, [avatarByUserId, rowsBase]);
+
+  const ocpByUserId = React.useMemo(() => {
+    const out = new Map<string, number>();
+    (overall ?? []).forEach((row) => {
+      out.set(String(row.user_id), Math.round(Number(row.ocp ?? 0)));
+    });
+    return out;
+  }, [overall]);
+
+  const overallRankByUserId = React.useMemo(() => {
+    const out = new Map<string, number>();
+    const gw = activeLeaderboardGw ?? null;
+    if (!overall || !gwPoints) return out;
+
+    const hasActiveGwScores = !!gw && liveGwByUser.size > 0;
+    const liveBaseOcpByUser = new Map<string, number>();
+    if (hasActiveGwScores && gw) {
+      gwPoints
+        .filter((p) => p.gw < gw)
+        .forEach((p) => {
+          liveBaseOcpByUser.set(p.user_id, (liveBaseOcpByUser.get(p.user_id) ?? 0) + Number(p.points ?? 0));
+        });
+    }
+
+    const rankedOverall = overall
+      .map((o) => ({
+        user_id: String(o.user_id),
+        value: hasActiveGwScores ? (liveBaseOcpByUser.get(o.user_id) ?? 0) + (liveGwByUser.get(o.user_id) ?? 0) : Math.round(Number(o.ocp ?? 0)),
+        name: o.name ?? 'User',
+      }))
+      .sort((a, b) => byValueThenName({ user_id: a.user_id, name: a.name, value: a.value }, { user_id: b.user_id, name: b.name, value: b.value }));
+
+    let currentRank = 1;
+    rankedOverall.forEach((row, index) => {
+      const prev = rankedOverall[index - 1];
+      if (index > 0 && prev && prev.value !== row.value) currentRank = index + 1;
+      out.set(row.user_id, currentRank);
+    });
+
+    return out;
+  }, [activeLeaderboardGw, gwPoints, liveGwByUser, overall]);
 
   const subtitle = React.useMemo(() => {
     const who = scope === 'friends' ? 'Mini League Friends' : 'All Players';
@@ -1018,6 +1079,9 @@ export default function GlobalScreen() {
             onPressRow={(row) => {
               setPlayerPicksUserId(String(row.user_id));
               setPlayerPicksUserName(String(row.name ?? 'Player'));
+              setPlayerPicksOpponentAvatarUrl(typeof row.avatar_url === 'string' ? row.avatar_url : null);
+              setPlayerPicksOpponentOcp(ocpByUserId.get(String(row.user_id)) ?? null);
+              setPlayerPicksOpponentOverallRank(overallRankByUserId.get(String(row.user_id)) ?? null);
               setPlayerPicksOpen(true);
             }}
             style={{
@@ -1032,12 +1096,23 @@ export default function GlobalScreen() {
         </View>
       </View>
 
-      <LeaderboardPlayerPicksSheet
+      <LeaderboardPlayerPicksPopup
         open={playerPicksOpen}
-        onClose={() => setPlayerPicksOpen(false)}
+        onClose={() => {
+          setPlayerPicksOpen(false);
+          setPlayerPicksOpponentAvatarUrl(null);
+          setPlayerPicksOpponentOcp(null);
+          setPlayerPicksOpponentOverallRank(null);
+        }}
         gw={activeLeaderboardGw}
-        userId={playerPicksUserId}
-        userName={playerPicksUserName}
+        opponentUserId={playerPicksUserId}
+        opponentName={playerPicksUserName}
+        opponentAvatarUrl={playerPicksOpponentAvatarUrl}
+        opponentOcp={playerPicksOpponentOcp}
+        opponentOverallRank={playerPicksOpponentOverallRank}
+        currentUserId={userId}
+        currentUserName={currentUserDisplayName}
+        currentUserAvatarUrl={avatarUrl}
       />
 
       <Modal
