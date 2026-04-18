@@ -10,6 +10,7 @@ import {
   UserStatsDataSchema,
   BrandedLeaderboardDetailSchema,
   BrandedLeaderboardBroadcastMessagesSchema,
+  BrandedLeaderboardManageSchema,
   BrandedLeaderboardStandingsSchema,
   type GwResults,
   type EmailPreferences,
@@ -23,6 +24,7 @@ import {
   type BrandedLeaderboardDetail,
   type BrandedLeaderboardBroadcastMessage,
   type BrandedLeaderboardBroadcastMessages,
+  type BrandedLeaderboardManage,
   type BrandedLeaderboardStandings,
   type BrandedLeaderboardMyItem,
   type BrandedLeaderboardMembership,
@@ -335,6 +337,13 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/branded-leaderboards/mine`, { method: 'GET' });
     },
 
+    async getManagedBrandedLeaderboards(): Promise<BrandedLeaderboardManage> {
+      return requestJson(opts, `/v1/branded-leaderboards/manage`, {
+        method: 'GET',
+        validate: (data) => BrandedLeaderboardManageSchema.parse(data),
+      });
+    },
+
     async resolveJoinCode(code: string): Promise<{ leaderboard: BrandedLeaderboard }> {
       return requestJson(opts, `/v1/branded-leaderboards/resolve-code/${encodeURIComponent(code)}`, {
         method: 'GET',
@@ -351,6 +360,14 @@ export function createApiClient(opts: ApiClientOptions) {
     async leaveBrandedLeaderboard(id: string): Promise<{ ok: true }> {
       return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/leave`, {
         method: 'POST',
+        body: JSON.stringify({}),
+      });
+    },
+
+    async restoreBrandedLeaderboard(id: string): Promise<{ membership: BrandedLeaderboardMembership }> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/restore`, {
+        method: 'POST',
+        body: JSON.stringify({}),
       });
     },
 

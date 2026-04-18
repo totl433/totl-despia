@@ -588,6 +588,196 @@ export declare const BrandedLeaderboardMyItemSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
+export declare const BrandedLeaderboardManageItemSchema: z.ZodObject<{
+    leaderboard: z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        display_name: z.ZodString;
+        description: z.ZodNullable<z.ZodString>;
+        slug: z.ZodString;
+        header_image_url: z.ZodNullable<z.ZodString>;
+        visibility: z.ZodEnum<{
+            public: "public";
+            private: "private";
+            unlisted: "unlisted";
+        }>;
+        price_type: z.ZodEnum<{
+            free: "free";
+            paid: "paid";
+        }>;
+        season_price_cents: z.ZodNumber;
+        currency: z.ZodString;
+        revenue_share_pct: z.ZodNumber;
+        payout_owner_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            active: "active";
+            paused: "paused";
+            archived: "archived";
+        }>;
+        season: z.ZodString;
+        start_gw: z.ZodNullable<z.ZodNumber>;
+        rc_offering_id: z.ZodNullable<z.ZodString>;
+        rc_entitlement_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        created_at: z.ZodString;
+        updated_at: z.ZodString;
+    }, z.core.$strip>;
+    membership: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        joined_at: z.ZodString;
+        left_at: z.ZodNullable<z.ZodString>;
+        source: z.ZodString;
+    }, z.core.$strip>>;
+    subscription: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        leaderboard_id: z.ZodString;
+        user_id: z.ZodString;
+        rc_subscription_id: z.ZodNullable<z.ZodString>;
+        rc_product_id: z.ZodNullable<z.ZodString>;
+        status: z.ZodEnum<{
+            active: "active";
+            expired: "expired";
+            cancelled: "cancelled";
+            billing_retry: "billing_retry";
+        }>;
+        started_at: z.ZodString;
+        expires_at: z.ZodNullable<z.ZodString>;
+        cancelled_at: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>>;
+    is_active: z.ZodBoolean;
+    can_restore: z.ZodBoolean;
+}, z.core.$strip>;
+export type BrandedLeaderboardManageItem = z.infer<typeof BrandedLeaderboardManageItemSchema>;
+export declare const BrandedLeaderboardManageSchema: z.ZodObject<{
+    active: z.ZodArray<z.ZodObject<{
+        leaderboard: z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            display_name: z.ZodString;
+            description: z.ZodNullable<z.ZodString>;
+            slug: z.ZodString;
+            header_image_url: z.ZodNullable<z.ZodString>;
+            visibility: z.ZodEnum<{
+                public: "public";
+                private: "private";
+                unlisted: "unlisted";
+            }>;
+            price_type: z.ZodEnum<{
+                free: "free";
+                paid: "paid";
+            }>;
+            season_price_cents: z.ZodNumber;
+            currency: z.ZodString;
+            revenue_share_pct: z.ZodNumber;
+            payout_owner_id: z.ZodNullable<z.ZodString>;
+            status: z.ZodEnum<{
+                draft: "draft";
+                active: "active";
+                paused: "paused";
+                archived: "archived";
+            }>;
+            season: z.ZodString;
+            start_gw: z.ZodNullable<z.ZodNumber>;
+            rc_offering_id: z.ZodNullable<z.ZodString>;
+            rc_entitlement_id: z.ZodNullable<z.ZodString>;
+            rc_product_id: z.ZodNullable<z.ZodString>;
+            created_at: z.ZodString;
+            updated_at: z.ZodString;
+        }, z.core.$strip>;
+        membership: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            leaderboard_id: z.ZodString;
+            user_id: z.ZodString;
+            joined_at: z.ZodString;
+            left_at: z.ZodNullable<z.ZodString>;
+            source: z.ZodString;
+        }, z.core.$strip>>;
+        subscription: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            leaderboard_id: z.ZodString;
+            user_id: z.ZodString;
+            rc_subscription_id: z.ZodNullable<z.ZodString>;
+            rc_product_id: z.ZodNullable<z.ZodString>;
+            status: z.ZodEnum<{
+                active: "active";
+                expired: "expired";
+                cancelled: "cancelled";
+                billing_retry: "billing_retry";
+            }>;
+            started_at: z.ZodString;
+            expires_at: z.ZodNullable<z.ZodString>;
+            cancelled_at: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>>;
+        is_active: z.ZodBoolean;
+        can_restore: z.ZodBoolean;
+    }, z.core.$strip>>;
+    restorable: z.ZodArray<z.ZodObject<{
+        leaderboard: z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            display_name: z.ZodString;
+            description: z.ZodNullable<z.ZodString>;
+            slug: z.ZodString;
+            header_image_url: z.ZodNullable<z.ZodString>;
+            visibility: z.ZodEnum<{
+                public: "public";
+                private: "private";
+                unlisted: "unlisted";
+            }>;
+            price_type: z.ZodEnum<{
+                free: "free";
+                paid: "paid";
+            }>;
+            season_price_cents: z.ZodNumber;
+            currency: z.ZodString;
+            revenue_share_pct: z.ZodNumber;
+            payout_owner_id: z.ZodNullable<z.ZodString>;
+            status: z.ZodEnum<{
+                draft: "draft";
+                active: "active";
+                paused: "paused";
+                archived: "archived";
+            }>;
+            season: z.ZodString;
+            start_gw: z.ZodNullable<z.ZodNumber>;
+            rc_offering_id: z.ZodNullable<z.ZodString>;
+            rc_entitlement_id: z.ZodNullable<z.ZodString>;
+            rc_product_id: z.ZodNullable<z.ZodString>;
+            created_at: z.ZodString;
+            updated_at: z.ZodString;
+        }, z.core.$strip>;
+        membership: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            leaderboard_id: z.ZodString;
+            user_id: z.ZodString;
+            joined_at: z.ZodString;
+            left_at: z.ZodNullable<z.ZodString>;
+            source: z.ZodString;
+        }, z.core.$strip>>;
+        subscription: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            leaderboard_id: z.ZodString;
+            user_id: z.ZodString;
+            rc_subscription_id: z.ZodNullable<z.ZodString>;
+            rc_product_id: z.ZodNullable<z.ZodString>;
+            status: z.ZodEnum<{
+                active: "active";
+                expired: "expired";
+                cancelled: "cancelled";
+                billing_retry: "billing_retry";
+            }>;
+            started_at: z.ZodString;
+            expires_at: z.ZodNullable<z.ZodString>;
+            cancelled_at: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>>;
+        is_active: z.ZodBoolean;
+        can_restore: z.ZodBoolean;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardManage = z.infer<typeof BrandedLeaderboardManageSchema>;
 export declare const BrandedLeaderboardPayoutSchema: z.ZodObject<{
     id: z.ZodString;
     leaderboard_id: z.ZodString;

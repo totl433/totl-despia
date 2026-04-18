@@ -255,6 +255,96 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     };
   }
 
+  function normalizeBrandedLeaderboardMembershipRow(row: any) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      leaderboard_id: row.leaderboard_id,
+      user_id: row.user_id,
+      joined_at: row.joined_at,
+      left_at: row.left_at,
+      source: row.source,
+    };
+  }
+
+  async function getManagedBrandedLeaderboardItems(supa: SupabaseClient, userId: string) {
+    const { data: memberships, error: memErr } = await (supa as any)
+      .from('branded_leaderboard_memberships')
+      .select('*, branded_leaderboards(*)')
+      .eq('user_id', userId)
+      .order('joined_at', { ascending: false });
+    if (memErr) throw memErr;
+
+    if (!memberships || memberships.length === 0) {
+      return { active: [], restorable: [] };
+    }
+
+    const leaderboardIds = Array.from(new Set((memberships ?? []).map((m: any) => String(m.leaderboard_id))));
+    const { data: subs, error: subErr } = await (supa as any)
+      .from('branded_leaderboard_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .in('leaderboard_id', leaderboardIds);
+    if (subErr) throw subErr;
+
+    const subscriptionByLeaderboardId = new Map<string, any>();
+    (subs ?? []).forEach((subscription: any) => {
+      const existing = subscriptionByLeaderboardId.get(subscription.leaderboard_id);
+      if (!existing || subscription.status === 'active') {
+        subscriptionByLeaderboardId.set(subscription.leaderboard_id, subscription);
+      }
+    });
+
+    const active = memberships
+      .map((membership: any) => {
+        if (membership.left_at) return null;
+        const leaderboard = normalizeBrandedLeaderboardRow(membership.branded_leaderboards);
+        const subscription = subscriptionByLeaderboardId.get(membership.leaderboard_id) ?? null;
+        const access = summarizeBrandedLeaderboardAccess({
+          priceType: leaderboard?.price_type ?? 'free',
+          isMember: true,
+          hasActivePurchase: Boolean(subscription && subscription.status === 'active'),
+        });
+
+        if (!access.hasAccess) {
+          return null;
+        }
+
+        return {
+          leaderboard,
+          membership: normalizeBrandedLeaderboardMembershipRow(membership),
+          subscription,
+          is_active: true,
+          can_restore: false,
+        };
+      })
+      .filter(Boolean);
+
+    const restorable = memberships
+      .map((membership: any) => {
+        if (!membership.left_at) return null;
+        const leaderboard = normalizeBrandedLeaderboardRow(membership.branded_leaderboards);
+        const subscription = subscriptionByLeaderboardId.get(membership.leaderboard_id) ?? null;
+        const hasActivePurchase = Boolean(subscription && subscription.status === 'active');
+        const canRestore = leaderboard?.price_type === 'free' || hasActivePurchase;
+
+        if (!canRestore) {
+          return null;
+        }
+
+        return {
+          leaderboard,
+          membership: normalizeBrandedLeaderboardMembershipRow(membership),
+          subscription,
+          is_active: false,
+          can_restore: true,
+        };
+      })
+      .filter(Boolean);
+
+    return { active, restorable };
+  }
+
   async function getLeaderboardAccessContext(
     supa: SupabaseClient,
     leaderboardId: string,
@@ -988,62 +1078,20 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
   app.get('/v1/branded-leaderboards/mine', async (req) => {
     await requireUser(req, supabase);
     const { userId, supa } = getAuthedSupa(req, env);
+    const managed = await getManagedBrandedLeaderboardItems(supa, userId);
+    return {
+      leaderboards: managed.active.map((item: any) => ({
+        leaderboard: item.leaderboard,
+        membership: item.membership,
+        subscription: item.subscription,
+      })),
+    };
+  });
 
-    const { data: memberships, error: memErr } = await (supa as any)
-      .from('branded_leaderboard_memberships')
-      .select('*, branded_leaderboards(*)')
-      .eq('user_id', userId)
-      .is('left_at', null);
-    if (memErr) throw memErr;
-
-    if (!memberships || memberships.length === 0) {
-      return { leaderboards: [] };
-    }
-
-    const leaderboardIds = memberships.map((m: any) => m.leaderboard_id);
-
-    const { data: subs, error: subErr } = await (supa as any)
-      .from('branded_leaderboard_subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .in('leaderboard_id', leaderboardIds);
-    if (subErr) throw subErr;
-
-    const subByLb = new Map<string, any>();
-    (subs ?? []).forEach((s: any) => {
-      const existing = subByLb.get(s.leaderboard_id);
-      if (!existing || s.status === 'active') subByLb.set(s.leaderboard_id, s);
-    });
-
-    const items = memberships
-      .map((m: any) => {
-        const subscription = subByLb.get(m.leaderboard_id) ?? null;
-        const access = summarizeBrandedLeaderboardAccess({
-          priceType: m.branded_leaderboards?.price_type ?? 'free',
-          isMember: true,
-          hasActivePurchase: Boolean(subscription),
-        });
-
-        if (!access.hasAccess) {
-          return null;
-        }
-
-        return {
-          leaderboard: normalizeBrandedLeaderboardRow(m.branded_leaderboards),
-          membership: {
-            id: m.id,
-            leaderboard_id: m.leaderboard_id,
-            user_id: m.user_id,
-            joined_at: m.joined_at,
-            left_at: m.left_at,
-            source: m.source,
-          },
-          subscription,
-        };
-      })
-      .filter(Boolean);
-
-    return { leaderboards: items };
+  app.get('/v1/branded-leaderboards/manage', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    return getManagedBrandedLeaderboardItems(supa, userId);
   });
 
   app.get('/v1/branded-leaderboards/:idOrSlug', async (req) => {
@@ -1202,6 +1250,62 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .eq('user_id', userId);
     if (error) throw error;
     return { ok: true };
+  });
+
+  app.post('/v1/branded-leaderboards/:id/restore', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    const { id } = IdParamSchema.parse((req as any).params);
+
+    const [{ data: leaderboard, error: leaderboardErr }, { data: membership, error: membershipErr }, { data: subscriptions, error: subErr }] =
+      await Promise.all([
+        (supa as any).from('branded_leaderboards').select('*').eq('id', id).maybeSingle(),
+        (supa as any)
+          .from('branded_leaderboard_memberships')
+          .select('*')
+          .eq('leaderboard_id', id)
+          .eq('user_id', userId)
+          .maybeSingle(),
+        (supa as any)
+          .from('branded_leaderboard_subscriptions')
+          .select('*')
+          .eq('leaderboard_id', id)
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .limit(1),
+      ]);
+    if (leaderboardErr) throw leaderboardErr;
+    if (!leaderboard) throw Object.assign(new Error('Leaderboard not found'), { statusCode: 404 });
+    if (membershipErr) throw membershipErr;
+    if (!membership) {
+      throw Object.assign(new Error('No previous membership found for this leaderboard.'), { statusCode: 404 });
+    }
+    if (subErr) throw subErr;
+
+    const hasActivePurchase = (subscriptions ?? []).length > 0;
+    const canRestore = leaderboard.price_type === 'free' || hasActivePurchase;
+    if (!canRestore) {
+      throw Object.assign(new Error('An active purchase is required to restore this leaderboard.'), {
+        statusCode: 402,
+        code: 'PURCHASE_REQUIRED',
+      });
+    }
+
+    if (!membership.left_at) {
+      return { membership: normalizeBrandedLeaderboardMembershipRow(membership) };
+    }
+
+    const { data: restoredMembership, error: restoreErr } = await (supa as any)
+      .from('branded_leaderboard_memberships')
+      .update({
+        left_at: null,
+      })
+      .eq('id', membership.id)
+      .select('*')
+      .single();
+    if (restoreErr) throw restoreErr;
+
+    return { membership: normalizeBrandedLeaderboardMembershipRow(restoredMembership) };
   });
 
   app.post('/v1/branded-leaderboards/:id/activate', async (req) => {

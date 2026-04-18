@@ -335,6 +335,21 @@ export const BrandedLeaderboardMyItemSchema = z.object({
 });
 export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
 
+export const BrandedLeaderboardManageItemSchema = z.object({
+  leaderboard: BrandedLeaderboardSchema,
+  membership: BrandedLeaderboardMembershipSchema.nullable(),
+  subscription: BrandedLeaderboardSubscriptionSchema.nullable(),
+  is_active: z.boolean(),
+  can_restore: z.boolean(),
+});
+export type BrandedLeaderboardManageItem = z.infer<typeof BrandedLeaderboardManageItemSchema>;
+
+export const BrandedLeaderboardManageSchema = z.object({
+  active: z.array(BrandedLeaderboardManageItemSchema),
+  restorable: z.array(BrandedLeaderboardManageItemSchema),
+});
+export type BrandedLeaderboardManage = z.infer<typeof BrandedLeaderboardManageSchema>;
+
 export const BrandedLeaderboardPayoutSchema = z.object({
   id: z.string(),
   leaderboard_id: z.string(),

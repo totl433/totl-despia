@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { CommonActions, useNavigation, useRoute } from '@react-navigation/native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BlurView } from 'expo-blur';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,6 +18,7 @@ import CenteredSpinner from '../../components/CenteredSpinner';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { useBrandedLeaderboardBroadcast } from '../../hooks/useBrandedLeaderboardBroadcast';
 import { TotlRefreshControl } from '../../lib/refreshControl';
+import LeagueOverflowMenu from '../../components/league/LeagueOverflowMenu';
 
 type ScopeTab = 'gw' | 'month' | 'season';
 type ViewTab = 'leaderboard' | 'broadcast';
@@ -59,6 +60,7 @@ export default function BrandedLeaderboardScreen({
   const route = useRoute<any>();
   const navigation = useNavigation();
   const t = useTokens();
+  const queryClient = useQueryClient();
   const idOrSlug: string = idOrSlugOverride ?? route.params?.idOrSlug ?? route.params?.id ?? '';
   const pendingJoinCode: string | undefined = route.params?.joinCode;
   const { data: profileSummary } = useQuery({
@@ -77,6 +79,8 @@ export default function BrandedLeaderboardScreen({
   const scopeLabels = useMemo(() => getScopeLabels(detail?.leaderboard.season), [detail]);
   const [userId, setUserId] = useState<string | null>(null);
   const [paywallDismissed, setPaywallDismissed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -94,6 +98,7 @@ export default function BrandedLeaderboardScreen({
   const isPaywalled = accessState === 'paywall_required';
   const showPaywallSheet = isPaywalled && !paywallDismissed;
   const canAccessBroadcast = Boolean(detail && (detail.hasAccess || detail.canPostBroadcast));
+  const hasActiveMembership = Boolean(detail?.membership && !detail.membership.left_at);
 
   const {
     data: standings,
@@ -150,6 +155,44 @@ export default function BrandedLeaderboardScreen({
     if (showStandings) await refetchStandings();
   }, [refresh, refetchStandings, showStandings]);
 
+  const handleLeave = useCallback(async () => {
+    if (!detail || leaving) return;
+    try {
+      setLeaving(true);
+      await api.leaveBrandedLeaderboard(detail.leaderboard.id);
+      const remaining = await api.getMyBrandedLeaderboards();
+      queryClient.setQueryData(['branded-leaderboards-mine'], remaining);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-mine'] }),
+        queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-manage'] }),
+        queryClient.invalidateQueries({ queryKey: ['branded-leaderboard-standings', detail.leaderboard.id] }),
+      ]);
+      const nextTab = remaining.leaderboards.length > 0 ? 'BrandedLeaderboards' : 'Predictions';
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Tabs', params: { screen: nextTab } }],
+        })
+      );
+    } catch (err: any) {
+      Alert.alert('Could not leave', err?.message ?? 'Failed to leave leaderboard. Please try again.');
+    } finally {
+      setLeaving(false);
+    }
+  }, [detail, leaving, navigation, queryClient]);
+
+  const confirmLeave = useCallback(() => {
+    setMenuOpen(false);
+    Alert.alert(
+      'Leave leaderboard',
+      'Remove this leaderboard from your branded tab? You can restore it later in My Branded Leaderboards.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: () => void handleLeave() },
+      ]
+    );
+  }, [handleLeave]);
+
   if (accessLoading) {
     return (
       <Screen>
@@ -195,18 +238,34 @@ export default function BrandedLeaderboardScreen({
         hideProfile={!hideBackButton}
         hideChat
         rightAction={
-          <Pressable
-            onPress={handleJoin}
-            accessibilityRole="button"
-            accessibilityLabel="Join leaderboard"
-            style={({ pressed }) => ({
-              paddingHorizontal: 8,
-              paddingVertical: 6,
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <TotlText style={{ color: t.color.brand, fontWeight: '800', fontSize: 16 }}>Join</TotlText>
-          </Pressable>
+          hasActiveMembership ? (
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Leaderboard menu"
+              disabled={leaving}
+              style={({ pressed }) => ({
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                opacity: pressed || leaving ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color={t.color.text} />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={handleJoin}
+              accessibilityRole="button"
+              accessibilityLabel="Join leaderboard"
+              style={({ pressed }) => ({
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <TotlText style={{ color: t.color.brand, fontWeight: '800', fontSize: 16 }}>Join</TotlText>
+            </Pressable>
+          )
         }
         leftAction={
           hideBackButton ? undefined : (
@@ -228,6 +287,22 @@ export default function BrandedLeaderboardScreen({
           )
         }
         embedded
+      />
+      <LeagueOverflowMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onAction={() => {}}
+        extraItems={[
+          {
+            key: 'leave-branded-leaderboard',
+            label: leaving ? 'Leaving...' : 'Leave leaderboard',
+            icon: <Ionicons name="log-out-outline" size={18} color={t.color.danger} />,
+            onPress: confirmLeave,
+          },
+        ]}
+        showBadgeActions={false}
+        showCoreActions={false}
+        menuTextColor={t.color.text}
       />
       <View style={{ flex: 1 }}>
         {viewTab === 'broadcast' && canAccessBroadcast ? (
