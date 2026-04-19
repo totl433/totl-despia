@@ -32,7 +32,7 @@ export type RootStackParamList = {
   PredictionsFlow: undefined;
   PredictionsTestFlow: undefined;
   GameweekResults: { gw: number; mode?: 'roundup' | 'fixturesShare' };
-  BrandedLeaderboard: { idOrSlug: string; joinCode?: string };
+  BrandedLeaderboard: { idOrSlug: string; joinCode?: string; initialTab?: 'leaderboard' | 'broadcast' };
   BrandedLeaderboardList: undefined;
   JoinLeaderboard: { leaderboardId?: string; leaderboardName?: string; code?: string };
 };
@@ -81,6 +81,23 @@ function getLeagueTarget(rawUrl: string): { code: string; openChat: boolean; ini
   return { code, openChat, initialTab };
 }
 
+function getBrandedLeaderboardTarget(
+  rawUrl: string
+): { idOrSlug: string; initialTab?: 'leaderboard' | 'broadcast' } | null {
+  const parsed = parseIncomingUrl(rawUrl);
+  const pathname = parsed?.pathname ?? rawUrl;
+  const match = pathname.match(/\/branded-leaderboards\/([^/?#]+)/i);
+  const rawIdOrSlug = match?.[1] ?? '';
+  const idOrSlug = decodeURIComponent(String(rawIdOrSlug)).trim();
+  if (!idOrSlug) return null;
+
+  const tabParam = (parsed?.searchParams.get('tab') ?? '').trim().toLowerCase();
+  return {
+    idOrSlug,
+    initialTab: tabParam === 'broadcast' ? 'broadcast' : undefined,
+  };
+}
+
 export default function AppNavigator() {
   const t = useTokens();
   const { isDark } = useThemePreference();
@@ -124,6 +141,16 @@ export default function AppNavigator() {
         return;
       }
       navigationRef.navigate('PredictionsFlow');
+      return;
+    }
+
+    const brandedLeaderboardTarget = getBrandedLeaderboardTarget(url);
+    if (brandedLeaderboardTarget) {
+      if (!navigationRef.isReady()) {
+        pendingUrlRef.current = url;
+        return;
+      }
+      navigationRef.navigate('BrandedLeaderboard', brandedLeaderboardTarget);
       return;
     }
 

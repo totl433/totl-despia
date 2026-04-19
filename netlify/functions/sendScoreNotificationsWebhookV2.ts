@@ -21,8 +21,8 @@ import {
   sendHalftimeNotification,
   sendFinalWhistleNotification,
   sendGameweekCompleteNotification,
-  hasGoalNotificationForMinute,
   getExistingKickoffHalf,
+  diffGoalsByFingerprint,
 } from './lib/notifications/scoreHelpers';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
@@ -273,17 +273,8 @@ export const handler: Handler = async (event, context) => {
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
-        // Find which goal was disallowed by comparing oldGoals vs new goals
-        // A goal was disallowed if it exists in oldGoals but not in new goals
-        const normalizeGoalKey = (g: any): string => {
-          if (!g || typeof g !== 'object') return '';
-          const scorer = (g.scorer || '').toString().trim().toLowerCase();
-          const goalMinute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
-          return `${scorer}|${goalMinute}`;
-        };
-
-        const newGoalKeys = new Set(goals.map(normalizeGoalKey));
-        const disallowedGoals = oldGoals.filter((g: any) => !newGoalKeys.has(normalizeGoalKey(g)));
+        // Find which goal(s) were disallowed by comparing full goal fingerprints.
+        const disallowedGoals = diffGoalsByFingerprint(oldGoals, goals);
 
         if (disallowedGoals.length > 0) {
           // Use the most recent disallowed goal (highest minute)
@@ -319,16 +310,8 @@ export const handler: Handler = async (event, context) => {
 
     // 2. Handle new goals
     if (Array.isArray(goals) && goals.length > 0 && !scoreWentDown) {
-      // Find new goals by comparing to old goals
-      const normalizeGoalKey = (g: any): string => {
-        if (!g || typeof g !== 'object') return '';
-        const scorer = (g.scorer || '').toString().trim().toLowerCase();
-        const minute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
-        return `${scorer}|${minute}`;
-      };
-
-      const oldGoalKeys = new Set(oldGoals.map(normalizeGoalKey));
-      const newGoals = goals.filter((g: any) => !oldGoalKeys.has(normalizeGoalKey(g)));
+      // Find new goals using a multiset diff so multiple goals in the same minute are preserved.
+      const newGoals = diffGoalsByFingerprint(goals, oldGoals);
 
       if (newGoals.length > 0) {
         const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true); // Include picks
@@ -371,36 +354,36 @@ export const handler: Handler = async (event, context) => {
             const scorer = goal.scorer || 'Unknown';
             const goalMinute = goal.minute ?? 0;
             const isOwnGoal = goal.isOwnGoal === true;
+            const scorerId = goal.scorerId ?? null;
+            const teamId = goal.teamId ?? null;
+            const isPenalty = goal.isPenalty === true;
+            const goalType = goal.type || null;
             // Note: For own goals, pollLiveScores already flipped the team before storing,
             // so determineScoringTeam returns the benefiting team (the team that scored)
             const { isHomeTeam, teamName } = determineScoringTeam(goal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-            
-            // Check if we've already sent a notification for this match/minute (scorer-only change suppression)
-            const usersWithExisting = await hasGoalNotificationForMinute(apiMatchId, goalMinute, userIds);
-            const usersToNotify = userIds.filter(uid => !usersWithExisting.has(uid));
-            
-            if (usersToNotify.length > 0) {
-              const result = await sendGoalNotification(usersToNotify, {
-                apiMatchId, fixtureIndex: fixture_index, gw,
-                scorer, minute: goalMinute, teamName,
-                homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
-                homeScore,  // Use calculated score
-                awayScore,  // Use calculated score
-                isHomeTeam,
-                isOwnGoal,
-                userPicks: userPicksMap, // Pass user picks map
-              });
-              
-              // Handle both single result and batch result format
-              if ('summary' in result) {
-                totalSent += result.summary.accepted;
-                console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.summary.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
-              } else {
-                totalSent += result.results.accepted;
-                console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent (${usersWithExisting.size} suppressed - scorer-only change)`);
-              }
+
+            const result = await sendGoalNotification(userIds, {
+              apiMatchId, fixtureIndex: fixture_index, gw,
+              scorer, minute: goalMinute, teamName,
+              homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
+              homeScore,  // Use calculated score
+              awayScore,  // Use calculated score
+              isHomeTeam,
+              isOwnGoal,
+              isPenalty,
+              scorerId,
+              teamId,
+              type: goalType,
+              userPicks: userPicksMap, // Pass user picks map
+            });
+
+            // Handle both single result and batch result format
+            if ('summary' in result) {
+              totalSent += result.summary.accepted;
+              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.summary.accepted} sent`);
             } else {
-              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): All ${userIds.length} users already notified (scorer-only change)`);
+              totalSent += result.results.accepted;
+              console.log(`[scoreWebhookV2] [${requestId}] Goal ${goalMinute}' (${scorer}): ${result.results.accepted} sent`);
             }
           }
         }

@@ -1,12 +1,12 @@
 import React from 'react';
 import { Image, View } from 'react-native';
-import Svg, { ClipPath, Defs, G, Polygon, Rect, SvgUri } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Polygon, Rect } from 'react-native-svg';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import type { Fixture } from '@totl/domain';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { getMediumName } from '../../../../../src/lib/teamNames';
 import { getTeamColor, normalizeTeamCode } from '../../lib/teamColors';
-import { getStripedPatternFallbackColor, getTeamPatternUri, hasStripedPattern } from '../../lib/teamPatterns';
+import { getStripedPatternFallbackColor, hasStripedPattern } from '../../lib/teamPatterns';
 import { formatLocalDateTimeLabel } from '../../lib/dateTime';
 
 function formatKickoffLabel(kickoff: string | null | undefined): string | null {
@@ -61,10 +61,12 @@ function SwipePredictionCard({
   showSwipeHint?: boolean;
 }) {
   const t = useTokens();
-  const clipPathBaseId = React.useId();
-
   const homeCode = normalizeTeamCode(fixture.home_code);
   const awayCode = normalizeTeamCode(fixture.away_code);
+  const clipPathBaseId = React.useMemo(() => {
+    const raw = String(fixture.id ?? fixture.fixture_index ?? `${homeCode}-${awayCode}`) || 'fixture';
+    return `prediction-card-${raw.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  }, [awayCode, fixture.fixture_index, fixture.id, homeCode]);
   const homeBadge = TEAM_BADGES[homeCode] ?? null;
   const awayBadge = TEAM_BADGES[awayCode] ?? null;
 
@@ -76,21 +78,15 @@ function SwipePredictionCard({
   const kickoffLabel = formatKickoffLabel(fixture.kickoff_time ?? null);
   const homeColor = getTeamColor(homeCode, fixture.home_name ?? fixture.home_team ?? null);
   const awayColor = getTeamColor(awayCode, fixture.away_name ?? fixture.away_team ?? null);
-  const homePatternUri = getTeamPatternUri(homeCode);
-  const awayPatternUri = getTeamPatternUri(awayCode);
   const homeHasStripes = hasStripedPattern(homeCode);
   const awayHasStripes = hasStripedPattern(awayCode);
   const bothHaveStripes = homeHasStripes && awayHasStripes;
   const awaySolidColor = bothHaveStripes ? getStripedPatternFallbackColor(awayCode) : null;
-  const finalAwayPatternUri = bothHaveStripes ? null : awayPatternUri;
-  // Match Despia/web behavior:
-  // - striped patterns use fixed 35deg
-  // - non-striped follow card diagonal
-  // - away side offset by +45deg
+  // Keep striped clubs visually distinct, but use synchronous fills
+  // for everyone else so the card can promote to the top layer without
+  // waiting on asset URI SVG parsing.
   const homeAngle = homeHasStripes ? STRIPE_ANGLE : DEFAULT_DIAGONAL_ANGLE;
   const awayAngle = awayHasStripes ? STRIPE_ANGLE : DEFAULT_DIAGONAL_ANGLE + 45;
-  const homeScale = homeHasStripes ? 1 : 1.85;
-  const awayScale = awayHasStripes ? 1 : 1.85;
   const homeStripe = STRIPE_COLORS[homeCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
   const awayStripe = STRIPE_COLORS[awayCode] ?? { primary: '#111111', secondary: '#F3F4F6' };
   const homeClipId = `${clipPathBaseId}-home`;
@@ -106,6 +102,8 @@ function SwipePredictionCard({
         flex: 1,
         padding: 0,
         borderRadius: 28,
+        borderWidth: 0,
+        borderColor: 'transparent',
         overflow: 'hidden',
         shadowOpacity: 0,
         shadowRadius: 0,
@@ -146,21 +144,28 @@ function SwipePredictionCard({
           flex: 1,
           minHeight: 160,
           backgroundColor: '#EEF4F3',
+          overflow: 'hidden',
         }}
       >
-        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <Svg
+          width="102%"
+          height="102%"
+          viewBox="-1 -1 102 102"
+          preserveAspectRatio="none"
+          style={{ position: 'absolute', top: -1, left: -1 }}
+        >
           <Defs>
             <ClipPath id={homeClipId}>
-              <Polygon points="0,0 0,100 100,100" />
+              <Polygon points="-2,-2 -2,102 102,102" />
             </ClipPath>
             <ClipPath id={awayClipId}>
-              <Polygon points="0,0 100,0 100,100" />
+              <Polygon points="-2,-2 102,-2 102,102" />
             </ClipPath>
           </Defs>
 
           {homeHasStripes ? (
             <G clipPath={`url(#${homeClipId})`}>
-              <Rect x={0} y={0} width={100} height={100} fill={homeStripe.secondary} />
+              <Rect x={-2} y={-2} width={104} height={104} fill={homeStripe.secondary} />
               <G transform={`translate(50 50) rotate(${homeAngle}) translate(-50 -50)`}>
                 {stripeBandOffsets.map((x) => (
                   <Rect
@@ -174,19 +179,13 @@ function SwipePredictionCard({
                 ))}
               </G>
             </G>
-          ) : homePatternUri ? (
-            <G clipPath={`url(#${homeClipId})`}>
-              <G transform={`translate(50 50) rotate(${homeAngle}) scale(${homeScale}) translate(-50 -50)`}>
-                <SvgUri uri={homePatternUri} x={0} y={0} width={100} height={100} />
-              </G>
-            </G>
           ) : (
-            <Polygon points="0,0 0,100 100,100" fill={homeColor} />
+            <Polygon points="-2,-2 -2,102 102,102" fill={homeColor} />
           )}
 
           {awayHasStripes && !bothHaveStripes ? (
             <G clipPath={`url(#${awayClipId})`}>
-              <Rect x={0} y={0} width={100} height={100} fill={awayStripe.secondary} />
+              <Rect x={-2} y={-2} width={104} height={104} fill={awayStripe.secondary} />
               <G transform={`translate(50 50) rotate(${awayAngle}) translate(-50 -50)`}>
                 {stripeBandOffsets.map((x) => (
                   <Rect
@@ -200,14 +199,8 @@ function SwipePredictionCard({
                 ))}
               </G>
             </G>
-          ) : finalAwayPatternUri ? (
-            <G clipPath={`url(#${awayClipId})`}>
-              <G transform={`translate(50 50) rotate(${awayAngle}) scale(${awayScale}) translate(-50 -50)`}>
-                <SvgUri uri={finalAwayPatternUri} x={0} y={0} width={100} height={100} />
-              </G>
-            </G>
           ) : (
-            <Polygon points="0,0 100,0 100,100" fill={awaySolidColor ?? awayColor} />
+            <Polygon points="-2,-2 102,-2 102,102" fill={awaySolidColor ?? awayColor} />
           )}
         </Svg>
       </View>

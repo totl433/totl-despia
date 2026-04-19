@@ -8,6 +8,10 @@ import {
   canPostBrandedBroadcast,
   seedBrandedBroadcastWelcomeIfMissing,
 } from './brandedLeaderboardBroadcast';
+import {
+  getBrandedBroadcastNotifierUrl,
+  selectBrandedBroadcastRecipientIds,
+} from './brandedLeaderboardBroadcastNotifications';
 
 describe('brandedLeaderboardBroadcast permissions', () => {
   it('allows only hosts or admins to post', () => {
@@ -79,5 +83,31 @@ describe('buildBrandedBroadcastWelcomeMessage', () => {
         hostNames: [],
       })
     ).toBe('Welcome to FCB Picks. Hosts will post updates for subscribers here throughout the season.');
+  });
+});
+
+describe('selectBrandedBroadcastRecipientIds', () => {
+  it('keeps only active non-sender memberships once each', () => {
+    expect(
+      selectBrandedBroadcastRecipientIds(
+        [
+          { user_id: 'host-1', left_at: null },
+          { user_id: 'user-1', left_at: null },
+          { user_id: 'user-1', left_at: null },
+          { user_id: 'user-2', left_at: '2026-04-19T10:00:00.000Z' },
+          { user_id: null, left_at: null },
+          {},
+        ],
+        'host-1'
+      )
+    ).toEqual(['user-1']);
+  });
+});
+
+describe('getBrandedBroadcastNotifierUrl', () => {
+  it('builds the notify function URL without duplicate slashes', () => {
+    expect(getBrandedBroadcastNotifierUrl('https://playtotl.com/')).toBe(
+      'https://playtotl.com/.netlify/functions/notifyBrandedBroadcastV2'
+    );
   });
 });

@@ -5,6 +5,7 @@ import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/nativ
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Fixture, Pick } from '@totl/domain';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../lib/api';
@@ -150,11 +151,67 @@ function PickChip({
   );
 }
 
+function PredictionsViewToggle({
+  value,
+  onChange,
+}: {
+  value: 'swipe' | 'list';
+  onChange: (value: 'swipe' | 'list') => void;
+}) {
+  const options: Array<{ key: 'swipe' | 'list'; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }> = [
+    { key: 'swipe', label: 'Swipe View', icon: 'albums-outline' },
+    { key: 'list', label: 'List View', icon: 'list-outline' },
+  ];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 999,
+        padding: 4,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(148,163,184,0.22)',
+      }}
+    >
+      {options.map((option) => {
+        const active = value === option.key;
+        return (
+          <Pressable
+            key={option.key}
+            accessibilityRole="button"
+            accessibilityLabel={option.label}
+            onPress={() => onChange(option.key)}
+            style={({ pressed }) => ({
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: active ? 'rgba(28,131,118,0.14)' : 'transparent',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Ionicons
+              name={option.icon}
+              size={20}
+              color={active ? '#1C8376' : '#64748B'}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function PredictionsScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const insets = useSafeAreaInsets();
   const isTestMode = route?.name === 'PredictionsTestFlow';
+  const isStandalonePredictionsFlow = route?.name === 'PredictionsFlow' || isTestMode;
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
   const queryClient = useQueryClient();
@@ -395,6 +452,19 @@ export default function PredictionsScreen() {
 
   const forceListMode = submitted || deadlineExpired;
   const [mode, setMode] = React.useState<Mode>('list');
+  const currentViewMode: 'swipe' | 'list' = mode === 'cards' ? 'swipe' : 'list';
+
+  const handleViewModeChange = React.useCallback(
+    (nextView: 'swipe' | 'list') => {
+      if (forceListMode) return;
+      if (nextView === 'swipe') {
+        setMode('cards');
+        return;
+      }
+      setMode('review');
+    },
+    [forceListMode]
+  );
 
   React.useEffect(() => {
     if (forceListMode) {
@@ -479,10 +549,26 @@ export default function PredictionsScreen() {
       await api.submitPredictions({ gw });
       return { gw };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       if (isTestMode) {
+        confetti.fire({
+          origin: { x: screenWidth / 2, y: -10 },
+          count: 320,
+          explosionSpeed: 420,
+          fallSpeed: 3800,
+          ttlMs: 5600,
+        });
+        const submittedGw = typeof result?.gw === 'number' ? result.gw : 99;
         requestAnimationFrame(() => {
-          if (navigation?.canGoBack?.()) navigation.goBack();
+          navigation.reset({
+            index: 0,
+            routes: [
+              {
+                name: 'Tabs',
+                params: { screen: 'Predictions' },
+              },
+            ],
+          });
         });
         return;
       }
@@ -490,10 +576,10 @@ export default function PredictionsScreen() {
       setDraftPicks({});
       confetti.fire({
         origin: { x: screenWidth / 2, y: -10 },
-        count: 300,
-        explosionSpeed: 460,
-        fallSpeed: 3000,
-        ttlMs: 2800,
+        count: 320,
+        explosionSpeed: 420,
+        fallSpeed: 3800,
+        ttlMs: 5600,
       });
 
       // Refetch key screens so Home reflects "locked in" immediately.
@@ -590,7 +676,7 @@ export default function PredictionsScreen() {
     [deadlineExpired, fixturesByDate, picks, setPickLocal, submitted, t.color.text]
   );
 
-  const closeTestFlow = React.useCallback(() => {
+  const closePredictionsFlow = React.useCallback(() => {
     if (navigation?.canGoBack?.()) {
       navigation.goBack();
       return;
@@ -598,35 +684,64 @@ export default function PredictionsScreen() {
     navigation.navigate('Tabs', { screen: 'Predictions' });
   }, [navigation]);
 
-  const renderTopBar = ({ title }: { title: string }) => (
-    <AppTopHeader
-      onPressChat={() => navigation.navigate('ChatHub')}
-      onPressProfile={() => navigation.navigate('Profile')}
-      avatarUrl={avatarUrl}
-      title={title}
-      leftAction={
-        isTestMode ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close predictions test"
-            onPress={closeTestFlow}
-            style={({ pressed }) => ({
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <Ionicons name="close" size={24} color={t.color.text} />
-          </Pressable>
-        ) : undefined
-      }
-      hideProfile={isTestMode}
-      hideChat={isTestMode}
-    />
-  );
+  const renderTopBar = ({ title }: { title: string }) => {
+    if (isStandalonePredictionsFlow) {
+      return (
+        <View
+          style={{
+            marginTop: -insets.top,
+            paddingTop: insets.top + 4,
+            paddingHorizontal: t.space[4],
+            backgroundColor: t.color.background,
+          }}
+        >
+          <View style={{ height: 60, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ position: 'absolute', left: 0 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close predictions"
+                onPress={closePredictionsFlow}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <Ionicons name="close" size={24} color={t.color.text} />
+              </Pressable>
+            </View>
+
+            <TotlText style={{ fontWeight: '900', fontSize: 20, lineHeight: 24, color: t.color.text }}>{title}</TotlText>
+
+            <View
+              style={{
+                position: 'absolute',
+                right: 0,
+              }}
+            >
+              {!forceListMode ? (
+                <PredictionsViewToggle value={currentViewMode} onChange={handleViewModeChange} />
+              ) : null}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <AppTopHeader
+        onPressChat={() => navigation.navigate('ChatHub')}
+        onPressProfile={() => navigation.navigate('Profile')}
+        avatarUrl={avatarUrl}
+        title={title}
+        hideProfile={isStandalonePredictionsFlow}
+        hideChat={isStandalonePredictionsFlow}
+      />
+    );
+  };
 
   const showInitialSpinner = isLoading && !data && !error;
   const onRefresh = React.useCallback(() => {
@@ -658,7 +773,7 @@ export default function PredictionsScreen() {
           }}
         />
         {renderTopBar({
-          title: isTestMode ? 'Make Your Predictions Test' : typeof gw === 'number' ? `Gameweek ${gw}` : 'Gameweek',
+          title: isTestMode ? 'Test' : typeof gw === 'number' ? `Gameweek ${gw}` : 'Predictions',
         })}
 
         <View style={{ paddingHorizontal: t.space[4], alignItems: 'center', marginTop: 16 }}>
@@ -723,7 +838,11 @@ export default function PredictionsScreen() {
     return (
       <Screen fullBleed>
         {renderTopBar({
-          title: 'Review',
+          title: isStandalonePredictionsFlow
+            ? typeof gw === 'number'
+              ? `Gameweek ${gw}`
+              : 'Predictions'
+            : 'Review',
         })}
 
         <View style={{ flex: 1 }}>
@@ -836,7 +955,13 @@ export default function PredictionsScreen() {
               })}
             >
                 <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>
-                  {confirmMutation.isPending ? (isTestMode ? 'Finishing…' : 'Confirming…') : isTestMode ? 'Finish Test' : 'Confirm'}
+                  {confirmMutation.isPending
+                    ? isStandalonePredictionsFlow
+                      ? 'Submitting…'
+                      : 'Confirming…'
+                    : isStandalonePredictionsFlow
+                      ? 'Submit'
+                      : 'Confirm'}
                 </TotlText>
             </Pressable>
           </View>
@@ -852,13 +977,13 @@ export default function PredictionsScreen() {
         onPressChat={() => navigation.navigate('ChatHub')}
         onPressProfile={() => navigation.navigate('Profile')}
         avatarUrl={avatarUrl}
-        title={isTestMode ? 'Make Your Predictions Test' : 'Predictions'}
+        title={isTestMode ? 'Test' : 'Predictions'}
         leftAction={
-          isTestMode ? (
+          isStandalonePredictionsFlow ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Close predictions test"
-              onPress={closeTestFlow}
+              accessibilityLabel="Close predictions"
+              onPress={closePredictionsFlow}
               style={({ pressed }) => ({
                 width: 32,
                 height: 32,
@@ -872,8 +997,8 @@ export default function PredictionsScreen() {
             </Pressable>
           ) : undefined
         }
-        hideProfile={isTestMode}
-        hideChat={isTestMode}
+        hideProfile={isStandalonePredictionsFlow}
+        hideChat={isStandalonePredictionsFlow}
       />
 
       <ScrollView

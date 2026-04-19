@@ -46,4 +46,14 @@ describe('countUnreadBroadcastMessages', () => {
       })
     ).toBe(2);
   });
+
+  it('treats equivalent offset and Z timestamps as already read', () => {
+    expect(
+      countUnreadBroadcastMessages({
+        userId: 'viewer-1',
+        lastReadAt: '2026-04-04T10:07:00.000Z',
+        messages: [makeMessage({ id: 'same-instant', user_id: 'host-2', created_at: '2026-04-04T10:07:00+00:00' })],
+      })
+    ).toBe(0);
+  });
 });

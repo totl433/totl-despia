@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     // Pure unit tests (no DOM needed). Keeps setup lightweight (no jsdom dependency).
     environment: 'node',
-    include: ['src/**/*.test.ts', 'apps/mobile/src/**/*.test.ts', 'apps/bff/src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'apps/mobile/src/**/*.test.ts', 'apps/bff/src/**/*.test.ts', 'netlify/functions/**/*.test.ts'],
     exclude: ['src/**/*.stories.*', 'src/**/*.mdx', 'node_modules/**', 'dist/**'],
   },
 });

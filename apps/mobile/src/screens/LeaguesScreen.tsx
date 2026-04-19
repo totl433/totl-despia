@@ -351,6 +351,7 @@ export default function LeaguesScreen() {
   const { unreadByLeagueId, meId: unreadMeId } = useLeagueUnreadCounts();
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
   const [pullRefreshing, setPullRefreshing] = React.useState(false);
+  const lastLiveTablesRefreshAtRef = React.useRef(0);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -446,7 +447,9 @@ export default function LeaguesScreen() {
     enabled: gwState === 'LIVE' && typeof viewingGw === 'number' && !!meId,
     queryKey: ['headerGwLiveTable', viewingGw],
     queryFn: () => api.getGlobalGwLiveTable(viewingGw as number),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchInterval: gwState === 'LIVE' ? 10_000 : false,
+    refetchIntervalInBackground: gwState === 'LIVE',
   });
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
@@ -567,6 +570,25 @@ export default function LeaguesScreen() {
     const id = setTimeout(() => setInitialLoadTimedOut(true), 15_000);
     return () => clearTimeout(id);
   }, [isLoading, data, error]);
+
+  React.useEffect(() => {
+    if (gwState !== 'LIVE' || typeof viewingGw !== 'number' || liveByFixtureIndexRealtime.size === 0) return;
+
+    const now = Date.now();
+    if (now - lastLiveTablesRefreshAtRef.current < 4000) return;
+    lastLiveTablesRefreshAtRef.current = now;
+
+    void queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return (
+          (key[0] === 'leagueGwTable' && key[2] === viewingGw) ||
+          (key[0] === 'headerGwLiveTable' && key[1] === viewingGw)
+        );
+      },
+    });
+  }, [gwState, liveByFixtureIndexRealtime, queryClient, viewingGw]);
+
   const refreshing = pullRefreshing;
   const onRefresh = React.useCallback(async () => {
     if (pullRefreshing) return;
@@ -575,11 +597,25 @@ export default function LeaguesScreen() {
       await Promise.allSettled([
         withTimeout(refetch(), 8000),
         withTimeout(refetchHome(), 8000),
+        typeof viewingGw === 'number'
+          ? withTimeout(
+              queryClient.invalidateQueries({
+                predicate: (query) => {
+                  const key = query.queryKey;
+                  return (
+                    (key[0] === 'leagueGwTable' && key[2] === viewingGw) ||
+                    (key[0] === 'headerGwLiveTable' && key[1] === viewingGw)
+                  );
+                },
+              }),
+              8000
+            )
+          : Promise.resolve(),
       ]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [pullRefreshing, refetch, refetchHome]);
+  }, [pullRefreshing, queryClient, refetch, refetchHome, viewingGw]);
   const renderCreateJoinHeaderButton = React.useCallback(
     () => (
       <Pressable
@@ -878,6 +914,7 @@ export default function LeaguesScreen() {
                               enabled
                               compact={!isExpanded}
                               currentUserId={meId}
+                              liveMode={gwState === 'LIVE'}
                               onPress={() =>
                                 navigation.navigate(
                                   'LeagueDetail',

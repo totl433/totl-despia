@@ -376,6 +376,8 @@ async function pollAllLiveScores() {
         away_score: awayScore,
         status: status,
         minute: minute,
+        home_team_id: homeTeamId ?? null,
+        away_team_id: awayTeamId ?? null,
         home_team: (() => {
           const normalized = normalizeTeamName(matchData.homeTeam?.name);
           console.log(`[pollLiveScores] Home team: API="${matchData.homeTeam?.name}" -> normalized="${normalized}"`);

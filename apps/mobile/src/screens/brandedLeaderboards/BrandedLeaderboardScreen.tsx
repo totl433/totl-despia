@@ -63,6 +63,12 @@ export default function BrandedLeaderboardScreen({
   const queryClient = useQueryClient();
   const idOrSlug: string = idOrSlugOverride ?? route.params?.idOrSlug ?? route.params?.id ?? '';
   const pendingJoinCode: string | undefined = route.params?.joinCode;
+  const requestedInitialTab: ViewTab | undefined =
+    route.params?.initialTab === 'broadcast'
+      ? 'broadcast'
+      : route.params?.initialTab === 'leaderboard'
+        ? 'leaderboard'
+        : undefined;
   const { data: profileSummary } = useQuery({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
@@ -75,7 +81,7 @@ export default function BrandedLeaderboardScreen({
 
   const { detail, accessState, loading: accessLoading, error, refresh } = useLeaderboardAccess(idOrSlug);
   const [scope, setScope] = useState<ScopeTab>('gw');
-  const [viewTab, setViewTab] = useState<ViewTab>('leaderboard');
+  const [viewTab, setViewTab] = useState<ViewTab>(requestedInitialTab === 'broadcast' ? 'broadcast' : 'leaderboard');
   const scopeLabels = useMemo(() => getScopeLabels(detail?.leaderboard.season), [detail]);
   const [userId, setUserId] = useState<string | null>(null);
   const [paywallDismissed, setPaywallDismissed] = useState(false);
@@ -131,6 +137,12 @@ export default function BrandedLeaderboardScreen({
       setViewTab('leaderboard');
     }
   }, [canAccessBroadcast, viewTab]);
+
+  useEffect(() => {
+    if (!requestedInitialTab) return;
+    if (requestedInitialTab === 'broadcast' && !canAccessBroadcast) return;
+    setViewTab(requestedInitialTab);
+  }, [canAccessBroadcast, requestedInitialTab]);
 
   const placeholderRows = useMemo(() => generatePlaceholderRows(15), []);
   const topLevelTabs = useMemo(

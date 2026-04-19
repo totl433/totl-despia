@@ -27,6 +27,7 @@ export default function MiniLeagueLiveCard({
   onPress,
   compact = false,
   currentUserId = null,
+  liveMode = false,
 }: {
   leagueId: string;
   leagueName: string;
@@ -37,13 +38,16 @@ export default function MiniLeagueLiveCard({
   onPress: () => void;
   compact?: boolean;
   currentUserId?: string | null;
+  liveMode?: boolean;
 }) {
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
   const { data: tableData, isLoading, isError } = useQuery<LeagueTableResponse>({
     enabled: enabled && typeof gw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueGwTable', leagueId, gw],
     queryFn: () => api.getLeagueGwTable(leagueId, gw),
-    staleTime: 10_000,
+    staleTime: liveMode ? 0 : 10_000,
+    refetchInterval: liveMode ? 10_000 : false,
+    refetchIntervalInBackground: liveMode,
   });
 
   const { data: leagueData } = useQuery<LeagueMembersResponse>({

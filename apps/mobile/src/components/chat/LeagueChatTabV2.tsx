@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, View } from 'react-native';
+import { Keyboard, Pressable, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useQuery } from '@tanstack/react-query';
@@ -21,7 +21,7 @@ import { useLeagueChatReadReceipts } from '../../hooks/useLeagueChatReadReceipts
 import { useLeagueChatReactions } from '../../hooks/useLeagueChatReactions';
 import type { LeagueChatMessage } from '../../hooks/useLeagueChat';
 
-type ChatActionsTarget = { id: string; content: string; authorName?: string };
+type ChatActionsTarget = { id: string; content: string; authorName?: string; userId?: string | null };
 type ReportState = 'idle' | 'submitting' | 'error' | 'success';
 
 function toGiftedMessage(
@@ -44,44 +44,145 @@ function toGiftedMessage(
       name: authorName,
       ...(avatar ? { avatar } : {}),
     },
+    ...(m.reply_to
+      ? {
+          replyMessage: {
+            _id: m.reply_to.id,
+            text: m.reply_to.content,
+            user: {
+              _id: m.reply_to.user_id,
+              name:
+                m.reply_to.user_id === VOLLEY_USER_ID
+                  ? VOLLEY_NAME
+                  : m.reply_to.user_id === meId
+                    ? 'You'
+                    : nameById.get(m.reply_to.user_id) ?? 'Unknown',
+            },
+          },
+        }
+      : {}),
+    reply_to_message_id: m.reply_to_message_id ?? null,
+    status: m.status,
   };
 }
 
 function InputToolbarWithAnimatedInset({
   insetsBottom,
+  replyTarget,
+  onClearReply,
   ...props
-}: any & { insetsBottom: number }) {
+}: any & {
+  insetsBottom: number;
+  replyTarget: { id: string; content: string; authorName?: string } | null;
+  onClearReply: () => void;
+}) {
   const t = useTokens();
   // This runs inside GiftedChat's KeyboardProvider, so we get real progress values.
   const { progress } = useReanimatedKeyboardAnimation();
 
   const wrapperStyle = useAnimatedStyle(() => {
     const p = progress.value; // 0..1
-    return { paddingBottom: insetsBottom * (1 - p) };
+    return { paddingBottom: p > 0.02 ? 12 : Math.max(16, insetsBottom) };
   }, [insetsBottom]);
+
+  const text = typeof props.text === 'string' ? props.text : '';
+  const trimmed = text.trim();
 
   return (
     <Reanimated.View style={[{ backgroundColor: t.color.background }, wrapperStyle]}>
-      <InputToolbar
-        {...props}
-        containerStyle={[
-          // Remove the default hairline/spacing to match existing style.
-          { borderTopWidth: 0, paddingBottom: 0, backgroundColor: t.color.background },
-          props.containerStyle,
-        ]}
-      />
+      <View
+        style={{
+          borderTopWidth: 0,
+          backgroundColor: t.color.background,
+          paddingTop: 8,
+          paddingBottom: 0,
+          paddingHorizontal: 8,
+          shadowColor: '#000000',
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: -3 },
+          elevation: 6,
+        }}
+      >
+        {replyTarget ? (
+          <View
+            style={{
+              marginBottom: 8,
+              borderWidth: 1,
+              borderColor: 'rgba(15,23,42,0.10)',
+              backgroundColor: '#FFFFFF',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 13, lineHeight: 14, color: 'rgba(15,23,42,0.75)' }}>
+                  Replying{replyTarget.authorName ? ` to ${replyTarget.authorName}` : ''}
+                </TotlText>
+              </View>
+              <Pressable onPress={onClearReply} style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+                <TotlText style={{ fontFamily: 'Gramatika-Medium', color: 'rgba(15,23,42,0.55)' }}>✕</TotlText>
+              </Pressable>
+            </View>
+            <TotlText
+              numberOfLines={2}
+              style={{ marginTop: 4, fontFamily: 'Gramatika-Regular', fontSize: 12, lineHeight: 16, color: 'rgba(15,23,42,0.55)' }}
+            >
+              {replyTarget.content}
+            </TotlText>
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+          <TextInput
+            value={text}
+            onChangeText={props.textInputProps?.onChangeText}
+            ref={props.textInputProps?.ref}
+            placeholder="Message..."
+            placeholderTextColor={t.color.muted}
+            selectionColor={t.color.brand}
+            multiline
+            style={{
+              flex: 1,
+              minHeight: 50,
+              maxHeight: 120,
+              color: t.color.text,
+              backgroundColor: t.color.surface,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: t.color.border,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: 12,
+              fontSize: 16,
+              lineHeight: 22,
+            }}
+          />
+          {trimmed ? (
+            <Pressable
+              onPress={() => props.onSend?.({ text: trimmed }, true)}
+              accessibilityRole="button"
+              accessibilityLabel="Send"
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                marginLeft: 8,
+                marginBottom: 4,
+                borderRadius: 18,
+                backgroundColor: t.color.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.9 : 1,
+              })}
+            >
+              <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
     </Reanimated.View>
   );
-}
-
-function ChatFooterKeyboardSpacer({ height }: { height: number }) {
-  // Runs inside GiftedChat's KeyboardProvider.
-  const { progress } = useReanimatedKeyboardAnimation();
-  const style = useAnimatedStyle(() => {
-    return { height: height * progress.value };
-  }, [height]);
-
-  return <Reanimated.View style={style} />;
 }
 
 function formatDayLabel(input: Date | number | string | undefined) {
@@ -187,6 +288,10 @@ export default function LeagueChatTabV2({
     return sortedDesc.map((m) => toGiftedMessage(m, nameById, avatarById, meId));
   }, [avatarById, meId, messagesRaw, nameById]);
 
+  const rawMessageById = React.useMemo(() => {
+    return new Map((messagesRaw ?? []).map((message) => [String(message.id), message]));
+  }, [messagesRaw]);
+
   const messageIds = React.useMemo(() => {
     // Keep reaction hook warm, even if UI isn't rendered yet.
     const ids = messages
@@ -194,7 +299,7 @@ export default function LeagueChatTabV2({
       .filter((id) => id && !id.startsWith('optimistic-'));
     return Array.from(new Set(ids)).sort();
   }, [messages]);
-  const { toggleReaction } = useLeagueChatReactions({
+  const { reactions, toggleReaction } = useLeagueChatReactions({
     leagueId,
     userId: meId,
     enabled: true,
@@ -202,6 +307,7 @@ export default function LeagueChatTabV2({
   });
 
   const [actionsFor, setActionsFor] = React.useState<ChatActionsTarget | null>(null);
+  const [replyTo, setReplyTo] = React.useState<ChatActionsTarget | null>(null);
   const [reportReason, setReportReason] = React.useState('');
   const [reportState, setReportState] = React.useState<ReportState>('idle');
   const [reportError, setReportError] = React.useState<string | null>(null);
@@ -250,12 +356,14 @@ export default function LeagueChatTabV2({
         userId: meId,
         senderName: meName,
         content: text,
-        replyToMessageId: null,
+        replyToMessageId: replyTo?.id ?? null,
+        replyTo: replyTo ? { id: replyTo.id, content: replyTo.content, user_id: replyTo.userId ?? null } : null,
       });
 
       markAsRead();
+      setReplyTo(null);
     },
-    [markAsRead, meId, meName, sendMessage]
+    [markAsRead, meId, meName, replyTo?.id, sendMessage]
   );
 
   const handleLongPress = React.useCallback(
@@ -267,7 +375,12 @@ export default function LeagueChatTabV2({
         clearTimeout(openActionsTimeoutRef.current);
       }
       openActionsTimeoutRef.current = setTimeout(() => {
-        setActionsFor({ id, content: String(msg?.text ?? ''), authorName: typeof msg?.user?.name === 'string' ? msg.user.name : undefined });
+        setActionsFor({
+          id,
+          content: String(msg?.text ?? ''),
+          authorName: typeof msg?.user?.name === 'string' ? msg.user.name : undefined,
+          userId: msg?.user?._id != null ? String(msg.user._id) : null,
+        });
         openActionsTimeoutRef.current = null;
       }, 180);
     },
@@ -320,73 +433,225 @@ export default function LeagueChatTabV2({
           // Ensure areas revealed during keyboard animation are painted (avoid gray underlay).
           messagesContainerStyle={{ backgroundColor: chatBg }}
           renderBubble={(props: any) => (
-            <Bubble
-              {...props}
-              isUsernameVisible={shouldShowIncomingUsername(props)}
-              renderUsername={(user: any) => {
-                if (!user) return null;
-                return (
-                  <TotlText
-                    style={{
-                      marginBottom: 4,
-                      fontSize: 13,
-                      lineHeight: 16,
-                      fontFamily: t.font.medium,
-                      color: incomingMeta,
-                    }}
+            (() => {
+              const current = props?.currentMessage;
+              const replyId = current?.reply_to_message_id ? String(current.reply_to_message_id) : null;
+              const fallbackReply = replyId ? rawMessageById.get(replyId) : null;
+              const resolvedReplyMessage =
+                current?.replyMessage ??
+                (fallbackReply
+                  ? {
+                      _id: fallbackReply.id,
+                      text: fallbackReply.content,
+                      user: {
+                        _id: fallbackReply.user_id,
+                        name:
+                          fallbackReply.user_id === VOLLEY_USER_ID
+                            ? VOLLEY_NAME
+                            : fallbackReply.user_id === meId
+                              ? 'You'
+                              : nameById.get(fallbackReply.user_id) ?? 'Unknown',
+                      },
+                    }
+                  : undefined);
+
+              return (
+                <Bubble
+                  {...props}
+                  currentMessage={
+                    resolvedReplyMessage ? { ...current, replyMessage: resolvedReplyMessage } : current
+                  }
+                  isUsernameVisible={shouldShowIncomingUsername(props)}
+                  renderUsername={() => null}
+                  wrapperStyle={{
+                    left: {
+                      backgroundColor: incomingBubbleBg,
+                      borderWidth: isDark ? 1 : 0,
+                      borderColor: composerBorder,
+                      paddingHorizontal: 16,
+                      paddingTop: 12,
+                      paddingBottom: 10,
+                    },
+                    right: {
+                      backgroundColor: outgoingBubbleBg,
+                      paddingHorizontal: 16,
+                      paddingTop: 12,
+                      paddingBottom: 10,
+                    },
+                  }}
+                  textStyle={{
+                    left: { color: t.color.text },
+                    right: { color: '#FFFFFF' },
+                  }}
+                  renderMessageText={(messageProps: any) => {
+                    const user = messageProps?.currentMessage?.user;
+                    const showUsername = messageProps?.position === 'left' && shouldShowIncomingUsername(messageProps);
+                    return (
+                      <View>
+                        {showUsername && user ? (
+                          <TotlText
+                            style={{
+                              marginBottom: 4,
+                              fontSize: 13,
+                              lineHeight: 16,
+                              fontFamily: t.font.medium,
+                              color: incomingMeta,
+                            }}
+                          >
+                            {user._id === VOLLEY_USER_ID ? VOLLEY_NAME : String(user.name ?? '')}
+                          </TotlText>
+                        ) : null}
+                        <TotlText
+                          style={{
+                            fontFamily: 'System',
+                            fontSize: 16,
+                            lineHeight: 20,
+                            color: messageProps?.position === 'right' ? '#FFFFFF' : t.color.text,
+                          }}
+                        >
+                          {String(messageProps?.currentMessage?.text ?? '')}
+                        </TotlText>
+                      </View>
+                    );
+                  }}
+                  timeTextStyle={{
+                    left: { color: incomingMeta },
+                    right: { color: outgoingMeta },
+                  }}
+                  usernameTextStyle={{
+                    color: incomingMeta,
+                  }}
+                  messageReply={{
+                    renderMessageReply: ({ replyMessage, position }: any) => (
+                      <View
+                        style={{
+                          alignSelf: 'stretch',
+                          borderLeftWidth: 3,
+                          borderLeftColor: position === 'right' ? 'rgba(255,255,255,0.6)' : t.color.brand,
+                          paddingRight: 14,
+                          paddingLeft: 14,
+                          paddingTop: 10,
+                          paddingBottom: 10,
+                          marginTop: 4,
+                          marginRight: 4,
+                          marginBottom: 8,
+                          marginLeft: 4,
+                          borderRadius: 8,
+                          backgroundColor: position === 'right' ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.04)',
+                        }}
+                      >
+                        <TotlText
+                          numberOfLines={1}
+                          style={{
+                            fontFamily: 'System',
+                            fontSize: 12,
+                            lineHeight: 14,
+                            color: position === 'right' ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.70)',
+                          }}
+                        >
+                          {replyMessage?.user?.name || 'User'}
+                        </TotlText>
+                        <TotlText
+                          numberOfLines={3}
+                          style={{
+                            marginTop: 4,
+                            fontFamily: 'System',
+                            fontSize: 12,
+                            lineHeight: 16,
+                            color: position === 'right' ? 'rgba(255,255,255,0.8)' : 'rgba(15,23,42,0.60)',
+                          }}
+                        >
+                          {replyMessage?.text || 'Message'}
+                        </TotlText>
+                      </View>
+                    ),
+                  }}
+                />
+              );
+            })()
+          )}
+          isCustomViewBottom
+          renderCustomView={(props: any) => {
+            const currentId = String(props?.currentMessage?._id ?? '');
+            const list = currentId ? reactions[currentId] ?? [] : [];
+            if (list.length === 0) return null;
+
+            return (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginTop: 6,
+                  justifyContent: props?.position === 'right' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                {list.map((reaction) => (
+                  <Pressable
+                    key={reaction.emoji}
+                    onPress={() => void toggleReaction(currentId, reaction.emoji)}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 10,
+                      minHeight: 28,
+                      paddingVertical: 4,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: 'rgba(15,23,42,0.10)',
+                      backgroundColor: reaction.hasUserReacted ? 'rgba(28,131,118,0.12)' : 'rgba(255,255,255,0.85)',
+                      opacity: pressed ? 0.9 : 1,
+                    })}
                   >
-                    {user._id === VOLLEY_USER_ID ? VOLLEY_NAME : String(user.name ?? '')}
-                  </TotlText>
-                );
-              }}
-              wrapperStyle={{
-                left: {
-                  backgroundColor: incomingBubbleBg,
-                  borderWidth: isDark ? 1 : 0,
-                  borderColor: composerBorder,
-                },
-                right: {
-                  backgroundColor: outgoingBubbleBg,
-                },
-              }}
-              textStyle={{
-                left: { color: t.color.text },
-                right: { color: '#FFFFFF' },
-              }}
-              timeTextStyle={{
-                left: { color: incomingMeta },
-                right: { color: outgoingMeta },
-              }}
-              usernameTextStyle={{
-                color: incomingMeta,
-              }}
-            />
-          )}
+                    <TotlText
+                      style={{
+                        fontSize: 16,
+                        lineHeight: 20,
+                      }}
+                    >
+                      {reaction.emoji}
+                    </TotlText>
+                    <TotlText style={{ marginLeft: 6, fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
+                      {reaction.count}
+                    </TotlText>
+                  </Pressable>
+                ))}
+              </View>
+            );
+          }}
           renderComposer={(props: any) => (
-            <Composer
-              {...props}
-              textInputProps={{
-                ...(props.textInputProps ?? {}),
-                placeholderTextColor: t.color.muted,
-                selectionColor: t.color.brand,
-                style: {
-                  color: composerTextColor,
-                  backgroundColor: composerBg,
-                  borderRadius: 24,
-                  borderWidth: 1,
-                  borderColor: composerBorder,
-                  paddingHorizontal: 14,
-                  paddingTop: 10,
-                  paddingBottom: 10,
-                  marginLeft: 0,
-                  marginRight: 0,
-                  maxHeight: 120,
-                },
-              }}
-            />
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Composer
+                {...props}
+                composerHeight={50}
+                textInputProps={{
+                  ...(props.textInputProps ?? {}),
+                  placeholderTextColor: t.color.muted,
+                  selectionColor: t.color.brand,
+                  style: {
+                    color: composerTextColor,
+                    backgroundColor: composerBg,
+                    borderRadius: 24,
+                    borderWidth: 1,
+                    borderColor: composerBorder,
+                    minHeight: 50,
+                    lineHeight: 22,
+                    textAlignVertical: 'center',
+                    paddingHorizontal: 16,
+                    paddingTop: 12,
+                    paddingBottom: 12,
+                    marginLeft: 0,
+                    marginRight: 0,
+                    maxHeight: 120,
+                  },
+                }}
+              />
+            </View>
           )}
-          renderSend={(props: any) => (
-            <Send {...props} alwaysShowSend containerStyle={{ justifyContent: 'center', marginLeft: 8, marginRight: 4, marginBottom: 2 }}>
+          renderSend={(props: any) => {
+            if (!props.text?.trim()) return <View />;
+            return (
+            <Send {...props} containerStyle={{ justifyContent: 'center', marginLeft: 8, marginRight: 0, marginBottom: 4 }}>
               <View
                 style={{
                   width: 36,
@@ -395,13 +660,13 @@ export default function LeagueChatTabV2({
                   backgroundColor: t.color.brand,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  opacity: props.text?.trim() ? 1 : 0.5,
                 }}
               >
                 <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
               </View>
             </Send>
-          )}
+            );
+          }}
           renderDay={(props: any) => {
             const label = formatDayLabel(props?.currentMessage?.createdAt);
             if (!label) return null;
@@ -439,10 +704,16 @@ export default function LeagueChatTabV2({
           keyboardProviderProps={{ preload: false }}
           listProps={{
             style: { backgroundColor: chatBg },
-            contentContainerStyle: { paddingBottom: 10 },
+            contentContainerStyle: { paddingBottom: 0 },
           }}
-          renderChatFooter={() => <ChatFooterKeyboardSpacer height={insets.bottom} />}
-          renderInputToolbar={(props: any) => <InputToolbarWithAnimatedInset {...props} insetsBottom={insets.bottom} />}
+          renderInputToolbar={(props: any) => (
+            <InputToolbarWithAnimatedInset
+              {...props}
+              insetsBottom={insets.bottom}
+              replyTarget={replyTo}
+              onClearReply={() => setReplyTo(null)}
+            />
+          )}
           // Try to keep behavior consistent with older implementation.
           keyboardShouldPersistTaps="handled"
         />
@@ -452,7 +723,8 @@ export default function LeagueChatTabV2({
         open={!!actionsFor}
         onClose={closeActions}
         onReply={() => {
-          // Non-goal in this pass: reply UI/threading.
+          if (!actionsFor) return;
+          setReplyTo(actionsFor);
           closeActions();
         }}
         onReact={(emoji) => {

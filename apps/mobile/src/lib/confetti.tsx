@@ -30,13 +30,15 @@ export function ConfettiProvider({ children }: { children: React.ReactNode }) {
 
   const fire = React.useCallback(
     (opts?: Partial<ConfettiConfig>) => {
+      const requestedFallSpeed = opts?.fallSpeed ?? 3200;
+      const requestedTtlMs = opts?.ttlMs ?? 6200;
       const cfg: ConfettiConfig = {
         count: 260,
         origin: { x: width / 2, y: -10 },
         explosionSpeed: 420,
-        fallSpeed: 3200,
+        fallSpeed: requestedFallSpeed,
         fadeOut: true,
-        ttlMs: 2600,
+        ttlMs: Math.max(requestedTtlMs, requestedFallSpeed + 2600),
         ...(opts ?? {}),
       };
       setShot({ key: Date.now(), cfg });

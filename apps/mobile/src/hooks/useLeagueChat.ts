@@ -323,11 +323,13 @@ export function useLeagueChat({
       senderName,
       content,
       replyToMessageId,
+      replyTo,
     }: {
       userId: string;
       senderName: string;
       content: string;
       replyToMessageId?: string | null;
+      replyTo?: { id: string; content: string; user_id?: string | null } | null;
     }) => {
       if (!leagueId) return;
       const text = content.trim();
@@ -341,6 +343,14 @@ export function useLeagueChat({
         content: text,
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToMessageId ?? null,
+        reply_to:
+          replyTo && replyTo.id
+            ? {
+                id: String(replyTo.id),
+                content: String(replyTo.content ?? ''),
+                user_id: String(replyTo.user_id ?? ''),
+              }
+            : null,
         status: 'sending',
       };
 
@@ -409,9 +419,18 @@ export function useLeagueChat({
 
         queryClient.setQueryData(['leagueChat', leagueId], (prev: any) => {
           if (!prev?.pages) return prev;
-          const pages = prev.pages.map((p: Page) => ({ ...p, rows: p.rows.filter((m) => m.id !== optimistic.id) }));
-          const exists = pages.some((p: Page) => p.rows.some((m) => m.id === saved.id));
-          if (!exists) {
+          let replaced = false;
+          const pages = prev.pages.map((p: Page) => ({
+            ...p,
+            rows: p.rows
+              .filter((m) => m.id !== optimistic.id)
+              .map((m) => {
+                if (m.id !== saved.id) return m;
+                replaced = true;
+                return saved;
+              }),
+          }));
+          if (!replaced) {
             const first = pages[0] as Page;
             pages[0] = { ...first, rows: sortAsc([...first.rows, saved]) };
           }

@@ -332,6 +332,7 @@ export const BrandedLeaderboardMyItemSchema = z.object({
   leaderboard: BrandedLeaderboardSchema,
   membership: BrandedLeaderboardMembershipSchema,
   subscription: BrandedLeaderboardSubscriptionSchema.nullable(),
+  canPostBroadcast: z.boolean().default(false),
 });
 export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
 

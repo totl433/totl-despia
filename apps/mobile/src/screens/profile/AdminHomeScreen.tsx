@@ -5,10 +5,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import PageHeader from '../../components/PageHeader';
+import { useConfetti } from '../../lib/confetti';
 
 export default function AdminHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const confetti = useConfetti();
 
   const goBack = React.useCallback(() => {
     if (navigation.canGoBack?.()) {
@@ -40,6 +42,15 @@ export default function AdminHomeScreen() {
   const openPushDiagnostics = React.useCallback(() => {
     navigation.navigate('PushDiagnostics');
   }, [navigation]);
+
+  const triggerConfettiTest = React.useCallback(() => {
+    confetti.fire({
+      count: 320,
+      explosionSpeed: 420,
+      fallSpeed: 3800,
+      ttlMs: 5600,
+    });
+  }, [confetti]);
 
   return (
     <Screen fullBleed>
@@ -104,6 +115,24 @@ export default function AdminHomeScreen() {
           >
             <TotlText style={{ fontWeight: '700' }}>HP Simulator (Native)</TotlText>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Trigger confetti test"
+            onPress={triggerConfettiTest}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>Trigger Confetti Test</TotlText>
+            <Ionicons name="sparkles-outline" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 
           <View

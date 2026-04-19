@@ -8,14 +8,26 @@
 import { dispatchNotification } from './dispatch';
 import { formatDeepLink } from './catalog';
 import type { BatchDispatchResult } from './types';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+let supabaseClient: SupabaseClient | null = null;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
+function getSupabase(): SupabaseClient {
+  if (!supabaseClient) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error('Missing Supabase environment variables');
+    }
+
+    supabaseClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+  }
+
+  return supabaseClient;
+}
 
 /**
  * Get base URL for building absolute deep link URLs
@@ -49,10 +61,94 @@ export function normalizeScorer(scorer: string): string {
 }
 
 /**
- * Build a goal notification event_id
+ * Normalize a goal type for event IDs and diffing.
  */
-export function buildGoalEventId(apiMatchId: number, scorer: string, minute: number): string {
-  return `goal:${apiMatchId}:${normalizeScorer(scorer)}:${minute}`;
+function normalizeGoalType(goalType: unknown): string {
+  const normalized = String(goalType || 'regular')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '_');
+  return normalized || 'regular';
+}
+
+/**
+ * Build a stable fingerprint for a goal.
+ *
+ * This intentionally uses team and scorer identifiers when available so that:
+ * - multiple goals in the same minute remain distinct
+ * - scorer name normalization/formatting changes are less likely to create duplicates
+ */
+export function buildGoalFingerprint(goal: {
+  minute?: number | null;
+  scorer?: string | null;
+  scorerId?: number | null;
+  team?: string | null;
+  teamId?: number | null;
+  isOwnGoal?: boolean;
+  isPenalty?: boolean;
+  type?: string | null;
+}): string {
+  const minute = goal.minute ?? 0;
+  const teamPart = goal.teamId !== undefined && goal.teamId !== null
+    ? `teamid_${goal.teamId}`
+    : `team_${normalizeScorer(goal.team || 'unknown')}`;
+  const scorerPart = goal.scorerId !== undefined && goal.scorerId !== null
+    ? `scorerid_${goal.scorerId}`
+    : `scorer_${normalizeScorer(goal.scorer || 'unknown')}`;
+  const flagsPart = [
+    goal.isOwnGoal ? 'og' : 'reg',
+    goal.isPenalty ? 'pen' : 'open',
+    normalizeGoalType(goal.type),
+  ].join('_');
+
+  return `${minute}:${teamPart}:${scorerPart}:${flagsPart}`;
+}
+
+/**
+ * Return the items in `sourceGoals` that are not present in `comparisonGoals`,
+ * comparing goals as a multiset of goal fingerprints.
+ */
+export function diffGoalsByFingerprint(sourceGoals: any[], comparisonGoals: any[]): any[] {
+  const comparisonCounts = new Map<string, number>();
+
+  for (const goal of comparisonGoals) {
+    const key = buildGoalFingerprint(goal || {});
+    comparisonCounts.set(key, (comparisonCounts.get(key) || 0) + 1);
+  }
+
+  const changedGoals: any[] = [];
+  for (const goal of sourceGoals) {
+    const key = buildGoalFingerprint(goal || {});
+    const remaining = comparisonCounts.get(key) || 0;
+
+    if (remaining > 0) {
+      comparisonCounts.set(key, remaining - 1);
+      continue;
+    }
+
+    changedGoals.push(goal);
+  }
+
+  return changedGoals;
+}
+
+/**
+ * Build a goal notification event_id.
+ */
+export function buildGoalEventId(
+  apiMatchId: number,
+  goal: {
+    minute?: number | null;
+    scorer?: string | null;
+    scorerId?: number | null;
+    team?: string | null;
+    teamId?: number | null;
+    isOwnGoal?: boolean;
+    isPenalty?: boolean;
+    type?: string | null;
+  }
+): string {
+  return `goal:${apiMatchId}:${buildGoalFingerprint(goal)}`;
 }
 
 /**
@@ -70,6 +166,7 @@ export async function getExistingKickoffHalf(
   apiMatchId: number,
   userIds: string[]
 ): Promise<number> {
+  const supabase = getSupabase();
   // Query notification_send_log for any kickoff notification for this match
   // Event ID format: kickoff:{apiMatchId}:{half}
   const eventIdPrefix = `kickoff:${apiMatchId}:`;
@@ -126,42 +223,6 @@ export function buildGoalDisallowedEventId(apiMatchId: number, minute: number): 
 }
 
 /**
- * Check if a goal notification was already sent for this match/minute
- * Used to suppress scorer-only attribution changes
- */
-export async function hasGoalNotificationForMinute(
-  apiMatchId: number,
-  minute: number,
-  userIds: string[]
-): Promise<Set<string>> {
-  // Query notification_send_log for any goal-scored notification for this match/minute
-  // Event ID format: goal:{apiMatchId}:{scorer}:{minute}
-  // We check for pattern: goal:{apiMatchId}:*:{minute}
-  const eventIdPrefix = `goal:${apiMatchId}:`;
-  const eventIdSuffix = `:${minute}`;
-  
-  const { data: existing } = await supabase
-    .from('notification_send_log')
-    .select('user_id, event_id')
-    .eq('notification_key', 'goal-scored')
-    .in('user_id', userIds)
-    .like('event_id', `${eventIdPrefix}%${eventIdSuffix}`)
-    .in('result', ['accepted', 'pending']);
-  
-  const usersWithExisting = new Set<string>();
-  (existing || []).forEach((entry: any) => {
-    if (entry.user_id && entry.event_id) {
-      // Verify it's actually for this minute
-      if (entry.event_id.endsWith(eventIdSuffix) && entry.event_id.startsWith(eventIdPrefix)) {
-        usersWithExisting.add(entry.user_id);
-      }
-    }
-  });
-  
-  return usersWithExisting;
-}
-
-/**
  * Send a goal notification (personalized with pick indicator)
  */
 export async function sendGoalNotification(
@@ -171,24 +232,37 @@ export async function sendGoalNotification(
     fixtureIndex: number;
     gw: number;
     scorer: string;
+    scorerId?: number | null;
     minute: number;
     teamName: string;
+    teamId?: number | null;
     homeTeam: string;
     awayTeam: string;
     homeScore: number;
     awayScore: number;
     isHomeTeam: boolean;
     isOwnGoal?: boolean;
+    isPenalty?: boolean;
+    type?: string | null;
     userPicks?: Map<string, string>; // userId -> pick (H/D/A) - optional for backward compatibility
   }
 ): Promise<BatchDispatchResult | { results: BatchDispatchResult[]; summary: { accepted: number; failed: number } }> {
   const {
-    apiMatchId, fixtureIndex, gw, scorer, minute,
+    apiMatchId, fixtureIndex, gw, scorer, scorerId, minute,
     teamName, homeTeam, awayTeam, homeScore, awayScore,
-    isHomeTeam, isOwnGoal, userPicks,
+    isHomeTeam, isOwnGoal, isPenalty, type, teamId, userPicks,
   } = params;
 
-  const eventId = buildGoalEventId(apiMatchId, scorer, minute);
+  const eventId = buildGoalEventId(apiMatchId, {
+    minute,
+    scorer,
+    scorerId,
+    team: teamName,
+    teamId,
+    isOwnGoal,
+    isPenalty,
+    type,
+  });
   
   const scoreDisplay = isHomeTeam
     ? `${homeTeam} [${homeScore}] - ${awayScore} ${awayTeam}`
