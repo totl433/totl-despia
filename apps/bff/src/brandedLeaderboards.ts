@@ -27,6 +27,10 @@ import {
   notifyBrandedBroadcastFollowers,
   selectBrandedBroadcastRecipientIds,
 } from './brandedLeaderboardBroadcastNotifications.js';
+import {
+  buildBroadcastReactionSummaries,
+  type BroadcastReactionRow,
+} from './brandedLeaderboardBroadcastReactions.js';
 
 function getAuthedSupa(req: FastifyRequest, env: Env) {
   const userId = (req as any).userId as string;
@@ -123,6 +127,8 @@ const IdOrSlugParamSchema = z.object({ idOrSlug: z.string().min(1) });
 const CodeParamSchema = z.object({ code: z.string().min(3).max(50) });
 const HostIdParamSchema = z.object({ id: z.string().uuid(), hostId: z.string().uuid() });
 const CodeIdParamSchema = z.object({ id: z.string().uuid(), codeId: z.string().uuid() });
+const BroadcastMessageIdParamSchema = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
+const BROADCAST_REACTION_EMOJIS = ['👍', '🔥', '👏', '🙌', '😮', '😬', '👎'] as const;
 
 const CreateLeaderboardBodySchema = z.object({
   name: z.string().min(1).max(200),
@@ -177,6 +183,10 @@ const BroadcastMessageBodySchema = z.object({
 
 const BroadcastReadBodySchema = z.object({
   lastReadAt: z.string().datetime({ offset: true }).nullable().optional(),
+});
+
+const BroadcastReactionBodySchema = z.object({
+  emoji: z.enum(BROADCAST_REACTION_EMOJIS).transform((value) => value.trim()),
 });
 
 const StandingsQuerySchema = z.object({
@@ -426,17 +436,61 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       created_at: createdAt,
       user_name: row.users?.name ?? null,
       user_avatar_url: row.users?.avatar_url ?? null,
+      reactions: Array.isArray(row.reactions) ? row.reactions : [],
     };
   }
 
-  async function listBrandedBroadcastMessages(supa: SupabaseClient, leaderboardId: string) {
+  async function listBrandedBroadcastReactionRows(
+    supa: SupabaseClient,
+    leaderboardId: string,
+    messageIds?: string[]
+  ) {
+    let query = (supa as any)
+      .from('branded_leaderboard_broadcast_reactions')
+      .select('message_id, emoji, user_id')
+      .eq('leaderboard_id', leaderboardId);
+
+    if (Array.isArray(messageIds) && messageIds.length > 0) {
+      query = query.in('message_id', messageIds);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data ?? []) as BroadcastReactionRow[];
+  }
+
+  async function getBrandedBroadcastReactionSummariesForMessage(
+    supa: SupabaseClient,
+    leaderboardId: string,
+    messageId: string,
+    currentUserId: string
+  ) {
+    const rows = await listBrandedBroadcastReactionRows(supa, leaderboardId, [messageId]);
+    return buildBroadcastReactionSummaries(rows, currentUserId)[messageId] ?? [];
+  }
+
+  async function listBrandedBroadcastMessages(
+    supa: SupabaseClient,
+    leaderboardId: string,
+    currentUserId: string
+  ) {
     const { data, error } = await (supa as any)
       .from('branded_leaderboard_broadcast_messages')
       .select('*, users:user_id(name, avatar_url)')
       .eq('leaderboard_id', leaderboardId)
       .order('created_at', { ascending: true });
     if (error) throw error;
-    return (data ?? []).map(normalizeBroadcastMessageRow);
+
+    const normalizedMessages = (data ?? []).map(normalizeBroadcastMessageRow);
+    const messageIds = normalizedMessages.map((row: any) => String(row.id)).filter(Boolean);
+    const reactionRows =
+      messageIds.length > 0 ? await listBrandedBroadcastReactionRows(supa, leaderboardId, messageIds) : [];
+    const reactionsByMessage = buildBroadcastReactionSummaries(reactionRows, currentUserId);
+
+    return normalizedMessages.map((row: any) => ({
+      ...row,
+      reactions: reactionsByMessage[String(row.id)] ?? [],
+    }));
   }
 
   async function ensureBrandedBroadcastWelcomeMessage(input: {
@@ -1401,7 +1455,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     });
 
     const [messages, lastReadAt] = await Promise.all([
-      listBrandedBroadcastMessages(supa, id),
+      listBrandedBroadcastMessages(supa, id, userId),
       getBrandedBroadcastLastReadAt(supa, id, userId),
     ]);
 
@@ -1481,6 +1535,59 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     }
 
     return { message: normalizedMessage };
+  });
+
+  app.post('/v1/branded-leaderboards/:id/broadcast/messages/:messageId/reactions/toggle', async (req) => {
+    await requireUser(req, supabase);
+    const { userId, supa } = getAuthedSupa(req, env);
+    const { id, messageId } = BroadcastMessageIdParamSchema.parse((req as any).params);
+    const body = BroadcastReactionBodySchema.parse((req as any).body);
+    await requireBrandedBroadcastAccess(supa, id, userId);
+
+    const { data: messageRow, error: messageError } = await (supa as any)
+      .from('branded_leaderboard_broadcast_messages')
+      .select('id')
+      .eq('leaderboard_id', id)
+      .eq('id', messageId)
+      .maybeSingle();
+    if (messageError) throw messageError;
+    if (!messageRow?.id) {
+      throw Object.assign(new Error('Broadcast message not found'), { statusCode: 404 });
+    }
+
+    const { data: existingReaction, error: existingReactionError } = await (supa as any)
+      .from('branded_leaderboard_broadcast_reactions')
+      .select('id')
+      .eq('leaderboard_id', id)
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', body.emoji)
+      .maybeSingle();
+    if (existingReactionError) throw existingReactionError;
+
+    if (existingReaction?.id) {
+      const { error: deleteError } = await (supa as any)
+        .from('branded_leaderboard_broadcast_reactions')
+        .delete()
+        .eq('id', existingReaction.id);
+      if (deleteError) throw deleteError;
+    } else {
+      const { error: insertError } = await (supa as any)
+        .from('branded_leaderboard_broadcast_reactions')
+        .insert({
+          leaderboard_id: id,
+          message_id: messageId,
+          user_id: userId,
+          emoji: body.emoji,
+        });
+      if (insertError) throw insertError;
+    }
+
+    const reactions = await getBrandedBroadcastReactionSummariesForMessage(supa, id, messageId, userId);
+    return {
+      messageId,
+      reactions,
+    };
   });
 
   app.post('/v1/branded-leaderboards/:id/broadcast/read', async (req) => {
