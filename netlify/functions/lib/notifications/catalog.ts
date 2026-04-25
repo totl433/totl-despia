@@ -27,6 +27,22 @@ const catalogData = {
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
+  "branded-broadcast": {
+    "notification_key": "branded-broadcast",
+    "owner": "client-triggered",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "branded_leaderboard_members_except_sender",
+    "source": "client_post",
+    "trigger": { "name": "branded_broadcast_sent", "event_id_format": "branded_broadcast:{leaderboard_id}:{message_id}" },
+    "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 300 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": "chat-messages", "default": true },
+    "onesignal": { "collapse_id_format": "branded_broadcast:{leaderboard_id}", "thread_id_format": "branded_leaderboard:{leaderboard_id}", "android_group_format": "totl_broadcasts" },
+    "deep_links": { "url_format": "/branded-leaderboards/{leaderboard_id}?tab=broadcast" },
+    "rollout": { "enabled": true, "percentage": 100 }
+  },
   "member-join": {
     "notification_key": "member-join",
     "owner": "client-triggered",
