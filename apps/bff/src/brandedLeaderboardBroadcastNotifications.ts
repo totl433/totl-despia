@@ -3,6 +3,8 @@ type BroadcastMembershipRow = {
   left_at?: string | null;
 };
 
+const DEFAULT_SITE_URL = 'https://playtotl.com';
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '');
 }
@@ -22,12 +24,12 @@ export function selectBrandedBroadcastRecipientIds(
   return Array.from(recipients);
 }
 
-export function getBrandedBroadcastNotifierUrl(siteUrl: string): string {
-  return `${trimTrailingSlash(siteUrl)}/.netlify/functions/notifyBrandedBroadcastV2`;
+export function getBrandedBroadcastNotifierUrl(siteUrl?: string | null): string {
+  return `${trimTrailingSlash(siteUrl?.trim() || DEFAULT_SITE_URL)}/.netlify/functions/notifyBrandedBroadcastV2`;
 }
 
 export async function notifyBrandedBroadcastFollowers(input: {
-  siteUrl: string;
+  siteUrl?: string | null;
   accessToken?: string | null;
   leaderboardId: string;
   leaderboardName: string;

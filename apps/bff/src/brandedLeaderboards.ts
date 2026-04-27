@@ -1490,7 +1490,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
 
     const normalizedMessage = normalizeBroadcastMessageRow(data);
 
-    if (adminSupabase && env.SITE_URL) {
+    if (adminSupabase) {
       try {
         const { data: memberships, error: membershipsError } = await (adminSupabase as any)
           .from('branded_leaderboard_memberships')
@@ -1501,7 +1501,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         const recipientIds = selectBrandedBroadcastRecipientIds(memberships ?? [], userId);
         if (recipientIds.length > 0) {
           await notifyBrandedBroadcastFollowers({
-            siteUrl: env.SITE_URL,
+            siteUrl: env.SITE_URL ?? 'https://playtotl.com',
             accessToken,
             leaderboardId: id,
             leaderboardName: viewer.leaderboard.display_name,
@@ -1528,7 +1528,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         {
           leaderboardId: id,
           hasAdminSupabase: Boolean(adminSupabase),
-          hasSiteUrl: Boolean(env.SITE_URL),
+          siteUrl: env.SITE_URL ?? 'https://playtotl.com',
         },
         'skipping branded broadcast notification dispatch'
       );
@@ -1693,13 +1693,25 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     if (ptsErr) throw ptsErr;
 
     const scoreMap = new Map<string, number>();
+    const scoreByUserByGw = new Map<string, Map<number, number>>();
     (points ?? []).forEach((p: any) => {
       const uid = String(p.user_id);
-      scoreMap.set(uid, (scoreMap.get(uid) ?? 0) + Number(p.points ?? 0));
+      const gwNumber = Number(p.gw);
+      const pointsValue = Number(p.points ?? 0);
+      scoreMap.set(uid, (scoreMap.get(uid) ?? 0) + pointsValue);
+      if (!scoreByUserByGw.has(uid)) scoreByUserByGw.set(uid, new Map<number, number>());
+      scoreByUserByGw.get(uid)!.set(gwNumber, pointsValue);
     });
 
     const rows = (members ?? []).map((m: any) => {
       const profile = profileMap.get(m.user_id);
+      const perGw = scoreByUserByGw.get(m.user_id);
+      const compactValues =
+        query.scope === 'month'
+          ? gwRange.map((gwNumber) => perGw?.get(gwNumber) ?? null)
+          : query.scope === 'season'
+            ? [perGw?.get(gw) ?? null]
+            : undefined;
       return {
         rank: 0,
         user_id: m.user_id,
@@ -1707,6 +1719,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
         avatar_url: profile?.avatar_url ?? null,
         value: scoreMap.get(m.user_id) ?? 0,
         is_host: hostIds.has(m.user_id),
+        compact_values: compactValues,
       };
     });
 
