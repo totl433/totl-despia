@@ -1,74 +1,166 @@
 import React from 'react';
-import { FlatList, Keyboard, View } from 'react-native';
-import { KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
+import { Keyboard, Modal, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Bubble, Composer, GiftedChat, type IMessage } from 'react-native-gifted-chat';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, TotlText, useTokens } from '@totl/ui';
+import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
-import ChatComposer from '../chat/ChatComposer';
-import ChatMessageBubble from '../chat/ChatMessageBubble';
+import { Card, TotlText, useTokens } from '@totl/ui';
 import { useBrandedLeaderboardBroadcastReadReceipts } from '../../hooks/useBrandedLeaderboardBroadcastReadReceipts';
+import { useBrandedLeaderboardBroadcastReactions } from '../../hooks/useBrandedLeaderboardBroadcastReactions';
 import type { BrandedLeaderboardBroadcastUiMessage } from '../../lib/brandedLeaderboardBroadcastUnread';
-import type { LeagueChatMessage } from '../../hooks/useLeagueChat';
 import { VOLLEY_NAME, VOLLEY_USER_ID } from '../../lib/volley';
 
-type BroadcastListItem =
-  | { type: 'message'; message: BrandedLeaderboardBroadcastUiMessage }
-  | { type: 'day'; key: string; label: string };
+const DEFAULT_VISIBLE_REACTION_EMOJIS = ['👍', '🔥', '😬'] as const;
+const EXTRA_REACTION_EMOJIS = ['👎', '🙌', '😮'] as const;
+const REACTION_TRAY_WIDTH = 184;
+const REACTION_TRAY_HEIGHT = 64;
 
-const NEAR_BOTTOM_PX = 24;
-const READ_RECEIPT_BOTTOM_PX = 14;
+function toGiftedMessage(
+  message: BrandedLeaderboardBroadcastUiMessage,
+  currentUserId: string | null
+): IMessage {
+  const isMe = !!currentUserId && message.user_id === currentUserId && message.user_id !== VOLLEY_USER_ID;
+  const isVolley = message.user_id === VOLLEY_USER_ID || message.message_type === 'system';
+  const authorName = isMe ? 'You' : isVolley ? VOLLEY_NAME : message.user_name ?? 'Host';
 
-function dayKeyFromIso(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'unknown';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function labelForDayKey(key: string): string {
-  if (key === 'unknown') return '';
-  const now = new Date();
-  const todayKey = dayKeyFromIso(now.toISOString());
-  const yest = new Date(now);
-  yest.setDate(now.getDate() - 1);
-  const yesterdayKey = dayKeyFromIso(yest.toISOString());
-
-  if (key === todayKey) return 'Today';
-  if (key === yesterdayKey) return 'Yesterday';
-
-  const d = new Date(`${key}T12:00:00`);
-  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-function prevMessage(items: BroadcastListItem[], index: number) {
-  for (let i = index - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item?.type === 'message') return item.message;
-  }
-  return null;
-}
-
-function nextMessage(items: BroadcastListItem[], index: number) {
-  for (let i = index + 1; i < items.length; i += 1) {
-    const item = items[i];
-    if (item?.type === 'message') return item.message;
-  }
-  return null;
-}
-
-function toBubbleMessage(message: BrandedLeaderboardBroadcastUiMessage): LeagueChatMessage {
   return {
-    id: message.id,
-    league_id: message.leaderboard_id,
-    user_id: message.user_id,
-    content: message.content,
-    created_at: message.created_at,
-    reply_to_message_id: null,
-    reply_to: null,
+    _id: message.id,
+    text: message.content ?? '',
+    createdAt: new Date(message.created_at),
+    user: {
+      _id: message.user_id,
+      name: authorName,
+      ...(message.user_avatar_url ? { avatar: message.user_avatar_url } : {}),
+    },
     status: message.status,
   };
+}
+
+function BroadcastInputToolbar({
+  insetsBottom,
+  ...props
+}: any & {
+  insetsBottom: number;
+}) {
+  const t = useTokens();
+  const { progress } = useReanimatedKeyboardAnimation();
+
+  const wrapperStyle = useAnimatedStyle(() => {
+    const p = progress.value;
+    return { paddingBottom: p > 0.02 ? 12 : Math.max(16, insetsBottom) };
+  }, [insetsBottom]);
+
+  const text = typeof props.text === 'string' ? props.text : '';
+  const trimmed = text.trim();
+
+  return (
+    <Reanimated.View style={[{ backgroundColor: t.color.background }, wrapperStyle]}>
+      <View
+        style={{
+          borderTopWidth: 0,
+          backgroundColor: t.color.background,
+          paddingTop: 8,
+          paddingBottom: 0,
+          paddingHorizontal: 8,
+          shadowColor: '#000000',
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: -3 },
+          elevation: 6,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+          <TextInput
+            value={text}
+            onChangeText={props.textInputProps?.onChangeText}
+            ref={props.textInputProps?.ref}
+            placeholder="Message..."
+            placeholderTextColor={t.color.muted}
+            selectionColor={t.color.brand}
+            multiline
+            style={{
+              flex: 1,
+              minHeight: 50,
+              maxHeight: 120,
+              color: t.color.text,
+              backgroundColor: t.color.surface,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: t.color.border,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: 12,
+              fontSize: 16,
+              lineHeight: 22,
+            }}
+          />
+          {trimmed ? (
+            <Pressable
+              onPress={() => props.onSend?.({ text: trimmed }, true)}
+              accessibilityRole="button"
+              accessibilityLabel="Send"
+              style={({ pressed }) => ({
+                width: 36,
+                height: 36,
+                marginLeft: 8,
+                marginBottom: 4,
+                borderRadius: 18,
+                backgroundColor: t.color.brand,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.9 : 1,
+              })}
+            >
+              <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </Reanimated.View>
+  );
+}
+
+function formatDayLabel(input: Date | number | string | undefined) {
+  if (!input) return '';
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((today - dateOnly) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function isSameDaySafe(a: Date | number | string | undefined, b: Date | number | string | undefined) {
+  if (!a || !b) return false;
+  const da = a instanceof Date ? a : new Date(a);
+  const db = b instanceof Date ? b : new Date(b);
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false;
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+function shouldShowIncomingUsername(props: any) {
+  if (props?.position !== 'left') return false;
+  const currentId = props?.currentMessage?.user?._id;
+  if (!currentId) return false;
+  const previousId = props?.previousMessage?.user?._id;
+  if (!previousId) return true;
+  if (previousId !== currentId) return true;
+  return !isSameDaySafe(props?.currentMessage?.createdAt, props?.previousMessage?.createdAt);
+}
+
+function formatReactionCount(count: number) {
+  return count > 99 ? '99+' : String(count);
 }
 
 export default function BrandedLeaderboardBroadcastTab({
@@ -81,6 +173,7 @@ export default function BrandedLeaderboardBroadcastTab({
   error,
   onSend,
   setLastReadAt,
+  keyboardVerticalOffset = 0,
 }: {
   leaderboardId: string;
   currentUserId: string | null;
@@ -91,31 +184,45 @@ export default function BrandedLeaderboardBroadcastTab({
   error: string | null;
   onSend: (content: string) => Promise<void>;
   setLastReadAt: (lastReadAt: string | null) => void;
+  keyboardVerticalOffset?: number;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
-  const keyboardVisible = useKeyboardState((state) => state.isVisible);
-  const composerBottomInset = keyboardVisible ? 0 : Math.max(8, insets.bottom);
-  const [draft, setDraft] = React.useState('');
+  const { width: windowWidth } = useWindowDimensions();
   const [sending, setSending] = React.useState(false);
-  const [composerHeight, setComposerHeight] = React.useState(0);
+  const [trayState, setTrayState] = React.useState<{
+    messageId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const lastReadMarkedAtRef = React.useRef<string | null>(null);
-  const atBottomRef = React.useRef(true);
-  const listRef = React.useRef<FlatList<BroadcastListItem> | null>(null);
-  const composerClearance = canPost ? Math.max(composerHeight, 52 + composerBottomInset) : Math.max(24, insets.bottom + 16);
   const { markAsRead } = useBrandedLeaderboardBroadcastReadReceipts({
     leaderboardId,
     userId: currentUserId,
     enabled: visible,
   });
+  const messageTypeById = React.useMemo(
+    () =>
+      new Map(messages.map((message) => [String(message.id), message.message_type])),
+    [messages]
+  );
+  const { reactions, toggleReaction, isReactionPending } = useBrandedLeaderboardBroadcastReactions({
+    leaderboardId,
+    messages,
+    userId: currentUserId,
+    enabled: visible,
+  });
 
-  const scrollToBottomAfterLayout = React.useCallback((animated = true) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToEnd({ animated });
-      });
-    });
-  }, []);
+  const giftedMessages = React.useMemo(() => {
+    return [...messages]
+      .sort((a, b) => {
+        const at = new Date(a.created_at).getTime();
+        const bt = new Date(b.created_at).getTime();
+        if (at === bt) return b.id.localeCompare(a.id);
+        return bt - at;
+      })
+      .map((message) => toGiftedMessage(message, currentUserId));
+  }, [currentUserId, messages]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -127,37 +234,45 @@ export default function BrandedLeaderboardBroadcastTab({
     lastReadMarkedAtRef.current = newest;
   }, [markAsRead, messages, setLastReadAt, visible]);
 
-  React.useEffect(() => {
-    if (!visible || !atBottomRef.current) return;
-    scrollToBottomAfterLayout(false);
-  }, [composerClearance, scrollToBottomAfterLayout, visible]);
+  const openReactionTray = React.useCallback(
+    (messageId: string, pageX: number, pageY: number) => {
+      const nextX = Math.min(
+        Math.max(12, Math.round(pageX - REACTION_TRAY_WIDTH / 2)),
+        Math.max(12, windowWidth - REACTION_TRAY_WIDTH - 12)
+      );
+      const nextY = Math.max(
+        insets.top + 12,
+        Math.round(pageY - REACTION_TRAY_HEIGHT - 20)
+      );
+      setTrayState({ messageId, x: nextX, y: nextY });
+    },
+    [insets.top, windowWidth]
+  );
 
-  const listItems: BroadcastListItem[] = React.useMemo(() => {
-    const items: BroadcastListItem[] = [];
-    let lastDayKey: string | null = null;
-    for (const message of messages) {
-      const currentDayKey = dayKeyFromIso(message.created_at);
-      if (currentDayKey !== lastDayKey) {
-        items.push({ type: 'day', key: `day-${currentDayKey}`, label: labelForDayKey(currentDayKey) });
-        lastDayKey = currentDayKey;
+  const handleToggleReaction = React.useCallback(
+    async (messageId: string, emoji: string) => {
+      await toggleReaction(messageId, emoji);
+      setTrayState((prev) => (prev?.messageId === messageId ? null : prev));
+    },
+    [toggleReaction]
+  );
+
+  const handleSend = React.useCallback(
+    async (newMsgs: IMessage[] = []) => {
+      const first = newMsgs[0];
+      const text = String(first?.text ?? '').trim();
+      if (!text) return;
+      setSending(true);
+      try {
+        await onSend(text);
+        const newest = new Date().toISOString();
+        setLastReadAt(newest);
+      } finally {
+        setSending(false);
       }
-      items.push({ type: 'message', message });
-    }
-    return items;
-  }, [messages]);
-
-  const handleSend = React.useCallback(async () => {
-    const text = draft.trim();
-    if (!text) return;
-    setDraft('');
-    setSending(true);
-    try {
-      await onSend(text);
-      scrollToBottomAfterLayout(false);
-    } finally {
-      setSending(false);
-    }
-  }, [draft, onSend, scrollToBottomAfterLayout]);
+    },
+    [onSend, setLastReadAt]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: t.color.background }}>
@@ -171,139 +286,367 @@ export default function BrandedLeaderboardBroadcastTab({
       ) : null}
 
       <View style={{ flex: 1 }}>
-        <FlatList
-          ref={(node) => {
-            listRef.current = node;
+        <GiftedChat
+          messages={giftedMessages}
+          onSend={handleSend}
+          user={{ _id: currentUserId ?? 'anon', name: 'You' }}
+          textInputProps={{
+            placeholder: 'Message…',
+            placeholderTextColor: t.color.muted,
+            selectionColor: t.color.brand,
           }}
-          data={listItems}
-          keyExtractor={(item) => (item.type === 'message' ? item.message.id : item.key)}
-          style={{ flex: 1, backgroundColor: t.color.background }}
-          onScrollToIndexFailed={() => {
-            requestAnimationFrame(() => {
-              listRef.current?.scrollToEnd({ animated: false });
-            });
-          }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: 'flex-end',
-            paddingBottom: composerClearance + 4,
-          }}
-          scrollIndicatorInsets={{ bottom: composerClearance }}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          onScroll={(e) => {
-            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-            const distanceFromBottom = Math.max(0, contentSize.height - (contentOffset.y + layoutMeasurement.height));
-            const nearBottom = distanceFromBottom <= NEAR_BOTTOM_PX;
-            atBottomRef.current = nearBottom;
-
-            if (visible && nearBottom && distanceFromBottom <= READ_RECEIPT_BOTTOM_PX) {
-              const newest = messages[messages.length - 1]?.created_at ?? null;
-              if (newest && newest !== lastReadMarkedAtRef.current) {
-                setLastReadAt(newest);
-                void markAsRead({ lastReadAtOverride: newest });
-                lastReadMarkedAtRef.current = newest;
-              }
-            }
-          }}
-          scrollEventThrottle={16}
-          ListHeaderComponent={
-            <View style={{ paddingHorizontal: 8, paddingTop: 12 }}>
-              {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-            </View>
-          }
-          renderItem={({ item, index }) => {
-            if (item.type === 'day') {
-              if (!item.label) return <View style={{ height: 10 }} />;
-              return (
-                <View style={{ alignItems: 'center', marginVertical: 10 }}>
-                  <View
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      backgroundColor: 'rgba(148,163,184,0.18)',
-                    }}
-                  >
-                    <TotlText style={{ fontFamily: 'System', fontSize: 12, lineHeight: 14, color: 'rgba(15,23,42,0.55)' }}>
-                      {item.label}
+          messagesContainerStyle={{ backgroundColor: t.color.background }}
+          renderBubble={(props: any) => (
+            <Bubble
+              {...props}
+              isUsernameVisible={shouldShowIncomingUsername(props)}
+              renderUsername={() => null}
+              wrapperStyle={{
+                left: {
+                  backgroundColor: t.color.surface,
+                  borderWidth: 0,
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: 10,
+                },
+                right: {
+                  backgroundColor: t.color.brand,
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: 10,
+                },
+              }}
+              textStyle={{
+                left: { color: t.color.text },
+                right: { color: '#FFFFFF' },
+              }}
+              renderMessageText={(messageProps: any) => {
+                const user = messageProps?.currentMessage?.user;
+                const showUsername =
+                  messageProps?.position === 'left' && shouldShowIncomingUsername(messageProps);
+                return (
+                  <View>
+                    {showUsername && user ? (
+                      <TotlText
+                        style={{
+                          marginBottom: 4,
+                          fontSize: 13,
+                          lineHeight: 16,
+                          fontFamily: t.font.medium,
+                          color: 'rgba(15,23,42,0.45)',
+                        }}
+                      >
+                        {user._id === VOLLEY_USER_ID ? VOLLEY_NAME : String(user.name ?? '')}
+                      </TotlText>
+                    ) : null}
+                    <TotlText
+                      style={{
+                        fontFamily: 'System',
+                        fontSize: 16,
+                        lineHeight: 20,
+                        color:
+                          messageProps?.position === 'right' ? '#FFFFFF' : t.color.text,
+                      }}
+                    >
+                      {String(messageProps?.currentMessage?.text ?? '')}
                     </TotlText>
                   </View>
-                </View>
-              );
-            }
+                );
+              }}
+              timeTextStyle={{
+                left: { color: 'rgba(15,23,42,0.45)' },
+                right: { color: 'rgba(255,255,255,0.75)' },
+              }}
+            />
+          )}
+          isCustomViewBottom
+          renderCustomView={(props: any) => {
+            const messageId = String(props?.currentMessage?._id ?? '');
+            if (!messageId) return null;
+            if (messageTypeById.get(messageId) === 'system') return null;
 
-            const message = item.message;
-            const bubbleMessage = toBubbleMessage(message);
-            const isVolley = message.user_id === VOLLEY_USER_ID || message.message_type === 'system';
-            const isMe = !!currentUserId && message.user_id === currentUserId && !isVolley;
-            const authorName = isMe ? 'You' : isVolley ? VOLLEY_NAME : message.user_name ?? 'Host';
-            const avatarUri = !isMe && !isVolley ? message.user_avatar_url ?? null : null;
-
-            const previous = prevMessage(listItems, index);
-            const next = nextMessage(listItems, index);
-            const previousSender = previous?.message_type === 'system' ? VOLLEY_USER_ID : previous?.user_id ?? null;
-            const currentSender = isVolley ? VOLLEY_USER_ID : message.user_id;
-            const nextSender = next?.message_type === 'system' ? VOLLEY_USER_ID : next?.user_id ?? null;
-            const sameAsPrev = previousSender === currentSender;
-            const sameAsNext = nextSender === currentSender;
-            const speakerChanged = !!previous && previousSender !== currentSender;
-
+            const list = reactions[messageId] ?? [];
+            const isRight = props?.position === 'right';
             return (
-              <ChatMessageBubble
-                message={bubbleMessage}
-                isMe={isMe}
-                authorName={authorName}
-                avatarLabel={authorName}
-                avatarUri={isVolley ? null : avatarUri}
-                showAvatar={!isMe && !sameAsPrev}
-                showAuthorName={!isMe && !sameAsNext}
-                topSpacing={sameAsPrev ? 2 : speakerChanged ? 14 : 10}
-              />
+              <View
+                style={{
+                  marginTop: 8,
+                  alignItems: isRight ? 'flex-end' : 'flex-start',
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {DEFAULT_VISIBLE_REACTION_EMOJIS.map((emoji) => {
+                    const reaction = list.find((item) => item.emoji === emoji);
+                    const hasUserReacted = reaction?.hasUserReacted ?? false;
+                    const count = reaction?.count ?? 0;
+                    const isPending = isReactionPending(messageId, emoji);
+                    return (
+                      <Pressable
+                        key={emoji}
+                        disabled={isPending}
+                        onPress={() => {
+                          void handleToggleReaction(messageId, emoji);
+                        }}
+                        style={({ pressed }) => ({
+                          minHeight: 32,
+                          paddingLeft: 10,
+                          paddingRight: count > 0 ? 12 : 10,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderWidth: 1,
+                          borderColor: hasUserReacted
+                            ? 'rgba(28,131,118,0.22)'
+                            : 'rgba(15,23,42,0.10)',
+                          backgroundColor: hasUserReacted
+                            ? 'rgba(28,131,118,0.16)'
+                            : isRight
+                              ? 'rgba(255,255,255,0.14)'
+                              : 'rgba(255,255,255,0.92)',
+                          marginRight: 6,
+                          marginBottom: 4,
+                          opacity: isPending ? 0.55 : pressed ? 0.92 : 1,
+                        })}
+                      >
+                        <TotlText style={{ fontSize: 16, lineHeight: 20 }}>{emoji}</TotlText>
+                        {count > 0 ? (
+                          <TotlText
+                            style={{
+                              marginLeft: 6,
+                              fontFamily: 'System',
+                              fontSize: 12,
+                              lineHeight: 14,
+                              color: isRight
+                                ? hasUserReacted
+                                  ? 'rgba(255,255,255,0.95)'
+                                  : 'rgba(255,255,255,0.88)'
+                                : 'rgba(15,23,42,0.55)',
+                            }}
+                          >
+                            {formatReactionCount(count)}
+                          </TotlText>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    onPress={(event) =>
+                      openReactionTray(
+                        messageId,
+                        event.nativeEvent.pageX,
+                        event.nativeEvent.pageY
+                      )
+                    }
+                    style={({ pressed }) => ({
+                      minHeight: 32,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 999,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      borderWidth: 1,
+                      borderColor: 'rgba(15,23,42,0.10)',
+                      backgroundColor: isRight
+                        ? 'rgba(255,255,255,0.14)'
+                        : 'rgba(15,23,42,0.06)',
+                      marginBottom: 4,
+                      opacity: pressed ? 0.92 : 1,
+                    })}
+                  >
+                    <>
+                      <Ionicons
+                        name="happy-outline"
+                        size={16}
+                        color={isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)'}
+                      />
+                      <TotlText
+                        style={{
+                          marginLeft: 6,
+                          fontFamily: 'System',
+                          fontSize: 12,
+                          lineHeight: 14,
+                          color: isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)',
+                        }}
+                      >
+                        More
+                      </TotlText>
+                    </>
+                  </Pressable>
+                </View>
+              </View>
             );
           }}
-        />
-
-        {canPost ? (
-          <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-            <View
-              style={{ borderTopWidth: 1, borderTopColor: t.color.border, backgroundColor: t.color.background }}
-              onLayout={(e) => {
-                const height = Math.round(e.nativeEvent.layout.height);
-                if (height > 0 && height !== composerHeight) setComposerHeight(height);
-              }}
-            >
-              <ChatComposer
-                value={draft}
-                onChange={setDraft}
-                onSend={handleSend}
-                sending={sending}
-                bottomInset={composerBottomInset}
-                onInputFocus={() => {
-                  atBottomRef.current = true;
-                  scrollToBottomAfterLayout(false);
+          renderComposer={(props: any) => (
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Composer
+                {...props}
+                composerHeight={50}
+                textInputProps={{
+                  ...(props.textInputProps ?? {}),
+                  placeholderTextColor: t.color.muted,
+                  selectionColor: t.color.brand,
+                  style: {
+                    color: t.color.text,
+                    backgroundColor: t.color.surface,
+                    borderRadius: 24,
+                    borderWidth: 1,
+                    borderColor: t.color.border,
+                    minHeight: 50,
+                    lineHeight: 22,
+                    textAlignVertical: 'center',
+                    paddingHorizontal: 16,
+                    paddingTop: 12,
+                    paddingBottom: 12,
+                    marginLeft: 0,
+                    marginRight: 0,
+                    maxHeight: 120,
+                  },
                 }}
-                onInputBlur={() => Keyboard.dismiss()}
-                replyPreview={null}
-                onCancelReply={() => {}}
               />
             </View>
-          </KeyboardStickyView>
-        ) : (
-          <View
-            style={{
-              paddingHorizontal: 16,
-              paddingVertical: 14,
-              paddingBottom: Math.max(14, insets.bottom + 8),
-              borderTopWidth: 1,
-              borderTopColor: t.color.border,
-              backgroundColor: t.color.background,
-            }}
-          >
-            <TotlText variant="muted">Only hosts can post here. Subscribers can read broadcast updates.</TotlText>
-          </View>
-        )}
+          )}
+          renderDay={(props: any) => {
+            const label = formatDayLabel(props?.currentMessage?.createdAt);
+            if (!label) return null;
+            return (
+              <View style={{ alignItems: 'center', marginVertical: 8 }}>
+                <View
+                  style={{
+                    backgroundColor: 'rgba(15,23,42,0.12)',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                  }}
+                >
+                  <TotlText
+                    style={{
+                      fontSize: 12,
+                      lineHeight: 14,
+                      fontFamily: t.font.medium,
+                      color: 'rgba(15,23,42,0.70)',
+                    }}
+                  >
+                    {label}
+                  </TotlText>
+                </View>
+              </View>
+            );
+          }}
+          listProps={{
+            style: { backgroundColor: t.color.background },
+            contentContainerStyle: { paddingBottom: 0 },
+          }}
+          keyboardAvoidingViewProps={{
+            keyboardVerticalOffset,
+            behavior: 'padding' as any,
+          }}
+          keyboardProviderProps={{ preload: false }}
+          renderInputToolbar={(props: any) =>
+            canPost ? (
+              <BroadcastInputToolbar {...props} insetsBottom={insets.bottom} sending={sending} />
+            ) : null
+          }
+          keyboardShouldPersistTaps="handled"
+        />
       </View>
+
+      {!canPost ? (
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+            paddingBottom: Math.max(14, insets.bottom + 8),
+            borderTopWidth: 1,
+            borderTopColor: t.color.border,
+            backgroundColor: t.color.background,
+          }}
+        >
+          <TotlText variant="muted">
+            Only hosts can post here. Subscribers can read broadcast updates.
+          </TotlText>
+        </View>
+      ) : null}
+
+      {isLoading && giftedMessages.length === 0 ? (
+        <View style={{ position: 'absolute', top: 12, left: 16 }}>
+          <TotlText variant="muted">Loading…</TotlText>
+        </View>
+      ) : null}
+
+      <Modal
+        transparent
+        visible={!!trayState}
+        animationType="fade"
+        onRequestClose={() => setTrayState(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'transparent' }}
+          onPress={() => setTrayState(null)}
+        >
+          {trayState ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: trayState.y,
+                left: trayState.x,
+                width: REACTION_TRAY_WIDTH,
+                minHeight: REACTION_TRAY_HEIGHT,
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                backgroundColor: 'rgba(33,33,33,0.94)',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                shadowColor: '#000000',
+                shadowOpacity: 0.22,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 12,
+              }}
+            >
+              {EXTRA_REACTION_EMOJIS.map((emoji) => {
+                const hasUserReacted =
+                  (reactions[trayState.messageId] ?? []).find(
+                    (reaction) => reaction.emoji === emoji
+                  )?.hasUserReacted ?? false;
+                const isPending = isReactionPending(trayState.messageId, emoji);
+                return (
+                  <Pressable
+                    key={emoji}
+                    disabled={isPending}
+                    onPress={() => {
+                      void handleToggleReaction(trayState.messageId, emoji);
+                    }}
+                    style={({ pressed }) => ({
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: hasUserReacted
+                        ? 'rgba(28,131,118,0.26)'
+                        : pressed
+                          ? 'rgba(255,255,255,0.08)'
+                          : 'transparent',
+                      opacity: isPending ? 0.55 : 1,
+                    })}
+                  >
+                    <TotlText style={{ fontSize: 24, lineHeight: 26 }}>{emoji}</TotlText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </Pressable>
+      </Modal>
     </View>
   );
 }

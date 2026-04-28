@@ -243,6 +243,13 @@ export const BrandedLeaderboardDetailSchema = z.object({
     canPostBroadcast: z.boolean().default(false),
     broadcastUnreadCount: z.number().int().nonnegative().default(0),
 });
+export const BRANDED_BROADCAST_REACTION_EMOJIS = ['👍', '🔥', '👏', '🙌', '😮', '😬', '👎'];
+export const BrandedBroadcastReactionEmojiSchema = z.enum(BRANDED_BROADCAST_REACTION_EMOJIS);
+export const BrandedBroadcastReactionSummarySchema = z.object({
+    emoji: BrandedBroadcastReactionEmojiSchema,
+    count: z.number().int().nonnegative(),
+    hasUserReacted: z.boolean(),
+});
 export const BrandedLeaderboardBroadcastMessageSchema = z.object({
     id: z.string(),
     leaderboard_id: z.string(),
@@ -253,10 +260,15 @@ export const BrandedLeaderboardBroadcastMessageSchema = z.object({
     created_at: z.string(),
     user_name: z.string().nullable().optional(),
     user_avatar_url: z.string().nullable().optional(),
+    reactions: z.array(BrandedBroadcastReactionSummarySchema).default([]),
 });
 export const BrandedLeaderboardBroadcastMessagesSchema = z.object({
     messages: z.array(BrandedLeaderboardBroadcastMessageSchema),
     lastReadAt: z.string().nullable(),
+});
+export const BrandedLeaderboardBroadcastReactionToggleResponseSchema = z.object({
+    messageId: z.string(),
+    reactions: z.array(BrandedBroadcastReactionSummarySchema),
 });
 export const BrandedLeaderboardStandingsRowSchema = z.object({
     rank: z.number().int().positive(),
@@ -275,6 +287,7 @@ export const BrandedLeaderboardMyItemSchema = z.object({
     leaderboard: BrandedLeaderboardSchema,
     membership: BrandedLeaderboardMembershipSchema,
     subscription: BrandedLeaderboardSubscriptionSchema.nullable(),
+    canPostBroadcast: z.boolean().default(false),
 });
 export const BrandedLeaderboardManageItemSchema = z.object({
     leaderboard: BrandedLeaderboardSchema,

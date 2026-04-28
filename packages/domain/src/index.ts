@@ -292,6 +292,17 @@ export const BrandedLeaderboardDetailSchema = z.object({
 });
 export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
 
+export const BRANDED_BROADCAST_REACTION_EMOJIS = ['👍', '🔥', '👏', '🙌', '😮', '😬', '👎'] as const;
+export const BrandedBroadcastReactionEmojiSchema = z.enum(BRANDED_BROADCAST_REACTION_EMOJIS);
+export type BrandedBroadcastReactionEmoji = z.infer<typeof BrandedBroadcastReactionEmojiSchema>;
+
+export const BrandedBroadcastReactionSummarySchema = z.object({
+  emoji: BrandedBroadcastReactionEmojiSchema,
+  count: z.number().int().nonnegative(),
+  hasUserReacted: z.boolean(),
+});
+export type BrandedBroadcastReactionSummary = z.infer<typeof BrandedBroadcastReactionSummarySchema>;
+
 export const BrandedLeaderboardBroadcastMessageSchema = z.object({
   id: z.string(),
   leaderboard_id: z.string(),
@@ -302,6 +313,7 @@ export const BrandedLeaderboardBroadcastMessageSchema = z.object({
   created_at: z.string(),
   user_name: z.string().nullable().optional(),
   user_avatar_url: z.string().nullable().optional(),
+  reactions: z.array(BrandedBroadcastReactionSummarySchema).default([]),
 });
 export type BrandedLeaderboardBroadcastMessage = z.infer<typeof BrandedLeaderboardBroadcastMessageSchema>;
 
@@ -310,6 +322,14 @@ export const BrandedLeaderboardBroadcastMessagesSchema = z.object({
   lastReadAt: z.string().nullable(),
 });
 export type BrandedLeaderboardBroadcastMessages = z.infer<typeof BrandedLeaderboardBroadcastMessagesSchema>;
+
+export const BrandedLeaderboardBroadcastReactionToggleResponseSchema = z.object({
+  messageId: z.string(),
+  reactions: z.array(BrandedBroadcastReactionSummarySchema),
+});
+export type BrandedLeaderboardBroadcastReactionToggleResponse = z.infer<
+  typeof BrandedLeaderboardBroadcastReactionToggleResponseSchema
+>;
 
 export const BrandedLeaderboardStandingsRowSchema = z.object({
   rank: z.number().int().positive(),

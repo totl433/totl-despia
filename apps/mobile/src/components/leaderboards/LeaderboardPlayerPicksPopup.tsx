@@ -48,6 +48,38 @@ function toMap<T>(input: unknown): Map<number, T> {
   return new Map<number, T>();
 }
 
+function toStringKeyMap<T>(input: unknown): Map<string, T> {
+  if (input instanceof Map) {
+    const out = new Map<string, T>();
+    input.forEach((v, k) => out.set(String(k), v as T));
+    return out;
+  }
+  if (Array.isArray(input)) {
+    const out = new Map<string, T>();
+    input.forEach((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return;
+      out.set(String(entry[0]), entry[1] as T);
+    });
+    return out;
+  }
+  if (input && typeof input === 'object') {
+    const out = new Map<string, T>();
+    Object.entries(input as Record<string, unknown>).forEach(([k, v]) => out.set(k, v as T));
+    return out;
+  }
+  return new Map<string, T>();
+}
+
+function isLightSurface(hex: string): boolean {
+  const clean = hex.replace('#', '').trim();
+  if (clean.length !== 6) return true;
+  const red = parseInt(clean.slice(0, 2), 16);
+  const green = parseInt(clean.slice(2, 4), 16);
+  const blue = parseInt(clean.slice(4, 6), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.72;
+}
+
 type ProfileRow = { id: string; name: string; avatar_url: string | null; avatar_bg_color: string | null };
 
 function initial1(name: string): string {
@@ -171,6 +203,10 @@ function derivedOutcomeFromLive(live: { home: number | null; away: number | null
   return live.home > live.away ? 'H' : live.home < live.away ? 'A' : 'D';
 }
 
+function isPickValue(value: unknown): value is Pick {
+  return value === 'H' || value === 'D' || value === 'A';
+}
+
 function parseUpdatedAtMs(updatedAt: unknown): number | null {
   if (typeof updatedAt !== 'string' || !updatedAt) return null;
   const ms = new Date(updatedAt).getTime();
@@ -224,8 +260,18 @@ export default function LeaderboardPlayerPicksPopup({
   currentUserAvatarUrl?: string | null;
 }) {
   const t = useTokens();
+  const isDarkMode = !isLightSurface(t.color.background);
+  const cardBg = isDarkMode ? '#1F2937' : '#FFFFFF';
+  const rowEvenBg = isDarkMode ? 'rgba(255,255,255,0.055)' : '#F5F7FA';
+  const rowOddBg = isDarkMode ? 'rgba(255,255,255,0.015)' : '#FFFFFF';
+  const primaryText = isDarkMode ? '#F8FAFC' : '#0F172A';
+  const secondaryText = isDarkMode ? '#CBD5E1' : '#64748B';
+  const separatorText = isDarkMode ? '#CBD5E1' : '#334155';
+  const closeButtonBg = isDarkMode ? 'rgba(255,255,255,0.10)' : 'rgba(15,23,42,0.05)';
+  const backdropBg = isDarkMode ? 'rgba(0,0,0,0.82)' : 'rgba(2,6,23,0.7)';
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  const showCompareMode = !!(currentUserId && opponentUserId && String(currentUserId) !== String(opponentUserId));
 
   const cardWidth = Math.min(width - 40, 336);
   const frontMinuteColWidth = 28;
@@ -233,16 +279,18 @@ export default function LeaderboardPlayerPicksPopup({
   const frontTeamBlockWidth = 58;
   const frontSideColWidth = Math.max(96, Math.floor((cardWidth - 24 - frontCenterColWidth) / 2));
   const h2hScoreColWidth = 92;
+  const compareHintHeight = 34;
   const viewportCardLimit = height - insets.top - insets.bottom - 72;
-  const cardMaxHeight = Math.min(Math.max(Math.round(height * 0.70), 506), Math.min(616, viewportCardLimit));
+  const cardMaxHeight = Math.min(
+    Math.max(Math.round(height * 0.70), 506),
+    Math.min(616, viewportCardLimit - (showCompareMode ? compareHintHeight : 0))
+  );
   const closeButtonTop = 14;
   const closeButtonRight = 16;
   const closeButtonSize = 36;
   const closeButtonHitSlop = 12;
   const flipDeg = useSharedValue(0);
   const [isFlipped, setIsFlipped] = React.useState(false);
-
-  const showCompareMode = !!(currentUserId && opponentUserId && String(currentUserId) !== String(opponentUserId));
 
   React.useEffect(() => {
     if (!open) {
@@ -331,9 +379,14 @@ export default function LeaderboardPlayerPicksPopup({
 
   const normalized = React.useMemo(() => {
     const fixtures = Array.isArray(data?.fixtures) ? data.fixtures : [];
+    const rawPicksByUser = toStringKeyMap<Map<number, Pick>>(data?.picksByUserAndFixture);
+    const picksByUserAndFixture = new Map<string, Map<number, Pick>>();
+    rawPicksByUser.forEach((fixturePicks, userId) => {
+      picksByUserAndFixture.set(userId, toMap<Pick>(fixturePicks));
+    });
     return {
       fixtures,
-      picksByUserAndFixture: data?.picksByUserAndFixture ?? new Map(),
+      picksByUserAndFixture,
       resultByFixture: toMap<Pick>(data?.resultByFixture),
       liveByFixture: toMap<{ home: number | null; away: number | null; status: string | null; minute: number | null; updated_at: string | null }>(
         data?.liveByFixture
@@ -502,7 +555,7 @@ export default function LeaderboardPlayerPicksPopup({
             right: 0,
             bottom: 0,
             left: 0,
-            backgroundColor: 'rgba(2,6,23,0.7)',
+            backgroundColor: backdropBg,
           }}
         />
 
@@ -530,7 +583,7 @@ export default function LeaderboardPlayerPicksPopup({
                   right: 0,
                   bottom: 0,
                   backfaceVisibility: 'hidden',
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: cardBg,
                   borderRadius: 28,
                   shadowColor: '#000000',
                   shadowOpacity: 0.24,
@@ -544,7 +597,7 @@ export default function LeaderboardPlayerPicksPopup({
                   <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 26 }}>
                     <TotlText
                       style={{
-                        color: '#0F172A',
+                        color: primaryText,
                         fontFamily: 'Gramatika-Bold',
                         fontWeight: '900',
                         fontSize: 20,
@@ -558,7 +611,7 @@ export default function LeaderboardPlayerPicksPopup({
                       <TotlText
                         style={{
                           textAlign: 'center',
-                          color: '#64748B',
+                          color: secondaryText,
                           fontFamily: t.font.body,
                           fontWeight: '500',
                           fontSize: 13,
@@ -582,7 +635,7 @@ export default function LeaderboardPlayerPicksPopup({
                     </View>
                   ) : isError ? (
                     <View style={{ flex: 1, minHeight: 160, paddingHorizontal: 16, justifyContent: 'center' }}>
-                      <TotlText style={{ textAlign: 'center', color: '#64748B', fontSize: 14 }}>
+                      <TotlText style={{ textAlign: 'center', color: secondaryText, fontSize: 14 }}>
                         {error instanceof Error ? error.message : 'Could not load picks.'}
                       </TotlText>
                     </View>
@@ -620,28 +673,40 @@ export default function LeaderboardPlayerPicksPopup({
                           <View
                             key={`front-${fixtureIndex}`}
                             style={{
-                              backgroundColor: index % 2 === 0 ? '#F5F7FA' : '#FFFFFF',
+                              backgroundColor: index % 2 === 0 ? rowEvenBg : rowOddBg,
                             }}
                           >
-                            <View style={{ paddingHorizontal: 12, paddingVertical: 7 }}>
+                            <View style={{ paddingHorizontal: 12, paddingVertical: 7, position: 'relative' }}>
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  left: 12,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: frontMinuteColWidth,
+                                  alignItems: 'flex-start',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {matchStateLabel ? (
+                                  <TotlText
+                                    variant="microMuted"
+                                    style={{
+                                      color: String(live?.status ?? '') === 'IN_PLAY' || String(live?.status ?? '') === 'PAUSED' ? primaryText : undefined,
+                                      fontFamily:
+                                        String(live?.status ?? '') === 'IN_PLAY' || String(live?.status ?? '') === 'PAUSED'
+                                          ? 'Gramatika-Bold'
+                                          : undefined,
+                                      fontWeight: String(live?.status ?? '') === 'IN_PLAY' || String(live?.status ?? '') === 'PAUSED' ? '800' : undefined,
+                                      fontSize: String(live?.status ?? '') === 'IN_PLAY' || String(live?.status ?? '') === 'PAUSED' ? 11 : 10,
+                                      lineHeight: String(live?.status ?? '') === 'IN_PLAY' || String(live?.status ?? '') === 'PAUSED' ? 13 : 12,
+                                    }}
+                                  >
+                                    {matchStateLabel}
+                                  </TotlText>
+                                ) : null}
+                              </View>
                               <View style={{ position: 'relative', minHeight: 22, justifyContent: 'center' }}>
-                                <View
-                                  style={{
-                                    position: 'absolute',
-                                    left: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: frontMinuteColWidth,
-                                    alignItems: 'flex-start',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                  {matchStateLabel ? (
-                                    <TotlText variant="microMuted" style={{ fontSize: 10, lineHeight: 12 }}>
-                                      {matchStateLabel}
-                                    </TotlText>
-                                  ) : null}
-                                </View>
                                 <View
                                   style={{
                                     position: 'absolute',
@@ -659,7 +724,7 @@ export default function LeaderboardPlayerPicksPopup({
                                       <TotlText
                                         numberOfLines={1}
                                         style={{
-                                          color: '#0F172A',
+                                          color: primaryText,
                                           fontSize: 12,
                                           lineHeight: 13,
                                           textAlign: 'right',
@@ -680,7 +745,7 @@ export default function LeaderboardPlayerPicksPopup({
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                       <TotlText
                                         style={{
-                                          color: '#0F172A',
+                                          color: primaryText,
                                           fontFamily: 'Gramatika-Medium',
                                           fontWeight: '700',
                                           fontSize: 16,
@@ -691,7 +756,7 @@ export default function LeaderboardPlayerPicksPopup({
                                       </TotlText>
                                       <TotlText
                                         style={{
-                                          color: '#334155',
+                                          color: separatorText,
                                           marginHorizontal: 4,
                                           fontFamily: 'Gramatika-Medium',
                                           fontWeight: '700',
@@ -703,7 +768,7 @@ export default function LeaderboardPlayerPicksPopup({
                                       </TotlText>
                                       <TotlText
                                         style={{
-                                          color: '#0F172A',
+                                          color: primaryText,
                                           fontFamily: 'Gramatika-Medium',
                                           fontWeight: '700',
                                           fontSize: 16,
@@ -737,7 +802,7 @@ export default function LeaderboardPlayerPicksPopup({
                                       <TotlText
                                         numberOfLines={1}
                                         style={{
-                                          color: '#0F172A',
+                                          color: primaryText,
                                           fontSize: 12,
                                           lineHeight: 13,
                                           fontWeight:
@@ -868,7 +933,7 @@ export default function LeaderboardPlayerPicksPopup({
                   right: 0,
                   bottom: 0,
                   backfaceVisibility: 'hidden',
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: cardBg,
                   borderRadius: 28,
                   shadowColor: '#000000',
                   shadowOpacity: 0.24,
@@ -922,7 +987,7 @@ export default function LeaderboardPlayerPicksPopup({
                               style={{
                                 width: 68,
                                 marginTop: 4,
-                                color: '#0F172A',
+                                color: primaryText,
                                 fontSize: 12,
                                 lineHeight: 13,
                                 textAlign: 'center',
@@ -936,7 +1001,7 @@ export default function LeaderboardPlayerPicksPopup({
                         <View style={{ width: h2hScoreColWidth, alignSelf: 'center', alignItems: 'center' }}>
                           <TotlText
                             style={{
-                              color: '#0F172A',
+                              color: primaryText,
                               fontFamily: 'Gramatika-Bold',
                               fontWeight: '900',
                               fontSize: 28,
@@ -947,7 +1012,7 @@ export default function LeaderboardPlayerPicksPopup({
                             {h2hSummary.meScore}
                             <TotlText
                               style={{
-                                color: '#0F172A',
+                                color: primaryText,
                                 fontFamily: t.font.body,
                                 fontWeight: '500',
                                 fontSize: 22,
@@ -979,7 +1044,7 @@ export default function LeaderboardPlayerPicksPopup({
                               style={{
                                 width: 68,
                                 marginTop: 4,
-                                color: '#0F172A',
+                                color: primaryText,
                                 fontSize: 12,
                                 lineHeight: 13,
                                 textAlign: 'center',
@@ -1013,7 +1078,7 @@ export default function LeaderboardPlayerPicksPopup({
                               style={{
                                 width: 68,
                                 marginTop: 4,
-                                color: '#0F172A',
+                                color: primaryText,
                                 fontSize: 12,
                                 lineHeight: 13,
                                 textAlign: 'center',
@@ -1028,7 +1093,7 @@ export default function LeaderboardPlayerPicksPopup({
                           <TotlText
                             style={{
                               textAlign: 'center',
-                              color: '#0F172A',
+                              color: primaryText,
                               fontFamily: t.font.body,
                               fontWeight: '500',
                               fontSize: 18,
@@ -1058,7 +1123,7 @@ export default function LeaderboardPlayerPicksPopup({
                               style={{
                                 width: 68,
                                 marginTop: 4,
-                                color: '#0F172A',
+                                color: primaryText,
                                 fontSize: 12,
                                 lineHeight: 13,
                                 textAlign: 'center',
@@ -1130,16 +1195,16 @@ export default function LeaderboardPlayerPicksPopup({
                           avatar_url: opponentAvatarUrlProp ?? null,
                           avatar_bg_color: null,
                         };
-                      if (meMarker && (mp === 'H' || mp === 'D' || mp === 'A')) bucketProfiles[mp].push(meMarker);
-                      if (op === 'H' || op === 'D' || op === 'A') bucketProfiles[op].push(oppMarker);
-                      if (meMarker && outcome && mp === outcome) bucketShinyIds[outcome].add(meMarker.id);
-                      if (outcome && op === outcome) bucketShinyIds[outcome].add(oppMarker.id);
+                      if (meMarker && isPickValue(mp)) bucketProfiles[mp].push(meMarker);
+                      if (isPickValue(op)) bucketProfiles[op].push(oppMarker);
+                      if (meMarker && outcome && isPickValue(mp) && mp === outcome) bucketShinyIds[outcome].add(meMarker.id);
+                      if (outcome && isPickValue(op) && op === outcome) bucketShinyIds[outcome].add(oppMarker.id);
 
                       return (
                         <View
                           key={`mevs-${fixtureIndex}`}
                           style={{
-                            backgroundColor: index % 2 === 0 ? '#F5F7FA' : '#FFFFFF',
+                            backgroundColor: index % 2 === 0 ? rowEvenBg : rowOddBg,
                           }}
                         >
                           <View style={{ paddingHorizontal: 12, paddingVertical: 5, position: 'relative' }}>
@@ -1182,7 +1247,7 @@ export default function LeaderboardPlayerPicksPopup({
                                 ) : (
                                   <TotlText
                                     style={{
-                                      color: '#64748B',
+                                      color: secondaryText,
                                       fontFamily: 'Gramatika-Bold',
                                       fontWeight: '800',
                                       fontSize: 10,
@@ -1212,7 +1277,7 @@ export default function LeaderboardPlayerPicksPopup({
                                     <TotlText
                                       numberOfLines={1}
                                       style={{
-                                        color: '#0F172A',
+                                        color: primaryText,
                                         fontFamily: outcome === 'H' ? 'Gramatika-Bold' : t.font.body,
                                         fontSize: 12,
                                         lineHeight: 13,
@@ -1230,7 +1295,7 @@ export default function LeaderboardPlayerPicksPopup({
                                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <TotlText
                                       style={{
-                                        color: '#0F172A',
+                                        color: primaryText,
                                         fontFamily: 'Gramatika-Medium',
                                         fontWeight: '700',
                                         fontSize: 16,
@@ -1241,7 +1306,7 @@ export default function LeaderboardPlayerPicksPopup({
                                     </TotlText>
                                     <TotlText
                                       style={{
-                                        color: '#334155',
+                                        color: separatorText,
                                         marginHorizontal: 4,
                                         fontFamily: 'Gramatika-Medium',
                                         fontWeight: '700',
@@ -1253,7 +1318,7 @@ export default function LeaderboardPlayerPicksPopup({
                                     </TotlText>
                                     <TotlText
                                       style={{
-                                        color: '#0F172A',
+                                        color: primaryText,
                                         fontFamily: 'Gramatika-Medium',
                                         fontWeight: '700',
                                         fontSize: 16,
@@ -1286,7 +1351,7 @@ export default function LeaderboardPlayerPicksPopup({
                                     <TotlText
                                       numberOfLines={1}
                                       style={{
-                                        color: '#0F172A',
+                                        color: primaryText,
                                         fontFamily: outcome === 'A' ? 'Gramatika-Bold' : t.font.body,
                                         fontSize: 12,
                                         lineHeight: 13,
@@ -1398,11 +1463,11 @@ export default function LeaderboardPlayerPicksPopup({
                       borderRadius: closeButtonSize / 2,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: 'rgba(15,23,42,0.05)',
+                      backgroundColor: closeButtonBg,
                       opacity: pressed ? 0.75 : 1,
                     })}
                   >
-                    <Ionicons name="close" size={20} color="#0F172A" />
+                    <Ionicons name="close" size={20} color={primaryText} />
                   </Pressable>
                 </View>
               </Animated.View>
@@ -1436,33 +1501,41 @@ export default function LeaderboardPlayerPicksPopup({
                       borderRadius: closeButtonSize / 2,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: 'rgba(15,23,42,0.05)',
+                      backgroundColor: closeButtonBg,
                       opacity: pressed ? 0.75 : 1,
                     })}
                   >
-                    <Ionicons name="close" size={20} color="#0F172A" />
+                    <Ionicons name="close" size={20} color={primaryText} />
                   </Pressable>
                 </View>
               </Animated.View>
             </View>
 
-            {showCompareMode && !isFlipped ? (
-              <TotlText
+            {showCompareMode ? (
+              <View
                 pointerEvents="none"
                 style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: cardMaxHeight + 8,
-                  textAlign: 'center',
-                  fontFamily: 'Gramatika-Medium',
-                  fontWeight: '600',
-                  fontSize: 14,
-                  color: 'rgba(226,232,240,0.95)',
+                  height: compareHintHeight,
+                  paddingTop: 12,
+                  justifyContent: 'flex-start',
+                  zIndex: 10,
+                  elevation: 13,
                 }}
               >
-                TAP TO SEE HEAD TO HEAD
-              </TotlText>
+                <TotlText
+                  style={{
+                    textAlign: 'center',
+                    fontFamily: 'Gramatika-Medium',
+                    fontWeight: '600',
+                    fontSize: 14,
+                    lineHeight: 18,
+                    color: 'rgba(226,232,240,0.95)',
+                    opacity: isFlipped ? 0 : 1,
+                  }}
+                >
+                  TAP TO SEE HEAD TO HEAD
+                </TotlText>
+              </View>
             ) : null}
           </View>
 

@@ -12,6 +12,7 @@ import {
   getBrandedBroadcastNotifierUrl,
   selectBrandedBroadcastRecipientIds,
 } from './brandedLeaderboardBroadcastNotifications';
+import { buildBroadcastReactionSummaries } from './brandedLeaderboardBroadcastReactions';
 
 describe('brandedLeaderboardBroadcast permissions', () => {
   it('allows only hosts or admins to post', () => {
@@ -109,5 +110,33 @@ describe('getBrandedBroadcastNotifierUrl', () => {
     expect(getBrandedBroadcastNotifierUrl('https://playtotl.com/')).toBe(
       'https://playtotl.com/.netlify/functions/notifyBrandedBroadcastV2'
     );
+  });
+
+  it('falls back to the production site when SITE_URL is missing', () => {
+    expect(getBrandedBroadcastNotifierUrl()).toBe(
+      'https://playtotl.com/.netlify/functions/notifyBrandedBroadcastV2'
+    );
+  });
+});
+
+describe('buildBroadcastReactionSummaries', () => {
+  it('aggregates counts per emoji and marks the viewer reaction', () => {
+    expect(
+      buildBroadcastReactionSummaries(
+        [
+          { message_id: 'm1', emoji: '🔥', user_id: 'user-1' },
+          { message_id: 'm1', emoji: '🔥', user_id: 'user-2' },
+          { message_id: 'm1', emoji: '👏', user_id: 'viewer-1' },
+          { message_id: 'm2', emoji: '👍', user_id: 'viewer-1' },
+        ],
+        'viewer-1'
+      )
+    ).toEqual({
+      m1: [
+        { emoji: '🔥', count: 2, hasUserReacted: false },
+        { emoji: '👏', count: 1, hasUserReacted: true },
+      ],
+      m2: [{ emoji: '👍', count: 1, hasUserReacted: true }],
+    });
   });
 });

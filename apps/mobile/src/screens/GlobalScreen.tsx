@@ -24,6 +24,22 @@ import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEve
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
 
+async function fetchAllSupabaseRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await buildQuery(from, to);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
 function byValueThenName(a: LeaderboardRow, b: LeaderboardRow) {
   if (b.value !== a.value) return b.value - a.value;
   return a.name.localeCompare(b.name);
@@ -285,11 +301,11 @@ export default function GlobalScreen() {
     refetch: refetchOverall,
     isRefetching: overallRefetching,
   } = useQuery({
-    queryKey: ['leaderboards', 'overallView'],
+    queryKey: ['leaderboards', 'overallView', 'paged-v2'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('app_v_ocp_overall').select('user_id, name, ocp');
-      if (error) throw error;
-      return (data ?? []) as OverallRow[];
+      return fetchAllSupabaseRows<OverallRow>((from, to) =>
+        supabase.from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
+      );
     },
   });
 
@@ -300,11 +316,16 @@ export default function GlobalScreen() {
     refetch: refetchGwPoints,
     isRefetching: gwPointsRefetching,
   } = useQuery({
-    queryKey: ['leaderboards', 'gwPointsView'],
+    queryKey: ['leaderboards', 'gwPointsView', 'paged-v2'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('app_v_gw_points').select('user_id, gw, points').order('gw', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as GwPointsRow[];
+      return fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+        supabase
+          .from('app_v_gw_points')
+          .select('user_id, gw, points')
+          .order('gw', { ascending: true })
+          .order('user_id', { ascending: true })
+          .range(from, to)
+      );
     },
   });
 
@@ -323,25 +344,33 @@ export default function GlobalScreen() {
     hasGwKickoffStarted: boolean;
   }>({
     enabled: typeof activeLeaderboardGw === 'number',
-    queryKey: ['leaderboards', 'gwLiveFallbackScores', activeLeaderboardGw],
+    queryKey: ['leaderboards', 'gwLiveFallbackScores', activeLeaderboardGw, 'paged-v2'],
     queryFn: async () => {
       const gw = activeLeaderboardGw as number;
-      const [submissionsRes, picksRes, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
-        supabase.from('app_gw_submissions').select('user_id').eq('gw', gw),
-        supabase.from('app_picks').select('user_id, fixture_index, pick').eq('gw', gw),
+      const [submissions, allPicks, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
+        fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
+          supabase.from('app_gw_submissions').select('user_id').eq('gw', gw).order('user_id', { ascending: true }).range(from, to)
+        ),
+        fetchAllSupabaseRows<{ user_id: string; fixture_index: number; pick: string | null }>((from, to) =>
+          supabase
+            .from('app_picks')
+            .select('user_id, fixture_index, pick')
+            .eq('gw', gw)
+            .order('fixture_index', { ascending: true })
+            .order('user_id', { ascending: true })
+            .range(from, to)
+        ),
         supabase.from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
         supabase.from('app_gw_results').select('fixture_index, result').eq('gw', gw),
         supabase.from('app_fixtures').select('fixture_index, api_match_id, kickoff_time').eq('gw', gw),
       ]);
-      if (submissionsRes.error) throw submissionsRes.error;
-      if (picksRes.error) throw picksRes.error;
       if (liveScoresRes.error) throw liveScoresRes.error;
       if (resultsRes.error) throw resultsRes.error;
       if (fixturesRes.error) throw fixturesRes.error;
 
-      const picks = (picksRes.data ?? []).filter((p: any) => p.pick === 'H' || p.pick === 'D' || p.pick === 'A');
+      const picks = allPicks.filter((p: any) => p.pick === 'H' || p.pick === 'D' || p.pick === 'A');
       const submittedIds = new Set<string>([
-        ...((submissionsRes.data ?? []) as any[]).map((s: any) => String(s.user_id)),
+        ...submissions.map((s: any) => String(s.user_id)),
         ...picks.map((p: any) => String(p.user_id)),
       ]);
       const outcomeByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();

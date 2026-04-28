@@ -93,6 +93,8 @@ export default function MiniFixtureCard({
   const miniLivePickIncorrect = isLiveOrResultsMini && !!pick && !!derivedOutcome && pick !== derivedOutcome;
   const miniPickIndex = pick === 'H' ? 0 : pick === 'D' ? 1 : 2;
   const st = hasScore ? (gwState === 'RESULTS_PRE_GW' ? 'FINISHED' : 'IN_PLAY') : 'SCHEDULED';
+  const miniFinishedPickCorrect = miniLivePickCorrect && st === 'FINISHED';
+  const miniOngoingPickCorrect = miniLivePickCorrect && st !== 'FINISHED';
   const isLightMode = React.useMemo(() => isLightSurface(t.color.background), [t.color.background]);
   const finishedGreyCompact = compactVisualTone === 'finished-grey' && !isMiniExpanded;
   const compactLiveMinutePillActive =
@@ -200,12 +202,14 @@ export default function MiniFixtureCard({
                   backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
-                {miniLivePickCorrect ? (
+                {miniFinishedPickCorrect ? (
                   <>
                     <LinearGradient colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
                     <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
                     <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
                   </>
+                ) : miniOngoingPickCorrect ? (
+                  <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.62} tint="white" />
                 ) : null}
               </View>
             ) : null}
@@ -306,12 +310,14 @@ export default function MiniFixtureCard({
                   backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
-                {miniLivePickCorrect ? (
+                {miniFinishedPickCorrect ? (
                   <>
                     <LinearGradient colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
                     <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
                     <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
                   </>
+                ) : miniOngoingPickCorrect ? (
+                  <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.62} tint="white" />
                 ) : null}
               </View>
             ) : null}
@@ -341,12 +347,14 @@ export default function MiniFixtureCard({
                   backgroundColor: miniLivePickIncorrect ? incorrectIndicatorColor : t.color.brand,
                 }}
               >
-                {miniLivePickCorrect ? (
+                {miniFinishedPickCorrect ? (
                   <>
                     <LinearGradient colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
                     <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" />
                     <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
                   </>
+                ) : miniOngoingPickCorrect ? (
+                  <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.62} tint="white" />
                 ) : null}
               </View>
             ) : null}

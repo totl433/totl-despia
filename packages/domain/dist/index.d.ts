@@ -471,6 +471,31 @@ export declare const BrandedLeaderboardDetailSchema: z.ZodObject<{
     broadcastUnreadCount: z.ZodDefault<z.ZodNumber>;
 }, z.core.$strip>;
 export type BrandedLeaderboardDetail = z.infer<typeof BrandedLeaderboardDetailSchema>;
+export declare const BRANDED_BROADCAST_REACTION_EMOJIS: readonly ["👍", "🔥", "👏", "🙌", "😮", "😬", "👎"];
+export declare const BrandedBroadcastReactionEmojiSchema: z.ZodEnum<{
+    "\uD83D\uDC4D": "👍";
+    "\uD83D\uDD25": "🔥";
+    "\uD83D\uDC4F": "👏";
+    "\uD83D\uDE4C": "🙌";
+    "\uD83D\uDE2E": "😮";
+    "\uD83D\uDE2C": "😬";
+    "\uD83D\uDC4E": "👎";
+}>;
+export type BrandedBroadcastReactionEmoji = z.infer<typeof BrandedBroadcastReactionEmojiSchema>;
+export declare const BrandedBroadcastReactionSummarySchema: z.ZodObject<{
+    emoji: z.ZodEnum<{
+        "\uD83D\uDC4D": "👍";
+        "\uD83D\uDD25": "🔥";
+        "\uD83D\uDC4F": "👏";
+        "\uD83D\uDE4C": "🙌";
+        "\uD83D\uDE2E": "😮";
+        "\uD83D\uDE2C": "😬";
+        "\uD83D\uDC4E": "👎";
+    }>;
+    count: z.ZodNumber;
+    hasUserReacted: z.ZodBoolean;
+}, z.core.$strip>;
+export type BrandedBroadcastReactionSummary = z.infer<typeof BrandedBroadcastReactionSummarySchema>;
 export declare const BrandedLeaderboardBroadcastMessageSchema: z.ZodObject<{
     id: z.ZodString;
     leaderboard_id: z.ZodString;
@@ -484,6 +509,19 @@ export declare const BrandedLeaderboardBroadcastMessageSchema: z.ZodObject<{
     created_at: z.ZodString;
     user_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     user_avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reactions: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        emoji: z.ZodEnum<{
+            "\uD83D\uDC4D": "👍";
+            "\uD83D\uDD25": "🔥";
+            "\uD83D\uDC4F": "👏";
+            "\uD83D\uDE4C": "🙌";
+            "\uD83D\uDE2E": "😮";
+            "\uD83D\uDE2C": "😬";
+            "\uD83D\uDC4E": "👎";
+        }>;
+        count: z.ZodNumber;
+        hasUserReacted: z.ZodBoolean;
+    }, z.core.$strip>>>;
 }, z.core.$strip>;
 export type BrandedLeaderboardBroadcastMessage = z.infer<typeof BrandedLeaderboardBroadcastMessageSchema>;
 export declare const BrandedLeaderboardBroadcastMessagesSchema: z.ZodObject<{
@@ -500,10 +538,40 @@ export declare const BrandedLeaderboardBroadcastMessagesSchema: z.ZodObject<{
         created_at: z.ZodString;
         user_name: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         user_avatar_url: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        reactions: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            emoji: z.ZodEnum<{
+                "\uD83D\uDC4D": "👍";
+                "\uD83D\uDD25": "🔥";
+                "\uD83D\uDC4F": "👏";
+                "\uD83D\uDE4C": "🙌";
+                "\uD83D\uDE2E": "😮";
+                "\uD83D\uDE2C": "😬";
+                "\uD83D\uDC4E": "👎";
+            }>;
+            count: z.ZodNumber;
+            hasUserReacted: z.ZodBoolean;
+        }, z.core.$strip>>>;
     }, z.core.$strip>>;
     lastReadAt: z.ZodNullable<z.ZodString>;
 }, z.core.$strip>;
 export type BrandedLeaderboardBroadcastMessages = z.infer<typeof BrandedLeaderboardBroadcastMessagesSchema>;
+export declare const BrandedLeaderboardBroadcastReactionToggleResponseSchema: z.ZodObject<{
+    messageId: z.ZodString;
+    reactions: z.ZodArray<z.ZodObject<{
+        emoji: z.ZodEnum<{
+            "\uD83D\uDC4D": "👍";
+            "\uD83D\uDD25": "🔥";
+            "\uD83D\uDC4F": "👏";
+            "\uD83D\uDE4C": "🙌";
+            "\uD83D\uDE2E": "😮";
+            "\uD83D\uDE2C": "😬";
+            "\uD83D\uDC4E": "👎";
+        }>;
+        count: z.ZodNumber;
+        hasUserReacted: z.ZodBoolean;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export type BrandedLeaderboardBroadcastReactionToggleResponse = z.infer<typeof BrandedLeaderboardBroadcastReactionToggleResponseSchema>;
 export declare const BrandedLeaderboardStandingsRowSchema: z.ZodObject<{
     rank: z.ZodNumber;
     user_id: z.ZodString;
@@ -586,6 +654,7 @@ export declare const BrandedLeaderboardMyItemSchema: z.ZodObject<{
         expires_at: z.ZodNullable<z.ZodString>;
         cancelled_at: z.ZodNullable<z.ZodString>;
     }, z.core.$strip>>;
+    canPostBroadcast: z.ZodDefault<z.ZodBoolean>;
 }, z.core.$strip>;
 export type BrandedLeaderboardMyItem = z.infer<typeof BrandedLeaderboardMyItemSchema>;
 export declare const BrandedLeaderboardManageItemSchema: z.ZodObject<{

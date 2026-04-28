@@ -130,7 +130,20 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_broadcast_reads (
 );
 
 -- ============================================
--- 8. payouts
+-- 8. branded_leaderboard_broadcast_reactions
+-- ============================================
+CREATE TABLE IF NOT EXISTS branded_leaderboard_broadcast_reactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  leaderboard_id UUID NOT NULL REFERENCES branded_leaderboards(id) ON DELETE CASCADE,
+  message_id UUID NOT NULL REFERENCES branded_leaderboard_broadcast_messages(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  emoji TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(message_id, user_id, emoji)
+);
+
+-- ============================================
+-- 9. payouts
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_payouts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -148,7 +161,7 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_payouts (
 );
 
 -- ============================================
--- 9. revenue_events
+-- 10. revenue_events
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_revenue_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -162,7 +175,7 @@ CREATE TABLE IF NOT EXISTS branded_leaderboard_revenue_events (
 );
 
 -- ============================================
--- 10. leaderboard_metrics
+-- 11. leaderboard_metrics
 -- ============================================
 CREATE TABLE IF NOT EXISTS branded_leaderboard_metrics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -210,6 +223,10 @@ CREATE INDEX IF NOT EXISTS idx_bl_broadcast_messages_user
   ON branded_leaderboard_broadcast_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_bl_broadcast_reads_user_leaderboard
   ON branded_leaderboard_broadcast_reads(user_id, leaderboard_id);
+CREATE INDEX IF NOT EXISTS idx_bl_broadcast_reactions_leaderboard_message
+  ON branded_leaderboard_broadcast_reactions(leaderboard_id, message_id);
+CREATE INDEX IF NOT EXISTS idx_bl_broadcast_reactions_user
+  ON branded_leaderboard_broadcast_reactions(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_bl_payouts_leaderboard ON branded_leaderboard_payouts(leaderboard_id);
 CREATE INDEX IF NOT EXISTS idx_bl_revenue_events_leaderboard ON branded_leaderboard_revenue_events(leaderboard_id);
@@ -225,6 +242,7 @@ ALTER TABLE branded_leaderboard_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_join_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_broadcast_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_broadcast_reads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE branded_leaderboard_broadcast_reactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_payouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_revenue_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE branded_leaderboard_metrics ENABLE ROW LEVEL SECURITY;
@@ -362,6 +380,58 @@ CREATE POLICY "Users can update branded broadcast reads" ON branded_leaderboard_
     OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
   );
 
+-- branded_leaderboard_broadcast_reactions: viewers can read, users manage their own reactions
+CREATE POLICY "Users can read branded broadcast reactions" ON branded_leaderboard_broadcast_reactions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1
+      FROM branded_leaderboard_memberships m
+      WHERE m.leaderboard_id = branded_leaderboard_broadcast_reactions.leaderboard_id
+        AND m.user_id = auth.uid()
+        AND m.left_at IS NULL
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM branded_leaderboard_hosts h
+      WHERE h.leaderboard_id = branded_leaderboard_broadcast_reactions.leaderboard_id
+        AND h.user_id = auth.uid()
+    )
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
+CREATE POLICY "Users can insert own branded broadcast reactions" ON branded_leaderboard_broadcast_reactions
+  FOR INSERT WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1
+      FROM branded_leaderboard_broadcast_messages m
+      WHERE m.id = branded_leaderboard_broadcast_reactions.message_id
+        AND m.leaderboard_id = branded_leaderboard_broadcast_reactions.leaderboard_id
+    )
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM branded_leaderboard_memberships m
+        WHERE m.leaderboard_id = branded_leaderboard_broadcast_reactions.leaderboard_id
+          AND m.user_id = auth.uid()
+          AND m.left_at IS NULL
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM branded_leaderboard_hosts h
+        WHERE h.leaderboard_id = branded_leaderboard_broadcast_reactions.leaderboard_id
+          AND h.user_id = auth.uid()
+      )
+      OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+    )
+  );
+
+CREATE POLICY "Users can delete own branded broadcast reactions" ON branded_leaderboard_broadcast_reactions
+  FOR DELETE USING (
+    auth.uid() = user_id
+    OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = TRUE)
+  );
+
 -- branded_leaderboard_payouts: admin only
 CREATE POLICY "Admins can manage payouts" ON branded_leaderboard_payouts
   FOR ALL USING (
@@ -418,6 +488,7 @@ COMMENT ON TABLE branded_leaderboard_subscriptions IS 'Paid subscription records
 COMMENT ON TABLE branded_leaderboard_join_codes IS 'Join codes for branded leaderboard access';
 COMMENT ON TABLE branded_leaderboard_broadcast_messages IS 'Host-authored and system broadcast messages for branded leaderboards';
 COMMENT ON TABLE branded_leaderboard_broadcast_reads IS 'Per-user read cursor for branded leaderboard broadcast messages';
+COMMENT ON TABLE branded_leaderboard_broadcast_reactions IS 'Per-user emoji reactions for branded leaderboard broadcast messages';
 COMMENT ON TABLE branded_leaderboard_payouts IS 'Payout records for influencer revenue share';
 COMMENT ON TABLE branded_leaderboard_revenue_events IS 'Individual revenue events from RevenueCat webhooks';
 COMMENT ON TABLE branded_leaderboard_metrics IS 'Aggregated performance metrics per leaderboard';

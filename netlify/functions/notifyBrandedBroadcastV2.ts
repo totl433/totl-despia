@@ -108,7 +108,7 @@ export const handler: Handler = async (event) => {
     notification_key: 'branded-broadcast',
     event_id: eventId,
     user_ids: uniqueRecipientIds,
-    title: leaderboardName ? `${leaderboardName} Broadcast` : 'New broadcast',
+    title: leaderboardName ? `📣 ${leaderboardName} Broadcast` : '📣 New broadcast',
     body: senderName ? `${senderName}: ${String(content).slice(0, 180)}` : String(content).slice(0, 180),
     data: {
       type: 'branded_broadcast',

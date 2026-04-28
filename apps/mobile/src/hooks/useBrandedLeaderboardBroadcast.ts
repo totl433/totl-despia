@@ -109,6 +109,7 @@ export function useBrandedLeaderboardBroadcast({
         created_at: new Date().toISOString(),
         user_name: senderName ?? 'You',
         user_avatar_url: senderAvatarUrl ?? null,
+        reactions: [],
         status: 'sending',
       };
 

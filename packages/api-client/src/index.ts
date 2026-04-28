@@ -10,6 +10,7 @@ import {
   UserStatsDataSchema,
   BrandedLeaderboardDetailSchema,
   BrandedLeaderboardBroadcastMessagesSchema,
+  BrandedLeaderboardBroadcastReactionToggleResponseSchema,
   BrandedLeaderboardManageSchema,
   BrandedLeaderboardStandingsSchema,
   type GwResults,
@@ -24,6 +25,7 @@ import {
   type BrandedLeaderboardDetail,
   type BrandedLeaderboardBroadcastMessage,
   type BrandedLeaderboardBroadcastMessages,
+  type BrandedLeaderboardBroadcastReactionToggleResponse,
   type BrandedLeaderboardManage,
   type BrandedLeaderboardStandings,
   type BrandedLeaderboardMyItem,
@@ -330,6 +332,18 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/read`, {
         method: 'POST',
         body: JSON.stringify(input ?? {}),
+      });
+    },
+
+    async toggleBrandedLeaderboardBroadcastReaction(
+      id: string,
+      messageId: string,
+      input: { emoji: string }
+    ): Promise<BrandedLeaderboardBroadcastReactionToggleResponse> {
+      return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages/${encodeURIComponent(messageId)}/reactions/toggle`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => BrandedLeaderboardBroadcastReactionToggleResponseSchema.parse(data),
       });
     },
 
