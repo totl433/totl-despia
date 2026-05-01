@@ -3,6 +3,7 @@ import { FlatList, Image, Pressable, type ViewStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from '../WinnerShimmer';
+import HostBadge from '../brandedLeaderboards/HostBadge';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 export type LeaderboardRow = {
@@ -12,6 +13,7 @@ export type LeaderboardRow = {
   secondaryValue?: number;
   compactValues?: Array<number | null | undefined>;
   avatar_url?: string | null;
+  isHost?: boolean;
 };
 
 function initial1(name: string): string {
@@ -152,6 +154,7 @@ export default function LeaderboardTable({
       const isMe = !!highlightUserId && item.row.user_id === highlightUserId;
       const isWinner = !!winnerUserIds?.length && winnerUserIds.includes(item.row.user_id);
       const showTrophy = item.rank === 1;
+      const showHostBadge = !!item.row.isHost;
       const AVATAR_SIZE = 20;
       const displayName = truncateName(item.row.name, hasCompactColumns ? nameCharacterCap : null);
       const rowInner = (
@@ -192,6 +195,11 @@ export default function LeaderboardTable({
             >
               {displayName}
             </TotlText>
+            {showHostBadge ? (
+              <View style={{ marginLeft: 8, flexShrink: 0 }}>
+                <HostBadge />
+              </View>
+            ) : null}
           </View>
           {hasCompactColumns
             ? compactValueLabels!.map((label, index) => (

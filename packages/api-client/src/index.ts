@@ -165,7 +165,7 @@ export function createApiClient(opts: ApiClientOptions) {
 
     async getLeague(
       leagueId: string
-    ): Promise<{ league: any; members: Array<{ id: string; name: string; avatar_url?: string | null }> }> {
+    ): Promise<{ league: any; members: Array<{ id: string; name: string; avatar_url?: string | null; created_at?: string | null }> }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
     },
 

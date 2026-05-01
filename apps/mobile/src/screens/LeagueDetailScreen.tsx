@@ -35,8 +35,8 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueManagementSheet, { type LeagueManagementMember } from '../components/league/LeagueManagementSheet';
 import { env } from '../env';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
-import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
+import { resolveLeagueStartGw, resolveMemberStartGw } from '../lib/leagueStart';
+import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
 import { Ionicons } from '@expo/vector-icons';
@@ -143,41 +143,25 @@ export default function LeagueDetailScreen() {
       now: new Date(),
     });
   }, [home]);
+  const defaultTableGw = React.useMemo(() => {
+    if (!home) return null;
+    return getLeaderboardDisplayGwFromSnapshot({
+      viewingGw,
+      currentGw,
+      latestCompletedGw:
+        typeof viewingGw === 'number' && typeof currentGw === 'number' && viewingGw < currentGw ? viewingGw : null,
+      fixtures: home.fixtures ?? [],
+      liveScores: home.liveScores ?? [],
+      now: new Date(),
+    });
+  }, [currentGw, home, viewingGw]);
 
   const [selectedGw, setSelectedGw] = React.useState<number | null>(null);
   React.useEffect(() => {
-    // Default GW table behavior:
-    // - If user is still viewing an older GW, use that GW.
-    // - If user is on the newest GW, keep table on previous GW until newest GW is LIVE.
-    // - Only initialize once (don’t override manual selection).
     if (selectedGw !== null) return;
-
-    const clampGw = (gw: number) => Math.max(1, Math.trunc(gw));
-
-    if (typeof viewingGw === 'number' && typeof currentGw === 'number') {
-      if (viewingGw < currentGw) {
-        setSelectedGw(clampGw(viewingGw));
-        return;
-      }
-
-      if (viewingGw >= currentGw) {
-        const shouldUseCurrentGw = seasonGwState === 'LIVE';
-        setSelectedGw(clampGw(shouldUseCurrentGw ? currentGw : currentGw - 1));
-        return;
-      }
-    }
-
-    if (typeof viewingGw === 'number') {
-      const shouldUseViewingGw = seasonGwState === 'LIVE';
-      setSelectedGw(clampGw(shouldUseViewingGw ? viewingGw : viewingGw - 1));
-      return;
-    }
-
-    if (typeof currentGw === 'number') {
-      const shouldUseCurrentGw = seasonGwState === 'LIVE';
-      setSelectedGw(clampGw(shouldUseCurrentGw ? currentGw : currentGw - 1));
-    }
-  }, [currentGw, seasonGwState, selectedGw, viewingGw]);
+    if (typeof defaultTableGw !== 'number') return;
+    setSelectedGw(Math.max(1, Math.trunc(defaultTableGw)));
+  }, [defaultTableGw, selectedGw]);
 
   const availableGws = React.useMemo(() => {
     const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : null;
@@ -585,11 +569,22 @@ export default function LeagueDetailScreen() {
     LeagueSeasonRow[]
   >({
     enabled: members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDevFakeLeague,
-    queryKey: ['leagueSeasonTable', leagueId, seasonGw, seasonStartGw, members.map((m: any) => String(m.id ?? '')).join(',')],
+    queryKey: ['leagueSeasonTable', leagueId, seasonGw, seasonStartGw, members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(',')],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id));
       const showUnicorns = memberIds.length >= 3;
       const latestGw = seasonGw as number;
+      const memberStartEntries = await Promise.all(
+        members.map(async (member: any) => [
+          String(member.id ?? ''),
+          await resolveMemberStartGw(
+            typeof member?.created_at === 'string' ? member.created_at : null,
+            seasonStartGw,
+            latestGw
+          ),
+        ] as const)
+      );
+      const memberStartGwByUser = new Map<string, number>(memberStartEntries);
 
       const [gwPointsRes, resultsRes] = await Promise.all([
         (supabase as any)
@@ -663,7 +658,7 @@ export default function LeagueDetailScreen() {
           m.set(uid, {
             user_id: uid,
             // Match Leaderboards: weekly league score comes from app_v_gw_points.
-            score: pointsByUserGw.get(`${uid}:${g}`) ?? 0,
+            score: g >= (memberStartGwByUser.get(uid) ?? seasonStartGw) ? (pointsByUserGw.get(`${uid}:${g}`) ?? 0) : 0,
             unicorns: 0,
           })
         );
@@ -687,7 +682,9 @@ export default function LeagueDetailScreen() {
           .filter((x) => Number.isFinite(x.fixtureIndex));
 
         outcomesForGw.forEach(({ fixtureIndex, out }) => {
-          const these = picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? [];
+          const these = (picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? []).filter(
+            (p) => g >= (memberStartGwByUser.get(String(p.user_id)) ?? seasonStartGw)
+          );
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
 
           if (showUnicorns && correct.length === 1) {
@@ -714,7 +711,7 @@ export default function LeagueDetailScreen() {
       });
 
       relevantGws.forEach((g) => {
-        const rows = Array.from(perGw.get(g)!.values());
+        const rows = Array.from(perGw.get(g)!.values()).filter((row) => g >= (memberStartGwByUser.get(row.user_id) ?? seasonStartGw));
         rows.forEach((r) => {
           // OCP in this table should align to leaderboards for the same GW window.
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);

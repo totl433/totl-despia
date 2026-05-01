@@ -8,7 +8,7 @@ import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/nativ
 import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
-import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
+import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
 import { supabase } from '../lib/supabase';
 import LeaderboardsTabs, { type LeaderboardsTab, type FormScope } from '../components/leaderboards/LeaderboardsTabs';
 import { getMonthAllocations, getMonthForGw, getEffectiveCurrentMonthKey, isMonthAvailable, type MonthAllocation } from '../lib/leaderboardMonths';
@@ -238,13 +238,13 @@ export default function GlobalScreen() {
     queryFn: () => api.getHomeSnapshot(),
     staleTime: 60_000,
   });
-  const liveScoresGw =
-    typeof homeSnapshot?.viewingGw === 'number'
-      ? homeSnapshot.viewingGw
-      : typeof homeSnapshot?.currentGw === 'number'
-        ? homeSnapshot.currentGw
-        : null;
-  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
+  const snapshotLeaderboardGw = getLeaderboardDisplayGwFromSnapshot({
+    viewingGw: homeSnapshot?.viewingGw ?? null,
+    currentGw: homeSnapshot?.currentGw ?? null,
+    fixtures: homeSnapshot?.fixtures ?? [],
+    liveScores: homeSnapshot?.liveScores ?? [],
+  });
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(snapshotLeaderboardGw, {
     initial: homeSnapshot?.liveScores ?? [],
   });
 
@@ -253,7 +253,13 @@ export default function GlobalScreen() {
     queryFn: () => api.getHomeRanks(),
   });
   const latestGw = ranks?.latestGw ?? null;
-  const activeLeaderboardGw = typeof liveScoresGw === 'number' ? liveScoresGw : latestGw;
+  const activeLeaderboardGw = getLeaderboardDisplayGwFromSnapshot({
+    viewingGw: homeSnapshot?.viewingGw ?? null,
+    currentGw: homeSnapshot?.currentGw ?? null,
+    latestCompletedGw: latestGw,
+    fixtures: homeSnapshot?.fixtures ?? [],
+    liveScores: homeSnapshot?.liveScores ?? [],
+  });
   const headerLiveByFixtureIndex = React.useMemo(() => {
     if (!homeSnapshot) return new Map<number, any>();
     if (liveByFixtureIndexRealtime.size > 0) return liveByFixtureIndexRealtime;

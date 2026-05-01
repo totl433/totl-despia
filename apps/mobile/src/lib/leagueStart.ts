@@ -28,6 +28,66 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && value.length > 10;
 }
 
+type GwDeadlineRow = { gw: number; deadlineTime: Date };
+let gwDeadlineRowsPromise: Promise<GwDeadlineRow[]> | null = null;
+
+async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
+  if (!gwDeadlineRowsPromise) {
+    gwDeadlineRowsPromise = (async () => {
+      const { data: resultsData, error: resultsErr } = await (supabase as any)
+        .from('app_gw_results')
+        .select('gw')
+        .order('gw', { ascending: true });
+      if (resultsErr) return [];
+
+      const completedGws: number[] = resultsData
+        ? Array.from(new Set((resultsData as any[]).map((r) => Number(r.gw)).filter((n) => Number.isFinite(n))))
+        : [];
+
+      const rows: GwDeadlineRow[] = [];
+      for (const gw of completedGws) {
+        const { data: firstFixture, error: fixErr } = await (supabase as any)
+          .from('app_fixtures')
+          .select('kickoff_time')
+          .eq('gw', gw)
+          .order('kickoff_time', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (fixErr) continue;
+        const kickoff = firstFixture?.kickoff_time;
+        if (!kickoff) continue;
+        const firstKickoff = new Date(kickoff);
+        if (Number.isNaN(firstKickoff.getTime())) continue;
+        rows.push({
+          gw,
+          deadlineTime: new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000),
+        });
+      }
+      return rows;
+    })();
+  }
+
+  return gwDeadlineRowsPromise;
+}
+
+async function resolveStartGwFromCreatedAt(createdAt: string | null | undefined, currentGw: number): Promise<number> {
+  if (!isIsoDate(createdAt) || !currentGw) return currentGw;
+  const leagueCreatedAt = new Date(createdAt);
+  if (Number.isNaN(leagueCreatedAt.getTime())) return currentGw;
+
+  // Safeguard: leagues created very recently are always treated as new (never lock).
+  const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
+  if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
+
+  const gwDeadlineRows = await getGwDeadlineRows();
+  for (const row of gwDeadlineRows) {
+    if (leagueCreatedAt < row.deadlineTime) return row.gw;
+  }
+
+  if (gwDeadlineRows.length > 0) return Math.max(...gwDeadlineRows.map((row) => row.gw)) + 1;
+  return currentGw;
+}
+
 /** Leagues created within this many days are treated as "new" - never lock for invites. */
 const NEW_LEAGUE_GRACE_DAYS = 5;
 
@@ -41,40 +101,12 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
   const override = getLeagueStartOverride(league.name ?? null);
   if (typeof override === 'number') return override;
 
-  if (!isIsoDate(league.created_at) || !currentGw) return currentGw;
-  const leagueCreatedAt = new Date(league.created_at);
-  if (Number.isNaN(leagueCreatedAt.getTime())) return currentGw;
+  return resolveStartGwFromCreatedAt(league.created_at, currentGw);
+}
 
-  // Safeguard: leagues created very recently are always treated as new (never lock).
-  const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
-  if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
-
-  const { data: resultsData, error: resultsErr } = await (supabase as any)
-    .from('app_gw_results')
-    .select('gw')
-    .order('gw', { ascending: true });
-  if (resultsErr) return currentGw;
-
-  const completedGws: number[] = resultsData ? Array.from(new Set((resultsData as any[]).map((r) => Number(r.gw)).filter((n) => Number.isFinite(n)))) : [];
-
-  for (const gw of completedGws) {
-    const { data: firstFixture, error: fixErr } = await (supabase as any)
-      .from('app_fixtures')
-      .select('kickoff_time')
-      .eq('gw', gw)
-      .order('kickoff_time', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (fixErr) continue;
-    const kickoff = firstFixture?.kickoff_time;
-    if (!kickoff) continue;
-    const firstKickoff = new Date(kickoff);
-    if (Number.isNaN(firstKickoff.getTime())) continue;
-    const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-    if (leagueCreatedAt < deadlineTime) return gw;
-  }
-
-  if (completedGws.length > 0) return Math.max(...completedGws) + 1;
-  return currentGw;
+export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {
+  if (!isIsoDate(memberCreatedAt)) return fallbackStartGw;
+  const resolved = await resolveStartGwFromCreatedAt(memberCreatedAt, currentGw);
+  return Math.max(fallbackStartGw, resolved);
 }
 

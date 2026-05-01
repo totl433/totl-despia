@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, PredictionsResponseSchema, EmailPreferencesSchema, ProfileSummarySchema, UnicornCardSchema, UserStatsDataSchema, } from '@totl/domain';
+import { GwResultsSchema, HomeRanksSchema, HomeSnapshotSchema, PredictionsResponseSchema, EmailPreferencesSchema, ProfileSummarySchema, UnicornCardSchema, UserStatsDataSchema, BrandedLeaderboardDetailSchema, BrandedLeaderboardBroadcastMessagesSchema, BrandedLeaderboardBroadcastReactionToggleResponseSchema, BrandedLeaderboardManageSchema, BrandedLeaderboardStandingsSchema, } from '@totl/domain';
+const OkResponseSchema = z.object({ ok: z.literal(true) });
 export class ApiError extends Error {
     status;
     body;
@@ -106,8 +107,14 @@ export function createApiClient(opts) {
         async getLeague(leagueId) {
             return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
         },
+        async getLeagueAdmin(leagueId) {
+            return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/admin`, { method: 'GET' });
+        },
         async getLeagueGwTable(leagueId, gw) {
             return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
+        },
+        async getGlobalGwLiveTable(gw) {
+            return requestJson(opts, `/v1/leaderboards/gw/${encodeURIComponent(String(gw))}/live`, { method: 'GET' });
         },
         async getPredictions(params) {
             const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
@@ -174,6 +181,95 @@ export function createApiClient(opts) {
                 validate: (data) => z
                     .object({ ok: z.literal(true), preferences: EmailPreferencesSchema })
                     .parse(data),
+            });
+        },
+        async submitChatMessageReport(input) {
+            return requestJson(opts, `/v1/chat/reports`, {
+                method: 'POST',
+                body: JSON.stringify(input),
+                validate: (data) => OkResponseSchema.parse(data),
+            });
+        },
+        // ---- Branded Leaderboards (Public) ----
+        async getBrandedLeaderboard(idOrSlug) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(idOrSlug)}`, {
+                method: 'GET',
+                validate: (data) => BrandedLeaderboardDetailSchema.parse(data),
+            });
+        },
+        async getBrandedLeaderboardStandings(id, params) {
+            const qs = new URLSearchParams();
+            if (params?.scope)
+                qs.set('scope', params.scope);
+            if (params?.gw)
+                qs.set('gw', String(params.gw));
+            const q = qs.toString() ? `?${qs.toString()}` : '';
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/standings${q}`, {
+                method: 'GET',
+                validate: (data) => BrandedLeaderboardStandingsSchema.parse(data),
+            });
+        },
+        async getBrandedLeaderboardBroadcastMessages(id) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages`, {
+                method: 'GET',
+                validate: (data) => BrandedLeaderboardBroadcastMessagesSchema.parse(data),
+            });
+        },
+        async sendBrandedLeaderboardBroadcastMessage(id, input) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages`, {
+                method: 'POST',
+                body: JSON.stringify(input),
+            });
+        },
+        async markBrandedLeaderboardBroadcastRead(id, input) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/read`, {
+                method: 'POST',
+                body: JSON.stringify(input ?? {}),
+            });
+        },
+        async toggleBrandedLeaderboardBroadcastReaction(id, messageId, input) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/broadcast/messages/${encodeURIComponent(messageId)}/reactions/toggle`, {
+                method: 'POST',
+                body: JSON.stringify(input),
+                validate: (data) => BrandedLeaderboardBroadcastReactionToggleResponseSchema.parse(data),
+            });
+        },
+        async getMyBrandedLeaderboards() {
+            return requestJson(opts, `/v1/branded-leaderboards/mine`, { method: 'GET' });
+        },
+        async getManagedBrandedLeaderboards() {
+            return requestJson(opts, `/v1/branded-leaderboards/manage`, {
+                method: 'GET',
+                validate: (data) => BrandedLeaderboardManageSchema.parse(data),
+            });
+        },
+        async resolveJoinCode(code) {
+            return requestJson(opts, `/v1/branded-leaderboards/resolve-code/${encodeURIComponent(code)}`, {
+                method: 'GET',
+            });
+        },
+        async joinBrandedLeaderboard(id, code) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/join`, {
+                method: 'POST',
+                body: JSON.stringify({ code }),
+            });
+        },
+        async leaveBrandedLeaderboard(id) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/leave`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+        },
+        async restoreBrandedLeaderboard(id) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/restore`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+        },
+        async activateBrandedLeaderboardSubscription(id, input) {
+            return requestJson(opts, `/v1/branded-leaderboards/${encodeURIComponent(id)}/activate`, {
+                method: 'POST',
+                body: JSON.stringify(input),
             });
         },
     };

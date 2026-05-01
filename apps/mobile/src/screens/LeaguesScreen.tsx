@@ -19,8 +19,8 @@ import CenteredSpinner from '../components/CenteredSpinner';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { supabase } from '../lib/supabase';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
-import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
+import { resolveLeagueStartGw, resolveMemberStartGw } from '../lib/leagueStart';
+import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
@@ -61,14 +61,14 @@ function ordinal(n: number): string {
 function LeagueRow({
   league,
   enabled,
-  currentGw,
+  tableGw,
   meId,
   fallbackMeId,
   onPress,
 }: {
   league: LeagueSummary;
   enabled: boolean;
-  currentGw: number | null;
+  tableGw: number | null;
   meId: string | null;
   fallbackMeId: string | null;
   onPress: () => void;
@@ -85,9 +85,9 @@ function LeagueRow({
   });
 
   const { data: table } = useQuery<LeagueTableResponse>({
-    enabled: enabled && typeof currentGw === 'number' && !isDevFakeLeague,
-    queryKey: ['leagueGwTable', leagueId, currentGw],
-    queryFn: () => api.getLeagueGwTable(leagueId, currentGw as number),
+    enabled: enabled && typeof tableGw === 'number' && !isDevFakeLeague,
+    queryKey: ['leagueGwTable', leagueId, tableGw],
+    queryFn: () => api.getLeagueGwTable(leagueId, tableGw as number),
   });
 
   const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (membersData?.members ?? []);
@@ -101,11 +101,11 @@ function LeagueRow({
         : null;
 
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: enabled && typeof currentGw === 'number' && !!leagueId && !isDevFakeLeague,
+    enabled: enabled && typeof tableGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
       'leagueStartGw',
       leagueId,
-      currentGw,
+      tableGw,
       String((membersData as any)?.league?.name ?? league.name ?? ''),
       String((membersData as any)?.league?.created_at ?? ''),
     ],
@@ -117,7 +117,7 @@ function LeagueRow({
           created_at:
             typeof (membersData as any)?.league?.created_at === 'string' ? String((membersData as any).league.created_at) : undefined,
         },
-        currentGw as number
+        tableGw as number
       ),
     staleTime: 5 * 60_000,
   });
@@ -129,22 +129,33 @@ function LeagueRow({
       enabled &&
       !isDevFakeLeague &&
       members.length > 0 &&
-      typeof currentGw === 'number' &&
+      typeof tableGw === 'number' &&
       typeof resolvedLeagueStartGw === 'number',
     queryKey: [
       'leagueSeasonRank',
       leagueId,
       effectiveMeId,
-      currentGw,
+      tableGw,
       resolvedLeagueStartGw,
-      members.map((m: any) => String(m.id ?? '')).join(','),
+      members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(','),
     ],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id ?? ''));
       if (!memberIds.length) return { myRank: null, orderedUserIds: memberIds };
-      const latestGw = currentGw as number;
+      const latestGw = tableGw as number;
       const seasonStartGw = resolvedLeagueStartGw as number;
       const showUnicorns = memberIds.length >= 3;
+      const memberStartEntries = await Promise.all(
+        members.map(async (member: any) => [
+          String(member.id ?? ''),
+          await resolveMemberStartGw(
+            typeof member?.created_at === 'string' ? member.created_at : null,
+            seasonStartGw,
+            latestGw
+          ),
+        ] as const)
+      );
+      const memberStartGwByUser = new Map<string, number>(memberStartEntries);
 
       const resultsRes = await (supabase as any)
         .from('app_gw_results')
@@ -219,7 +230,9 @@ function LeagueRow({
           .filter((x) => Number.isFinite(x.fixtureIndex));
 
         outcomesForGw.forEach(({ fixtureIndex, out }) => {
-          const these = picksByGwFixture.get(`${gw}:${fixtureIndex}`) ?? [];
+          const these = (picksByGwFixture.get(`${gw}:${fixtureIndex}`) ?? []).filter(
+            (p) => gw >= (memberStartGwByUser.get(String(p.user_id)) ?? seasonStartGw)
+          );
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
           these.forEach((p) => {
             if (p.pick !== out) return;
@@ -243,7 +256,7 @@ function LeagueRow({
       });
 
       relevantGws.forEach((g) => {
-        const rows = Array.from(perGw.get(g)!.values());
+        const rows = Array.from(perGw.get(g)!.values()).filter((row) => g >= (memberStartGwByUser.get(row.user_id) ?? seasonStartGw));
         rows.forEach((r) => {
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
           unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
@@ -443,6 +456,18 @@ export default function LeaguesScreen() {
       hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
     });
   }, [home, liveByFixtureIndexRealtime]);
+  const leagueTableGw = React.useMemo(
+    () =>
+      getLeaderboardDisplayGwFromSnapshot({
+        viewingGw,
+        currentGw,
+        latestCompletedGw:
+          typeof viewingGw === 'number' && typeof currentGw === 'number' && viewingGw < currentGw ? viewingGw : null,
+        fixtures: home?.fixtures ?? [],
+        liveScores: liveByFixtureIndexRealtime.size > 0 ? Array.from(liveByFixtureIndexRealtime.values()) : home?.liveScores ?? [],
+      }),
+    [currentGw, home?.fixtures, home?.liveScores, liveByFixtureIndexRealtime, viewingGw]
+  );
   const { data: headerGwLiveTable } = useQuery({
     enabled: gwState === 'LIVE' && typeof viewingGw === 'number' && !!meId,
     queryKey: ['headerGwLiveTable', viewingGw],
@@ -1008,7 +1033,7 @@ export default function LeaguesScreen() {
             <LeagueRow
               league={item}
               enabled={enabled}
-              currentGw={currentGw}
+              tableGw={leagueTableGw}
               meId={meId ?? null}
               fallbackMeId={unreadMeId ?? null}
               onPress={() => {

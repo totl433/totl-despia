@@ -31,6 +31,7 @@ export default function BrandedLeaderboardTable({
         name: row.name,
         value: row.value,
         avatar_url: row.avatar_url,
+        isHost: row.is_host,
         compactValues: compactValueLabels?.length ? row.compact_values : undefined,
         secondaryValue: secondaryValueLabel ? row.compact_values?.[0] ?? null : undefined,
       })),

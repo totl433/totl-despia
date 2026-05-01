@@ -68,3 +68,50 @@ export function getGameweekStateFromSnapshot(input: {
   return 'LIVE';
 }
 
+export function hasGameweekKickoffStarted(input: {
+  fixtures: FixtureKickoff[];
+  liveScores: LiveScoreLike[];
+  now?: Date;
+}): boolean {
+  const now = input.now ?? new Date();
+  const liveScores = input.liveScores ?? [];
+  if (liveScores.some((ls) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED' || ls?.status === 'FINISHED')) {
+    return true;
+  }
+
+  return (input.fixtures ?? []).some((fixture) => {
+    const kickoff = parseDateSafe(fixture?.kickoff_time);
+    return kickoff != null && kickoff.getTime() <= now.getTime();
+  });
+}
+
+export function getLeaderboardDisplayGwFromSnapshot(input: {
+  viewingGw?: number | null;
+  currentGw?: number | null;
+  latestCompletedGw?: number | null;
+  fixtures: FixtureKickoff[];
+  liveScores: LiveScoreLike[];
+  now?: Date;
+}): number | null {
+  const sourceGw =
+    typeof input.viewingGw === 'number'
+      ? input.viewingGw
+      : typeof input.currentGw === 'number'
+        ? input.currentGw
+        : null;
+  if (sourceGw == null) return input.latestCompletedGw ?? null;
+  if (
+    hasGameweekKickoffStarted({
+      fixtures: input.fixtures ?? [],
+      liveScores: input.liveScores ?? [],
+      now: input.now,
+    })
+  ) {
+    return sourceGw;
+  }
+  if (typeof input.latestCompletedGw === 'number' && input.latestCompletedGw < sourceGw) {
+    return input.latestCompletedGw;
+  }
+  return sourceGw > 1 ? sourceGw - 1 : sourceGw;
+}
+

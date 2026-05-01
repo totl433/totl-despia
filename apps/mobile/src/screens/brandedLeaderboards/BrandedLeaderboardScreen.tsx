@@ -19,6 +19,7 @@ import UnderlineTabs from '../../components/UnderlineTabs';
 import { useBrandedLeaderboardBroadcast } from '../../hooks/useBrandedLeaderboardBroadcast';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import LeagueOverflowMenu from '../../components/league/LeagueOverflowMenu';
+import { getLeaderboardDisplayGwFromSnapshot } from '../../lib/gameweekState';
 import { getEffectiveCurrentMonthKey, getMonthAllocations, type MonthAllocation } from '../../lib/leaderboardMonths';
 
 type ScopeTab = 'gw' | 'month' | 'season';
@@ -119,12 +120,12 @@ export default function BrandedLeaderboardScreen({
   const showPaywallSheet = isPaywalled && !paywallDismissed;
   const canAccessBroadcast = Boolean(detail && (detail.hasAccess || detail.canPostBroadcast));
   const hasActiveMembership = Boolean(detail?.membership && !detail.membership.left_at);
-  const activeGw =
-    typeof homeSnapshot?.viewingGw === 'number'
-      ? homeSnapshot.viewingGw
-      : typeof homeSnapshot?.currentGw === 'number'
-        ? homeSnapshot.currentGw
-        : null;
+  const activeGw = getLeaderboardDisplayGwFromSnapshot({
+    viewingGw: homeSnapshot?.viewingGw ?? null,
+    currentGw: homeSnapshot?.currentGw ?? null,
+    fixtures: homeSnapshot?.fixtures ?? [],
+    liveScores: homeSnapshot?.liveScores ?? [],
+  });
   const currentMonthLabel = MONTH_NAMES[new Date().getMonth()] ?? 'Month';
   const currentGwIsLive = Boolean(
     homeSnapshot?.liveScores?.some((score) => score?.status === 'IN_PLAY' || score?.status === 'PAUSED')

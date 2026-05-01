@@ -631,7 +631,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
     (supa as any).from('leagues').select('id, name, code, avatar, created_at').eq('id', params.leagueId).maybeSingle(),
     (supa as any)
       .from('league_members')
-      .select('user_id, users(id, name, avatar_url)')
+      .select('user_id, created_at, users(id, name, avatar_url)')
       .eq('league_id', params.leagueId)
       .limit(200),
   ]);
@@ -644,6 +644,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
     id: m.users?.id ?? m.user_id,
     name: m.users?.name ?? 'User',
     avatar_url: m.users?.avatar_url ?? null,
+    created_at: typeof m.created_at === 'string' ? m.created_at : null,
   }));
 
   return { league: leagueRes.data, members };

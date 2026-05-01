@@ -1,4 +1,4 @@
-import { type GwResults, type EmailPreferences, type HomeRanks, type HomeSnapshot, type ProfileSummary, type PredictionsResponse, type UnicornCard, type UserStatsData } from '@totl/domain';
+import { type GwResults, type EmailPreferences, type HomeRanks, type HomeSnapshot, type ProfileSummary, type PredictionsResponse, type UnicornCard, type UserStatsData, type BrandedLeaderboard, type BrandedLeaderboardDetail, type BrandedLeaderboardBroadcastMessage, type BrandedLeaderboardBroadcastMessages, type BrandedLeaderboardBroadcastReactionToggleResponse, type BrandedLeaderboardManage, type BrandedLeaderboardStandings, type BrandedLeaderboardMyItem, type BrandedLeaderboardMembership, type BrandedLeaderboardSubscription } from '@totl/domain';
 export interface ApiClientOptions {
     baseUrl: string;
     getAccessToken: () => Promise<string | null>;
@@ -37,7 +37,11 @@ export declare function createApiClient(opts: ApiClientOptions): {
             id: string;
             name: string;
             avatar_url?: string | null;
+            created_at?: string | null;
         }>;
+    }>;
+    getLeagueAdmin(leagueId: string): Promise<{
+        isAdmin: boolean;
     }>;
     getLeagueGwTable(leagueId: string, gw: number): Promise<{
         leagueId: string;
@@ -52,6 +56,14 @@ export declare function createApiClient(opts: ApiClientOptions): {
         submittedUserIds: string[];
         submittedCount: number;
         totalMembers: number;
+    }>;
+    getGlobalGwLiveTable(gw: number): Promise<{
+        gw: number;
+        rows: Array<{
+            user_id: string;
+            name: string;
+            score: number;
+        }>;
     }>;
     getPredictions(params?: {
         gw?: number;
@@ -98,6 +110,54 @@ export declare function createApiClient(opts: ApiClientOptions): {
     updateEmailPreferences(input: Partial<EmailPreferences>): Promise<{
         ok: true;
         preferences: EmailPreferences;
+    }>;
+    submitChatMessageReport(input: {
+        messageId: string;
+        reason: string;
+    }): Promise<{
+        ok: true;
+    }>;
+    getBrandedLeaderboard(idOrSlug: string): Promise<BrandedLeaderboardDetail>;
+    getBrandedLeaderboardStandings(id: string, params?: {
+        scope?: "gw" | "month" | "season";
+        gw?: number;
+    }): Promise<BrandedLeaderboardStandings>;
+    getBrandedLeaderboardBroadcastMessages(id: string): Promise<BrandedLeaderboardBroadcastMessages>;
+    sendBrandedLeaderboardBroadcastMessage(id: string, input: {
+        content: string;
+    }): Promise<{
+        message: BrandedLeaderboardBroadcastMessage;
+    }>;
+    markBrandedLeaderboardBroadcastRead(id: string, input?: {
+        lastReadAt?: string | null;
+    }): Promise<{
+        ok: true;
+        lastReadAt: string;
+    }>;
+    toggleBrandedLeaderboardBroadcastReaction(id: string, messageId: string, input: {
+        emoji: string;
+    }): Promise<BrandedLeaderboardBroadcastReactionToggleResponse>;
+    getMyBrandedLeaderboards(): Promise<{
+        leaderboards: BrandedLeaderboardMyItem[];
+    }>;
+    getManagedBrandedLeaderboards(): Promise<BrandedLeaderboardManage>;
+    resolveJoinCode(code: string): Promise<{
+        leaderboard: BrandedLeaderboard;
+    }>;
+    joinBrandedLeaderboard(id: string, code: string): Promise<{
+        membership: BrandedLeaderboardMembership;
+    }>;
+    leaveBrandedLeaderboard(id: string): Promise<{
+        ok: true;
+    }>;
+    restoreBrandedLeaderboard(id: string): Promise<{
+        membership: BrandedLeaderboardMembership;
+    }>;
+    activateBrandedLeaderboardSubscription(id: string, input: {
+        rc_subscription_id: string;
+        rc_product_id: string;
+    }): Promise<{
+        subscription: BrandedLeaderboardSubscription;
     }>;
 };
 //# sourceMappingURL=index.d.ts.map
