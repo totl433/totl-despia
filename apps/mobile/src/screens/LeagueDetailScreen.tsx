@@ -35,8 +35,8 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueManagementSheet, { type LeagueManagementMember } from '../components/league/LeagueManagementSheet';
 import { env } from '../env';
-import { resolveLeagueStartGw, resolveMemberStartGw } from '../lib/leagueStart';
-import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
+import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
 import { Ionicons } from '@expo/vector-icons';
@@ -132,29 +132,30 @@ export default function LeagueDetailScreen() {
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
+  const { data: publishedCurrentGw } = useQuery<number | null>({
+    queryKey: ['appMetaCurrentGw'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
+      if (error) throw error;
+      return typeof data?.current_gw === 'number' ? data.current_gw : null;
+    },
+    staleTime: 60_000,
+  });
+  const effectiveCurrentGw = typeof publishedCurrentGw === 'number' ? publishedCurrentGw : currentGw;
   // Season standings should align to the GW context the user is currently viewing.
-  const seasonGw = typeof viewingGw === 'number' ? viewingGw : currentGw;
-  const seasonGwState = React.useMemo(() => {
-    if (!home) return null;
-    return getGameweekStateFromSnapshot({
-      fixtures: home.fixtures ?? [],
-      liveScores: home.liveScores ?? [],
-      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
-      now: new Date(),
-    });
-  }, [home]);
+  const seasonGw = typeof viewingGw === 'number' ? viewingGw : effectiveCurrentGw;
   const defaultTableGw = React.useMemo(() => {
     if (!home) return null;
     return getLeaderboardDisplayGwFromSnapshot({
       viewingGw,
-      currentGw,
+      currentGw: effectiveCurrentGw,
       latestCompletedGw:
-        typeof viewingGw === 'number' && typeof currentGw === 'number' && viewingGw < currentGw ? viewingGw : null,
+        typeof viewingGw === 'number' && typeof effectiveCurrentGw === 'number' && viewingGw < effectiveCurrentGw ? viewingGw : null,
       fixtures: home.fixtures ?? [],
       liveScores: home.liveScores ?? [],
       now: new Date(),
     });
-  }, [currentGw, home, viewingGw]);
+  }, [effectiveCurrentGw, home, viewingGw]);
 
   const [selectedGw, setSelectedGw] = React.useState<number | null>(null);
   React.useEffect(() => {
@@ -569,42 +570,22 @@ export default function LeagueDetailScreen() {
     LeagueSeasonRow[]
   >({
     enabled: members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDevFakeLeague,
-    queryKey: ['leagueSeasonTable', leagueId, seasonGw, seasonStartGw, members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(',')],
+    // NOTE: v2 key invalidates persisted cached season tables after score calculation changes.
+    queryKey: ['leagueSeasonTableV3', leagueId, seasonGw, effectiveCurrentGw, seasonStartGw, members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(',')],
     queryFn: async () => {
       const memberIds = members.map((m: any) => String(m.id));
       const showUnicorns = memberIds.length >= 3;
       const latestGw = seasonGw as number;
-      const memberStartEntries = await Promise.all(
-        members.map(async (member: any) => [
-          String(member.id ?? ''),
-          await resolveMemberStartGw(
-            typeof member?.created_at === 'string' ? member.created_at : null,
-            seasonStartGw,
-            latestGw
-          ),
-        ] as const)
-      );
-      const memberStartGwByUser = new Map<string, number>(memberStartEntries);
-
-      const [gwPointsRes, resultsRes] = await Promise.all([
-        (supabase as any)
-          .from('app_v_gw_points')
-          .select('user_id,gw,points')
-          .in('user_id', memberIds)
-          .gte('gw', seasonStartGw)
-          .lte('gw', latestGw),
-        (supabase as any)
-          .from('app_gw_results')
-          .select('gw,fixture_index,result')
-          .gte('gw', seasonStartGw)
-          .lte('gw', latestGw),
-      ]);
-      if (gwPointsRes.error) throw gwPointsRes.error;
+      const resultsRes = await (supabase as any)
+        .from('app_gw_results')
+        .select('gw,fixture_index,result')
+        .gte('gw', seasonStartGw)
+        .lte('gw', latestGw);
       if (resultsRes.error) throw resultsRes.error;
 
-      const gwPointsRows: Array<{ user_id: string; gw: number; points: number }> = gwPointsRes.data ?? [];
       const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
-      // IMPORTANT: fetch picks in pages to avoid silent truncation on large datasets.
+      // IMPORTANT: fetch picks in stable ordered pages to avoid Supabase truncation
+      // and pagination drift on larger leagues / longer seasons.
       const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = [];
       const PAGE_SIZE = 1000;
       let from = 0;
@@ -615,6 +596,9 @@ export default function LeagueDetailScreen() {
           .in('user_id', memberIds)
           .gte('gw', seasonStartGw)
           .lte('gw', latestGw)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .order('user_id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
         if (pageRes.error) throw pageRes.error;
         const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
@@ -638,17 +622,25 @@ export default function LeagueDetailScreen() {
 
       // Only count GWs with actual saved results. This prevents phantom all-draw rounds.
       let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw && gw <= latestGw);
-      // Product rule: Season table does not include the current GW while that GW is LIVE.
-      if (seasonGwState === 'LIVE') {
+      const isViewingPreviousGw = typeof effectiveCurrentGw === 'number' && latestGw < effectiveCurrentGw;
+      if (isViewingPreviousGw) {
+        // When the app is still viewing the previous GW before the next one kicks off,
+        // keep that previous GW in the season table even though currentGw has already advanced.
+      } else if (relevantGws.includes(latestGw)) {
+        const fixturesForLatestGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
+        if (fixturesForLatestGwRes.error) throw fixturesForLatestGwRes.error;
+        const fixtureCount = (fixturesForLatestGwRes.data ?? []).length;
+        const resultCountForLatestGw = Array.from(outcomeByGwFixture.keys()).filter(
+          (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestGw
+        ).length;
+        if (fixtureCount > 0 && resultCountForLatestGw < fixtureCount) {
+          relevantGws = relevantGws.filter((gw) => gw < latestGw);
+        }
+      } else {
         relevantGws = relevantGws.filter((gw) => gw < latestGw);
       }
 
       if (relevantGws.length === 0) return [];
-
-      const pointsByUserGw = new Map<string, number>();
-      gwPointsRows.forEach((row) => {
-        pointsByUserGw.set(`${String(row.user_id)}:${Number(row.gw)}`, Number(row.points ?? 0));
-      });
 
       type GwScore = { user_id: string; score: number; unicorns: number };
       const perGw = new Map<number, Map<string, GwScore>>();
@@ -657,8 +649,7 @@ export default function LeagueDetailScreen() {
         memberIds.forEach((uid) =>
           m.set(uid, {
             user_id: uid,
-            // Match Leaderboards: weekly league score comes from app_v_gw_points.
-            score: g >= (memberStartGwByUser.get(uid) ?? seasonStartGw) ? (pointsByUserGw.get(`${uid}:${g}`) ?? 0) : 0,
+            score: 0,
             unicorns: 0,
           })
         );
@@ -682,10 +673,13 @@ export default function LeagueDetailScreen() {
           .filter((x) => Number.isFinite(x.fixtureIndex));
 
         outcomesForGw.forEach(({ fixtureIndex, out }) => {
-          const these = (picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? []).filter(
-            (p) => g >= (memberStartGwByUser.get(String(p.user_id)) ?? seasonStartGw)
-          );
+          const these = picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? [];
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
+          these.forEach((p) => {
+            if (p.pick !== out) return;
+            const row = gwMap.get(p.user_id);
+            if (row) row.score += 1;
+          });
 
           if (showUnicorns && correct.length === 1) {
             const uid = correct[0];
@@ -711,7 +705,7 @@ export default function LeagueDetailScreen() {
       });
 
       relevantGws.forEach((g) => {
-        const rows = Array.from(perGw.get(g)!.values()).filter((row) => g >= (memberStartGwByUser.get(row.user_id) ?? seasonStartGw));
+        const rows = Array.from(perGw.get(g)!.values());
         rows.forEach((r) => {
           // OCP in this table should align to leaderboards for the same GW window.
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);

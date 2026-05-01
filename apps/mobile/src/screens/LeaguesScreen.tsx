@@ -19,7 +19,7 @@ import CenteredSpinner from '../components/CenteredSpinner';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { supabase } from '../lib/supabase';
-import { resolveLeagueStartGw, resolveMemberStartGw } from '../lib/leagueStart';
+import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
@@ -61,6 +61,7 @@ function ordinal(n: number): string {
 function LeagueRow({
   league,
   enabled,
+  currentGw,
   tableGw,
   meId,
   fallbackMeId,
@@ -68,6 +69,7 @@ function LeagueRow({
 }: {
   league: LeagueSummary;
   enabled: boolean;
+  currentGw: number | null;
   tableGw: number | null;
   meId: string | null;
   fallbackMeId: string | null;
@@ -132,9 +134,10 @@ function LeagueRow({
       typeof tableGw === 'number' &&
       typeof resolvedLeagueStartGw === 'number',
     queryKey: [
-      'leagueSeasonRank',
+      'leagueSeasonRankV2',
       leagueId,
       effectiveMeId,
+      currentGw,
       tableGw,
       resolvedLeagueStartGw,
       members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(','),
@@ -145,17 +148,6 @@ function LeagueRow({
       const latestGw = tableGw as number;
       const seasonStartGw = resolvedLeagueStartGw as number;
       const showUnicorns = memberIds.length >= 3;
-      const memberStartEntries = await Promise.all(
-        members.map(async (member: any) => [
-          String(member.id ?? ''),
-          await resolveMemberStartGw(
-            typeof member?.created_at === 'string' ? member.created_at : null,
-            seasonStartGw,
-            latestGw
-          ),
-        ] as const)
-      );
-      const memberStartGwByUser = new Map<string, number>(memberStartEntries);
 
       const resultsRes = await (supabase as any)
         .from('app_gw_results')
@@ -181,7 +173,11 @@ function LeagueRow({
 
       let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw);
 
-      if (relevantGws.includes(latestGw)) {
+      const isViewingPreviousGw = typeof currentGw === 'number' && latestGw < currentGw;
+      if (isViewingPreviousGw) {
+        // Keep the already-finished previous GW in season rankings while the app
+        // waits for the next GW kickoff.
+      } else if (relevantGws.includes(latestGw)) {
         const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
         if (fixturesForCurrentGwRes.error) throw fixturesForCurrentGwRes.error;
         const fixtureCount = (fixturesForCurrentGwRes.data ?? []).length;
@@ -197,14 +193,26 @@ function LeagueRow({
 
       if (relevantGws.length === 0) return { myRank: null, orderedUserIds: memberIds };
 
-      const picksRes = await (supabase as any)
-        .from('app_picks')
-        .select('user_id,gw,fixture_index,pick')
-        .in('user_id', memberIds)
-        .in('gw', relevantGws);
-      if (picksRes.error) throw picksRes.error;
-
-      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = picksRes.data ?? [];
+      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = [];
+      const PAGE_SIZE = 1000;
+      let from = 0;
+      while (true) {
+        const pageRes = await (supabase as any)
+          .from('app_picks')
+          .select('user_id,gw,fixture_index,pick')
+          .in('user_id', memberIds)
+          .gte('gw', seasonStartGw)
+          .lte('gw', latestGw)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .order('user_id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if (pageRes.error) throw pageRes.error;
+        const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
+        picks.push(...page.filter((pick) => relevantGws.includes(pick.gw)));
+        if (page.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
 
       type GwScore = { user_id: string; score: number; unicorns: number };
       const perGw = new Map<number, Map<string, GwScore>>();
@@ -230,9 +238,7 @@ function LeagueRow({
           .filter((x) => Number.isFinite(x.fixtureIndex));
 
         outcomesForGw.forEach(({ fixtureIndex, out }) => {
-          const these = (picksByGwFixture.get(`${gw}:${fixtureIndex}`) ?? []).filter(
-            (p) => gw >= (memberStartGwByUser.get(String(p.user_id)) ?? seasonStartGw)
-          );
+          const these = picksByGwFixture.get(`${gw}:${fixtureIndex}`) ?? [];
           const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
           these.forEach((p) => {
             if (p.pick !== out) return;
@@ -256,7 +262,7 @@ function LeagueRow({
       });
 
       relevantGws.forEach((g) => {
-        const rows = Array.from(perGw.get(g)!.values()).filter((row) => g >= (memberStartGwByUser.get(row.user_id) ?? seasonStartGw));
+        const rows = Array.from(perGw.get(g)!.values());
         rows.forEach((r) => {
           ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
           unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
@@ -442,8 +448,18 @@ export default function LeaguesScreen() {
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
+  const { data: publishedCurrentGw } = useQuery<number | null>({
+    queryKey: ['appMetaCurrentGw'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
+      if (error) throw error;
+      return typeof data?.current_gw === 'number' ? data.current_gw : null;
+    },
+    staleTime: 60_000,
+  });
+  const effectiveCurrentGw = typeof publishedCurrentGw === 'number' ? publishedCurrentGw : currentGw;
   const showTopLiveRail = typeof viewingGw === 'number' && listLeagues.length > 0;
-  const liveScoresGw = typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : null;
+  const liveScoresGw = typeof viewingGw === 'number' ? viewingGw : typeof effectiveCurrentGw === 'number' ? effectiveCurrentGw : null;
   const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
     initial: home?.liveScores ?? [],
   });
@@ -460,13 +476,13 @@ export default function LeaguesScreen() {
     () =>
       getLeaderboardDisplayGwFromSnapshot({
         viewingGw,
-        currentGw,
+        currentGw: effectiveCurrentGw,
         latestCompletedGw:
-          typeof viewingGw === 'number' && typeof currentGw === 'number' && viewingGw < currentGw ? viewingGw : null,
+          typeof viewingGw === 'number' && typeof effectiveCurrentGw === 'number' && viewingGw < effectiveCurrentGw ? viewingGw : null,
         fixtures: home?.fixtures ?? [],
         liveScores: liveByFixtureIndexRealtime.size > 0 ? Array.from(liveByFixtureIndexRealtime.values()) : home?.liveScores ?? [],
       }),
-    [currentGw, home?.fixtures, home?.liveScores, liveByFixtureIndexRealtime, viewingGw]
+    [effectiveCurrentGw, home?.fixtures, home?.liveScores, liveByFixtureIndexRealtime, viewingGw]
   );
   const { data: headerGwLiveTable } = useQuery({
     enabled: gwState === 'LIVE' && typeof viewingGw === 'number' && !!meId,
@@ -1033,6 +1049,7 @@ export default function LeaguesScreen() {
             <LeagueRow
               league={item}
               enabled={enabled}
+              currentGw={effectiveCurrentGw}
               tableGw={leagueTableGw}
               meId={meId ?? null}
               fallbackMeId={unreadMeId ?? null}
