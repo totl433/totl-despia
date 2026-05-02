@@ -97,8 +97,6 @@ export default function BrandedLeaderboardScreen({
   const [calendarMenuPosition, setCalendarMenuPosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [monthMenuOpen, setMonthMenuOpen] = useState(false);
   const [monthMenuPosition, setMonthMenuPosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [broadcastSectionY, setBroadcastSectionY] = useState(0);
-  const [broadcastTabY, setBroadcastTabY] = useState(0);
   const filterIconRef = useRef<View>(null);
   const calendarIconRef = useRef<View>(null);
   const monthMenuRef = useRef<View>(null);
@@ -603,27 +601,15 @@ export default function BrandedLeaderboardScreen({
         showCoreActions={false}
         menuTextColor={t.color.text}
       />
-      <View
-        style={{ flex: 1 }}
-        onLayout={(e) => {
-          const nextY = Math.round(e.nativeEvent.layout.y);
-          if (nextY !== broadcastSectionY) setBroadcastSectionY(nextY);
-        }}
-      >
+      <View style={{ flex: 1, minHeight: 0 }}>
         {viewTab === 'broadcast' && canAccessBroadcast ? (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 0 }}>
             <BrandedLeaderboardHeader
               imageUrl={detail.leaderboard.header_image_url}
               displayName={detail.leaderboard.display_name}
             />
             <UnderlineTabs items={topLevelTabs} value={viewTab} onChange={setViewTab} />
-            <View
-              style={{ flex: 1 }}
-              onLayout={(e) => {
-                const nextY = Math.round(e.nativeEvent.layout.y);
-                if (nextY !== broadcastTabY) setBroadcastTabY(nextY);
-              }}
-            >
+            <View style={{ flex: 1, minHeight: 0 }}>
               <BrandedLeaderboardBroadcastTab
                 leaderboardId={detail.leaderboard.id}
                 currentUserId={userId}
@@ -634,7 +620,6 @@ export default function BrandedLeaderboardScreen({
                 error={broadcastError}
                 onSend={sendBroadcastMessage}
                 setLastReadAt={setBroadcastLastReadAt}
-                keyboardVerticalOffset={broadcastSectionY + broadcastTabY}
               />
             </View>
           </View>

@@ -1,10 +1,7 @@
 import React from 'react';
-import { Keyboard, Modal, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { FlatList, Keyboard, Modal, Platform, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Bubble, Composer, GiftedChat, type IMessage } from 'react-native-gifted-chat';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { useBrandedLeaderboardBroadcastReadReceipts } from '../../hooks/useBrandedLeaderboardBroadcastReadReceipts';
@@ -17,108 +14,87 @@ const EXTRA_REACTION_EMOJIS = ['👎', '🙌', '😮'] as const;
 const REACTION_TRAY_WIDTH = 184;
 const REACTION_TRAY_HEIGHT = 64;
 
-function toGiftedMessage(
-  message: BrandedLeaderboardBroadcastUiMessage,
-  currentUserId: string | null
-): IMessage {
-  const isMe = !!currentUserId && message.user_id === currentUserId && message.user_id !== VOLLEY_USER_ID;
-  const isVolley = message.user_id === VOLLEY_USER_ID || message.message_type === 'system';
-  const authorName = isMe ? 'You' : isVolley ? VOLLEY_NAME : message.user_name ?? 'Host';
-
-  return {
-    _id: message.id,
-    text: message.content ?? '',
-    createdAt: new Date(message.created_at),
-    user: {
-      _id: message.user_id,
-      name: authorName,
-      ...(message.user_avatar_url ? { avatar: message.user_avatar_url } : {}),
-    },
-    status: message.status,
-  };
-}
-
-function BroadcastInputToolbar({
+function BroadcastComposer({
+  draft,
+  onChangeDraft,
+  onSubmit,
   insetsBottom,
-  ...props
-}: any & {
+  keyboardVisible,
+  sending,
+}: {
+  draft: string;
+  onChangeDraft: (value: string) => void;
+  onSubmit: () => void;
   insetsBottom: number;
+  keyboardVisible: boolean;
+  sending: boolean;
 }) {
   const t = useTokens();
-  const { progress } = useReanimatedKeyboardAnimation();
-
-  const wrapperStyle = useAnimatedStyle(() => {
-    const p = progress.value;
-    return { paddingBottom: p > 0.02 ? 12 : Math.max(16, insetsBottom) };
-  }, [insetsBottom]);
-
-  const text = typeof props.text === 'string' ? props.text : '';
-  const trimmed = text.trim();
+  const trimmed = draft.trim();
 
   return (
-    <Reanimated.View style={[{ backgroundColor: t.color.background }, wrapperStyle]}>
-      <View
-        style={{
-          borderTopWidth: 0,
-          backgroundColor: t.color.background,
-          paddingTop: 8,
-          paddingBottom: 0,
-          paddingHorizontal: 8,
-          shadowColor: '#000000',
-          shadowOpacity: 0.08,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: -3 },
-          elevation: 6,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-          <TextInput
-            value={text}
-            onChangeText={props.textInputProps?.onChangeText}
-            ref={props.textInputProps?.ref}
-            placeholder="Message..."
-            placeholderTextColor={t.color.muted}
-            selectionColor={t.color.brand}
-            multiline
-            style={{
-              flex: 1,
-              minHeight: 50,
-              maxHeight: 120,
-              color: t.color.text,
-              backgroundColor: t.color.surface,
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: t.color.border,
-              paddingHorizontal: 16,
-              paddingTop: 12,
-              paddingBottom: 12,
-              fontSize: 16,
-              lineHeight: 22,
-            }}
-          />
-          {trimmed ? (
-            <Pressable
-              onPress={() => props.onSend?.({ text: trimmed }, true)}
-              accessibilityRole="button"
-              accessibilityLabel="Send"
-              style={({ pressed }) => ({
-                width: 36,
-                height: 36,
-                marginLeft: 8,
-                marginBottom: 4,
-                borderRadius: 18,
-                backgroundColor: t.color.brand,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.9 : 1,
-              })}
-            >
-              <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
-            </Pressable>
-          ) : null}
-        </View>
+    <View
+      style={{
+        borderTopWidth: 0,
+        backgroundColor: t.color.background,
+        paddingTop: 8,
+        paddingBottom: keyboardVisible ? 12 : Math.max(16, insetsBottom),
+        paddingHorizontal: 8,
+        shadowColor: '#000000',
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: -3 },
+        elevation: 6,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+        <TextInput
+          value={draft}
+          onChangeText={onChangeDraft}
+          placeholder="Message..."
+          placeholderTextColor={t.color.muted}
+          selectionColor={t.color.brand}
+          multiline
+          editable={!sending}
+          style={{
+            flex: 1,
+            minHeight: 50,
+            maxHeight: 120,
+            color: t.color.text,
+            backgroundColor: t.color.surface,
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: t.color.border,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 12,
+            fontSize: 16,
+            lineHeight: 22,
+          }}
+        />
+        {trimmed ? (
+          <Pressable
+            onPress={onSubmit}
+            disabled={sending}
+            accessibilityRole="button"
+            accessibilityLabel="Send"
+            style={({ pressed }) => ({
+              width: 36,
+              height: 36,
+              marginLeft: 8,
+              marginBottom: 4,
+              borderRadius: 18,
+              backgroundColor: t.color.brand,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: sending ? 0.55 : pressed ? 0.9 : 1,
+            })}
+          >
+            <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
+          </Pressable>
+        ) : null}
       </View>
-    </Reanimated.View>
+    </View>
   );
 }
 
@@ -149,14 +125,13 @@ function isSameDaySafe(a: Date | number | string | undefined, b: Date | number |
   );
 }
 
-function shouldShowIncomingUsername(props: any) {
-  if (props?.position !== 'left') return false;
-  const currentId = props?.currentMessage?.user?._id;
-  if (!currentId) return false;
-  const previousId = props?.previousMessage?.user?._id;
-  if (!previousId) return true;
-  if (previousId !== currentId) return true;
-  return !isSameDaySafe(props?.currentMessage?.createdAt, props?.previousMessage?.createdAt);
+function shouldShowIncomingUsername(
+  current: BrandedLeaderboardBroadcastUiMessage,
+  previous: BrandedLeaderboardBroadcastUiMessage | null
+) {
+  if (!previous) return true;
+  if (previous.user_id !== current.user_id) return true;
+  return !isSameDaySafe(current.created_at, previous.created_at);
 }
 
 function formatReactionCount(count: number) {
@@ -190,6 +165,8 @@ export default function BrandedLeaderboardBroadcastTab({
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [sending, setSending] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const [keyboardHeight, setKeyboardHeight] = React.useState(0);
   const [trayState, setTrayState] = React.useState<{
     messageId: string;
     x: number;
@@ -201,28 +178,87 @@ export default function BrandedLeaderboardBroadcastTab({
     userId: currentUserId,
     enabled: visible,
   });
-  const messageTypeById = React.useMemo(
-    () =>
-      new Map(messages.map((message) => [String(message.id), message.message_type])),
-    [messages]
-  );
   const { reactions, toggleReaction, isReactionPending } = useBrandedLeaderboardBroadcastReactions({
     leaderboardId,
     messages,
     userId: currentUserId,
     enabled: visible,
   });
+  const listRef = React.useRef<FlatList<any> | null>(null);
 
-  const giftedMessages = React.useMemo(() => {
-    return [...messages]
-      .sort((a, b) => {
-        const at = new Date(a.created_at).getTime();
-        const bt = new Date(b.created_at).getTime();
-        if (at === bt) return b.id.localeCompare(a.id);
-        return bt - at;
-      })
-      .map((message) => toGiftedMessage(message, currentUserId));
-  }, [currentUserId, messages]);
+  const sortedMessages = React.useMemo(() => {
+    return [...messages].sort((a, b) => {
+      const at = new Date(a.created_at).getTime();
+      const bt = new Date(b.created_at).getTime();
+      if (at === bt) return a.id.localeCompare(b.id);
+      return at - bt;
+    });
+  }, [messages]);
+  const keyboardInset = Math.max(0, keyboardHeight - keyboardVerticalOffset);
+  const keyboardVisible = keyboardInset > 0;
+
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const frameEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+
+    const handleShow = (event: any) => {
+      const nextHeight = Number(event?.endCoordinates?.height ?? 0);
+      setKeyboardHeight(Number.isFinite(nextHeight) ? nextHeight : 0);
+    };
+    const handleHide = () => setKeyboardHeight(0);
+
+    const showSub = Keyboard.addListener(showEvent as any, handleShow);
+    const frameSub = Keyboard.addListener(frameEvent as any, handleShow);
+    const hideSub = Keyboard.addListener(hideEvent as any, handleHide);
+
+    return () => {
+      showSub.remove();
+      frameSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const timelineItems = React.useMemo(() => {
+    const items: Array<
+      | { key: string; type: 'day'; label: string }
+      | {
+          key: string;
+          type: 'message';
+          message: BrandedLeaderboardBroadcastUiMessage;
+          isMe: boolean;
+          isRight: boolean;
+          authorName: string;
+          showUsername: boolean;
+        }
+    > = [];
+
+    sortedMessages.forEach((message, index) => {
+      const previous = index > 0 ? sortedMessages[index - 1] ?? null : null;
+      if (!previous || !isSameDaySafe(previous.created_at, message.created_at)) {
+        const label = formatDayLabel(message.created_at);
+        if (label) items.push({ key: `day:${message.id}`, type: 'day', label });
+      }
+
+      const isMe =
+        !!currentUserId && message.user_id === currentUserId && message.user_id !== VOLLEY_USER_ID;
+      const isVolley =
+        message.user_id === VOLLEY_USER_ID || message.message_type === 'system';
+      const authorName = isMe ? 'You' : isVolley ? VOLLEY_NAME : message.user_name ?? 'Host';
+
+      items.push({
+        key: `msg:${message.id}`,
+        type: 'message',
+        message,
+        isMe,
+        isRight: isMe,
+        authorName,
+        showUsername: !isMe && shouldShowIncomingUsername(message, previous),
+      });
+    });
+
+    return items;
+  }, [currentUserId, sortedMessages]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -233,6 +269,12 @@ export default function BrandedLeaderboardBroadcastTab({
     void markAsRead({ lastReadAtOverride: newest });
     lastReadMarkedAtRef.current = newest;
   }, [markAsRead, messages, setLastReadAt, visible]);
+
+  React.useEffect(() => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [keyboardInset, timelineItems.length]);
 
   const openReactionTray = React.useCallback(
     (messageId: string, pageX: number, pageY: number) => {
@@ -258,116 +300,123 @@ export default function BrandedLeaderboardBroadcastTab({
   );
 
   const handleSend = React.useCallback(
-    async (newMsgs: IMessage[] = []) => {
-      const first = newMsgs[0];
-      const text = String(first?.text ?? '').trim();
+    async () => {
+      const text = draft.trim();
       if (!text) return;
       setSending(true);
       try {
         await onSend(text);
+        setDraft('');
         const newest = new Date().toISOString();
         setLastReadAt(newest);
       } finally {
         setSending(false);
       }
     },
-    [onSend, setLastReadAt]
+    [draft, onSend, setLastReadAt]
   );
 
-  return (
-    <View style={{ flex: 1, backgroundColor: t.color.background }}>
-      {error ? (
-        <Card style={{ marginHorizontal: t.space[4], marginTop: t.space[4] }}>
-          <TotlText variant="heading" style={{ marginBottom: 6 }}>
-            Couldn’t load broadcast
-          </TotlText>
-          <TotlText variant="muted">{error}</TotlText>
-        </Card>
-      ) : null}
+  const renderTimelineItem = React.useCallback(
+    ({
+      item,
+    }: {
+      item:
+        | { key: string; type: 'day'; label: string }
+        | {
+            key: string;
+            type: 'message';
+            message: BrandedLeaderboardBroadcastUiMessage;
+            isMe: boolean;
+            isRight: boolean;
+            authorName: string;
+            showUsername: boolean;
+          };
+    }) => {
+      if (item.type === 'day') {
+        return (
+          <View style={{ alignItems: 'center', marginVertical: 8 }}>
+            <View
+              style={{
+                backgroundColor: 'rgba(15,23,42,0.12)',
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999,
+              }}
+            >
+              <TotlText
+                style={{
+                  fontSize: 12,
+                  lineHeight: 14,
+                  fontFamily: t.font.medium,
+                  color: 'rgba(15,23,42,0.70)',
+                }}
+              >
+                {item.label}
+              </TotlText>
+            </View>
+          </View>
+        );
+      }
 
-      <View style={{ flex: 1 }}>
-        <GiftedChat
-          messages={giftedMessages}
-          onSend={handleSend}
-          user={{ _id: currentUserId ?? 'anon', name: 'You' }}
-          textInputProps={{
-            placeholder: 'Message…',
-            placeholderTextColor: t.color.muted,
-            selectionColor: t.color.brand,
-          }}
-          messagesContainerStyle={{ backgroundColor: t.color.background }}
-          renderBubble={(props: any) => (
-            <Bubble
-              {...props}
-              isUsernameVisible={shouldShowIncomingUsername(props)}
-              renderUsername={() => null}
-              wrapperStyle={{
-                left: {
-                  backgroundColor: t.color.surface,
-                  borderWidth: 0,
-                  paddingHorizontal: 16,
-                  paddingTop: 12,
-                  paddingBottom: 10,
-                },
-                right: {
-                  backgroundColor: t.color.brand,
-                  paddingHorizontal: 16,
-                  paddingTop: 12,
-                  paddingBottom: 10,
-                },
-              }}
-              textStyle={{
-                left: { color: t.color.text },
-                right: { color: '#FFFFFF' },
-              }}
-              renderMessageText={(messageProps: any) => {
-                const user = messageProps?.currentMessage?.user;
-                const showUsername =
-                  messageProps?.position === 'left' && shouldShowIncomingUsername(messageProps);
-                return (
-                  <View>
-                    {showUsername && user ? (
-                      <TotlText
-                        style={{
-                          marginBottom: 4,
-                          fontSize: 13,
-                          lineHeight: 16,
-                          fontFamily: t.font.medium,
-                          color: 'rgba(15,23,42,0.45)',
-                        }}
-                      >
-                        {user._id === VOLLEY_USER_ID ? VOLLEY_NAME : String(user.name ?? '')}
-                      </TotlText>
-                    ) : null}
-                    <TotlText
-                      style={{
-                        fontFamily: 'System',
-                        fontSize: 16,
-                        lineHeight: 20,
-                        color:
-                          messageProps?.position === 'right' ? '#FFFFFF' : t.color.text,
-                      }}
-                    >
-                      {String(messageProps?.currentMessage?.text ?? '')}
-                    </TotlText>
-                  </View>
-                );
-              }}
-              timeTextStyle={{
-                left: { color: 'rgba(15,23,42,0.45)' },
-                right: { color: 'rgba(255,255,255,0.75)' },
-              }}
-            />
-          )}
-          isCustomViewBottom
-          renderCustomView={(props: any) => {
-            const messageId = String(props?.currentMessage?._id ?? '');
-            if (!messageId) return null;
-            if (messageTypeById.get(messageId) === 'system') return null;
+      const { message, isRight, authorName, showUsername } = item;
+      const messageId = String(message.id);
+      const list = reactions[messageId] ?? [];
+      const bubbleAlign = isRight ? 'flex-end' : 'flex-start';
 
-            const list = reactions[messageId] ?? [];
-            const isRight = props?.position === 'right';
-            return (
+      return (
+        <View style={{ alignItems: bubbleAlign, marginBottom: 10 }}>
+          <View
+            style={{
+              maxWidth: '84%',
+              backgroundColor: isRight ? t.color.brand : t.color.surface,
+              borderWidth: 0,
+              borderRadius: 18,
+              paddingHorizontal: 16,
+              paddingTop: 12,
+              paddingBottom: 10,
+            }}
+          >
+            {showUsername ? (
+              <TotlText
+                style={{
+                  marginBottom: 4,
+                  fontSize: 13,
+                  lineHeight: 16,
+                  fontFamily: t.font.medium,
+                  color: 'rgba(15,23,42,0.45)',
+                }}
+              >
+                {authorName}
+              </TotlText>
+            ) : null}
+
+            <TotlText
+              style={{
+                fontFamily: 'System',
+                fontSize: 16,
+                lineHeight: 20,
+                color: isRight ? '#FFFFFF' : t.color.text,
+              }}
+            >
+              {String(message.content ?? '')}
+            </TotlText>
+
+            <View style={{ alignItems: 'flex-end', marginTop: 6 }}>
+              <TotlText
+                style={{
+                  color: isRight ? 'rgba(255,255,255,0.75)' : 'rgba(15,23,42,0.45)',
+                  fontSize: 12,
+                  lineHeight: 14,
+                }}
+              >
+                {new Date(message.created_at).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </TotlText>
+            </View>
+
+            {message.message_type !== 'system' ? (
               <View
                 style={{
                   marginTop: 8,
@@ -382,7 +431,7 @@ export default function BrandedLeaderboardBroadcastTab({
                   }}
                 >
                   {DEFAULT_VISIBLE_REACTION_EMOJIS.map((emoji) => {
-                    const reaction = list.find((item) => item.emoji === emoji);
+                    const reaction = list.find((entry) => entry.emoji === emoji);
                     const hasUserReacted = reaction?.hasUserReacted ?? false;
                     const count = reaction?.count ?? 0;
                     const isPending = isReactionPending(messageId, emoji);
@@ -460,102 +509,86 @@ export default function BrandedLeaderboardBroadcastTab({
                       opacity: pressed ? 0.92 : 1,
                     })}
                   >
-                    <>
-                      <Ionicons
-                        name="happy-outline"
-                        size={16}
-                        color={isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)'}
-                      />
-                      <TotlText
-                        style={{
-                          marginLeft: 6,
-                          fontFamily: 'System',
-                          fontSize: 12,
-                          lineHeight: 14,
-                          color: isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)',
-                        }}
-                      >
-                        More
-                      </TotlText>
-                    </>
+                    <Ionicons
+                      name="happy-outline"
+                      size={16}
+                      color={isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)'}
+                    />
+                    <TotlText
+                      style={{
+                        marginLeft: 6,
+                        fontFamily: 'System',
+                        fontSize: 12,
+                        lineHeight: 14,
+                        color: isRight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.55)',
+                      }}
+                    >
+                      More
+                    </TotlText>
                   </Pressable>
                 </View>
               </View>
-            );
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [handleToggleReaction, isReactionPending, openReactionTray, reactions, t]
+  );
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        minHeight: 0,
+        backgroundColor: t.color.background,
+        paddingBottom: keyboardInset,
+      }}
+    >
+      {error ? (
+        <Card style={{ marginHorizontal: t.space[4], marginTop: t.space[4] }}>
+          <TotlText variant="heading" style={{ marginBottom: 6 }}>
+            Couldn’t load broadcast
+          </TotlText>
+          <TotlText variant="muted">{error}</TotlText>
+        </Card>
+      ) : null}
+
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <FlatList
+          ref={listRef}
+          data={timelineItems}
+          keyExtractor={(item) => item.key}
+          renderItem={renderTimelineItem}
+          style={{ flex: 1, backgroundColor: t.color.background }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'flex-end',
+            paddingHorizontal: 12,
+            paddingTop: 8,
+            paddingBottom: canPost ? 12 : 0,
           }}
-          renderComposer={(props: any) => (
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-              <Composer
-                {...props}
-                composerHeight={50}
-                textInputProps={{
-                  ...(props.textInputProps ?? {}),
-                  placeholderTextColor: t.color.muted,
-                  selectionColor: t.color.brand,
-                  style: {
-                    color: t.color.text,
-                    backgroundColor: t.color.surface,
-                    borderRadius: 24,
-                    borderWidth: 1,
-                    borderColor: t.color.border,
-                    minHeight: 50,
-                    lineHeight: 22,
-                    textAlignVertical: 'center',
-                    paddingHorizontal: 16,
-                    paddingTop: 12,
-                    paddingBottom: 12,
-                    marginLeft: 0,
-                    marginRight: 0,
-                    maxHeight: 120,
-                  },
-                }}
-              />
-            </View>
-          )}
-          renderDay={(props: any) => {
-            const label = formatDayLabel(props?.currentMessage?.createdAt);
-            if (!label) return null;
-            return (
-              <View style={{ alignItems: 'center', marginVertical: 8 }}>
-                <View
-                  style={{
-                    backgroundColor: 'rgba(15,23,42,0.12)',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                  }}
-                >
-                  <TotlText
-                    style={{
-                      fontSize: 12,
-                      lineHeight: 14,
-                      fontFamily: t.font.medium,
-                      color: 'rgba(15,23,42,0.70)',
-                    }}
-                  >
-                    {label}
-                  </TotlText>
-                </View>
-              </View>
-            );
+          scrollIndicatorInsets={{ bottom: canPost ? 12 : 0 }}
+          onContentSizeChange={() => {
+            requestAnimationFrame(() => {
+              listRef.current?.scrollToEnd({ animated: false });
+            });
           }}
-          listProps={{
-            style: { backgroundColor: t.color.background },
-            contentContainerStyle: { paddingBottom: 0 },
-          }}
-          keyboardAvoidingViewProps={{
-            keyboardVerticalOffset,
-            behavior: 'padding' as any,
-          }}
-          keyboardProviderProps={{ preload: false }}
-          renderInputToolbar={(props: any) =>
-            canPost ? (
-              <BroadcastInputToolbar {...props} insetsBottom={insets.bottom} sending={sending} />
-            ) : null
-          }
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         />
       </View>
+
+      {canPost ? (
+        <BroadcastComposer
+          draft={draft}
+          onChangeDraft={setDraft}
+          onSubmit={() => void handleSend()}
+          insetsBottom={insets.bottom}
+          keyboardVisible={keyboardVisible}
+          sending={sending}
+        />
+      ) : null}
 
       {!canPost ? (
         <View
@@ -574,7 +607,7 @@ export default function BrandedLeaderboardBroadcastTab({
         </View>
       ) : null}
 
-      {isLoading && giftedMessages.length === 0 ? (
+      {isLoading && timelineItems.length === 0 ? (
         <View style={{ position: 'absolute', top: 12, left: 16 }}>
           <TotlText variant="muted">Loading…</TotlText>
         </View>
