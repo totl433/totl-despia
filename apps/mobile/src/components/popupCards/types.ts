@@ -1,5 +1,6 @@
 export type PopupCardKind =
   | 'results'
+  | 'resultsScoreSheet'
   | 'winners'
   | 'newGameweek'
   | 'welcome1'

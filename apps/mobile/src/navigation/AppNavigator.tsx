@@ -38,7 +38,7 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const navigationRef = createNavigationContainerRef<RootStackParamList>();
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 type LeagueInitialTab = NonNullable<RootStackParamList['LeagueDetail']['initialTab']>;
 
 function parseIncomingUrl(rawUrl: string): URL | null {

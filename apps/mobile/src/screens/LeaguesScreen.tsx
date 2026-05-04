@@ -105,7 +105,7 @@ function LeagueRow({
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: enabled && typeof tableGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
-      'leagueStartGw',
+      'leagueStartGwV2',
       leagueId,
       tableGw,
       String((membersData as any)?.league?.name ?? league.name ?? ''),

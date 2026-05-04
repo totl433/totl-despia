@@ -218,6 +218,7 @@ export declare const GwResultsSchema: z.ZodObject<{
         overall: z.ZodBoolean;
     }, z.core.$strip>;
     mlVictories: z.ZodNumber;
+    mlMembershipCount: z.ZodDefault<z.ZodNumber>;
     mlVictoryNames: z.ZodArray<z.ZodString>;
     mlVictoryData: z.ZodArray<z.ZodObject<{
         id: z.ZodString;

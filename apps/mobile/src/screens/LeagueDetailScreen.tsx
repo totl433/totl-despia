@@ -142,8 +142,9 @@ export default function LeagueDetailScreen() {
     staleTime: 60_000,
   });
   const effectiveCurrentGw = typeof publishedCurrentGw === 'number' ? publishedCurrentGw : currentGw;
-  // Season standings should align to the GW context the user is currently viewing.
-  const seasonGw = typeof viewingGw === 'number' ? viewingGw : effectiveCurrentGw;
+  // Match web behavior: season standings are computed to the latest current GW,
+  // not the user's temporary viewing GW.
+  const seasonGw = effectiveCurrentGw;
   const defaultTableGw = React.useMemo(() => {
     if (!home) return null;
     return getLeaderboardDisplayGwFromSnapshot({
@@ -284,7 +285,7 @@ export default function LeagueDetailScreen() {
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague,
     queryKey: [
-      'leagueStartGw',
+      'leagueStartGwV2',
       leagueId,
       seasonGw,
       String(leagueMeta?.name ?? params.name ?? ''),

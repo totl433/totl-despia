@@ -10,22 +10,27 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { TotlText } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PopupInfoCard from './PopupInfoCard';
+import PopupCardShareTray from './PopupCardShareTray';
 import type { PopupCardDescriptor } from './types';
 
 const STACK_OFFSET_Y = 14;
 const STACK_META_HEIGHT = 32;
 const STACK_ACTION_HEIGHT = 64;
+const SHAREABLE_CARD_KINDS = new Set(['resultsScoreSheet', 'results']);
 
 function getStackSlotStyle(slot: number): { translateX: number; translateY: number; rotationDeg: number } {
   switch (slot) {
     case 1:
-      return { translateX: 6, translateY: 10, rotationDeg: -0.9 };
+      return { translateX: 2, translateY: 5, rotationDeg: -0.12 };
     case 2:
-      return { translateX: -5, translateY: 18, rotationDeg: 0.7 };
+      return { translateX: -1, translateY: 10, rotationDeg: 0.1 };
+    case 3:
+      return { translateX: 1, translateY: 15, rotationDeg: -0.06 };
     default:
       return { translateX: 0, translateY: 0, rotationDeg: 0 };
   }
@@ -179,7 +184,9 @@ function StackCard({
         }}
       >
         <PopupInfoCard
+          kind={card.kind}
           title={card.title}
+          eventKey={card.eventKey}
           isTopCard={isTopCard}
           onClose={isTopCard ? onClose : undefined}
           secondaryActionLabel={card.secondaryActionLabel}
@@ -199,11 +206,15 @@ function StackCard({
 export default function PopupCardStack({
   cards,
   visible,
+  initialShareCardId,
+  closeStackOnShareClose = false,
   onDismissTop,
   onCloseAll,
 }: {
   cards: PopupCardDescriptor[];
   visible: boolean;
+  initialShareCardId?: string;
+  closeStackOnShareClose?: boolean;
   onDismissTop: () => void;
   onCloseAll: () => void;
 }) {
@@ -211,6 +222,8 @@ export default function PopupCardStack({
   const { width, height } = useWindowDimensions();
   const [closingCardId, setClosingCardId] = React.useState<string | null>(null);
   const [shouldRender, setShouldRender] = React.useState(visible);
+  const [shareCard, setShareCard] = React.useState<PopupCardDescriptor | null>(null);
+  const openedInitialShareCardIdRef = React.useRef<string | null>(null);
   const slotAssignmentsRef = React.useRef<Record<string, number>>({});
   const stackProgress = useSharedValue(0);
   const overlayProgress = useSharedValue(0);
@@ -237,6 +250,8 @@ export default function PopupCardStack({
     overlayProgress.value = 0;
     dismissProgress.value = 0;
     setClosingCardId(null);
+    setShareCard(null);
+    openedInitialShareCardIdRef.current = null;
     slotAssignmentsRef.current = {};
   }, [dismissProgress, overlayProgress, shouldRender, stackProgress, visible]);
 
@@ -248,6 +263,16 @@ export default function PopupCardStack({
     setClosingCardId(null);
   }, [cards, closingCardId, dismissProgress]);
 
+  React.useEffect(() => {
+    if (!visible || !initialShareCardId) return;
+    if (openedInitialShareCardIdRef.current === initialShareCardId) return;
+    const cardToShare = cards.find((card) => card.id === initialShareCardId);
+    if (cardToShare && SHAREABLE_CARD_KINDS.has(cardToShare.kind)) {
+      openedInitialShareCardIdRef.current = initialShareCardId;
+      setShareCard(cardToShare);
+    }
+  }, [cards, initialShareCardId, visible]);
+
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: interpolate(overlayProgress.value, [0, 1], [0, 1]),
   }));
@@ -256,9 +281,21 @@ export default function PopupCardStack({
   const cardHeight = Math.min(Math.max(Math.round(height * 0.58), 420), 520);
   const horizontalInset = 12;
   const verticalInset = STACK_OFFSET_Y;
-  const visibleCards = cards.slice(0, 3);
+  const visibleCards = cards.slice(0, 4);
   const reversedCards = [...visibleCards].reverse();
   const showStackControls = cards.length > 1;
+  const topCard = cards[0] ?? null;
+  const showShareControl = !!topCard && SHAREABLE_CARD_KINDS.has(topCard.kind);
+  const openShareTray = React.useCallback(() => {
+    if (!topCard) return;
+    setShareCard(topCard);
+  }, [topCard]);
+  const closeShareTray = React.useCallback(() => {
+    setShareCard(null);
+    if (closeStackOnShareClose) {
+      onCloseAll();
+    }
+  }, [closeStackOnShareClose, onCloseAll]);
 
   const visibleCardSlots = React.useMemo(() => {
     const nextAssignments: Record<string, number> = {};
@@ -266,7 +303,7 @@ export default function PopupCardStack({
 
     visibleCards.forEach((card) => {
       const existingSlot = slotAssignmentsRef.current[card.id];
-      if (typeof existingSlot === 'number' && existingSlot >= 0 && existingSlot <= 2 && !usedSlots.has(existingSlot)) {
+      if (typeof existingSlot === 'number' && existingSlot >= 0 && existingSlot <= 3 && !usedSlots.has(existingSlot)) {
         nextAssignments[card.id] = existingSlot;
         usedSlots.add(existingSlot);
       }
@@ -274,7 +311,7 @@ export default function PopupCardStack({
 
     visibleCards.forEach((card, index) => {
       if (typeof nextAssignments[card.id] === 'number') return;
-      const preferredOrder = index === 0 ? [0, 1, 2] : index === 1 ? [1, 2, 0] : [2, 1, 0];
+      const preferredOrder = index === 0 ? [0, 1, 2, 3] : index === 1 ? [1, 2, 3, 0] : index === 2 ? [2, 3, 1, 0] : [3, 2, 1, 0];
       const slot = preferredOrder.find((candidate) => !usedSlots.has(candidate)) ?? 0;
       nextAssignments[card.id] = slot;
       usedSlots.add(slot);
@@ -383,39 +420,70 @@ export default function PopupCardStack({
               })}
             </View>
 
-            <View style={{ minHeight: STACK_ACTION_HEIGHT, justifyContent: 'flex-end' }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close all popups"
-                disabled={!showStackControls}
-                onPress={onCloseAll}
-                style={({ pressed }) => ({
-                  alignSelf: 'center',
-                  marginTop: 22,
-                  paddingHorizontal: 18,
-                  paddingVertical: 10,
-                  borderRadius: 999,
-                  backgroundColor: 'rgba(255,255,255,0.12)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.18)',
-                  opacity: showStackControls ? (pressed ? 0.75 : 1) : 0,
-                })}
-              >
-                <TotlText
-                  style={{
-                    color: '#FFFFFF',
-                    fontFamily: 'Gramatika-Medium',
-                    fontWeight: '700',
-                    fontSize: 14,
-                    lineHeight: 18,
-                  }}
+            <View
+              style={{
+                minHeight: STACK_ACTION_HEIGHT,
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                flexDirection: 'row',
+              }}
+            >
+              {showShareControl ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Share popup card"
+                  onPress={openShareTray}
+                  style={({ pressed }) => ({
+                    width: 46,
+                    height: 46,
+                    borderRadius: 23,
+                    marginRight: showStackControls ? 10 : 0,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(255,255,255,0.16)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.24)',
+                    opacity: pressed ? 0.75 : 1,
+                  })}
                 >
-                  Close all
-                </TotlText>
-              </Pressable>
+                  <Ionicons name="share-social-outline" size={22} color="#FFFFFF" />
+                </Pressable>
+              ) : null}
+
+              {showStackControls ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close all popups"
+                  onPress={onCloseAll}
+                  style={({ pressed }) => ({
+                    alignSelf: 'center',
+                    paddingHorizontal: 18,
+                    paddingVertical: 10,
+                    borderRadius: 999,
+                    backgroundColor: 'rgba(255,255,255,0.12)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    opacity: pressed ? 0.75 : 1,
+                  })}
+                >
+                  <TotlText
+                    style={{
+                      color: '#FFFFFF',
+                      fontFamily: 'Gramatika-Medium',
+                      fontWeight: '700',
+                      fontSize: 14,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Close all
+                  </TotlText>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         ) : null}
+
+        {shareCard ? <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} /> : null}
       </View>
     </Modal>
   );

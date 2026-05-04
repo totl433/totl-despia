@@ -211,6 +211,7 @@ export async function computeGwResults(input: {
 
   // Mini-league victories
   const leagueIds = ((membershipsRes.data ?? []) as Array<{ league_id: string }>).map((m) => String(m.league_id)).filter(Boolean);
+  const mlMembershipCount = leagueIds.length;
   let mlVictories = 0;
   const mlVictoryNames: string[] = [];
   const mlVictoryData: Array<{ id: string; name: string; avatar: string | null }> = [];
@@ -312,6 +313,7 @@ export async function computeGwResults(input: {
     gwRankTotal,
     trophies,
     mlVictories,
+    mlMembershipCount,
     mlVictoryNames,
     mlVictoryData,
     leaderboardChanges,

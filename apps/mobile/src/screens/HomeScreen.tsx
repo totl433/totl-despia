@@ -72,7 +72,7 @@ function isLightSurface(color: string): boolean {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
-  const { openManualResultsRecall } = usePopupCards();
+  const { openManualResultsRecall, openManualResultsScoreSheetShare } = usePopupCards();
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -394,6 +394,7 @@ export default function HomeScreen() {
                 tickerEvent={headerTickerEvent ?? undefined}
                 tickerEventKey={headerTickerEventKey}
                 expandedStats={headerExpandedStats}
+                onSharePress={typeof liveHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(liveHeaderGw) : undefined}
               />
             ) : showStaticResultsHeaderScore && headerScoreLabel ? (
               <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />

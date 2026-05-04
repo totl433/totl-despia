@@ -30,6 +30,7 @@ export default function HeaderLiveScore({
   live = true,
   previewTickerLoop = false,
   expandedStats,
+  onSharePress,
 }: {
   scoreLabel: string;
   fill?: boolean;
@@ -39,6 +40,7 @@ export default function HeaderLiveScore({
   live?: boolean;
   previewTickerLoop?: boolean;
   expandedStats?: HeaderExpandedStat[];
+  onSharePress?: () => void;
 }) {
   const t = useTokens();
   const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
@@ -357,10 +359,14 @@ export default function HeaderLiveScore({
   }, [expandProgress, expanded, hasExpandedStats]);
 
   const handlePress = React.useCallback(() => {
+    if (onSharePress) {
+      onSharePress();
+      return;
+    }
     if (!hasExpandedStats) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setExpanded((prev) => !prev);
-  }, [hasExpandedStats]);
+  }, [hasExpandedStats, onSharePress]);
 
   const tickerRow = renderedTickerEvent ? (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -452,15 +458,16 @@ export default function HeaderLiveScore({
   ) : null;
 
   return (
-    <Pressable
-      accessibilityRole={hasExpandedStats ? 'button' : undefined}
-      accessibilityLabel={hasExpandedStats ? 'Toggle score summary details' : undefined}
-      accessibilityState={hasExpandedStats ? { expanded } : undefined}
-      disabled={!hasExpandedStats}
-      onPressIn={handlePress}
-      style={{ width: fill ? '100%' : undefined }}
-    >
-      <Animated.View
+    <View style={{ width: fill ? '100%' : undefined, flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable
+        accessibilityRole={hasExpandedStats || onSharePress ? 'button' : undefined}
+        accessibilityLabel={onSharePress ? 'Share score sheet' : hasExpandedStats ? 'Toggle score summary details' : undefined}
+        accessibilityState={!onSharePress && hasExpandedStats ? { expanded } : undefined}
+        disabled={!hasExpandedStats && !onSharePress}
+        onPress={handlePress}
+        style={{ width: fill ? '100%' : undefined }}
+      >
+        <Animated.View
         onLayout={(event) => setPillWidth(event.nativeEvent.layout.width)}
         style={{
           height: expandedHeight,
@@ -577,6 +584,7 @@ export default function HeaderLiveScore({
                     {scoreText}
                   </TotlText>
                 </Animated.View>
+                {onSharePress ? <Ionicons name="share-social-outline" size={15} color={primaryText} style={{ marginLeft: 10 }} /> : null}
               </Animated.View>
             )}
             {hasExpandedStats ? (
@@ -642,7 +650,8 @@ export default function HeaderLiveScore({
             ) : null}
           </View>
         </Animated.View>
-      </Animated.View>
-    </Pressable>
+        </Animated.View>
+      </Pressable>
+    </View>
   );
 }

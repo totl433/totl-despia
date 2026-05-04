@@ -113,6 +113,7 @@ export const GwResultsSchema = z.object({
     overall: z.boolean(),
   }),
   mlVictories: z.number().int().nonnegative(),
+  mlMembershipCount: z.number().int().nonnegative().default(0),
   mlVictoryNames: z.array(z.string()),
   mlVictoryData: z.array(
     z.object({

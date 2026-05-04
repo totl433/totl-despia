@@ -2,6 +2,8 @@ import type { PopupCardDescriptor, PopupCardKind } from './types';
 
 function buildTitle(kind: PopupCardKind): string {
   switch (kind) {
+    case 'resultsScoreSheet':
+      return 'Score Sheet';
     case 'results':
       return 'Results';
     case 'winners':
@@ -47,6 +49,7 @@ export function createMainPopupStack({
   const cards: PopupCardDescriptor[] = [];
 
   if (includeResults) {
+    cards.push(createPopupCard('resultsScoreSheet', { id: `results-score-sheet-gw${resultsGw}`, eventKey: `resultsScoreSheet:gw${resultsGw}` }));
     cards.push(createPopupCard('results', { id: `results-gw${resultsGw}`, eventKey: `results:gw${resultsGw}` }));
   }
 

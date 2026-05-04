@@ -4,6 +4,7 @@ type LeagueRecord = {
   id: string;
   name?: string | null;
   created_at?: string | null;
+  start_gw?: number | null;
 };
 
 const DEADLINE_BUFFER_MINUTES = 75;
@@ -28,14 +29,35 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && value.length > 10;
 }
 
+async function ensureLeagueMeta(league: LeagueRecord): Promise<LeagueRecord> {
+  const needsName = typeof league.name !== 'string';
+  const needsCreatedAt = typeof league.created_at !== 'string';
+  if (!needsName && !needsCreatedAt) return league;
+
+  const { data, error } = await (supabase as any)
+    .from('leagues')
+    .select('name, created_at')
+    .eq('id', league.id)
+    .maybeSingle();
+  if (error || !data) return league;
+
+  return {
+    ...league,
+    name: needsName ? data.name : league.name,
+    created_at: needsCreatedAt ? data.created_at : league.created_at,
+  };
+}
+
 type GwDeadlineRow = { gw: number; deadlineTime: Date };
 let gwDeadlineRowsPromise: Promise<GwDeadlineRow[]> | null = null;
 
 async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
   if (!gwDeadlineRowsPromise) {
     gwDeadlineRowsPromise = (async () => {
+      // Web currently derives league start from legacy tables (`gw_results` + `fixtures`).
+      // Keep Expo aligned with production web calculations.
       const { data: resultsData, error: resultsErr } = await (supabase as any)
-        .from('app_gw_results')
+        .from('gw_results')
         .select('gw')
         .order('gw', { ascending: true });
       if (resultsErr) return [];
@@ -47,7 +69,7 @@ async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
       const rows: GwDeadlineRow[] = [];
       for (const gw of completedGws) {
         const { data: firstFixture, error: fixErr } = await (supabase as any)
-          .from('app_fixtures')
+          .from('fixtures')
           .select('kickoff_time')
           .eq('gw', gw)
           .order('kickoff_time', { ascending: true })
@@ -75,10 +97,6 @@ async function resolveStartGwFromCreatedAt(createdAt: string | null | undefined,
   const leagueCreatedAt = new Date(createdAt);
   if (Number.isNaN(leagueCreatedAt.getTime())) return currentGw;
 
-  // Safeguard: leagues created very recently are always treated as new (never lock).
-  const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
-  if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
-
   const gwDeadlineRows = await getGwDeadlineRows();
   for (const row of gwDeadlineRows) {
     if (leagueCreatedAt < row.deadlineTime) return row.gw;
@@ -88,20 +106,21 @@ async function resolveStartGwFromCreatedAt(createdAt: string | null | undefined,
   return currentGw;
 }
 
-/** Leagues created within this many days are treated as "new" - never lock for invites. */
-const NEW_LEAGUE_GRACE_DAYS = 5;
-
 /**
  * resolveLeagueStartGw (mobile)
- * Computes the first GW this league should participate in, mirroring web logic but using app tables.
+ * Computes the first GW this league should participate in.
+ * Keep this aligned with web resolver behavior for consistent standings/join locks.
  */
 export async function resolveLeagueStartGw(league: LeagueRecord | null | undefined, currentGw: number): Promise<number> {
   if (!league?.id) return currentGw;
 
-  const override = getLeagueStartOverride(league.name ?? null);
+  const withMeta = await ensureLeagueMeta(league);
+  const override = getLeagueStartOverride(withMeta.name ?? null);
   if (typeof override === 'number') return override;
 
-  return resolveStartGwFromCreatedAt(league.created_at, currentGw);
+  if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) return withMeta.start_gw;
+
+  return resolveStartGwFromCreatedAt(withMeta.created_at, currentGw);
 }
 
 export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {

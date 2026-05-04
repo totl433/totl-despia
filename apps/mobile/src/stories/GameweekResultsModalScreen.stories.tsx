@@ -46,6 +46,7 @@ const mockGw24: GwResults = {
   gwRankTotal: 38,
   trophies: { gw: false, form5: false, form10: true, overall: false },
   mlVictories: 4,
+  mlMembershipCount: 4,
   mlVictoryNames: ['Carl exp…', 'AGI UNIT…', 'Heart of…', 'carlVjof…'],
   mlVictoryData: [
     { id: '1', name: 'Carl exp…', avatar: 'ML-avatar-1.png' },

@@ -189,7 +189,15 @@ export default function AdminHomeSimulatorScreen() {
   const navigation = useNavigation<any>();
   const { height: screenHeight } = useWindowDimensions();
   const { effectiveTheme, setPreference } = useThemePreference();
-  const { hasActivePopupStack, openMainSimulatorStack, openSimulatorCard, openWelcomeSimulatorStack } = usePopupCards();
+  const {
+    hasActivePopupStack,
+    openMainSimulatorStack,
+    openPostGwReturnSimulatorStack,
+    openSimulatorCard,
+    openSimulatorResultsExample,
+    openSimulatorWinnersExample,
+    openWelcomeSimulatorStack,
+  } = usePopupCards();
   const scrollRef = React.useRef<Animated.ScrollView | null>(null);
   const scrollYRef = React.useRef(0);
   const fixtureNodeRefs = React.useRef<Record<string, View | null>>({});
@@ -1225,9 +1233,19 @@ export default function AdminHomeSimulatorScreen() {
           })}
           {[
             { key: 'results', label: 'Results', onPress: () => openSimulatorCard('results') },
+            { key: 'results-score-sheet', label: 'Results Score Sheet', onPress: () => openSimulatorCard('resultsScoreSheet') },
+            { key: 'results-wins', label: 'Results ML Wins', onPress: () => openSimulatorResultsExample('wins') },
+            { key: 'results-no-ml-wins', label: 'Results No ML Wins', onPress: () => openSimulatorResultsExample('noWinsInLeagues') },
+            { key: 'results-no-mls', label: 'Results No MLs', onPress: () => openSimulatorResultsExample('noLeagues') },
             { key: 'winners', label: 'Winners', onPress: () => openSimulatorCard('winners') },
+            { key: 'winners-single', label: 'Winners Single', onPress: () => openSimulatorWinnersExample('single') },
+            { key: 'winners-1-10', label: 'Winners 1-10', onPress: () => openSimulatorWinnersExample('1to10') },
+            { key: 'winners-with-me', label: 'Winners + Me', onPress: () => openSimulatorWinnersExample('withMe') },
+            { key: 'winners-11-plus', label: 'Winners 11+', onPress: () => openSimulatorWinnersExample('11plus') },
+            { key: 'winners-20-20', label: 'Winners 20+20', onPress: () => openSimulatorWinnersExample('20each') },
             { key: 'new-gw', label: 'New Game Week', onPress: () => openSimulatorCard('newGameweek') },
             { key: 'welcome', label: 'Welcome', onPress: () => openWelcomeSimulatorStack() },
+            { key: 'post-gw-return-stack', label: 'Post GW Return Stack', onPress: () => openPostGwReturnSimulatorStack() },
             { key: 'main-stack', label: 'Load Main Stack', onPress: () => openMainSimulatorStack() },
             { key: 'welcome-stack', label: 'Load Welcome Stack', onPress: () => openWelcomeSimulatorStack() },
           ].map((button) => (

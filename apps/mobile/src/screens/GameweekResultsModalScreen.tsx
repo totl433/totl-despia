@@ -21,6 +21,7 @@ import { getMediumName } from '../../../../src/lib/teamNames';
 import PageHeader from '../components/PageHeader';
 import CenteredSpinner from '../components/CenteredSpinner';
 import ShareResultsTray from '../components/results/ShareResultsTray';
+import ShareActionsFooter, { type ShareTarget } from '../components/share/ShareActionsFooter';
 
 type Route = {
   key: string;
@@ -621,6 +622,21 @@ export default function GameweekResultsModalScreen() {
     }
   }, [gw, shareImageSheet, shareSummaryText, sharing]);
 
+  const handleShareTarget = React.useCallback(
+    (target: ShareTarget) => {
+      if (target === 'instagram') {
+        void handleShareInstagram();
+        return;
+      }
+      if (target === 'whatsapp') {
+        void handleShareWhatsApp();
+        return;
+      }
+      void handleShare();
+    },
+    [handleShare, handleShareInstagram, handleShareWhatsApp]
+  );
+
   const closeScreen = React.useCallback(() => {
     if (navigation.canGoBack?.()) {
       navigation.goBack();
@@ -732,109 +748,7 @@ export default function GameweekResultsModalScreen() {
             ) : null
           }
           onClose={closeFixturesShare}
-          footer={
-            <View style={{ width: '100%', alignSelf: 'center', maxWidth: 420 }}>
-              <TotlText style={{ color: t.color.muted, marginBottom: 10 }}>Share to</TotlText>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Share to Instagram"
-                  onPress={handleShareInstagram}
-                  disabled={sharing || !results}
-                  style={({ pressed }) => ({
-                    width: 84,
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    opacity: sharing || !results ? 0.5 : pressed ? 0.86 : 1,
-                  })}
-                >
-                  <LinearGradient
-                    colors={['#F59E0B', '#EC4899', '#9333EA']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 26,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
-                  </LinearGradient>
-                  <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
-                  >
-                    Instagram
-                  </TotlText>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Share to WhatsApp"
-                  onPress={handleShareWhatsApp}
-                  disabled={sharing || !results}
-                  style={({ pressed }) => ({
-                    width: 84,
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    opacity: sharing || !results ? 0.5 : pressed ? 0.86 : 1,
-                  })}
-                >
-                  <View
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 26,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#25D366',
-                    }}
-                  >
-                    <Ionicons name="logo-whatsapp" size={24} color="#FFFFFF" />
-                  </View>
-                  <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
-                  >
-                    WhatsApp
-                  </TotlText>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="More share options"
-                  onPress={handleShare}
-                  disabled={sharing || !results}
-                  style={({ pressed }) => ({
-                    width: 84,
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    opacity: sharing || !results ? 0.5 : pressed ? 0.86 : 1,
-                  })}
-                >
-                  <View
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 26,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: '#DFEBE9',
-                    }}
-                  >
-                    <Ionicons name="share-social-outline" size={24} color="#111827" />
-                  </View>
-                  <TotlText
-                    style={{ marginTop: 8, fontSize: 12, lineHeight: 12, fontFamily: 'Gramatika-Medium', fontWeight: '600' }}
-                  >
-                    More
-                  </TotlText>
-                </Pressable>
-              </View>
-            </View>
-          }
+          footer={<ShareActionsFooter disabled={sharing || !results} onShare={handleShareTarget} />}
         >
           {results && hasShareSnapshotFixtures ? (
             <View

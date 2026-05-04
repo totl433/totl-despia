@@ -15,14 +15,21 @@ type ActivePopupStack = {
   id: string;
   cards: PopupCardDescriptor[];
   persistSeen: boolean;
+  initialShareCardId?: string;
+  closeStackOnShareClose?: boolean;
 };
 
 type PopupCardsContextValue = {
   hasActivePopupStack: boolean;
   openSimulatorCard: (kind: PopupCardKind) => void;
+  openSimulatorResultsExample: (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => void;
+  openSimulatorWinnersExample: (variant: 'single' | '1to10' | '11plus' | '20each' | 'withMe') => void;
   openMainSimulatorStack: () => void;
+  openPostGwReturnSimulatorStack: () => void;
   openWelcomeSimulatorStack: () => void;
   openManualResultsRecall: (gw: number) => void;
+  openManualResultsScoreSheet: (gw: number) => void;
+  openManualResultsScoreSheetShare: (gw: number) => void;
 };
 
 const PopupCardsContext = React.createContext<PopupCardsContextValue | null>(null);
@@ -81,17 +88,22 @@ export default function PopupCardsProvider({ children }: { children: React.React
     };
   }, []);
 
-  const openStack = React.useCallback((cards: PopupCardDescriptor[], persistSeen: boolean) => {
-    if (!cards.length) return;
-    setActiveStack((current) => {
-      if (current) return current;
-      return {
-        id: `${cards[0]?.id ?? 'popup-stack'}-${Date.now()}`,
-        cards,
-        persistSeen,
-      };
-    });
-  }, []);
+  const openStack = React.useCallback(
+    (cards: PopupCardDescriptor[], persistSeen: boolean, initialShareCardId?: string, closeStackOnShareClose = false) => {
+      if (!cards.length) return;
+      setActiveStack((current) => {
+        if (current) return current;
+        return {
+          id: `${cards[0]?.id ?? 'popup-stack'}-${Date.now()}`,
+          cards,
+          persistSeen,
+          initialShareCardId,
+          closeStackOnShareClose,
+        };
+      });
+    },
+    []
+  );
 
   const openWelcomeSimulatorStack = React.useCallback(() => {
     if (!userId) return;
@@ -111,6 +123,19 @@ export default function PopupCardsProvider({ children }: { children: React.React
     );
   }, [openStack]);
 
+  const openPostGwReturnSimulatorStack = React.useCallback(() => {
+    openStack(
+      createMainPopupStack({
+        resultsGw: 35,
+        newGameweekGw: 36,
+        includeResults: true,
+        includeWinners: true,
+        includeNewGameweek: true,
+      }),
+      false
+    );
+  }, [openStack]);
+
   const openSimulatorCard = React.useCallback(
     (kind: PopupCardKind) => {
       if (kind === 'welcome1' || kind === 'welcome2' || kind === 'welcome3') {
@@ -118,17 +143,25 @@ export default function PopupCardsProvider({ children }: { children: React.React
         return;
       }
 
+      const simulatorGw = typeof home?.viewingGw === 'number' ? home.viewingGw : null;
+      const simulatorEventKey =
+        kind === 'resultsScoreSheet'
+          ? 'simulator:resultsScoreSheet:example'
+          : (kind === 'results' || kind === 'winners' || kind === 'newGameweek') && simulatorGw
+          ? `${kind}:gw${simulatorGw}`
+          : `simulator:${kind}`;
+
       openStack(
         [
           createPopupCard(kind, {
             id: `simulator-${kind}`,
-            eventKey: `simulator:${kind}`,
+            eventKey: simulatorEventKey,
           }),
         ],
         false
       );
     },
-    [openStack, openWelcomeSimulatorStack]
+    [home?.viewingGw, openStack, openWelcomeSimulatorStack]
   );
 
   const openManualResultsRecall = React.useCallback(
@@ -138,6 +171,68 @@ export default function PopupCardsProvider({ children }: { children: React.React
           createPopupCard('results', {
             id: `manual-results-gw${gw}`,
             eventKey: `results:gw${gw}`,
+          }),
+        ],
+        false
+      );
+    },
+    [openStack]
+  );
+
+  const openManualResultsScoreSheet = React.useCallback(
+    (gw: number) => {
+      openStack(
+        [
+          createPopupCard('resultsScoreSheet', {
+            id: `manual-results-score-sheet-gw${gw}`,
+            eventKey: `resultsScoreSheet:gw${gw}`,
+          }),
+        ],
+        false
+      );
+    },
+    [openStack]
+  );
+
+  const openManualResultsScoreSheetShare = React.useCallback(
+    (gw: number) => {
+      const card = createPopupCard('resultsScoreSheet', {
+        id: `manual-results-score-sheet-share-gw${gw}`,
+        eventKey: `resultsScoreSheet:gw${gw}`,
+      });
+      openStack([card], false, card.id, true);
+    },
+    [openStack]
+  );
+
+  const openSimulatorResultsExample = React.useCallback(
+    (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => {
+      const eventKey =
+        variant === 'noWinsInLeagues'
+          ? 'simulator:results:example-no-wins-in-leagues'
+          : variant === 'noLeagues'
+            ? 'simulator:results:example-no-leagues'
+            : 'simulator:results:example-wins';
+      openStack(
+        [
+          createPopupCard('results', {
+            id: `simulator-results-${variant}`,
+            eventKey,
+          }),
+        ],
+        false
+      );
+    },
+    [openStack]
+  );
+
+  const openSimulatorWinnersExample = React.useCallback(
+    (variant: 'single' | '1to10' | '11plus' | '20each' | 'withMe') => {
+      openStack(
+        [
+          createPopupCard('winners', {
+            id: `simulator-winners-${variant}`,
+            eventKey: variant === 'withMe' ? 'simulator:winners:example-with-me' : `simulator:winners:example-${variant}`,
           }),
         ],
         false
@@ -252,11 +347,27 @@ export default function PopupCardsProvider({ children }: { children: React.React
     () => ({
       hasActivePopupStack: !!activeStack,
       openSimulatorCard,
+      openSimulatorResultsExample,
+      openSimulatorWinnersExample,
       openMainSimulatorStack,
+      openPostGwReturnSimulatorStack,
       openWelcomeSimulatorStack,
       openManualResultsRecall,
+      openManualResultsScoreSheet,
+      openManualResultsScoreSheetShare,
     }),
-    [activeStack, openMainSimulatorStack, openManualResultsRecall, openSimulatorCard, openWelcomeSimulatorStack]
+    [
+      activeStack,
+      openMainSimulatorStack,
+      openManualResultsRecall,
+      openManualResultsScoreSheet,
+      openManualResultsScoreSheetShare,
+      openPostGwReturnSimulatorStack,
+      openSimulatorCard,
+      openSimulatorResultsExample,
+      openSimulatorWinnersExample,
+      openWelcomeSimulatorStack,
+    ]
   );
 
   return (
@@ -265,6 +376,8 @@ export default function PopupCardsProvider({ children }: { children: React.React
       <PopupCardStack
         cards={activeStack?.cards ?? []}
         visible={!!activeStack}
+        initialShareCardId={activeStack?.initialShareCardId}
+        closeStackOnShareClose={!!activeStack?.closeStackOnShareClose}
         onDismissTop={dismissTop}
         onCloseAll={closeAll}
       />
