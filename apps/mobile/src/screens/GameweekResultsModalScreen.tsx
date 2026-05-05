@@ -6,6 +6,7 @@ import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
+import * as Clipboard from 'expo-clipboard';
 import type { GwResults, HomeSnapshot, Pick, ProfileSummary } from '@totl/domain';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -36,6 +37,23 @@ function ordinalSuffix(rank: number): string {
   if (j === 2 && k !== 12) return 'nd';
   if (j === 3 && k !== 13) return 'rd';
   return 'th';
+}
+
+async function canOpenScheme(url: string): Promise<boolean> {
+  try {
+    return await Linking.canOpenURL(url);
+  } catch {
+    return false;
+  }
+}
+
+async function openExternalUrl(url: string): Promise<boolean> {
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function ShareCaptureCard({
@@ -595,9 +613,9 @@ export default function GameweekResultsModalScreen() {
     if (sharing) return;
     setSharing(true);
     try {
-      const canOpenInstagram = await Linking.canOpenURL('instagram://app');
-      if (!canOpenInstagram) {
-        await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
+      await Clipboard.setStringAsync(shareSummaryText);
+      const canOpenInstagram = await canOpenScheme('instagram://app');
+      if (canOpenInstagram && (await openExternalUrl('instagram://app'))) {
         return;
       }
       await shareImageSheet('Share to Instagram');
@@ -611,9 +629,8 @@ export default function GameweekResultsModalScreen() {
     setSharing(true);
     try {
       const waUrl = `whatsapp://send?text=${encodeURIComponent(shareSummaryText)}`;
-      const canOpenWhatsApp = await Linking.canOpenURL(waUrl);
-      if (canOpenWhatsApp) {
-        await Linking.openURL(waUrl);
+      const canOpenWhatsApp = await canOpenScheme('whatsapp://send');
+      if (canOpenWhatsApp && (await openExternalUrl(waUrl))) {
         return;
       }
       await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');

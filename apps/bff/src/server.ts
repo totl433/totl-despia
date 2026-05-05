@@ -824,6 +824,53 @@ app.get('/v1/profile/unicorns', async (req) => {
   return { unicorns: await getProfileUnicorns({ userId, supa }) };
 });
 
+app.delete('/v1/profile/account', async (req) => {
+  await requireUser(req, supabase);
+  const { userId } = getAuthedSupa(req as any);
+  const adminSupa = createSupabaseAdminClient(env);
+
+  const cleanupTables = [
+    'push_subscriptions',
+    'expo_push_tokens',
+    'chat_presence',
+    'league_notification_settings',
+    'notification_send_log',
+    'email_preferences',
+    'user_notification_preferences',
+    'league_members',
+    'league_messages',
+    'league_message_reads',
+    'league_message_reactions',
+    'branded_leaderboard_hosts',
+    'branded_leaderboard_memberships',
+    'branded_leaderboard_subscriptions',
+    'branded_leaderboard_broadcast_messages',
+    'branded_leaderboard_broadcast_reactions',
+    'branded_leaderboard_broadcast_reads',
+    'app_picks',
+    'app_gw_submissions',
+    'picks',
+    'gw_submissions',
+    'test_api_picks',
+    'test_api_submissions',
+  ];
+
+  for (const table of cleanupTables) {
+    const { error } = await (adminSupa as any).from(table).delete().eq('user_id', userId);
+    if (error && error.code !== '42P01') {
+      throw error;
+    }
+  }
+
+  const { error: publicUserError } = await (adminSupa as any).from('users').delete().eq('id', userId);
+  if (publicUserError) throw publicUserError;
+
+  const { error: authDeleteError } = await adminSupa.auth.admin.deleteUser(userId);
+  if (authDeleteError) throw authDeleteError;
+
+  return { ok: true };
+});
+
 app.get('/v1/email-preferences', async (req) => {
   await requireUser(req, supabase);
   const { userId, supa } = getAuthedSupa(req as any);

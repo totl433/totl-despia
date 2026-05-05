@@ -12,6 +12,7 @@ import AdminHomeSimulatorScreen from '../screens/profile/AdminHomeSimulatorScree
 import PushDiagnosticsScreen from '../screens/profile/PushDiagnosticsScreen';
 import HowToPlayScreen from '../screens/profile/HowToPlayScreen';
 import ContactUsScreen from '../screens/profile/ContactUsScreen';
+import DeleteAccountScreen from '../screens/profile/DeleteAccountScreen';
 import CookiePolicyScreen from '../screens/profile/CookiePolicyScreen';
 import PrivacyPolicyScreen from '../screens/profile/PrivacyPolicyScreen';
 import TermsConditionsScreen from '../screens/profile/TermsConditionsScreen';
@@ -27,6 +28,7 @@ export type ProfileStackParamList = {
   PushDiagnostics: undefined;
   HowToPlay: undefined;
   ContactUs: undefined;
+  DeleteAccount: undefined;
   CookiePolicy: undefined;
   PrivacyPolicy: undefined;
   TermsConditions: undefined;
@@ -53,6 +55,7 @@ export default function ProfileNavigator() {
       <Stack.Screen name="PushDiagnostics" component={PushDiagnosticsScreen} />
       <Stack.Screen name="HowToPlay" component={HowToPlayScreen} />
       <Stack.Screen name="ContactUs" component={ContactUsScreen} />
+      <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
       <Stack.Screen name="CookiePolicy" component={CookiePolicyScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="TermsConditions" component={TermsConditionsScreen} />

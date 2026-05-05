@@ -258,6 +258,13 @@ export function createApiClient(opts: ApiClientOptions) {
       });
     },
 
+    async deleteAccount(): Promise<{ ok: true }> {
+      return requestJson<{ ok: true }>(opts, `/v1/profile/account`, {
+        method: 'DELETE',
+        validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
+      });
+    },
+
     async getEmailPreferences(): Promise<{ preferences: EmailPreferences }> {
       return requestJson(opts, `/v1/email-preferences`, {
         method: 'GET',

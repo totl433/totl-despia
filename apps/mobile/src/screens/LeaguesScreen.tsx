@@ -27,6 +27,7 @@ import HeaderLiveScore from '../components/HeaderLiveScore';
 import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDevFakeLeagueId } from '../lib/devFakeLeague';
 import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
 import { useLiveScores } from '../hooks/useLiveScores';
+import usePopupCards from '../hooks/usePopupCards';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -363,6 +364,7 @@ function LeagueRow({
 export default function LeaguesScreen() {
   const navigation = useNavigation<any>();
   const t = useTokens();
+  const { openManualResultsScoreSheetShare } = usePopupCards();
   const { width: screenWidth } = useWindowDimensions();
   const listRef = React.useRef<FlatList<LeagueSummary> | null>(null);
   useScrollToTop(listRef as any);
@@ -577,6 +579,7 @@ export default function LeaguesScreen() {
   const showHeaderTotlLogo =
     gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
   const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, showLiveHeaderScore) : null;
+  const shareHeaderGw = typeof viewingGw === 'number' ? viewingGw : typeof effectiveCurrentGw === 'number' ? effectiveCurrentGw : null;
   const liveGwRank = React.useMemo(() => {
     if (!meId) return null;
     const rows = headerGwLiveTable?.rows ?? [];
@@ -744,9 +747,16 @@ export default function LeaguesScreen() {
                 tickerEvent={headerTickerEvent ?? undefined}
                 tickerEventKey={headerTickerEventKey}
                 expandedStats={headerExpandedStats}
+                onSharePress={typeof shareHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(shareHeaderGw) : undefined}
               />
             ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
+              <HeaderLiveScore
+                scoreLabel={headerScoreLabel}
+                fill
+                live={false}
+                expandedStats={headerExpandedStats}
+                onSharePress={typeof shareHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(shareHeaderGw) : undefined}
+              />
             ) : undefined
           }
           rightAction={renderCreateJoinHeaderButton()}
@@ -827,10 +837,17 @@ export default function LeaguesScreen() {
               fill
               tickerEvent={headerTickerEvent ?? undefined}
               tickerEventKey={headerTickerEventKey}
-                expandedStats={headerExpandedStats}
+              expandedStats={headerExpandedStats}
+              onSharePress={typeof shareHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(shareHeaderGw) : undefined}
             />
           ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
+            <HeaderLiveScore
+              scoreLabel={headerScoreLabel}
+              fill
+              live={false}
+              expandedStats={headerExpandedStats}
+              onSharePress={typeof shareHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(shareHeaderGw) : undefined}
+            />
           ) : undefined
         }
         rightAction={renderCreateJoinHeaderButton()}

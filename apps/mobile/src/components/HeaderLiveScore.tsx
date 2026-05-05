@@ -473,6 +473,7 @@ export default function HeaderLiveScore({
           height: expandedHeight,
           width: fill ? '100%' : undefined,
           paddingHorizontal: 14,
+          paddingRight: 14,
           paddingTop: 8,
           paddingBottom: 8,
           borderRadius: 999,
@@ -530,7 +531,7 @@ export default function HeaderLiveScore({
               {tickerRow}
             </View>
           ) : null}
-          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
             {phase === 'ticker' && renderedTickerEvent ? (
               <Animated.View pointerEvents="none" style={{ height: 22, justifyContent: 'center', marginBottom: scoreRowMarginBottom }}>
                 <Animated.View
@@ -584,7 +585,7 @@ export default function HeaderLiveScore({
                     {scoreText}
                   </TotlText>
                 </Animated.View>
-                {onSharePress ? <Ionicons name="share-social-outline" size={15} color={primaryText} style={{ marginLeft: 10 }} /> : null}
+                {onSharePress ? <Ionicons name="share-social-outline" size={15} color={primaryText} style={{ marginLeft: 16 }} /> : null}
               </Animated.View>
             )}
             {hasExpandedStats ? (

@@ -1,11 +1,12 @@
 import React from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking, type AppStateStatus } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { HomeSnapshot } from '@totl/domain';
 
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
+import { getMonthForGw } from '../../lib/leaderboardMonths';
 import { hasSeenPopupCard, markPopupCardSeen, markPopupCardsSeen } from '../../lib/popupCardsStorage';
 import { createMainPopupStack, createPopupCard, createWelcomePopupStack } from './popupCardsCatalog';
 import PopupCardStack from './PopupCardStack';
@@ -19,10 +20,13 @@ type ActivePopupStack = {
   closeStackOnShareClose?: boolean;
 };
 
+type GwPointsRow = { user_id: string; gw: number; points: number };
+
 type PopupCardsContextValue = {
   hasActivePopupStack: boolean;
   openSimulatorCard: (kind: PopupCardKind) => void;
   openSimulatorResultsExample: (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => void;
+  openSimulatorPersonalWinnerExample: (variant: 'gw' | 'monthly') => void;
   openSimulatorWinnersExample: (variant: 'single' | '1to10' | '11plus' | '20each' | 'withMe') => void;
   openMainSimulatorStack: () => void;
   openPostGwReturnSimulatorStack: () => void;
@@ -30,9 +34,66 @@ type PopupCardsContextValue = {
   openManualResultsRecall: (gw: number) => void;
   openManualResultsScoreSheet: (gw: number) => void;
   openManualResultsScoreSheetShare: (gw: number) => void;
+  openManualRoundUpStack: (gw: number, options?: { newGameweekGw?: number | null; includeResults?: boolean }) => void;
+  openSimulatorDoPredictionsCard: () => void;
 };
 
 const PopupCardsContext = React.createContext<PopupCardsContextValue | null>(null);
+
+async function fetchAllSupabaseRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await buildQuery(from, to);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getPersonalWinnerCardsForGw(userId: string, gw: number): Promise<{ gameweek: boolean; monthly: boolean }> {
+  const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+    supabase
+      .from('app_v_gw_points')
+      .select('user_id, gw, points')
+      .eq('gw', gw)
+      .order('user_id', { ascending: true })
+      .range(from, to)
+  );
+  if (!gwRows.length) return { gameweek: false, monthly: false };
+
+  const gwWinningPoints = Math.max(...gwRows.map((row) => Number(row.points ?? 0)));
+  const gameweek = gwRows.some((row) => String(row.user_id) === userId && Number(row.points ?? 0) === gwWinningPoints);
+
+  const month = getMonthForGw(gw);
+  if (!month || gw !== month.endGw) return { gameweek, monthly: false };
+
+  const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+    supabase
+      .from('app_v_gw_points')
+      .select('user_id, gw, points')
+      .gte('gw', month.startGw)
+      .lte('gw', month.endGw)
+      .order('gw', { ascending: true })
+      .order('user_id', { ascending: true })
+      .range(from, to)
+  );
+  if (!monthRows.length) return { gameweek, monthly: false };
+
+  const monthlyTotalsByUser = new Map<string, number>();
+  monthRows.forEach((row) => {
+    const rowUserId = String(row.user_id);
+    monthlyTotalsByUser.set(rowUserId, (monthlyTotalsByUser.get(rowUserId) ?? 0) + Number(row.points ?? 0));
+  });
+  const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
+  const monthly = (monthlyTotalsByUser.get(userId) ?? Number.NEGATIVE_INFINITY) === monthlyTop;
+  return { gameweek, monthly };
+}
 
 function isLikelyNewUser(createdAt: string | null | undefined): boolean {
   if (!createdAt) return false;
@@ -41,12 +102,20 @@ function isLikelyNewUser(createdAt: string | null | undefined): boolean {
   return Date.now() - createdMs <= 15 * 60 * 1000;
 }
 
+function isDoPredictionsEventKey(eventKey: string | null | undefined): boolean {
+  return typeof eventKey === 'string' && eventKey.startsWith('doPredictions:gw');
+}
+
 export default function PopupCardsProvider({ children }: { children: React.ReactNode }) {
   const [activeStack, setActiveStack] = React.useState<ActivePopupStack | null>(null);
   const [initialUrlChecked, setInitialUrlChecked] = React.useState(false);
+  const [foregroundReturnCount, setForegroundReturnCount] = React.useState(0);
   const suppressSessionAutoOpenRef = React.useRef(false);
+  const suppressPredictionsPromptUntilForegroundRef = React.useRef(false);
   const autoOpenInFlightRef = React.useRef(false);
   const sessionDismissedEventKeysRef = React.useRef<Set<string>>(new Set());
+  const lastGwSnapshotRef = React.useRef<{ viewingGw: number | null; currentGw: number | null } | null>(null);
+  const appStateRef = React.useRef<AppStateStatus>(AppState.currentState);
 
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
@@ -69,6 +138,47 @@ export default function PopupCardsProvider({ children }: { children: React.React
   React.useEffect(() => {
     sessionDismissedEventKeysRef.current = new Set();
   }, [userId]);
+
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+      const returnedToForeground = previousState !== 'active' && nextState === 'active';
+      if (!returnedToForeground) return;
+
+      sessionDismissedEventKeysRef.current.forEach((eventKey) => {
+        if (isDoPredictionsEventKey(eventKey)) {
+          sessionDismissedEventKeysRef.current.delete(eventKey);
+        }
+      });
+      suppressPredictionsPromptUntilForegroundRef.current = false;
+      setForegroundReturnCount((count) => count + 1);
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  React.useEffect(() => {
+    const viewingGw = typeof home?.viewingGw === 'number' ? home.viewingGw : null;
+    const currentGw = typeof home?.currentGw === 'number' ? home.currentGw : null;
+    const previous = lastGwSnapshotRef.current;
+
+    if (
+      previous &&
+      typeof previous.viewingGw === 'number' &&
+      typeof previous.currentGw === 'number' &&
+      typeof viewingGw === 'number' &&
+      typeof currentGw === 'number' &&
+      previous.currentGw === currentGw &&
+      previous.viewingGw < currentGw &&
+      viewingGw === currentGw &&
+      !home?.hasSubmittedViewingGw
+    ) {
+      suppressPredictionsPromptUntilForegroundRef.current = true;
+    }
+
+    lastGwSnapshotRef.current = { viewingGw, currentGw };
+  }, [home?.currentGw, home?.hasSubmittedViewingGw, home?.viewingGw]);
 
   React.useEffect(() => {
     let alive = true;
@@ -116,6 +226,8 @@ export default function PopupCardsProvider({ children }: { children: React.React
         resultsGw: 27,
         newGameweekGw: 28,
         includeResults: true,
+        includePersonalGameweekWinner: true,
+        includePersonalMonthlyWinner: true,
         includeWinners: true,
         includeNewGameweek: true,
       }),
@@ -129,9 +241,23 @@ export default function PopupCardsProvider({ children }: { children: React.React
         resultsGw: 35,
         newGameweekGw: 36,
         includeResults: true,
+        includePersonalGameweekWinner: true,
+        includePersonalMonthlyWinner: true,
         includeWinners: true,
         includeNewGameweek: true,
       }),
+      false
+    );
+  }, [openStack]);
+
+  const openSimulatorDoPredictionsCard = React.useCallback(() => {
+    openStack(
+      [
+        createPopupCard('doPredictions', {
+          id: 'simulator-do-predictions',
+          eventKey: 'simulator:doPredictions:gw36',
+        }),
+      ],
       false
     );
   }, [openStack]);
@@ -147,6 +273,10 @@ export default function PopupCardsProvider({ children }: { children: React.React
       const simulatorEventKey =
         kind === 'resultsScoreSheet'
           ? 'simulator:resultsScoreSheet:example'
+          : kind === 'personalWinner'
+            ? 'simulator:personalWinner:gw'
+          : kind === 'doPredictions'
+            ? `simulator:doPredictions:gw${simulatorGw ?? 36}`
           : (kind === 'results' || kind === 'winners' || kind === 'newGameweek') && simulatorGw
           ? `${kind}:gw${simulatorGw}`
           : `simulator:${kind}`;
@@ -205,6 +335,37 @@ export default function PopupCardsProvider({ children }: { children: React.React
     [openStack]
   );
 
+  const openManualRoundUpStack = React.useCallback(
+    (gw: number, options?: { newGameweekGw?: number | null; includeResults?: boolean }) => {
+      const run = async () => {
+        let personalWinnerCards = { gameweek: false, monthly: false };
+        if (userId && options?.includeResults !== false) {
+          try {
+            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, gw);
+          } catch (error) {
+            console.error('[PopupCardsProvider] Failed to check manual round-up winner eligibility:', error);
+          }
+        }
+
+        openStack(
+          createMainPopupStack({
+            resultsGw: gw,
+            newGameweekGw: options?.newGameweekGw,
+            includeResults: options?.includeResults !== false,
+            includePersonalGameweekWinner: personalWinnerCards.gameweek,
+            includePersonalMonthlyWinner: personalWinnerCards.monthly,
+            includeWinners: true,
+            includeNewGameweek: typeof options?.newGameweekGw === 'number',
+          }),
+          false
+        );
+      };
+
+      void run();
+    },
+    [openStack, userId]
+  );
+
   const openSimulatorResultsExample = React.useCallback(
     (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => {
       const eventKey =
@@ -218,6 +379,21 @@ export default function PopupCardsProvider({ children }: { children: React.React
           createPopupCard('results', {
             id: `simulator-results-${variant}`,
             eventKey,
+          }),
+        ],
+        false
+      );
+    },
+    [openStack]
+  );
+
+  const openSimulatorPersonalWinnerExample = React.useCallback(
+    (variant: 'gw' | 'monthly') => {
+      openStack(
+        [
+          createPopupCard('personalWinner', {
+            id: `simulator-personal-winner-${variant}`,
+            eventKey: `simulator:personalWinner:${variant}`,
           }),
         ],
         false
@@ -245,8 +421,10 @@ export default function PopupCardsProvider({ children }: { children: React.React
     setActiveStack((current) => {
       if (!current) return null;
       const [topCard, ...remainingCards] = current.cards;
-      if (current.persistSeen && topCard?.eventKey) {
+      if (topCard?.eventKey) {
         sessionDismissedEventKeysRef.current.add(topCard.eventKey);
+      }
+      if (current.persistSeen && topCard?.eventKey) {
         void markPopupCardSeen(userId, topCard.eventKey);
       }
       if (!remainingCards.length) return null;
@@ -270,6 +448,12 @@ export default function PopupCardsProvider({ children }: { children: React.React
           userId,
           current.cards.map((card) => card.eventKey)
         );
+      } else {
+        current.cards.forEach((card) => {
+          if (card.eventKey) {
+            sessionDismissedEventKeysRef.current.add(card.eventKey);
+          }
+        });
       }
       return null;
     });
@@ -310,13 +494,45 @@ export default function PopupCardsProvider({ children }: { children: React.React
         const newGameweekEligible =
           typeof currentGw === 'number' && typeof viewingGw === 'number' && currentGw > viewingGw;
 
+        if (
+          gameweekState === 'GW_OPEN' &&
+          typeof viewingGw === 'number' &&
+          typeof currentGw === 'number' &&
+          viewingGw === currentGw &&
+          !home.hasSubmittedViewingGw &&
+          !suppressPredictionsPromptUntilForegroundRef.current
+        ) {
+          const doPredictionsCard = createPopupCard('doPredictions', {
+            id: `do-predictions-gw${viewingGw}`,
+            eventKey: `doPredictions:gw${viewingGw}`,
+          });
+          const dismissedThisSession = doPredictionsCard.eventKey
+            ? sessionDismissedEventKeysRef.current.has(doPredictionsCard.eventKey)
+            : false;
+          if (!dismissedThisSession) {
+            openStack([doPredictionsCard], false);
+            return;
+          }
+        }
+
         if (gameweekState !== 'RESULTS_PRE_GW' && !newGameweekEligible) return;
         if (!viewingGw) return;
+
+        let personalWinnerCards = { gameweek: false, monthly: false };
+        if (gameweekState === 'RESULTS_PRE_GW' && !!home.hasSubmittedViewingGw) {
+          try {
+            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, viewingGw);
+          } catch (error) {
+            console.error('[PopupCardsProvider] Failed to check personal winner popup eligibility:', error);
+          }
+        }
 
         const eligibleCards = createMainPopupStack({
           resultsGw: viewingGw,
           newGameweekGw: newGameweekEligible ? currentGw : null,
           includeResults: gameweekState === 'RESULTS_PRE_GW' && !!home.hasSubmittedViewingGw,
+          includePersonalGameweekWinner: personalWinnerCards.gameweek,
+          includePersonalMonthlyWinner: personalWinnerCards.monthly,
           includeWinners: gameweekState === 'RESULTS_PRE_GW',
           includeNewGameweek: newGameweekEligible,
         });
@@ -341,30 +557,36 @@ export default function PopupCardsProvider({ children }: { children: React.React
     };
 
     void run();
-  }, [activeStack, authUser?.created_at, home, initialUrlChecked, openStack, userId]);
+  }, [activeStack, authUser?.created_at, foregroundReturnCount, home, initialUrlChecked, openStack, userId]);
 
   const contextValue = React.useMemo<PopupCardsContextValue>(
     () => ({
       hasActivePopupStack: !!activeStack,
       openSimulatorCard,
       openSimulatorResultsExample,
+      openSimulatorPersonalWinnerExample,
       openSimulatorWinnersExample,
+      openSimulatorDoPredictionsCard,
       openMainSimulatorStack,
       openPostGwReturnSimulatorStack,
       openWelcomeSimulatorStack,
       openManualResultsRecall,
       openManualResultsScoreSheet,
       openManualResultsScoreSheetShare,
+      openManualRoundUpStack,
     }),
     [
       activeStack,
       openMainSimulatorStack,
+      openSimulatorDoPredictionsCard,
       openManualResultsRecall,
+      openManualRoundUpStack,
       openManualResultsScoreSheet,
       openManualResultsScoreSheetShare,
       openPostGwReturnSimulatorStack,
       openSimulatorCard,
       openSimulatorResultsExample,
+      openSimulatorPersonalWinnerExample,
       openSimulatorWinnersExample,
       openWelcomeSimulatorStack,
     ]

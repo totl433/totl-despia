@@ -3,6 +3,7 @@ import { Alert, FlatList, Image, Pressable, ScrollView, View } from 'react-nativ
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Screen, TotlText, useTokens } from '@totl/ui';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../lib/api';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -87,6 +88,72 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
     return (
       <Screen>
         <CenteredSpinner loading />
+      </Screen>
+    );
+  }
+
+  if (embedded && activeItems.length === 0) {
+    return (
+      <Screen fullBleed>
+        <AppTopHeader
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => navigation.navigate('Profile')}
+          avatarUrl={avatarUrl}
+          title="Leaderboards"
+          embedded
+          hideChat
+        />
+        <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 120, justifyContent: 'center' }}>
+          <View
+            style={{
+              borderRadius: 28,
+              backgroundColor: '#EAF7F4',
+              borderWidth: 1,
+              borderColor: 'rgba(28,131,118,0.16)',
+              paddingHorizontal: 22,
+              paddingVertical: 28,
+              alignItems: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 31,
+                backgroundColor: '#1C8376',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 18,
+              }}
+            >
+              <Ionicons name="star" size={30} color="#FFFFFF" />
+            </View>
+            <TotlText
+              style={{
+                color: '#0F172A',
+                fontFamily: 'Gramatika-Bold',
+                fontWeight: '900',
+                fontSize: 24,
+                lineHeight: 28,
+                textAlign: 'center',
+              }}
+            >
+              Branded leaderboards are coming soon
+            </TotlText>
+            <TotlText
+              style={{
+                color: '#334155',
+                fontSize: 14,
+                lineHeight: 20,
+                textAlign: 'center',
+                marginTop: 12,
+              }}
+            >
+              Special TOTL competitions with their own tables, hosts and bragging rights. They are going to be great.
+            </TotlText>
+          </View>
+        </View>
       </Screen>
     );
   }

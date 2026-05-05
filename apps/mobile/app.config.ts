@@ -61,10 +61,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const oneSignalAppGroup = 'group.com.despia.totlnative.onesignal';
   const existingIosEntitlements =
     (config.ios as any)?.entitlements && typeof (config.ios as any).entitlements === 'object' ? (config.ios as any).entitlements : {};
+  const existingInfoPlist =
+    (config.ios as any)?.infoPlist && typeof (config.ios as any).infoPlist === 'object' ? (config.ios as any).infoPlist : {};
   const existingAppGroups = Array.isArray(existingIosEntitlements['com.apple.security.application-groups'])
     ? (existingIosEntitlements['com.apple.security.application-groups'] as string[])
     : [];
   const nextAppGroups = Array.from(new Set([...existingAppGroups, oneSignalAppGroup]));
+  const existingQuerySchemes = Array.isArray(existingInfoPlist.LSApplicationQueriesSchemes)
+    ? (existingInfoPlist.LSApplicationQueriesSchemes as string[])
+    : [];
+  const nextQuerySchemes = Array.from(new Set([...existingQuerySchemes, 'instagram', 'whatsapp']));
 
   return {
     ...config,
@@ -80,6 +86,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     newArchEnabled: storybookEnabled ? true : (config as any).newArchEnabled ?? false,
     ios: {
       ...(config.ios ?? {}),
+      infoPlist: {
+        ...existingInfoPlist,
+        LSApplicationQueriesSchemes: nextQuerySchemes,
+      },
       entitlements: {
         ...existingIosEntitlements,
         // OneSignal notification service extension needs this app group entitlement.

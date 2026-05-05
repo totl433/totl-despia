@@ -72,7 +72,7 @@ function isLightSurface(color: string): boolean {
 export default function HomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
-  const { openManualResultsRecall, openManualResultsScoreSheetShare } = usePopupCards();
+  const { openManualResultsRecall, openManualResultsScoreSheetShare, openManualRoundUpStack } = usePopupCards();
   const scrollRef = React.useRef<any>(null);
   useScrollToTop(scrollRef);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -281,6 +281,7 @@ export default function HomeScreen() {
   const hasAnyGwResults = (home?.gwResults?.length ?? 0) > 0;
   const inferredResultsPreGw = !hasActiveLiveGames && hasAnyGwResults;
   const isResultsPreGw = gwState === 'RESULTS_PRE_GW' || inferredResultsPreGw;
+  const showRoundUpButton = isResultsPreGw && typeof viewingGw === 'number';
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;
   const showComingSoonBanner =
@@ -306,6 +307,13 @@ export default function HomeScreen() {
     () => LinearTransition.springify().damping(42).stiffness(260).mass(0.7),
     []
   );
+  const handleViewRoundUp = React.useCallback(() => {
+    if (typeof viewingGw !== 'number') return;
+    openManualRoundUpStack(viewingGw, {
+      newGameweekGw: showReadyToMoveOn && typeof currentGw === 'number' ? currentGw : null,
+      includeResults: !!home?.hasSubmittedViewingGw,
+    });
+  }, [currentGw, home?.hasSubmittedViewingGw, openManualRoundUpStack, showReadyToMoveOn, viewingGw]);
   const isDetailsOnlyState = gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
   const isDetailsViewActive = isDetailsOnlyState || showAllExpanded;
   const collapsedStackStep = gwState === 'GW_OPEN' ? 58 : 125;
@@ -397,7 +405,13 @@ export default function HomeScreen() {
                 onSharePress={typeof liveHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(liveHeaderGw) : undefined}
               />
             ) : showStaticResultsHeaderScore && headerScoreLabel ? (
-              <HeaderLiveScore scoreLabel={headerScoreLabel} fill live={false} expandedStats={headerExpandedStats} />
+              <HeaderLiveScore
+                scoreLabel={headerScoreLabel}
+                fill
+                live={false}
+                expandedStats={headerExpandedStats}
+                onSharePress={typeof liveHeaderGw === 'number' ? () => openManualResultsScoreSheetShare(liveHeaderGw) : undefined}
+              />
             ) : undefined
           }
           showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
@@ -634,6 +648,79 @@ export default function HomeScreen() {
         <View style={{ marginTop: 8 }}>
           <SectionHeaderRow
             title={typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
+            titleRight={
+              showRoundUpButton ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View Gameweek round up"
+                  onPress={handleViewRoundUp}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.72 : 1,
+                    borderRadius: 999,
+                    minHeight: 44,
+                    paddingHorizontal: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'row',
+                    backgroundColor: t.color.surface,
+                    borderWidth: 1,
+                    borderColor: 'rgba(148,163,184,0.26)',
+                  })}
+                >
+                  <View style={{ width: 19, height: 17, marginRight: 7 }}>
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 7,
+                        width: 9,
+                        height: 12,
+                        borderRadius: 2.5,
+                        borderWidth: 1.4,
+                        borderColor: 'rgba(28,131,118,0.32)',
+                      }}
+                    />
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        left: 4,
+                        width: 10,
+                        height: 13,
+                        borderRadius: 2.8,
+                        borderWidth: 1.4,
+                        borderColor: 'rgba(28,131,118,0.55)',
+                        backgroundColor: t.color.surface,
+                      }}
+                    />
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        left: 1,
+                        width: 11,
+                        height: 13,
+                        borderRadius: 3,
+                        borderWidth: 1.5,
+                        borderColor: '#1C8376',
+                        backgroundColor: t.color.surface,
+                      }}
+                    />
+                  </View>
+                  <TotlText
+                    style={{
+                      color: '#1C8376',
+                      fontFamily: 'Gramatika-Bold',
+                      fontWeight: '900',
+                      fontSize: 13,
+                      lineHeight: 16,
+                    }}
+                  >
+                    Round Up
+                  </TotlText>
+                </Pressable>
+              ) : null
+            }
             right={
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {supportsMiniCompactLayout ? (

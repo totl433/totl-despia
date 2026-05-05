@@ -1,7 +1,8 @@
 import React from 'react';
-import { Share, View, useWindowDimensions } from 'react-native';
+import { Linking, Share, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
+import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +17,8 @@ import type { PopupCardDescriptor } from './types';
 
 function getPopupShareMessage(card: PopupCardDescriptor): string {
   switch (card.kind) {
+    case 'personalWinner':
+      return 'I won on TOTL.';
     case 'resultsScoreSheet':
       return 'Check out my TOTL score sheet.';
     case 'results':
@@ -32,6 +35,23 @@ function getPopupShareMessage(card: PopupCardDescriptor): string {
 function getPopupShareTitle(card: PopupCardDescriptor, target: ShareTarget): string {
   const prefix = target === 'instagram' ? 'Share to Instagram' : target === 'whatsapp' ? 'Share to WhatsApp' : 'Share';
   return `${prefix}: ${card.title}`;
+}
+
+async function canOpenScheme(url: string): Promise<boolean> {
+  try {
+    return await Linking.canOpenURL(url);
+  } catch {
+    return false;
+  }
+}
+
+async function openExternalUrl(url: string): Promise<boolean> {
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function PopupCardSharePreview({
@@ -232,17 +252,43 @@ export default function PopupCardShareTray({
     [buildShareImageFile, card, shareMessage]
   );
 
+  const shareToWhatsApp = React.useCallback(async () => {
+    const waUrl = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
+    const canOpenWhatsApp = await canOpenScheme('whatsapp://send');
+    if (canOpenWhatsApp && (await openExternalUrl(waUrl))) {
+      return;
+    }
+    await shareImage('whatsapp');
+  }, [shareImage, shareMessage]);
+
+  const shareToInstagram = React.useCallback(async () => {
+    await Clipboard.setStringAsync(shareMessage);
+    const canOpenInstagram = await canOpenScheme('instagram://app');
+    if (canOpenInstagram && (await openExternalUrl('instagram://app'))) {
+      return;
+    }
+    await shareImage('instagram');
+  }, [shareImage, shareMessage]);
+
   const handleShare = React.useCallback(
     async (target: ShareTarget) => {
       if (sharing) return;
       setSharing(true);
       try {
+        if (target === 'whatsapp') {
+          await shareToWhatsApp();
+          return;
+        }
+        if (target === 'instagram') {
+          await shareToInstagram();
+          return;
+        }
         await shareImage(target);
       } finally {
         setSharing(false);
       }
     },
-    [shareImage, sharing]
+    [shareImage, shareToInstagram, shareToWhatsApp, sharing]
   );
 
   return (

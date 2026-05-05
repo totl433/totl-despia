@@ -6,10 +6,14 @@ function buildTitle(kind: PopupCardKind): string {
       return 'Score Sheet';
     case 'results':
       return 'Results';
+    case 'personalWinner':
+      return 'You Win!';
     case 'winners':
       return 'Winners';
     case 'newGameweek':
       return 'New Game Week';
+    case 'doPredictions':
+      return 'Do Your Predictions';
     case 'welcome1':
       return 'Welcome 1';
     case 'welcome2':
@@ -37,16 +41,28 @@ export function createMainPopupStack({
   resultsGw,
   newGameweekGw,
   includeResults = true,
+  includePersonalGameweekWinner = false,
+  includePersonalMonthlyWinner = false,
   includeWinners = true,
   includeNewGameweek = true,
 }: {
   resultsGw: number;
   newGameweekGw?: number | null;
   includeResults?: boolean;
+  includePersonalGameweekWinner?: boolean;
+  includePersonalMonthlyWinner?: boolean;
   includeWinners?: boolean;
   includeNewGameweek?: boolean;
 }): PopupCardDescriptor[] {
   const cards: PopupCardDescriptor[] = [];
+
+  if (includePersonalGameweekWinner) {
+    cards.push(createPopupCard('personalWinner', { id: `personal-winner-gameweek-gw${resultsGw}`, eventKey: `personalWinner:gameweek:gw${resultsGw}` }));
+  }
+
+  if (includePersonalMonthlyWinner) {
+    cards.push(createPopupCard('personalWinner', { id: `personal-winner-monthly-gw${resultsGw}`, eventKey: `personalWinner:monthly:gw${resultsGw}` }));
+  }
 
   if (includeResults) {
     cards.push(createPopupCard('resultsScoreSheet', { id: `results-score-sheet-gw${resultsGw}`, eventKey: `resultsScoreSheet:gw${resultsGw}` }));

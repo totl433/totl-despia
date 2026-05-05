@@ -20,6 +20,7 @@ import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
+import usePopupCards from '../hooks/usePopupCards';
 
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -167,6 +168,7 @@ export default function GlobalScreen() {
   const [calendarMenuPosition, setCalendarMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [monthMenuOpen, setMonthMenuOpen] = React.useState(false);
   const [monthMenuPosition, setMonthMenuPosition] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const { openManualResultsScoreSheetShare } = usePopupCards();
   const filterIconRef = React.useRef<View>(null);
   const calendarIconRef = React.useRef<View>(null);
   const monthMenuRef = React.useRef<View>(null);
@@ -966,6 +968,7 @@ export default function GlobalScreen() {
                 tickerEvent={headerTickerEvent ?? undefined}
                 tickerEventKey={headerTickerEventKey}
                 expandedStats={headerExpandedStats}
+                onSharePress={typeof activeLeaderboardGw === 'number' ? () => openManualResultsScoreSheetShare(activeLeaderboardGw) : undefined}
               />
             ) : undefined
           }

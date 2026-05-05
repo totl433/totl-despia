@@ -1,8 +1,10 @@
 export type PopupCardKind =
   | 'results'
   | 'resultsScoreSheet'
+  | 'personalWinner'
   | 'winners'
   | 'newGameweek'
+  | 'doPredictions'
   | 'welcome1'
   | 'welcome2'
   | 'welcome3';

@@ -194,8 +194,11 @@ export default function AdminHomeSimulatorScreen() {
     openMainSimulatorStack,
     openPostGwReturnSimulatorStack,
     openSimulatorCard,
+    openSimulatorPersonalWinnerExample,
     openSimulatorResultsExample,
     openSimulatorWinnersExample,
+    openSimulatorDoPredictionsCard,
+    openManualResultsScoreSheetShare,
     openWelcomeSimulatorStack,
   } = usePopupCards();
   const scrollRef = React.useRef<Animated.ScrollView | null>(null);
@@ -632,6 +635,7 @@ export default function AdminHomeSimulatorScreen() {
                 tickerIntervalMs={10_000}
                 previewTickerLoop
                 expandedStats={headerExpandedStats}
+                onSharePress={() => openManualResultsScoreSheetShare(35)}
                 tickerEvent={{
                   scorerName: 'Stratton',
                   minuteLabel: "(58')",
@@ -645,7 +649,7 @@ export default function AdminHomeSimulatorScreen() {
                 }}
               />
             ) : showStaticResultsHeaderScore ? (
-              <HeaderLiveScore scoreLabel={liveScore} fill live={false} expandedStats={headerExpandedStats} />
+              <HeaderLiveScore scoreLabel={liveScore} fill live={false} expandedStats={headerExpandedStats} onSharePress={() => openManualResultsScoreSheetShare(35)} />
             ) : showHeaderTotlLogo ? (
               <HeaderTotlLogo />
             ) : undefined
@@ -1234,6 +1238,8 @@ export default function AdminHomeSimulatorScreen() {
           {[
             { key: 'results', label: 'Results', onPress: () => openSimulatorCard('results') },
             { key: 'results-score-sheet', label: 'Results Score Sheet', onPress: () => openSimulatorCard('resultsScoreSheet') },
+            { key: 'personal-winner-gw', label: 'You Win GW', onPress: () => openSimulatorPersonalWinnerExample('gw') },
+            { key: 'personal-winner-monthly', label: 'You Win Monthly', onPress: () => openSimulatorPersonalWinnerExample('monthly') },
             { key: 'results-wins', label: 'Results ML Wins', onPress: () => openSimulatorResultsExample('wins') },
             { key: 'results-no-ml-wins', label: 'Results No ML Wins', onPress: () => openSimulatorResultsExample('noWinsInLeagues') },
             { key: 'results-no-mls', label: 'Results No MLs', onPress: () => openSimulatorResultsExample('noLeagues') },
@@ -1244,6 +1250,7 @@ export default function AdminHomeSimulatorScreen() {
             { key: 'winners-11-plus', label: 'Winners 11+', onPress: () => openSimulatorWinnersExample('11plus') },
             { key: 'winners-20-20', label: 'Winners 20+20', onPress: () => openSimulatorWinnersExample('20each') },
             { key: 'new-gw', label: 'New Game Week', onPress: () => openSimulatorCard('newGameweek') },
+            { key: 'do-predictions', label: 'Do Predictions', onPress: () => openSimulatorDoPredictionsCard() },
             { key: 'welcome', label: 'Welcome', onPress: () => openWelcomeSimulatorStack() },
             { key: 'post-gw-return-stack', label: 'Post GW Return Stack', onPress: () => openPostGwReturnSimulatorStack() },
             { key: 'main-stack', label: 'Load Main Stack', onPress: () => openMainSimulatorStack() },

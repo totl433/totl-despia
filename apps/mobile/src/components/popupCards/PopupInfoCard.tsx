@@ -41,6 +41,15 @@ type WinnersCardPayload = {
     | null;
 };
 
+type PersonalWinnerCardPayload = {
+  gw: number;
+  victoryType: 'gameweek' | 'monthly';
+  label: string;
+  points: number;
+  winnerCount: number;
+  joint: boolean;
+};
+
 const SEASON_RANK_BADGE = require('../../../assets/icons/season-rank-badge.png');
 const FIVE_WEEK_FORM_BADGE = require('../../../assets/icons/5-week-form-badge.png');
 const TEN_WEEK_FORM_BADGE = require('../../../assets/icons/10-week-form-badge.png');
@@ -91,6 +100,52 @@ function SwipeFingerIcon({ size = 34, color = '#64748B' }: { size?: number; colo
       />
     </Svg>
   );
+}
+
+function PredictionsFooterIcon({ size = 34, color = '#1C8376' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+      <Path
+        d="M23.5 7C29.3447 7 34.0928 11.748 34.0928 17.5928C34.0925 23.4373 29.3446 28.1846 23.5 28.1846C17.6554 28.1846 12.9085 23.4373 12.9082 17.5928C12.9082 11.748 17.6553 7 23.5 7ZM12.1025 25.001C12.6067 25.0523 13 25.4784 13 25.9961C13 26.5138 12.6067 26.9399 12.1025 26.9912L12 26.9961H7C6.44772 26.9961 6 26.5484 6 25.9961C6 25.4438 6.44772 24.9961 7 24.9961H12L12.1025 25.001ZM20.3008 23.1504L21.0088 26.1855C21.7982 26.4213 22.6389 26.5439 23.5 26.5439C24.3613 26.5439 25.2026 26.4214 25.9922 26.1855L26.6895 23.1914L25.3359 21.4688H21.6133L20.3008 23.1504ZM27.2432 17.3057L26.207 20.5254L27.6631 22.4014L31.0166 22.4531C31.9189 21.0483 32.4521 19.3867 32.4521 17.6025L29.96 16.208L27.2432 17.3057ZM14.5488 17.6025C14.5591 19.3765 15.0718 21.0278 15.9639 22.4121L19.3271 22.3604L20.7832 20.4844L19.7578 17.3057L17.04 16.208L14.5488 17.6025ZM8.10254 16.001C8.60667 16.0523 9 16.4784 9 16.9961C9 17.5138 8.60667 17.9399 8.10254 17.9912L8 17.9961H3C2.44772 17.9961 2 17.5484 2 16.9961C2 16.4438 2.44772 15.9961 3 15.9961H8L8.10254 16.001ZM20.3525 9.21484C18.8556 9.76852 17.5532 10.7223 16.5586 11.9424L17.502 15.0391L20.1064 16.0957L22.875 13.9629V11.2451L20.3525 9.21484ZM24.126 11.2246V13.9629L26.8945 16.0957L29.499 15.0391L30.4424 11.9424C29.4479 10.7223 28.135 9.76907 26.6279 9.20508L24.126 11.2246ZM12.1025 8.00098C12.6067 8.05231 13 8.47842 13 8.99609C13 9.51377 12.6067 9.93988 12.1025 9.99121L12 9.99609H7C6.44772 9.99609 6 9.54838 6 8.99609C6 8.44381 6.44772 7.99609 7 7.99609H12L12.1025 8.00098Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+function getPredictionsDeadline(fixtures: Fixture[] | null | undefined): Date | null {
+  const kickoffTimes = (fixtures ?? [])
+    .map((fixture) => {
+      const rawKickoff = fixture.kickoff_time;
+      if (!rawKickoff) return null;
+      const date = new Date(rawKickoff);
+      return Number.isFinite(date.getTime()) ? date : null;
+    })
+    .filter((date): date is Date => date != null)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  const firstKickoff = kickoffTimes[0] ?? null;
+  if (!firstKickoff) return null;
+  return new Date(firstKickoff.getTime() - 75 * 60 * 1000);
+}
+
+function getSimulatorPredictionsDeadline(): Date {
+  return new Date(Date.now() + 2 * 86400 * 1000 + 4 * 3600 * 1000 + 22 * 60 * 1000);
+}
+
+function formatCountdown(deadline: Date, nowMs: number): string {
+  const remainingMs = Math.max(0, deadline.getTime() - nowMs);
+  if (remainingMs <= 0) return 'Deadline passed';
+
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 }
 
 function ordinalSuffix(rank: number): string {
@@ -539,6 +594,28 @@ function buildSimulatorWinnersPayload(variant: SimulatorWinnersVariant, currentU
   };
 }
 
+function buildSimulatorPersonalWinnerPayload(victoryType: 'gameweek' | 'monthly'): PersonalWinnerCardPayload {
+  if (victoryType === 'monthly') {
+    return {
+      gw: 35,
+      victoryType,
+      label: 'April 2026',
+      points: 27,
+      winnerCount: 4,
+      joint: true,
+    };
+  }
+
+  return {
+    gw: 35,
+    victoryType,
+    label: 'Gameweek 35',
+    points: 8,
+    winnerCount: 3,
+    joint: true,
+  };
+}
+
 async function fetchAllSupabaseRows<T>(
   buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
   pageSize = 1000
@@ -563,8 +640,91 @@ function parseGwFromEventKey(eventKey: string | undefined): number | null {
   return Number.isFinite(gw) && gw > 0 ? gw : null;
 }
 
+function parsePersonalWinnerTypeFromEventKey(eventKey: string | undefined): 'gameweek' | 'monthly' {
+  return eventKey?.includes(':monthly:') || eventKey?.endsWith(':monthly') ? 'monthly' : 'gameweek';
+}
+
 function fallbackName(userId: string): string {
   return `Player ${userId.slice(0, 6).toUpperCase()}`;
+}
+
+async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentUserId: string | null): Promise<PersonalWinnerCardPayload | null> {
+  if (!currentUserId) return null;
+  const victoryType = parsePersonalWinnerTypeFromEventKey(eventKey);
+
+  let gw = parseGwFromEventKey(eventKey);
+  if (!gw) {
+    const { data: latestGwRow, error: latestGwErr } = await supabase
+      .from('app_gw_results')
+      .select('gw')
+      .order('gw', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestGwErr) throw latestGwErr;
+    gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
+  }
+  if (!gw) return null;
+
+  const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+    supabase
+      .from('app_v_gw_points')
+      .select('user_id, gw, points')
+      .eq('gw', gw)
+      .order('user_id', { ascending: true })
+      .range(from, to)
+  );
+  if (!gwRows.length) return null;
+
+  const gwWinningPoints = Math.max(...gwRows.map((row) => Number(row.points ?? 0)));
+  const gwWinnerIds = gwRows.filter((row) => Number(row.points ?? 0) === gwWinningPoints).map((row) => String(row.user_id));
+  if (victoryType === 'gameweek') {
+    if (!gwWinnerIds.includes(currentUserId)) return null;
+    return {
+      gw,
+      victoryType,
+      label: `Gameweek ${gw}`,
+      points: gwWinningPoints,
+      winnerCount: gwWinnerIds.length,
+      joint: gwWinnerIds.length > 1,
+    };
+  }
+
+  const month = getMonthForGw(gw);
+  if (month && gw === month.endGw) {
+    const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+      supabase
+        .from('app_v_gw_points')
+        .select('user_id, gw, points')
+        .gte('gw', month.startGw)
+        .lte('gw', month.endGw)
+        .order('gw', { ascending: true })
+        .order('user_id', { ascending: true })
+        .range(from, to)
+    );
+    if (monthRows.length) {
+      const monthlyTotalsByUser = new Map<string, number>();
+      monthRows.forEach((row) => {
+        const userId = String(row.user_id);
+        monthlyTotalsByUser.set(userId, (monthlyTotalsByUser.get(userId) ?? 0) + Number(row.points ?? 0));
+      });
+      const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
+      const monthlyWinnerIds = Array.from(monthlyTotalsByUser.entries())
+        .filter(([, score]) => score === monthlyTop)
+        .map(([userId]) => userId);
+      if (monthlyWinnerIds.includes(currentUserId)) {
+        return {
+          gw,
+          victoryType,
+          label: month.label,
+          points: monthlyTop,
+          winnerCount: monthlyWinnerIds.length,
+          joint: monthlyWinnerIds.length > 1,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function AchievementMetric({
@@ -683,8 +843,17 @@ function GlobalSummaryMetric({
   );
 }
 
-function RankAchievementMetric({ label, rank, change }: { label: string; rank: number | null; change: number | null }) {
-  if (!rank) return null;
+function RankAchievementMetric({
+  label,
+  rank,
+  change,
+  emptyText,
+}: {
+  label: string;
+  rank: number | null;
+  change: number | null;
+  emptyText?: string;
+}) {
   const improved = typeof change === 'number' && change > 0;
   const dropped = typeof change === 'number' && change < 0;
 
@@ -715,17 +884,25 @@ function RankAchievementMetric({ label, rank, change }: { label: string; rank: n
         {label}
       </TotlText>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 7 }}>
-        <TotlText style={{ color: '#0F172A', fontSize: 17, lineHeight: 20, fontWeight: '400' }}>
-          {rank}
-          {ordinalSuffix(rank)}
-        </TotlText>
-        {improved || dropped ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 4 }}>
-            <Ionicons name={improved ? 'caret-up' : 'caret-down'} size={10} color={improved ? '#16A34A' : '#DC2626'} />
-            <TotlText style={{ color: improved ? '#16A34A' : '#DC2626', fontSize: 10, lineHeight: 12, fontWeight: '900' }}>
-              {Math.abs(change ?? 0)}
+        {rank ? (
+          <>
+            <TotlText style={{ color: '#0F172A', fontSize: 17, lineHeight: 20, fontWeight: '400' }}>
+              {rank}
+              {ordinalSuffix(rank)}
             </TotlText>
-          </View>
+            {improved || dropped ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 4 }}>
+                <Ionicons name={improved ? 'caret-up' : 'caret-down'} size={10} color={improved ? '#16A34A' : '#DC2626'} />
+                <TotlText style={{ color: improved ? '#16A34A' : '#DC2626', fontSize: 10, lineHeight: 12, fontWeight: '900' }}>
+                  {Math.abs(change ?? 0)}
+                </TotlText>
+              </View>
+            ) : null}
+          </>
+        ) : emptyText ? (
+          <TotlText style={{ color: '#64748B', fontSize: 9, lineHeight: 11, fontWeight: '700', textAlign: 'center' }}>
+            {emptyText}
+          </TotlText>
         ) : null}
       </View>
     </View>
@@ -849,7 +1026,7 @@ function MiniLeagueNoWinPanel({
             style={({ pressed }) => ({
               marginTop: 10,
               borderRadius: 999,
-              backgroundColor: '#1C8376',
+        backgroundColor: 'rgba(255,255,255,0.24)',
               paddingHorizontal: 16,
               paddingVertical: 8,
               opacity: pressed ? 0.78 : 1,
@@ -874,9 +1051,9 @@ function ResultsUserPill({ profile }: { profile?: ProfileSummary | null }) {
         flexDirection: 'row',
         alignItems: 'center',
         borderRadius: 999,
-        backgroundColor: 'rgba(248,250,252,0.92)',
+        backgroundColor: 'rgba(248,250,252,0.72)',
         borderWidth: 1,
-        borderColor: 'rgba(15,23,42,0.08)',
+        borderColor: 'rgba(255,255,255,0.34)',
         paddingVertical: 5,
         paddingHorizontal: 9,
         marginBottom: 0,
@@ -1225,8 +1402,11 @@ function ResultsCardBody({
 
   return (
     <View style={{ flex: 1, width: '100%', justifyContent: 'space-evenly', paddingTop: 0, paddingBottom: 12, transform: [{ translateY: 8 }] }}>
-      <View>
-        <ResultsUserPill profile={profileSummary} />
+      <View style={{ transform: [{ translateY: -12 }] }}>
+        <View style={{ transform: [{ translateY: -10 }] }}>
+          <ResultsUserPill profile={profileSummary} />
+        </View>
+        <View style={{ height: 8 }} />
         <ResultsSectionTitle title={`Gameweek ${gw} Results`} badge={FIVE_WEEK_FORM_BADGE} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: titleToContentGap }}>
           <AchievementMetric
@@ -1248,13 +1428,23 @@ function ResultsCardBody({
         <ResultsSectionTitle title="2025/26 Season" badge={SEASON_RANK_BADGE} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: titleToContentGap }}>
           <RankAchievementMetric label="Overall" rank={results.leaderboardChanges.overall.after} change={results.leaderboardChanges.overall.change} />
-          <RankAchievementMetric label="5 Week Form" rank={results.leaderboardChanges.form5.after} change={results.leaderboardChanges.form5.change} />
-          <RankAchievementMetric label="10 Week Form" rank={results.leaderboardChanges.form10.after} change={results.leaderboardChanges.form10.change} />
+          <RankAchievementMetric
+            label="5 Week Form"
+            rank={results.leaderboardChanges.form5.after}
+            change={results.leaderboardChanges.form5.change}
+            emptyText="Play 5 weeks in a row to see your form"
+          />
+          <RankAchievementMetric
+            label="10 Week Form"
+            rank={results.leaderboardChanges.form10.after}
+            change={results.leaderboardChanges.form10.change}
+            emptyText="Play 10 weeks in a row to see your form"
+          />
         </View>
       </View>
 
       {showMiniLeagueSection ? (
-        <View style={{ alignItems: 'center', marginTop: 6 }}>
+        <View style={{ alignItems: 'center', marginTop: 14 }}>
           {hasMiniLeagueWins ? (
             <>
               <ResultsSectionTitle title="Mini-League Wins" badge={TEN_WEEK_FORM_BADGE} />
@@ -1313,7 +1503,7 @@ function NewGameweekCardBody({ eventKey, onClose }: { eventKey?: string; onClose
       <View style={{ position: 'absolute', left: 0, right: 0, top: '50%', alignItems: 'center', transform: [{ translateY: -70 }] }}>
         <TotlText
           style={{
-            color: '#0F172A',
+            color: '#FFFFFF',
             fontFamily: 'Gramatika-Bold',
             textAlign: 'center',
             fontWeight: '900',
@@ -1323,7 +1513,7 @@ function NewGameweekCardBody({ eventKey, onClose }: { eventKey?: string; onClose
         >
           Gameweek {nextGw ?? ''} is ready
         </TotlText>
-        <TotlText style={{ color: '#64748B', textAlign: 'center', marginTop: 12, fontSize: 13, lineHeight: 18, maxWidth: 286 }}>
+        <TotlText style={{ color: 'rgba(255,255,255,0.82)', textAlign: 'center', marginTop: 12, fontSize: 13, lineHeight: 18, maxWidth: 286 }}>
           The next set of fixtures is live. Move on when you&apos;re ready and start making your picks.
         </TotlText>
 
@@ -1337,27 +1527,166 @@ function NewGameweekCardBody({ eventKey, onClose }: { eventKey?: string; onClose
             paddingHorizontal: 20,
             paddingVertical: 12,
             borderRadius: 999,
-            backgroundColor: '#1C8376',
+            backgroundColor: '#FFFFFF',
             opacity: !nextGw || isAdvancing ? 0.65 : pressed ? 0.86 : 1,
             flexDirection: 'row',
             alignItems: 'center',
             transform: [{ scale: pressed ? 0.99 : 1 }],
           })}
         >
-          <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', fontSize: 14, lineHeight: 16, fontWeight: '900' }}>
+          <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Bold', fontSize: 14, lineHeight: 16, fontWeight: '900' }}>
             Ready to go
+          </TotlText>
+          <View style={{ width: 8 }} />
+          <Ionicons name="arrow-forward" size={16} color="#1C8376" />
+        </Pressable>
+      </View>
+
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <TotlText style={{ color: 'rgba(255,255,255,0.78)', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
+          Swipe away if you aren&apos;t ready{'\n'}to move on just yet
+        </TotlText>
+        <View style={{ marginTop: 6 }}>
+          <SwipeFingerIcon color="rgba(255,255,255,0.78)" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function DoPredictionsCardBody({ eventKey, onClose }: { eventKey?: string; onClose?: () => void }) {
+  const eventGw = parseGwFromEventKey(eventKey);
+  const isSimulatorExample = eventKey?.startsWith('simulator:') === true;
+  const { data: home } = useQuery({
+    queryKey: ['homeSnapshot'],
+    queryFn: () => api.getHomeSnapshot(),
+    staleTime: 60_000,
+  });
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const deadline = React.useMemo(
+    () => (isSimulatorExample ? getSimulatorPredictionsDeadline() : getPredictionsDeadline(home?.fixtures ?? null)),
+    [home?.fixtures, isSimulatorExample]
+  );
+  const countdownLabel = React.useMemo(() => (deadline ? formatCountdown(deadline, nowMs) : null), [deadline, nowMs]);
+
+  React.useEffect(() => {
+    if (isSimulatorExample || !deadline) return;
+    if (deadline.getTime() > Date.now()) return;
+    onClose?.();
+  }, [deadline, isSimulatorExample, onClose]);
+
+  React.useEffect(() => {
+    if (!deadline) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  const handleDoPredictions = () => {
+    onClose?.();
+    requestAnimationFrame(() => {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('PredictionsFlow');
+      }
+    });
+  };
+
+  return (
+    <View style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden' }}>
+      <LinearGradient
+        colors={['rgba(250,204,21,0.28)', 'rgba(45,212,191,0.18)', 'rgba(168,85,247,0.16)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: -24, right: -24, bottom: -24, left: -24 }}
+      />
+      <View style={{ position: 'absolute', left: 0, right: 0, top: '50%', alignItems: 'center', transform: [{ translateY: -122 }] }}>
+        <View
+          style={{
+            width: 58,
+            height: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PredictionsFooterIcon size={42} color="#0F172A" />
+        </View>
+
+        <TotlText
+          style={{
+            color: '#0F172A',
+            fontFamily: 'Gramatika-Bold',
+            textAlign: 'center',
+            fontWeight: '900',
+            fontSize: 22,
+            lineHeight: 26,
+            marginTop: 6,
+            maxWidth: 292,
+          }}
+        >
+          Ready to do your predictions?
+        </TotlText>
+        <TotlText style={{ color: '#334155', textAlign: 'center', marginTop: 10, fontSize: 13, lineHeight: 18, maxWidth: 292 }}>
+          Gameweek {eventGw ?? ''} is waiting.{'\n'}Make your predictions before deadline.
+        </TotlText>
+
+        {countdownLabel ? (
+          <View
+            style={{
+              marginTop: 12,
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <Ionicons name="time-outline" size={16} color="#0F172A" />
+            <TotlText
+              style={{
+                marginLeft: 6,
+                color: '#0F172A',
+                fontFamily: 'Gramatika-Bold',
+                fontWeight: '900',
+                fontSize: 13,
+                lineHeight: 15,
+              }}
+            >
+              {countdownLabel === 'Deadline passed' ? countdownLabel : `Deadline in ${countdownLabel}`}
+            </TotlText>
+          </View>
+        ) : null}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Do your predictions"
+          onPress={handleDoPredictions}
+          style={({ pressed }) => ({
+            marginTop: countdownLabel ? 14 : 18,
+            paddingHorizontal: 22,
+            paddingVertical: 12,
+            borderRadius: 999,
+            backgroundColor: '#1C8376',
+            opacity: pressed ? 0.86 : 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            shadowColor: '#1C8376',
+            shadowOpacity: 0.22,
+            shadowRadius: 14,
+            shadowOffset: { width: 0, height: 7 },
+            elevation: 5,
+            transform: [{ scale: pressed ? 0.99 : 1 }],
+          })}
+        >
+          <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', fontSize: 14, lineHeight: 16, fontWeight: '900' }}>
+            Do your predictions
           </TotlText>
           <View style={{ width: 8 }} />
           <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
         </Pressable>
       </View>
 
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-        <TotlText style={{ color: '#64748B', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
-          Swipe away if you aren&apos;t ready{'\n'}to move on just yet
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 20, alignItems: 'center', justifyContent: 'center' }}>
+        <TotlText style={{ color: '#475569', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
+          Swipe away if you&apos;re not{'\n'}ready to pick just yet
         </TotlText>
         <View style={{ marginTop: 6 }}>
-          <SwipeFingerIcon />
+          <SwipeFingerIcon color="#64748B" />
         </View>
       </View>
     </View>
@@ -1594,6 +1923,242 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
   );
 }
 
+function PersonalWinnerDetail({ data }: { data: PersonalWinnerCardPayload }) {
+  const isMonthly = data.victoryType === 'monthly';
+  const title = data.label;
+  const subtitle = isMonthly
+    ? data.joint
+      ? `Joint Player of the Month with ${data.winnerCount - 1} other${data.winnerCount === 2 ? '' : 's'}`
+      : 'Player of the Month'
+    : data.joint
+      ? `Joint winner with ${data.winnerCount - 1} other${data.winnerCount === 2 ? '' : 's'}`
+      : 'Outright Gameweek winner';
+  return (
+    <View
+      style={{
+        width: '100%',
+        paddingHorizontal: 18,
+        paddingVertical: 4,
+        alignItems: 'center',
+      }}
+    >
+      <View style={{ marginBottom: 8 }}>
+        <Ionicons name="trophy" size={30} color="#FFFFFF" />
+      </View>
+      <TotlText
+        style={{
+          color: 'rgba(255,255,255,0.90)',
+          fontFamily: 'Gramatika-Bold',
+          fontWeight: '900',
+          fontSize: 17,
+          lineHeight: 21,
+          textAlign: 'center',
+          textShadowColor: 'rgba(15,23,42,0.30)',
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 5,
+        }}
+      >
+        {title}
+      </TotlText>
+      <TotlText
+        style={{
+          color: '#FFFFFF',
+          fontFamily: 'Gramatika-Bold',
+          fontWeight: '900',
+          fontSize: 38,
+          lineHeight: 41,
+          textAlign: 'center',
+          marginTop: 2,
+          textShadowColor: 'rgba(15,23,42,0.34)',
+          textShadowOffset: { width: 0, height: 3 },
+          textShadowRadius: 7,
+        }}
+      >
+        1st
+      </TotlText>
+      <TotlText
+        style={{
+          color: 'rgba(255,255,255,0.92)',
+          fontWeight: '800',
+          fontSize: 13,
+          lineHeight: 17,
+          textAlign: 'center',
+          marginTop: 6,
+          textShadowColor: 'rgba(15,23,42,0.22)',
+          textShadowOffset: { width: 0, height: 1 },
+          textShadowRadius: 4,
+        }}
+      >
+        {subtitle}
+      </TotlText>
+    </View>
+  );
+}
+
+function PersonalWinnerHeader({ profile, data }: { profile?: ProfileSummary | null; data: PersonalWinnerCardPayload }) {
+  const scoreText = data.victoryType === 'gameweek' ? `${data.points}/10` : `${data.points}`;
+  const scoreLabel = data.victoryType === 'gameweek' ? null : data.points === 1 ? 'point' : 'points';
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+      <ResultsUserPill profile={profile} />
+      <View
+        style={{
+          marginLeft: 8,
+          minHeight: 40,
+          borderRadius: 999,
+          paddingHorizontal: 14,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(255,255,255,0.72)',
+          borderWidth: 1,
+          borderColor: 'rgba(255,255,255,0.34)',
+        }}
+      >
+        <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', fontWeight: '900', fontSize: 14, lineHeight: 17 }}>
+          {scoreText}
+        </TotlText>
+        {scoreLabel ? (
+          <TotlText style={{ color: '#0F172A', fontWeight: '800', fontSize: 9, lineHeight: 11 }}>
+            {scoreLabel}
+          </TotlText>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
+  const { data: authUser } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      return data.user ?? null;
+    },
+    staleTime: 60_000,
+  });
+  const currentUserId = authUser?.id ? String(authUser.id) : null;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['popup-card', 'personalWinner', eventKey ?? 'none', currentUserId ?? 'anonymous'],
+    enabled: true,
+    staleTime: 60_000,
+    queryFn: async (): Promise<PersonalWinnerCardPayload | null> => {
+      if (eventKey === 'simulator:personalWinner:gw') return buildSimulatorPersonalWinnerPayload('gameweek');
+      if (eventKey === 'simulator:personalWinner:monthly') return buildSimulatorPersonalWinnerPayload('monthly');
+      return fetchPersonalWinnerPayload(eventKey, currentUserId);
+    },
+  });
+  const { data: profileSummary } = useQuery<ProfileSummary>({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Loading your win...
+        </TotlText>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Winner card
+        </TotlText>
+      </View>
+    );
+  }
+
+  const isMonthly = data.victoryType === 'monthly';
+
+  return (
+    <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingTop: 4, paddingBottom: 4 }}>
+      <View style={{ alignItems: 'center', marginBottom: 30, zIndex: 5, width: '100%' }}>
+        <PersonalWinnerHeader profile={profileSummary} data={data} />
+        <TotlText
+          style={{
+            color: '#FFFFFF',
+            fontFamily: 'Gramatika-Bold',
+            fontWeight: '900',
+            fontSize: 48,
+            lineHeight: 52,
+            textAlign: 'center',
+            textShadowColor: 'transparent',
+            textShadowOffset: { width: 0, height: 0 },
+            textShadowRadius: 0,
+          }}
+        >
+          You Win!
+        </TotlText>
+        <TotlText
+          style={{
+            color: '#FFFFFF',
+            fontFamily: 'Gramatika-Bold',
+            fontWeight: '900',
+            fontSize: 16,
+            lineHeight: 20,
+            textAlign: 'center',
+            marginTop: 8,
+            textShadowColor: 'rgba(15,23,42,0.24)',
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 5,
+          }}
+        >
+          Top of the league. Scenes!
+        </TotlText>
+        {isMonthly ? (
+          <TotlText
+            style={{
+              color: '#E0E7FF',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 13,
+              lineHeight: 17,
+              textAlign: 'center',
+              marginTop: 6,
+              textShadowColor: 'rgba(15,23,42,0.22)',
+              textShadowOffset: { width: 0, height: 2 },
+              textShadowRadius: 4,
+            }}
+          >
+            Player of the Month
+          </TotlText>
+        ) : null}
+      </View>
+
+      <View style={{ width: '100%', zIndex: 5, marginTop: 2 }}>
+        <PersonalWinnerDetail data={data} />
+      </View>
+    </View>
+  );
+}
+
+function PersonalWinnerShinyBackground({ animated = true, variant = 'gameweek' }: { animated?: boolean; variant?: 'gameweek' | 'monthly' }) {
+  const isMonthly = variant === 'monthly';
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 28, overflow: 'hidden' }}>
+      <LinearGradient
+        colors={isMonthly ? ['#312E81', '#4F46E5', '#7C3AED', '#C084FC', '#60A5FA'] : ['#FACC15', '#FB7185', '#EC4899', '#A855F7', '#22D3EE', '#34D399']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+      {animated ? (
+        <>
+          <WinnerShimmer durationMs={1000} delayMs={0} opacity={0.96} tint="white" skipFirstDelay />
+          <WinnerShimmer durationMs={1500} delayMs={260} opacity={0.62} tint="gold" />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 function WinnersAnimatedBorder({ animated = true }: { animated?: boolean }) {
   return (
     <>
@@ -1690,23 +2255,28 @@ export default function PopupInfoCard({
   onSecondaryAction?: () => void;
 }) {
   const showWinnersFrame = kind === 'winners';
+  const showPersonalWinnerFrame = kind === 'personalWinner';
   const showResultsFrame = false;
   const showNewGameweekFrame = kind === 'newGameweek';
-  const showInsetFrame = showWinnersFrame || showResultsFrame;
+  const showDoPredictionsCard = kind === 'doPredictions';
+  const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame;
+  const showEmeraldCard = kind === 'newGameweek';
   const runDecorativeAnimations = isTopCard && !isShareAsset;
+  const personalWinnerVariant = showPersonalWinnerFrame ? parsePersonalWinnerTypeFromEventKey(eventKey) : 'gameweek';
   const content = (
     <View
       style={{
         flex: 1,
-        backgroundColor: showInsetFrame ? 'transparent' : '#FFFFFF',
+        backgroundColor: showEmeraldCard ? '#1C8376' : showInsetFrame ? 'transparent' : '#FFFFFF',
         borderRadius: 28,
-        paddingHorizontal: 24,
-        paddingTop: kind === 'resultsScoreSheet' ? 18 : 24,
-        paddingBottom: 22,
+        paddingHorizontal: showDoPredictionsCard ? 0 : 24,
+        paddingTop: showDoPredictionsCard ? 0 : kind === 'resultsScoreSheet' ? 18 : 24,
+        paddingBottom: showDoPredictionsCard ? 0 : 22,
         justifyContent: 'space-between',
-        overflow: showInsetFrame ? 'hidden' : 'visible',
+        overflow: showInsetFrame || showDoPredictionsCard ? 'hidden' : 'visible',
       }}
     >
+      {showPersonalWinnerFrame ? <PersonalWinnerShinyBackground animated={runDecorativeAnimations} variant={personalWinnerVariant} /> : null}
       {showWinnersFrame ? <WinnersAnimatedBorder animated={runDecorativeAnimations} /> : null}
       {showResultsFrame ? <ResultsEmeraldBorder /> : null}
       {isTopCard && onClose ? (
@@ -1725,11 +2295,11 @@ export default function PopupInfoCard({
             borderRadius: 18,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(15,23,42,0.05)',
+            backgroundColor: showEmeraldCard ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.05)',
             opacity: pressed ? 0.75 : 1,
           })}
         >
-          <Ionicons name="close" size={20} color="#0F172A" />
+          <Ionicons name="close" size={20} color={showEmeraldCard ? '#FFFFFF' : '#0F172A'} />
         </Pressable>
       ) : null}
 
@@ -1738,10 +2308,14 @@ export default function PopupInfoCard({
           <ResultsScoreSheetCardBody eventKey={eventKey} />
         ) : kind === 'results' ? (
           <ResultsCardBody eventKey={eventKey} onClose={onClose} isShareAsset={isShareAsset} />
+        ) : kind === 'personalWinner' ? (
+          <PersonalWinnerCardBody eventKey={eventKey} />
         ) : kind === 'winners' ? (
           <WinnersCardBody eventKey={eventKey} />
         ) : kind === 'newGameweek' ? (
           <NewGameweekCardBody eventKey={eventKey} onClose={onClose} />
+        ) : kind === 'doPredictions' ? (
+          <DoPredictionsCardBody eventKey={eventKey} onClose={onClose} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <TotlText
@@ -1760,7 +2334,7 @@ export default function PopupInfoCard({
         )}
       </View>
 
-      <View style={{ minHeight: 26, alignItems: 'center', justifyContent: 'flex-end' }}>
+      <View style={{ minHeight: showDoPredictionsCard ? 0 : 26, alignItems: 'center', justifyContent: 'flex-end' }}>
         {isTopCard && secondaryActionLabel && onSecondaryAction ? (
           <Pressable
             accessibilityRole="button"

@@ -39,15 +39,6 @@ function TabSvgIcon({ xml, color, size }: { xml: string; color: string; size: nu
   return <SvgXml xml={xml} width={size} height={size} color={color} />;
 }
 
-function useBrandedLeaderboardCount() {
-  const { data } = useQuery({
-    queryKey: ['branded-leaderboards-mine'],
-    queryFn: () => api.getMyBrandedLeaderboards(),
-    staleTime: 5 * 60_000,
-  });
-  return data?.leaderboards?.length ?? 0;
-}
-
 function BrandedLeaderboardsTabContent() {
   const { data, isLoading } = useQuery({
     queryKey: ['branded-leaderboards-mine'],
@@ -70,7 +61,6 @@ function BrandedLeaderboardsTabContent() {
 
 export default function TabsNavigator() {
   const t = useTokens();
-  const brandedCount = useBrandedLeaderboardCount();
 
   return (
     <Tab.Navigator
@@ -114,16 +104,14 @@ export default function TabsNavigator() {
           tabBarIcon: ({ color }) => <TabSvgIcon xml={MINI_LEAGUES_SVG} size={35} color={color} />,
         }}
       />
-      {brandedCount > 0 && (
-        <Tab.Screen
-          name="BrandedLeaderboards"
-          component={BrandedLeaderboardsTabContent}
-          options={{
-            title: 'Leaderboards',
-            tabBarIcon: ({ color }) => <TabSvgIcon xml={BRANDED_LB_SVG} size={35} color={color} />,
-          }}
-        />
-      )}
+      <Tab.Screen
+        name="BrandedLeaderboards"
+        component={BrandedLeaderboardsTabContent}
+        options={{
+          title: 'Leaderboards',
+          tabBarIcon: ({ color }) => <TabSvgIcon xml={BRANDED_LB_SVG} size={35} color={color} />,
+        }}
+      />
       <Tab.Screen
         name="Global"
         component={GlobalScreen}

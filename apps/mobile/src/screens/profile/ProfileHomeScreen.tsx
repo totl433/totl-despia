@@ -42,9 +42,7 @@ export default function ProfileHomeScreen() {
   const name = data?.name ?? 'User';
   const email = data?.email ?? null;
   const avatarUrl = data?.avatar_url ?? null;
-  // Temporary Expo-only testing access: show the mobile Admin tools to all Expo users.
-  // This does not change backend roles and does not affect the Despia web app.
-  const isAdmin = true;
+  const isAdmin = data?.isAdmin === true;
 
   const initials = React.useMemo(() => {
     const parts = String(name || '?')
@@ -120,6 +118,7 @@ export default function ProfileHomeScreen() {
       items: [
         { label: 'How To Play', onPress: () => navigation.navigate('HowToPlay') },
         { label: 'Contact Us', onPress: () => navigation.navigate('ContactUs') },
+        { label: 'Delete Your Account', onPress: () => navigation.navigate('DeleteAccount') },
         { label: 'Cookie Policy', onPress: () => navigation.navigate('CookiePolicy') },
         { label: 'Privacy Policy', onPress: () => navigation.navigate('PrivacyPolicy') },
         { label: 'Terms and Conditions', onPress: () => navigation.navigate('TermsConditions') },

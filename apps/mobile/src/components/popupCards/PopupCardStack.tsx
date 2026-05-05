@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import ConfettiCannon from 'react-native-confetti-cannon';
 import { TotlText } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,7 +22,7 @@ import type { PopupCardDescriptor } from './types';
 const STACK_OFFSET_Y = 14;
 const STACK_META_HEIGHT = 32;
 const STACK_ACTION_HEIGHT = 64;
-const SHAREABLE_CARD_KINDS = new Set(['resultsScoreSheet', 'results']);
+const SHAREABLE_CARD_KINDS = new Set(['resultsScoreSheet', 'results', 'personalWinner']);
 
 function getStackSlotStyle(slot: number): { translateX: number; translateY: number; rotationDeg: number } {
   switch (slot) {
@@ -223,7 +224,9 @@ export default function PopupCardStack({
   const [closingCardId, setClosingCardId] = React.useState<string | null>(null);
   const [shouldRender, setShouldRender] = React.useState(visible);
   const [shareCard, setShareCard] = React.useState<PopupCardDescriptor | null>(null);
+  const [confettiShot, setConfettiShot] = React.useState<{ key: number; cardId: string; monthly: boolean } | null>(null);
   const openedInitialShareCardIdRef = React.useRef<string | null>(null);
+  const firedConfettiCardIdRef = React.useRef<string | null>(null);
   const slotAssignmentsRef = React.useRef<Record<string, number>>({});
   const stackProgress = useSharedValue(0);
   const overlayProgress = useSharedValue(0);
@@ -251,7 +254,9 @@ export default function PopupCardStack({
     dismissProgress.value = 0;
     setClosingCardId(null);
     setShareCard(null);
+    setConfettiShot(null);
     openedInitialShareCardIdRef.current = null;
+    firedConfettiCardIdRef.current = null;
     slotAssignmentsRef.current = {};
   }, [dismissProgress, overlayProgress, shouldRender, stackProgress, visible]);
 
@@ -286,6 +291,23 @@ export default function PopupCardStack({
   const showStackControls = cards.length > 1;
   const topCard = cards[0] ?? null;
   const showShareControl = !!topCard && SHAREABLE_CARD_KINDS.has(topCard.kind);
+  React.useEffect(() => {
+    if (!visible || !topCard || topCard.kind !== 'personalWinner') return;
+    if (closingCardId === topCard.id || firedConfettiCardIdRef.current === topCard.id) return;
+    firedConfettiCardIdRef.current = topCard.id;
+    setConfettiShot({
+      key: Date.now(),
+      cardId: topCard.id,
+      monthly: topCard.eventKey?.includes(':monthly:') ?? false,
+    });
+  }, [closingCardId, topCard, visible]);
+
+  React.useEffect(() => {
+    if (!confettiShot) return;
+    const id = setTimeout(() => setConfettiShot(null), 6500);
+    return () => clearTimeout(id);
+  }, [confettiShot]);
+
   const openShareTray = React.useCallback(() => {
     if (!topCard) return;
     setShareCard(topCard);
@@ -484,6 +506,18 @@ export default function PopupCardStack({
         ) : null}
 
         {shareCard ? <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} /> : null}
+        {confettiShot ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 1000, elevation: 1000 }]}>
+            <ConfettiCannon
+              key={confettiShot.key}
+              count={confettiShot.monthly ? 360 : 320}
+              origin={{ x: width / 2, y: -10 }}
+              explosionSpeed={430}
+              fallSpeed={3900}
+              fadeOut
+            />
+          </View>
+        ) : null}
       </View>
     </Modal>
   );

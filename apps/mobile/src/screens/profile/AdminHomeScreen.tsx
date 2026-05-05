@@ -1,16 +1,23 @@
 import React from 'react';
 import { Linking, Pressable, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import PageHeader from '../../components/PageHeader';
 import { useConfetti } from '../../lib/confetti';
+import { api } from '../../lib/api';
 
 export default function AdminHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const confetti = useConfetti();
+  const { data: profileSummary, isLoading } = useQuery({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
 
   const goBack = React.useCallback(() => {
     if (navigation.canGoBack?.()) {
@@ -51,6 +58,41 @@ export default function AdminHomeScreen() {
       ttlMs: 5600,
     });
   }, [confetti]);
+
+  if (!isLoading && profileSummary?.isAdmin !== true) {
+    return (
+      <Screen fullBleed>
+        <PageHeader
+          title="Admin"
+          leftAction={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={goBack}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="chevron-back" size={24} color={t.color.text} />
+            </Pressable>
+          }
+        />
+        <View style={{ flex: 1, paddingHorizontal: t.space[4], paddingTop: t.space[4] }}>
+          <Card style={{ padding: 16 }}>
+            <TotlText variant="heading" style={{ marginBottom: 8 }}>
+              Admin access only
+            </TotlText>
+            <TotlText variant="muted">These tools are only available to the TOTL admin team.</TotlText>
+          </Card>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen fullBleed>
