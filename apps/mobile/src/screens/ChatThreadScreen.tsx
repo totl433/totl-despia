@@ -91,10 +91,10 @@ export default function ChatThreadScreen() {
 
       if (action === 'shareLeagueCode') {
         try {
-          const shareText = `Join the chat for "${leagueName || 'my mini league'}" on TotL!`;
-          const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-          const url = leagueCode && base ? `${base}/league/${encodeURIComponent(leagueCode)}?tab=chat` : null;
-          await Share.share({ message: url ? `${shareText}\n${url}` : `${shareText}\nCode: ${leagueCode ?? ''}`.trim() });
+          if (!leagueCode) return;
+          await Share.share({
+            message: `TotL — "${leagueName || 'mini league'}" (chat)\nCode: ${leagueCode}`,
+          });
         } catch {
           // ignore
         }

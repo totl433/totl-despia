@@ -35,7 +35,7 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueManagementSheet, { type LeagueManagementMember } from '../components/league/LeagueManagementSheet';
 import { env } from '../env';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
@@ -74,6 +74,52 @@ function base64ToUint8Array(base64: string): Uint8Array {
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function LeagueInvitePromptCard({
+  title,
+  body,
+  buttonLabel,
+  onPressInvite,
+}: {
+  title: string;
+  body: string;
+  buttonLabel: string;
+  onPressInvite: () => void;
+}) {
+  const t = useTokens();
+
+  return (
+    <View
+      style={{
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: t.color.border,
+        backgroundColor: t.color.surface,
+        padding: 18,
+      }}
+    >
+      <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 20, lineHeight: 24, color: t.color.text }}>{title}</TotlText>
+      <TotlText style={{ marginTop: 8, fontSize: 14, lineHeight: 19, color: t.color.muted }}>{body}</TotlText>
+      <Pressable
+        onPress={onPressInvite}
+        accessibilityRole="button"
+        accessibilityLabel={buttonLabel}
+        style={({ pressed }) => ({
+          marginTop: 16,
+          minHeight: 46,
+          borderRadius: 999,
+          backgroundColor: t.color.brand,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 18,
+          opacity: pressed ? 0.92 : 1,
+        })}
+      >
+        <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', fontSize: 15, lineHeight: 18 }}>{buttonLabel}</TotlText>
+      </Pressable>
+    </View>
+  );
 }
 
 export default function LeagueDetailScreen() {
@@ -175,14 +221,8 @@ export default function LeagueDetailScreen() {
   const leagueId = String(params.leagueId);
   const { unreadByLeagueId } = useLeagueUnreadCounts();
   const leagueUnreadCount = Number(unreadByLeagueId?.[leagueId] ?? 0);
-  const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
-    enabled: tab === 'gwTable' && typeof selectedGw === 'number' && !isDevFakeLeague,
-    queryKey: ['leagueGwTable', leagueId, selectedGw],
-    queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
-  });
-
   type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
-  const { data: leagueDetails, refetch: refetchLeagueDetails, isRefetching: leagueDetailsRefetching } = useQuery<LeagueMembersResponse>({
+  const { data: leagueDetails, refetch: refetchLeagueDetails, isRefetching: leagueDetailsRefetching, isLoading: leagueDetailsLoading } = useQuery<LeagueMembersResponse>({
     // Needed across tabs (chat avatars + menu actions).
     enabled: !isDevFakeLeague,
     queryKey: ['league', leagueId],
@@ -194,6 +234,7 @@ export default function LeagueDetailScreen() {
     name?: string;
     code?: string;
     created_at?: string | null;
+    start_gw?: number | null;
     avatar?: string | null;
   };
 
@@ -221,6 +262,73 @@ export default function LeagueDetailScreen() {
     if (a1) return a1;
     return resolveLeagueAvatarUri(avatarUriFromList);
   }, [avatarOverrideUri, avatarUriFromList, leagueMeta?.avatar]);
+
+  const seasonShowUnicorns = members.length >= 3;
+  const [seasonShowForm, setSeasonShowForm] = React.useState(false);
+  const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
+  const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
+  const isDormantLeague = !isDevFakeLeague && !leagueDetailsLoading && members.length < 2;
+  const { data: resolvedLeagueStartGw } = useQuery<number>({
+    enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
+    queryKey: [
+      'leagueStartGwV3',
+      leagueId,
+      seasonGw,
+      String(leagueMeta?.name ?? params.name ?? ''),
+      String(leagueMeta?.created_at ?? ''),
+      String(leagueActivationAt ?? ''),
+      String(leagueMeta?.start_gw ?? ''),
+    ],
+    queryFn: async () =>
+      resolveLeagueStartGw(
+        {
+          id: leagueId,
+          name: String(leagueMeta?.name ?? params.name ?? ''),
+          created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
+          activation_at: leagueActivationAt,
+          start_gw: typeof leagueMeta?.start_gw === 'number' ? leagueMeta.start_gw : null,
+        },
+        seasonGw as number
+      ),
+    staleTime: 5 * 60_000,
+  });
+  const seasonStartGwResolved = isDevFakeLeague || isDormantLeague || typeof resolvedLeagueStartGw === 'number';
+  const seasonStartGw = isDevFakeLeague ? 1 : typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
+  const seasonIsLateStartingLeague = seasonStartGw > 1;
+  const tableAvailableGws = React.useMemo(() => availableGws.filter((gw) => gw >= seasonStartGw), [availableGws, seasonStartGw]);
+  const leagueStartsInFuture =
+    !isDevFakeLeague &&
+    !isDormantLeague &&
+    seasonStartGwResolved &&
+    typeof effectiveCurrentGw === 'number' &&
+    seasonStartGw > effectiveCurrentGw;
+
+  /** Opens the invite bottom sheet (same UX as overflow → Invite). */
+  const openLeagueInviteTray = React.useCallback(async () => {
+    if (!leagueMeta?.code) {
+      try {
+        const leagueName = String(leagueMeta?.name ?? params.name ?? 'my mini league');
+        await Share.share({ message: `Join my mini league "${leagueName}" on TotL!` });
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    setInviteMode('league');
+    setInviteOpen(true);
+  }, [leagueMeta?.code, leagueMeta?.name, params.name]);
+
+  const { data: table, isLoading: tableLoading, refetch: refetchTable, isRefetching: tableRefetching } = useQuery<LeagueTableResponse>({
+    enabled:
+      tab === 'gwTable' &&
+      typeof selectedGw === 'number' &&
+      seasonStartGwResolved &&
+      !isDormantLeague &&
+      selectedGw >= seasonStartGw &&
+      !isDevFakeLeague,
+    queryKey: ['leagueGwTable', leagueId, selectedGw],
+    queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
+  });
 
   const gwTableMergedRows = React.useMemo((): LeagueGwTableRow[] => {
     const tbl = table as { rows?: LeagueGwTableRow[]; submittedUserIds?: string[] } | null | undefined;
@@ -278,34 +386,6 @@ export default function LeagueDetailScreen() {
 
     return (allHaveResults || allFinishedStatus) && !hasActiveGames;
   }, [home, selectedGw, tab, viewingGw]);
-
-  const seasonShowUnicorns = members.length >= 3;
-  const [seasonShowForm, setSeasonShowForm] = React.useState(false);
-  const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
-  const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague,
-    queryKey: [
-      'leagueStartGwV2',
-      leagueId,
-      seasonGw,
-      String(leagueMeta?.name ?? params.name ?? ''),
-      String(leagueMeta?.created_at ?? ''),
-    ],
-    queryFn: async () =>
-      resolveLeagueStartGw(
-        {
-          id: leagueId,
-          name: String(leagueMeta?.name ?? params.name ?? ''),
-          created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
-        },
-        seasonGw as number
-      ),
-    staleTime: 5 * 60_000,
-  });
-  const seasonStartGwResolved = isDevFakeLeague || typeof resolvedLeagueStartGw === 'number';
-  const seasonStartGw = isDevFakeLeague ? 1 : typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
-  const seasonIsLateStartingLeague = seasonStartGw > 1;
-  const tableAvailableGws = React.useMemo(() => availableGws.filter((gw) => gw >= seasonStartGw), [availableGws, seasonStartGw]);
 
   React.useEffect(() => {
     if (!seasonStartGwResolved) return;
@@ -419,12 +499,12 @@ export default function LeagueDetailScreen() {
 
       if (action === 'shareLeagueCode') {
         try {
-          const leagueName = String(params.name ?? 'my mini league');
-          const shareText = `Join my mini league "${leagueName}" on TotL!`;
+          const displayName = String(leagueMeta?.name ?? params.name ?? 'my mini league');
           const code = leagueMeta?.code ? String(leagueMeta.code) : null;
-          const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-          const url = code && base ? `${base}/league/${encodeURIComponent(code)}` : null;
-          await Share.share({ message: url ? `${shareText}\n${url}` : `${shareText}\nCode: ${code ?? ''}`.trim() });
+          if (!code) return;
+          await Share.share({
+            message: `TotL mini league "${displayName}"\nCode: ${code}`,
+          });
         } catch {
           // ignore
         }
@@ -462,15 +542,20 @@ export default function LeagueDetailScreen() {
           const gw = typeof currentGw === 'number' ? currentGw : null;
           const createdAt = typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : null;
           const leagueName = String(leagueMeta?.name ?? params.name ?? '');
-          const startGw = gw ? await resolveLeagueStartGw({ id: leagueId, name: leagueName, created_at: createdAt }, gw) : null;
-          const locked = gw !== null && startGw !== null && gw - startGw >= 4;
-          if (locked) {
-            Alert.alert(
-              'League Locked',
-              'This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.',
-              [{ text: 'OK' }]
+          // Match joinLeagueByCode: dormant (<2 members) can always invite; lock uses activation (2nd join), not league creation.
+          if (members.length >= 2 && gw !== null) {
+            const startGw = await resolveLeagueStartGw(
+              { id: leagueId, name: leagueName, created_at: createdAt, activation_at: leagueActivationAt },
+              gw
             );
-            return;
+            if (gw - startGw >= 4) {
+              Alert.alert(
+                'League Locked',
+                'This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.',
+                [{ text: 'OK' }]
+              );
+              return;
+            }
           }
           setInviteOpen(true);
         } catch {
@@ -528,11 +613,13 @@ export default function LeagueDetailScreen() {
       currentGw,
       env.EXPO_PUBLIC_SITE_URL,
       handleEditBadge,
+      leagueActivationAt,
       leagueId,
       leagueMeta?.code,
       leagueMeta?.created_at,
       leagueMeta?.name,
       leavingLeague,
+      members.length,
       navigation,
       queryClient,
       params.name,
@@ -570,7 +657,7 @@ export default function LeagueDetailScreen() {
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
   >({
-    enabled: members.length > 0 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDevFakeLeague,
+    enabled: members.length >= 2 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDormantLeague && !isDevFakeLeague,
     // NOTE: v2 key invalidates persisted cached season tables after score calculation changes.
     queryKey: ['leagueSeasonTableV3', leagueId, seasonGw, effectiveCurrentGw, seasonStartGw, members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(',')],
     queryFn: async () => {
@@ -787,9 +874,10 @@ export default function LeagueDetailScreen() {
   } = useQuery<LeaguePredictionsData>({
     enabled:
       tab === 'predictions' &&
-      members.length > 0 &&
+      members.length >= 2 &&
       typeof picksGw === 'number' &&
       seasonStartGwResolved &&
+      !isDormantLeague &&
       picksGw >= seasonStartGw,
     // NOTE: v2 key to invalidate older persisted cache that contained Map/Set (non-serializable).
     queryKey: ['leaguePredictionsV2', leagueId, picksGw, seasonStartGw, members.map((m: any) => String(m.id)).join(',')],
@@ -951,26 +1039,28 @@ export default function LeagueDetailScreen() {
   const onRefresh = React.useCallback(() => {
     if (tab === 'gwTable') {
       const actions: Array<Promise<any>> = [refetchHome()];
-      if (typeof selectedGw === 'number') actions.push(refetchTable());
+      if (!isDormantLeague && !leagueStartsInFuture && typeof selectedGw === 'number') actions.push(refetchTable());
       void Promise.all(actions);
       return;
     }
 
     if (tab === 'season') {
       const actions: Array<Promise<any>> = [refetchHome(), refetchLeagueDetails()];
-      if (members.length > 0 && typeof seasonGw === 'number') actions.push(refetchSeasonRows());
+      if (members.length >= 2 && !isDormantLeague && typeof seasonGw === 'number') actions.push(refetchSeasonRows());
       void Promise.all(actions);
       return;
     }
 
     if (tab === 'predictions') {
       const actions: Array<Promise<any>> = [refetchHome(), refetchMe()];
-      if (members.length > 0 && typeof picksGw === 'number' && seasonStartGwResolved && picksGw >= seasonStartGw) {
+      if (members.length >= 2 && !isDormantLeague && typeof picksGw === 'number' && seasonStartGwResolved && picksGw >= seasonStartGw) {
         actions.push(refetchPredictions());
       }
       void Promise.all(actions);
     }
   }, [
+    isDormantLeague,
+    leagueStartsInFuture,
     members.length,
     picksGw,
     refetchHome,
@@ -1085,13 +1175,23 @@ export default function LeagueDetailScreen() {
     navigation.push('Chat2Thread' as any, nextParams);
   }, [chatMlHopCount, leagueId, leagueMeta?.name, navigation, params.name, params.returnTo]);
 
+  const leagueHeaderSubtitle = isDormantLeague
+    ? 'Invite players'
+    : leagueStartsInFuture
+      ? `Starts Gameweek ${seasonStartGw}`
+      : typeof selectedGw === 'number'
+        ? `Gameweek ${selectedGw}`
+        : viewingGw
+          ? `Gameweek ${viewingGw}`
+          : 'Gameweek';
+
   return (
     <Screen fullBleed>
       <GestureDetector gesture={swipeTabsGesture}>
         <View style={{ flex: 1 }}>
           <LeagueHeader
             title={String(params.name ?? '')}
-            subtitle={typeof selectedGw === 'number' ? `Gameweek ${selectedGw}` : viewingGw ? `Gameweek ${viewingGw}` : 'Gameweek'}
+            subtitle={leagueHeaderSubtitle}
             avatarUri={headerAvatarUri}
             onPressBack={() => {
               // Prefer native back-stack pop to avoid chat <-> league navigation loops.
@@ -1128,35 +1228,57 @@ export default function LeagueDetailScreen() {
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
                 refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
               >
-                {table?.rows?.length && allFixturesFinished ? (
-                  <LeagueWinnerBanner
-                    winnerName={String(table.rows?.[0]?.name ?? '')}
-                    isDraw={
-                      Number(table.rows?.[0]?.score ?? 0) === Number(table.rows?.[1]?.score ?? -1) &&
-                      Number(table.rows?.[0]?.unicorns ?? 0) === Number(table.rows?.[1]?.unicorns ?? -1)
-                    }
-                  />
-                ) : null}
-
-                {tableLoading && !table ? (
+                {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                     <CenteredSpinner loading />
                   </View>
-                ) : null}
+                ) : isDormantLeague ? (
+                  <LeagueInvitePromptCard
+                    title="Invite players to start"
+                    body="This mini league is waiting for its first rival. Scores, winners and league tables only start after another player joins."
+                    buttonLabel="Invite players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : leagueStartsInFuture ? (
+                  <LeagueInvitePromptCard
+                    title={`Starts in Gameweek ${seasonStartGw}`}
+                    body={`This mini league will begin at the first deadline after the second player joined. Gameweeks before GW${seasonStartGw} will not count.`}
+                    buttonLabel="Invite more players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : (
+                  <>
+                    {table?.rows?.length && allFixturesFinished ? (
+                      <LeagueWinnerBanner
+                        winnerName={String(table.rows?.[0]?.name ?? '')}
+                        isDraw={
+                          Number(table.rows?.[0]?.score ?? 0) === Number(table.rows?.[1]?.score ?? -1) &&
+                          Number(table.rows?.[0]?.unicorns ?? 0) === Number(table.rows?.[1]?.unicorns ?? -1)
+                        }
+                      />
+                    ) : null}
 
-                <LeagueGwTable
-                  rows={gwTableMergedRows}
-                  showUnicorns={Number(table?.totalMembers ?? 0) >= 3}
-                  submittedUserIds={(table as any)?.submittedUserIds ?? []}
-                />
+                    {tableLoading && !table ? (
+                      <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                        <CenteredSpinner loading />
+                      </View>
+                    ) : null}
 
-                <LeagueGwControlsRow
-                  availableGws={tableAvailableGws}
-                  selectedGw={selectedGw}
-                  onChangeGw={setSelectedGw}
-                  onPressRules={() => setRulesOpen(true)}
-                  onPressMenu={() => setMenuOpen(true)}
-                />
+                    <LeagueGwTable
+                      rows={gwTableMergedRows}
+                      showUnicorns={Number(table?.totalMembers ?? 0) >= 3}
+                      submittedUserIds={(table as any)?.submittedUserIds ?? []}
+                    />
+
+                    <LeagueGwControlsRow
+                      availableGws={tableAvailableGws}
+                      selectedGw={selectedGw}
+                      onChangeGw={setSelectedGw}
+                      onPressRules={() => setRulesOpen(true)}
+                      onPressMenu={() => setMenuOpen(true)}
+                    />
+                  </>
+                )}
 
                 <LeagueRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
               </ScrollView>
@@ -1166,53 +1288,75 @@ export default function LeagueDetailScreen() {
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
                 refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
               >
-                <LeagueSeasonTable
-                  rows={seasonRows ?? []}
-                  loading={seasonLoading}
-                  showForm={seasonShowForm}
-                  showUnicorns={seasonShowUnicorns}
-                  isLateStartingLeague={seasonIsLateStartingLeague}
-                />
+                {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <CenteredSpinner loading />
+                  </View>
+                ) : isDormantLeague ? (
+                  <LeagueInvitePromptCard
+                    title="Season starts with two players"
+                    body="Invite at least one more player. Once they join, the season table will start from the next prediction deadline."
+                    buttonLabel="Invite players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : leagueStartsInFuture ? (
+                  <LeagueInvitePromptCard
+                    title={`Season starts in GW${seasonStartGw}`}
+                    body={`Nobody gets points for earlier gameweeks in this mini league. The season table will populate after GW${seasonStartGw} results are in.`}
+                    buttonLabel="Invite more players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : (
+                  <>
+                    <LeagueSeasonTable
+                      rows={seasonRows ?? []}
+                      loading={seasonLoading}
+                      showForm={seasonShowForm}
+                      showUnicorns={seasonShowUnicorns}
+                      isLateStartingLeague={seasonIsLateStartingLeague}
+                    />
 
-                <View
-                  style={{
-                    marginTop: t.space[4],
-                    marginBottom: t.space[2],
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
-                  <View style={{ width: 10 }} />
-                  <View style={{ flex: 1 }} />
-                  <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
-                  <Pressable
-                    onPress={() => setMenuOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel="League menu"
-                    style={({ pressed }) => ({
-                      width: 40,
-                      height: 40,
-                      borderRadius: 999,
-                      borderWidth: 2,
-                      borderColor: t.color.border,
-                      backgroundColor: t.color.surface,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginLeft: 8,
-                      opacity: pressed ? 0.92 : 1,
-                    })}
-                  >
-                    <Ionicons name="settings-outline" size={20} color={t.color.text} />
-                  </Pressable>
-                </View>
+                    <View
+                      style={{
+                        marginTop: t.space[4],
+                        marginBottom: t.space[2],
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
+                      <View style={{ width: 10 }} />
+                      <View style={{ flex: 1 }} />
+                      <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
+                      <Pressable
+                        onPress={() => setMenuOpen(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel="League menu"
+                        style={({ pressed }) => ({
+                          width: 40,
+                          height: 40,
+                          borderRadius: 999,
+                          borderWidth: 2,
+                          borderColor: t.color.border,
+                          backgroundColor: t.color.surface,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginLeft: 8,
+                          opacity: pressed ? 0.92 : 1,
+                        })}
+                      >
+                        <Ionicons name="settings-outline" size={20} color={t.color.text} />
+                      </Pressable>
+                    </View>
 
-                <LeagueSeasonRulesSheet
-                  open={seasonRulesOpen}
-                  onClose={() => setSeasonRulesOpen(false)}
-                  isLateStartingLeague={seasonIsLateStartingLeague}
-                />
+                    <LeagueSeasonRulesSheet
+                      open={seasonRulesOpen}
+                      onClose={() => setSeasonRulesOpen(false)}
+                      isLateStartingLeague={seasonIsLateStartingLeague}
+                    />
+                  </>
+                )}
               </ScrollView>
             ) : tab === 'predictions' ? (
               <ScrollView
@@ -1225,7 +1369,25 @@ export default function LeagueDetailScreen() {
                 }}
                 scrollEventThrottle={16}
               >
-                {typeof picksGw !== 'number' ? (
+                {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <CenteredSpinner loading />
+                  </View>
+                ) : isDormantLeague ? (
+                  <LeagueInvitePromptCard
+                    title="Invite players to unlock predictions"
+                    body="Mini-league predictions appear once at least two players are in. The first round will be the next deadline after someone joins."
+                    buttonLabel="Invite players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : leagueStartsInFuture ? (
+                  <LeagueInvitePromptCard
+                    title={`Predictions start in GW${seasonStartGw}`}
+                    body={`This league starts from GW${seasonStartGw}, so earlier predictions are not shown here.`}
+                    buttonLabel="Invite more players"
+                    onPressInvite={openLeagueInviteTray}
+                  />
+                ) : typeof picksGw !== 'number' ? (
                   <TotlText variant="muted">No current gameweek available.</TotlText>
                 ) : picksGw < seasonStartGw ? (
                   <TotlText variant="muted">No Predictions Available (this league started later).</TotlText>

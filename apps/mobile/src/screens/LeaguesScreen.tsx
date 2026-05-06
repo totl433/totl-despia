@@ -19,7 +19,7 @@ import CenteredSpinner from '../components/CenteredSpinner';
 import { sortLeaguesByUnread } from '../lib/sortLeaguesByUnread';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { supabase } from '../lib/supabase';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
@@ -87,30 +87,18 @@ function LeagueRow({
     queryFn: () => api.getLeague(leagueId),
   });
 
-  const { data: table } = useQuery<LeagueTableResponse>({
-    enabled: enabled && typeof tableGw === 'number' && !isDevFakeLeague,
-    queryKey: ['leagueGwTable', leagueId, tableGw],
-    queryFn: () => api.getLeagueGwTable(leagueId, tableGw as number),
-  });
-
   const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (membersData?.members ?? []);
-  const allSubmitted = isDevFakeLeague ? true : !!table && table.submittedCount === table.totalMembers && table.totalMembers > 0;
-
-  const memberCount: number | null =
-    typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
-      ? table.totalMembers
-      : typeof members.length === 'number'
-        ? members.length
-        : null;
-
+  const isDormantLeague = !isDevFakeLeague && !!membersData && members.length < 2;
+  const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
   const { data: resolvedLeagueStartGw } = useQuery<number>({
-    enabled: enabled && typeof tableGw === 'number' && !!leagueId && !isDevFakeLeague,
+    enabled: enabled && typeof tableGw === 'number' && !!leagueId && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
     queryKey: [
-      'leagueStartGwV2',
+      'leagueStartGwV3',
       leagueId,
       tableGw,
       String((membersData as any)?.league?.name ?? league.name ?? ''),
       String((membersData as any)?.league?.created_at ?? ''),
+      String(leagueActivationAt ?? ''),
     ],
     queryFn: async () =>
       resolveLeagueStartGw(
@@ -119,11 +107,29 @@ function LeagueRow({
           name: String((membersData as any)?.league?.name ?? league.name ?? ''),
           created_at:
             typeof (membersData as any)?.league?.created_at === 'string' ? String((membersData as any).league.created_at) : undefined,
+          activation_at: leagueActivationAt,
         },
         tableGw as number
       ),
     staleTime: 5 * 60_000,
   });
+  const { data: table } = useQuery<LeagueTableResponse>({
+    enabled:
+      enabled &&
+      typeof tableGw === 'number' &&
+      !isDevFakeLeague &&
+      !isDormantLeague &&
+      typeof resolvedLeagueStartGw === 'number' &&
+      tableGw >= resolvedLeagueStartGw,
+    queryKey: ['leagueGwTable', leagueId, tableGw],
+    queryFn: () => api.getLeagueGwTable(leagueId, tableGw as number),
+  });
+  const memberCount: number | null =
+    typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
+      ? table.totalMembers
+      : typeof members.length === 'number'
+        ? members.length
+        : null;
 
   const effectiveMeId = meId ?? fallbackMeId ?? null;
 
@@ -131,7 +137,8 @@ function LeagueRow({
     enabled:
       enabled &&
       !isDevFakeLeague &&
-      members.length > 0 &&
+      members.length >= 2 &&
+      !isDormantLeague &&
       typeof tableGw === 'number' &&
       typeof resolvedLeagueStartGw === 'number',
     queryKey: [

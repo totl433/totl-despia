@@ -6,6 +6,7 @@ import MiniLeagueCard, { type MiniLeagueTableRowWithAvatar } from '../MiniLeague
 import { api } from '../../lib/api';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { DEV_FAKE_LEAGUE_MEMBERS, isDevFakeLeagueId } from '../../lib/devFakeLeague';
+import { getLeagueActivationAt, resolveLeagueStartGw } from '../../lib/leagueStart';
 
 type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
 type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
@@ -41,15 +42,6 @@ export default function MiniLeagueLiveCard({
   liveMode?: boolean;
 }) {
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
-  const { data: tableData, isLoading, isError } = useQuery<LeagueTableResponse>({
-    enabled: enabled && typeof gw === 'number' && !isDevFakeLeague,
-    queryKey: ['leagueGwTable', leagueId, gw],
-    queryFn: () => api.getLeagueGwTable(leagueId, gw),
-    staleTime: liveMode ? 0 : 10_000,
-    refetchInterval: liveMode ? 10_000 : false,
-    refetchIntervalInBackground: liveMode,
-  });
-
   const { data: leagueData } = useQuery<LeagueMembersResponse>({
     enabled: enabled && typeof gw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueMembers', leagueId],
@@ -58,6 +50,39 @@ export default function MiniLeagueLiveCard({
   });
 
   const members = isDevFakeLeague ? DEV_FAKE_LEAGUE_MEMBERS : (leagueData?.members ?? []);
+  const leagueMeta = (leagueData?.league ?? null) as null | { name?: string | null; created_at?: string | null };
+  const isDormantLeague = !isDevFakeLeague && !!leagueData && members.length < 2;
+  const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
+  const { data: resolvedLeagueStartGw } = useQuery<number>({
+    enabled: enabled && typeof gw === 'number' && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
+    queryKey: ['leagueStartGwV3', leagueId, gw, String(leagueMeta?.name ?? leagueName ?? ''), String(leagueMeta?.created_at ?? ''), String(leagueActivationAt ?? '')],
+    queryFn: () =>
+      resolveLeagueStartGw(
+        {
+          id: leagueId,
+          name: String(leagueMeta?.name ?? leagueName ?? ''),
+          created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
+          activation_at: leagueActivationAt,
+        },
+        gw
+      ),
+    staleTime: 5 * 60_000,
+  });
+  const leagueStartsInFuture = typeof resolvedLeagueStartGw === 'number' && resolvedLeagueStartGw > gw;
+  const { data: tableData, isLoading, isError } = useQuery<LeagueTableResponse>({
+    enabled:
+      enabled &&
+      typeof gw === 'number' &&
+      !isDevFakeLeague &&
+      !isDormantLeague &&
+      typeof resolvedLeagueStartGw === 'number' &&
+      gw >= resolvedLeagueStartGw,
+    queryKey: ['leagueGwTable', leagueId, gw],
+    queryFn: () => api.getLeagueGwTable(leagueId, gw),
+    staleTime: liveMode ? 0 : 10_000,
+    refetchInterval: liveMode ? 10_000 : false,
+    refetchIntervalInBackground: liveMode,
+  });
   const table = tableData;
   const submittedUserIds = React.useMemo(
     () =>
@@ -163,7 +188,17 @@ export default function MiniLeagueLiveCard({
         submittedUserIds={submittedUserIds}
         width={width}
         fixedRowCount={undefined}
-        emptyLabel={isLoading ? 'Loading table…' : isError ? 'Couldn’t load table.' : 'No table yet.'}
+        emptyLabel={
+          isDormantLeague
+            ? 'Invite players to start.'
+            : leagueStartsInFuture
+              ? `Starts GW${resolvedLeagueStartGw}.`
+              : isLoading
+                ? 'Loading table…'
+                : isError
+                  ? 'Couldn’t load table.'
+                  : 'No table yet.'
+        }
         compact={compact}
         currentUserId={currentUserId}
         myRank={myRank}

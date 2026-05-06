@@ -515,7 +515,7 @@ export async function getProfileUnicorns(opts: { userId: string; supa: any }): P
 
   const leagueIds = leagues.map((l) => l.id);
   const [membersRes, resultsRes, metaRes] = await Promise.all([
-    (supa as any).from('league_members').select('league_id, user_id').in('league_id', leagueIds),
+    (supa as any).from('league_members').select('league_id, user_id, created_at').in('league_id', leagueIds),
     (supa as any).from('app_gw_results').select('gw, fixture_index, result').order('gw', { ascending: false }),
     (supa as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle(),
   ]);
@@ -525,10 +525,18 @@ export async function getProfileUnicorns(opts: { userId: string; supa: any }): P
   const currentGw = Number(metaRes.data?.current_gw ?? 1);
 
   const membersByLeague = new Map<string, string[]>();
+  const memberJoinedAtByLeague = new Map<string, string[]>();
   (membersRes.data ?? []).forEach((lm: any) => {
-    const arr = membersByLeague.get(lm.league_id) ?? [];
+    const leagueId = String(lm.league_id);
+    const arr = membersByLeague.get(leagueId) ?? [];
     arr.push(String(lm.user_id));
-    membersByLeague.set(String(lm.league_id), arr);
+    membersByLeague.set(leagueId, arr);
+
+    if (typeof lm.created_at === 'string') {
+      const joined = memberJoinedAtByLeague.get(leagueId) ?? [];
+      joined.push(lm.created_at);
+      memberJoinedAtByLeague.set(leagueId, joined);
+    }
   });
 
   const resultsMap = new Map<string, 'H' | 'D' | 'A'>();
@@ -573,7 +581,8 @@ export async function getProfileUnicorns(opts: { userId: string; supa: any }): P
     const members = membersByLeague.get(league.id) ?? [];
     if (members.length < 3) continue;
 
-    const leagueStartGw = await resolveLeagueStartGw(supa, league, currentGw);
+    const joinedAt = (memberJoinedAtByLeague.get(league.id) ?? []).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    const leagueStartGw = await resolveLeagueStartGw(supa, { ...league, activation_at: joinedAt[1] ?? null }, currentGw);
     const leaguePicks = (picksData ?? []).filter((p: any) => members.includes(String(p.user_id)) && Number(p.gw) >= leagueStartGw);
 
     const picksByFixture = new Map<string, Array<{ user_id: string; pick: 'H' | 'D' | 'A' }>>();

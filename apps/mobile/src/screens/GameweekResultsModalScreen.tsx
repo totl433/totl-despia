@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Linking, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -39,21 +39,9 @@ function ordinalSuffix(rank: number): string {
   return 'th';
 }
 
-async function canOpenScheme(url: string): Promise<boolean> {
-  try {
-    return await Linking.canOpenURL(url);
-  } catch {
-    return false;
-  }
-}
-
-async function openExternalUrl(url: string): Promise<boolean> {
-  try {
-    await Linking.openURL(url);
-    return true;
-  } catch {
-    return false;
-  }
+function isShareCancelled(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /cancel|dismiss|did not share/i.test(message);
 }
 
 function ShareCaptureCard({
@@ -614,30 +602,39 @@ export default function GameweekResultsModalScreen() {
     setSharing(true);
     try {
       await Clipboard.setStringAsync(shareSummaryText);
-      const canOpenInstagram = await canOpenScheme('instagram://app');
-      if (canOpenInstagram && (await openExternalUrl('instagram://app'))) {
+      const imageFile = await buildShareImageFile();
+      if (imageFile) {
+        await shareImageSheet('Share to Instagram');
         return;
       }
       await shareImageSheet('Share to Instagram');
+    } catch (error) {
+      if (!isShareCancelled(error)) {
+        await shareImageSheet('Share to Instagram');
+      }
     } finally {
       setSharing(false);
     }
-  }, [gw, shareImageSheet, sharing]);
+  }, [buildShareImageFile, shareImageSheet, shareSummaryText, sharing]);
 
   const handleShareWhatsApp = React.useCallback(async () => {
     if (sharing) return;
     setSharing(true);
     try {
-      const waUrl = `whatsapp://send?text=${encodeURIComponent(shareSummaryText)}`;
-      const canOpenWhatsApp = await canOpenScheme('whatsapp://send');
-      if (canOpenWhatsApp && (await openExternalUrl(waUrl))) {
+      const imageFile = await buildShareImageFile();
+      if (imageFile) {
+        await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
         return;
       }
       await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
+    } catch (error) {
+      if (!isShareCancelled(error)) {
+        await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
+      }
     } finally {
       setSharing(false);
     }
-  }, [gw, shareImageSheet, shareSummaryText, sharing]);
+  }, [buildShareImageFile, gw, shareImageSheet, shareSummaryText, sharing]);
 
   const handleShareTarget = React.useCallback(
     (target: ShareTarget) => {

@@ -70,7 +70,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const existingQuerySchemes = Array.isArray(existingInfoPlist.LSApplicationQueriesSchemes)
     ? (existingInfoPlist.LSApplicationQueriesSchemes as string[])
     : [];
-  const nextQuerySchemes = Array.from(new Set([...existingQuerySchemes, 'instagram', 'whatsapp']));
+  const nextQuerySchemes = Array.from(new Set([...existingQuerySchemes, 'instagram', 'instagram-stories', 'whatsapp']));
 
   return {
     ...config,
@@ -108,6 +108,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           ] as any[])
         : []),
       ...(config.plugins ?? []),
+      [
+        'react-native-share',
+        {
+          ios: ['instagram', 'instagram-stories', 'whatsapp'],
+          android: ['com.instagram.android', 'com.whatsapp'],
+        },
+      ],
       '@react-native-community/datetimepicker',
     ],
     extra: {

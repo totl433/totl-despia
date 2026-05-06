@@ -1,4 +1,4 @@
-type LeagueRecord = { id: string; name?: string | null; created_at?: string | null };
+type LeagueRecord = { id: string; name?: string | null; created_at?: string | null; activation_at?: string | null };
 
 const DEADLINE_BUFFER_MINUTES = 75;
 
@@ -17,9 +17,6 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
   return LEAGUE_START_OVERRIDES[name];
 }
 
-/** Leagues created within this many days are treated as "new" - never lock for invites. */
-const NEW_LEAGUE_GRACE_DAYS = 5;
-
 export async function resolveLeagueStartGw(
   supa: any,
   league: LeagueRecord | null | undefined,
@@ -29,36 +26,35 @@ export async function resolveLeagueStartGw(
   const override = getLeagueStartOverride(league.name ?? null);
   if (typeof override === 'number') return override;
 
-  if (league.created_at && currentGw) {
-    const leagueCreatedAt = new Date(league.created_at);
+  const startTimestamp = league.activation_at ?? league.created_at;
+  if (startTimestamp && currentGw) {
+    const leagueActivatedAt = new Date(startTimestamp);
+    if (Number.isNaN(leagueActivatedAt.getTime())) return currentGw;
 
-    // Safeguard: leagues created very recently are always treated as new (never lock).
-    const hoursSinceCreation = (Date.now() - leagueCreatedAt.getTime()) / (1000 * 60 * 60);
-    if (hoursSinceCreation < NEW_LEAGUE_GRACE_DAYS * 24) return currentGw;
+    const { data: fixturesData } = await (supa as any)
+      .from('app_fixtures')
+      .select('gw,kickoff_time')
+      .not('kickoff_time', 'is', null)
+      .order('gw', { ascending: true })
+      .order('kickoff_time', { ascending: true });
 
-    // Use app tables (native single source of truth).
-    const { data: resultsData } = await (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: true });
-    const completedGws: number[] = resultsData
-      ? Array.from(new Set((resultsData as any[]).map((r) => Number((r as any)?.gw)).filter((n) => Number.isFinite(n))))
-      : [];
+    const firstKickoffByGw = new Map<number, string>();
+    (fixturesData ?? []).forEach((fixture: any) => {
+      const gw = Number(fixture?.gw);
+      if (!Number.isFinite(gw) || firstKickoffByGw.has(gw)) return;
+      if (typeof fixture?.kickoff_time === 'string') firstKickoffByGw.set(gw, fixture.kickoff_time);
+    });
 
-    for (const gw of completedGws) {
-      const { data: firstFixture } = await (supa as any)
-        .from('app_fixtures')
-        .select('kickoff_time')
-        .eq('gw', gw)
-        .order('kickoff_time', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+    const gwDeadlines = Array.from(firstKickoffByGw.entries())
+      .map(([gw, kickoff]) => ({ gw, deadlineTime: new Date(new Date(kickoff).getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000) }))
+      .filter((row) => !Number.isNaN(row.deadlineTime.getTime()))
+      .sort((a, b) => a.gw - b.gw);
 
-      if (firstFixture?.kickoff_time) {
-        const firstKickoff = new Date(firstFixture.kickoff_time);
-        const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-        if (leagueCreatedAt < deadlineTime) return gw;
-      }
+    for (const row of gwDeadlines) {
+      if (leagueActivatedAt < row.deadlineTime) return row.gw;
     }
 
-    if (completedGws.length > 0) return Math.max(...completedGws) + 1;
+    if (gwDeadlines.length > 0) return Math.max(...gwDeadlines.map((row) => row.gw)) + 1;
     return currentGw;
   }
 

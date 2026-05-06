@@ -1,6 +1,6 @@
 import { env } from '../env';
 import { supabase } from '../lib/supabase';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 
 type LeagueRow = {
   id: string;
@@ -47,11 +47,28 @@ export async function joinLeagueByCode(codeRaw: string): Promise<{ ok: true; lea
     };
   }
 
-  // Join lock after 4+ gameweeks (parity with web).
+  // Max 8 members (parity with web).
+  const { data: memberRows, error: memberErr } = await (supabase as any)
+    .from('league_members')
+    .select('user_id, created_at')
+    .eq('league_id', leagueRow.id)
+    .order('created_at', { ascending: true });
+  if (memberErr) return { ok: false, error: memberErr.message ?? 'Failed to check league members.' };
+
+  // Determine whether this is a new join.
+  const existingMember = (memberRows ?? []).find((row: { user_id?: string | null }) => String(row.user_id) === userId) ?? null;
+  const isNewMember = !existingMember;
+  if (isNewMember && (memberRows?.length ?? 0) >= 8) return { ok: false, error: 'League is full (max 8 members).' };
+
+  // Join lock after 4+ active gameweeks. One-person leagues are dormant and never locked.
   const { data: meta } = await (supabase as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
   const currentGw: number | null = typeof meta?.current_gw === 'number' ? meta.current_gw : null;
-  if (currentGw !== null) {
-    const startGw = await resolveLeagueStartGw({ id: leagueRow.id, name: leagueRow.name, created_at: leagueRow.created_at ?? undefined }, currentGw);
+  if (currentGw !== null && (memberRows?.length ?? 0) >= 2) {
+    const activationAt = getLeagueActivationAt(memberRows as Array<{ created_at?: string | null }>);
+    const startGw = await resolveLeagueStartGw(
+      { id: leagueRow.id, name: leagueRow.name, created_at: leagueRow.created_at ?? undefined, activation_at: activationAt },
+      currentGw
+    );
     if (currentGw - startGw >= 4) {
       return {
         ok: false,
@@ -59,20 +76,6 @@ export async function joinLeagueByCode(codeRaw: string): Promise<{ ok: true; lea
       };
     }
   }
-
-  // Max 8 members (parity with web).
-  const { data: memberRows, error: memberErr } = await (supabase as any).from('league_members').select('user_id').eq('league_id', leagueRow.id);
-  if (memberErr) return { ok: false, error: memberErr.message ?? 'Failed to check league members.' };
-  if ((memberRows?.length ?? 0) >= 8) return { ok: false, error: 'League is full (max 8 members).' };
-
-  // Determine whether this is a new join.
-  const { data: existingMember } = await (supabase as any)
-    .from('league_members')
-    .select('user_id')
-    .eq('league_id', leagueRow.id)
-    .eq('user_id', userId)
-    .maybeSingle();
-  const isNewMember = !existingMember;
 
   const { error: upsertErr } = await (supabase as any).from('league_members').upsert({ league_id: leagueRow.id, user_id: userId }, { onConflict: 'league_id,user_id' });
   if (upsertErr) return { ok: false, error: upsertErr.message ?? 'Failed to join league.' };

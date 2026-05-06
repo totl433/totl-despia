@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { MiniLeagueCard } from "../components/MiniLeagueCard";
 import type { LeagueRow, LeagueData } from "../components/MiniLeagueCard";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
-import { resolveLeagueStartGw } from "../lib/leagueStart";
+import { resolveLeagueStartGw, getLeagueActivationAt } from "../lib/leagueStart";
 import { filterHiddenMembers } from "../lib/leaderboardVisibility";
 import { getCached, setCached, getCacheTimestamp, CACHE_TTL, invalidateUserCache } from "../lib/cache";
 import { useLeagues } from "../hooks/useLeagues";
@@ -1045,17 +1045,23 @@ export default function TablesPage() {
         return;
       }
 
-      // Check if league has been running for more than 4 gameweeks
+      const { data: memberRowsPre, error: membersPreErr } = await supabase
+        .from("league_members")
+        .select("created_at")
+        .eq("league_id", data.id)
+        .order("created_at", { ascending: true });
+
+      if (membersPreErr) throw membersPreErr;
+
+      // Check if league has been running for more than 4 gameweeks (from second-member activation only).
       const currentGw = dbCurrentGwFromHook;
-      if (currentGw !== null) {
-        // Calculate league start GW
+      if (currentGw !== null && (memberRowsPre?.length ?? 0) >= 2) {
+        const activationAt = getLeagueActivationAt(memberRowsPre ?? []);
         const leagueStartGw = await resolveLeagueStartGw(
-          { id: data.id, name: data.name, created_at: data.created_at },
+          { id: data.id, name: data.name, created_at: data.created_at, activation_at: activationAt },
           currentGw
         );
 
-        // Check if league has been running for 4+ gameweeks
-        // If current_gw - league_start_gw >= 4, the league is locked
         if (currentGw - leagueStartGw >= 4) {
           setError("This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.");
           return;

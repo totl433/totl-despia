@@ -4,6 +4,7 @@ type LeagueRecord = {
   id: string;
   name?: string | null;
   created_at?: string | null;
+  activation_at?: string | null;
   start_gw?: number | null;
 };
 
@@ -24,6 +25,10 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
   if (!name) return undefined;
   return LEAGUE_START_OVERRIDES[name];
 }
+
+type LeagueMemberRecord = {
+  created_at?: string | null;
+};
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && value.length > 10;
@@ -54,37 +59,31 @@ let gwDeadlineRowsPromise: Promise<GwDeadlineRow[]> | null = null;
 async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
   if (!gwDeadlineRowsPromise) {
     gwDeadlineRowsPromise = (async () => {
-      // Web currently derives league start from legacy tables (`gw_results` + `fixtures`).
-      // Keep Expo aligned with production web calculations.
-      const { data: resultsData, error: resultsErr } = await (supabase as any)
-        .from('gw_results')
-        .select('gw')
-        .order('gw', { ascending: true });
-      if (resultsErr) return [];
+      const { data, error } = await (supabase as any)
+        .from('app_fixtures')
+        .select('gw,kickoff_time')
+        .not('kickoff_time', 'is', null)
+        .order('gw', { ascending: true })
+        .order('kickoff_time', { ascending: true });
+      if (error) return [];
 
-      const completedGws: number[] = resultsData
-        ? Array.from(new Set((resultsData as any[]).map((r) => Number(r.gw)).filter((n) => Number.isFinite(n))))
-        : [];
+      const firstKickoffByGw = new Map<number, string>();
+      (data ?? []).forEach((fixture: { gw?: number | null; kickoff_time?: string | null }) => {
+        const gw = Number(fixture.gw);
+        if (!Number.isFinite(gw) || firstKickoffByGw.has(gw)) return;
+        if (fixture.kickoff_time) firstKickoffByGw.set(gw, fixture.kickoff_time);
+      });
 
       const rows: GwDeadlineRow[] = [];
-      for (const gw of completedGws) {
-        const { data: firstFixture, error: fixErr } = await (supabase as any)
-          .from('fixtures')
-          .select('kickoff_time')
-          .eq('gw', gw)
-          .order('kickoff_time', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        if (fixErr) continue;
-        const kickoff = firstFixture?.kickoff_time;
-        if (!kickoff) continue;
+      firstKickoffByGw.forEach((kickoff, gw) => {
+        if (!kickoff) return;
         const firstKickoff = new Date(kickoff);
-        if (Number.isNaN(firstKickoff.getTime())) continue;
+        if (Number.isNaN(firstKickoff.getTime())) return;
         rows.push({
           gw,
           deadlineTime: new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000),
         });
-      }
+      });
       return rows;
     })();
   }
@@ -92,18 +91,26 @@ async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
   return gwDeadlineRowsPromise;
 }
 
-async function resolveStartGwFromCreatedAt(createdAt: string | null | undefined, currentGw: number): Promise<number> {
-  if (!isIsoDate(createdAt) || !currentGw) return currentGw;
-  const leagueCreatedAt = new Date(createdAt);
-  if (Number.isNaN(leagueCreatedAt.getTime())) return currentGw;
+async function resolveStartGwFromTimestamp(timestamp: string | null | undefined, currentGw: number): Promise<number> {
+  if (!isIsoDate(timestamp) || !currentGw) return currentGw;
+  const activatedAt = new Date(timestamp);
+  if (Number.isNaN(activatedAt.getTime())) return currentGw;
 
   const gwDeadlineRows = await getGwDeadlineRows();
   for (const row of gwDeadlineRows) {
-    if (leagueCreatedAt < row.deadlineTime) return row.gw;
+    if (activatedAt < row.deadlineTime) return row.gw;
   }
 
   if (gwDeadlineRows.length > 0) return Math.max(...gwDeadlineRows.map((row) => row.gw)) + 1;
   return currentGw;
+}
+
+export function getLeagueActivationAt(members: LeagueMemberRecord[] | null | undefined): string | null {
+  const joinedAt = (members ?? [])
+    .map((member) => member.created_at)
+    .filter(isIsoDate)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  return joinedAt[1] ?? null;
 }
 
 /**
@@ -120,12 +127,14 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
 
   if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) return withMeta.start_gw;
 
-  return resolveStartGwFromCreatedAt(withMeta.created_at, currentGw);
+  if (withMeta.activation_at) return resolveStartGwFromTimestamp(withMeta.activation_at, currentGw);
+
+  return resolveStartGwFromTimestamp(withMeta.created_at, currentGw);
 }
 
 export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {
   if (!isIsoDate(memberCreatedAt)) return fallbackStartGw;
-  const resolved = await resolveStartGwFromCreatedAt(memberCreatedAt, currentGw);
+  const resolved = await resolveStartGwFromTimestamp(memberCreatedAt, currentGw);
   return Math.max(fallbackStartGw, resolved);
 }
 

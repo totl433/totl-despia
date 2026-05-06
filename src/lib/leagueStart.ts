@@ -4,6 +4,8 @@ type LeagueRecord = {
   id: string;
   name?: string | null;
   created_at?: string | null;
+  /** ISO timestamp of the second member joining; competitive clock + 4-GW join lock start here. */
+  activation_at?: string | null;
   start_gw?: number | null;
 };
 
@@ -53,6 +55,19 @@ async function ensureLeagueMeta(league: LeagueRecord): Promise<LeagueRecord> {
   };
 }
 
+function isIsoDate(value: unknown): value is string {
+  return typeof value === "string" && value.length > 10;
+}
+
+/** Second member join time (by `league_members.created_at`). Drives competitive start + 4-GW invite/join window. */
+export function getLeagueActivationAt(members: Array<{ created_at?: string | null }> | null | undefined): string | null {
+  const joinedAt = (members ?? [])
+    .map((m) => m.created_at)
+    .filter(isIsoDate)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  return joinedAt[1] ?? null;
+}
+
 export async function resolveLeagueStartGw(
   league: LeagueRecord | null | undefined,
   currentGw: number
@@ -69,8 +84,9 @@ export async function resolveLeagueStartGw(
     return withMeta.start_gw;
   }
 
-  if (withMeta.created_at && currentGw) {
-    const leagueCreatedAt = new Date(withMeta.created_at);
+  const anchorTs = withMeta.activation_at ?? withMeta.created_at;
+  if (anchorTs && currentGw) {
+    const anchorTime = new Date(anchorTs);
 
     const { data: resultsData } = await supabase
       .from("gw_results")
@@ -91,8 +107,8 @@ export async function resolveLeagueStartGw(
       if (firstFixture?.kickoff_time) {
         const firstKickoff = new Date(firstFixture.kickoff_time);
         const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
-        // League can participate if created BEFORE the deadline (strictly less than)
-        if (leagueCreatedAt < deadlineTime) {
+        // Competitive participation / join-lock clock starts from anchorTime (activation when set).
+        if (anchorTime < deadlineTime) {
           return gw;
         }
       }

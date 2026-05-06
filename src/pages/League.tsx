@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
-import { resolveLeagueStartGw as getLeagueStartGw, shouldIncludeGwForLeague } from "../lib/leagueStart";
+import { resolveLeagueStartGw as getLeagueStartGw, getLeagueActivationAt, shouldIncludeGwForLeague } from "../lib/leagueStart";
 import imageCompression from "browser-image-compression";
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from "../lib/leagueAvatars";
 import { useLiveScores } from "../hooks/useLiveScores";
@@ -413,24 +413,29 @@ ${shareUrl}`;
         return;
       }
 
-      // Check if league has been running for more than 4 gameweeks
-      const currentGw = hookCurrentGw;
-      if (currentGw !== null) {
-        // Calculate league start GW
-        const leagueStartGw = await getLeagueStartGw(
-          { id: league.id, name: league.name, created_at: league.created_at },
-          currentGw
-        );
+      // Join lock: first four competitive GWs after second member joins (not from league creation).
+      if (hookCurrentGw !== null) {
+        const { data: memberRowsPre, error: membersPreErr } = await supabase
+          .from("league_members")
+          .select("created_at")
+          .eq("league_id", league.id)
+          .order("created_at", { ascending: true });
+        if (membersPreErr) throw membersPreErr;
+        if ((memberRowsPre?.length ?? 0) >= 2) {
+          const activationAt = getLeagueActivationAt(memberRowsPre ?? []);
+          const leagueStartGw = await getLeagueStartGw(
+            { id: league.id, name: league.name, created_at: league.created_at, activation_at: activationAt },
+            hookCurrentGw
+          );
 
-        // Check if league has been running for 4+ gameweeks
-        // If current_gw - league_start_gw >= 4, the league is locked
-        if (currentGw - leagueStartGw >= 4) {
-          if (typeof window !== "undefined") {
-            window.alert?.("This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.");
+          if (hookCurrentGw - leagueStartGw >= 4) {
+            if (typeof window !== "undefined") {
+              window.alert?.("This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.");
+            }
+            setShowJoinConfirm(false);
+            setJoining(false);
+            return;
           }
-          setShowJoinConfirm(false);
-          setJoining(false);
-          return;
         }
       }
 
@@ -1940,17 +1945,24 @@ ${shareUrl}`;
     }
 
     try {
-      // Check if league has been running for more than 4 gameweeks
-      const leagueStartGw = await getLeagueStartGw(
-        { id: league.id, name: league.name, created_at: league.created_at },
-        hookCurrentGw
-      );
+      const { data: memberRowsPre, error: membersPreErr } = await supabase
+        .from("league_members")
+        .select("created_at")
+        .eq("league_id", league.id)
+        .order("created_at", { ascending: true });
+      if (membersPreErr) throw membersPreErr;
 
-      // Check if league has been running for 4+ gameweeks
-      // If current_gw - league_start_gw >= 4, the league is locked
-      if (hookCurrentGw - leagueStartGw >= 4) {
-        setShowLeagueLockedError(true);
-        return;
+      if (hookCurrentGw !== null && (memberRowsPre?.length ?? 0) >= 2) {
+        const activationAt = getLeagueActivationAt(memberRowsPre ?? []);
+        const leagueStartGw = await getLeagueStartGw(
+          { id: league.id, name: league.name, created_at: league.created_at, activation_at: activationAt },
+          hookCurrentGw
+        );
+
+        if (hookCurrentGw - leagueStartGw >= 4) {
+          setShowLeagueLockedError(true);
+          return;
+        }
       }
 
       // League is not locked, show the share modal

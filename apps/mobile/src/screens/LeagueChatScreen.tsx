@@ -16,7 +16,7 @@ import LeagueSectionSwitch from '../components/league/LeagueSectionSwitch';
 import { env } from '../env';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
-import { resolveLeagueStartGw } from '../lib/leagueStart';
+import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemePreference } from '../context/ThemePreferenceContext';
@@ -68,6 +68,8 @@ export default function LeagueChatScreen() {
     [members]
   );
 
+  const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
+
   const headerAvatarUri = React.useMemo(() => {
     const a = resolveLeagueAvatarUri(leagueMeta?.avatar);
     return a ?? null;
@@ -105,11 +107,12 @@ export default function LeagueChatScreen() {
 
       if (action === 'shareLeagueCode') {
         try {
-          const shareText = `Join my mini league "${leagueName || 'my mini league'}" on TotL!`;
+          const displayName = String(leagueMeta?.name ?? leagueName ?? 'my mini league');
           const code = leagueMeta?.code ? String(leagueMeta.code) : null;
-          const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-          const url = code && base ? `${base}/league/${encodeURIComponent(code)}` : null;
-          await Share.share({ message: url ? `${shareText}\n${url}` : `${shareText}\nCode: ${code ?? ''}`.trim() });
+          if (!code) return;
+          await Share.share({
+            message: `TotL mini league "${displayName}"\nCode: ${code}`,
+          });
         } catch {
           // ignore
         }
@@ -143,19 +146,22 @@ export default function LeagueChatScreen() {
 
       if (action === 'inviteLeague' || action === 'inviteChat') {
         setInviteMode(action === 'inviteChat' ? 'chat' : 'league');
-        // Respect the same time-based membership restrictions.
         try {
           const gw = typeof currentGw === 'number' ? currentGw : null;
           const createdAt = typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : null;
-          const startGw = gw ? await resolveLeagueStartGw({ id: leagueId, name: leagueName, created_at: createdAt }, gw) : null;
-          const locked = gw !== null && startGw !== null && gw - startGw >= 4;
-          if (locked) {
-            Alert.alert(
-              'League Locked',
-              'This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.',
-              [{ text: 'OK' }]
+          if (members.length >= 2 && gw !== null) {
+            const startGw = await resolveLeagueStartGw(
+              { id: leagueId, name: leagueName, created_at: createdAt, activation_at: leagueActivationAt },
+              gw
             );
-            return;
+            if (gw - startGw >= 4) {
+              Alert.alert(
+                'League Locked',
+                'This league has been running for more than 4 gameweeks. New members can only be added during the first 4 gameweeks.',
+                [{ text: 'OK' }]
+              );
+              return;
+            }
           }
           setInviteOpen(true);
         } catch {
@@ -164,7 +170,18 @@ export default function LeagueChatScreen() {
         return;
       }
     },
-    [currentGw, leagueId, leagueMeta?.code, leagueMeta?.created_at, leavingLeague, leagueName, navigation, queryClient]
+    [
+      currentGw,
+      leagueActivationAt,
+      leagueId,
+      leagueMeta?.code,
+      leagueMeta?.created_at,
+      leavingLeague,
+      leagueName,
+      members.length,
+      navigation,
+      queryClient,
+    ]
   );
 
   if (isLoading && !leagueDetails && !error) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Share, View, useWindowDimensions } from 'react-native';
+import { Share, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
 import * as Clipboard from 'expo-clipboard';
@@ -37,21 +37,9 @@ function getPopupShareTitle(card: PopupCardDescriptor, target: ShareTarget): str
   return `${prefix}: ${card.title}`;
 }
 
-async function canOpenScheme(url: string): Promise<boolean> {
-  try {
-    return await Linking.canOpenURL(url);
-  } catch {
-    return false;
-  }
-}
-
-async function openExternalUrl(url: string): Promise<boolean> {
-  try {
-    await Linking.openURL(url);
-    return true;
-  } catch {
-    return false;
-  }
+function isShareCancelled(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /cancel|dismiss|did not share/i.test(message);
 }
 
 function PopupCardSharePreview({
@@ -253,22 +241,25 @@ export default function PopupCardShareTray({
   );
 
   const shareToWhatsApp = React.useCallback(async () => {
-    const waUrl = `whatsapp://send?text=${encodeURIComponent(shareMessage)}`;
-    const canOpenWhatsApp = await canOpenScheme('whatsapp://send');
-    if (canOpenWhatsApp && (await openExternalUrl(waUrl))) {
+    const imageFile = await buildShareImageFile();
+    if (!imageFile) {
+      await shareImage('whatsapp');
       return;
     }
+
     await shareImage('whatsapp');
-  }, [shareImage, shareMessage]);
+  }, [buildShareImageFile, card, shareImage, shareMessage]);
 
   const shareToInstagram = React.useCallback(async () => {
     await Clipboard.setStringAsync(shareMessage);
-    const canOpenInstagram = await canOpenScheme('instagram://app');
-    if (canOpenInstagram && (await openExternalUrl('instagram://app'))) {
+    const imageFile = await buildShareImageFile();
+    if (!imageFile) {
+      await shareImage('instagram');
       return;
     }
+
     await shareImage('instagram');
-  }, [shareImage, shareMessage]);
+  }, [buildShareImageFile, card, shareImage, shareMessage]);
 
   const handleShare = React.useCallback(
     async (target: ShareTarget) => {

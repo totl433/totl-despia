@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { VOLLEY_USER_ID } from "../lib/volley";
-import { resolveLeagueStartGw } from "../lib/leagueStart";
+import { resolveLeagueStartGw, getLeagueActivationAt } from "../lib/leagueStart";
 import { fetchUserLeagues } from "./userLeagues";
 
 export type League = {
@@ -63,8 +63,6 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       };
     }
 
-    // Check if league has been running for more than 4 gameweeks
-    // Get current gameweek
     const { data: metaData } = await supabase
       .from("app_meta")
       .select("current_gw")
@@ -72,16 +70,25 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       .maybeSingle();
 
     const currentGw = metaData?.current_gw ?? null;
-    
-    if (currentGw !== null) {
-      // Calculate league start GW
+
+    const { data: memberRowsPre, error: membersPreErr } = await supabase
+      .from("league_members")
+      .select("created_at")
+      .eq("league_id", league.id)
+      .order("created_at", { ascending: true });
+
+    if (membersPreErr) {
+      return { success: false, error: membersPreErr.message ?? "Failed to check league members." };
+    }
+
+    // Lock applies only once two members exist; clock starts from competitive activation (second join), not league creation.
+    if (currentGw !== null && (memberRowsPre?.length ?? 0) >= 2) {
+      const activationAt = getLeagueActivationAt(memberRowsPre ?? []);
       const leagueStartGw = await resolveLeagueStartGw(
-        { id: league.id, name: league.name, created_at: league.created_at },
+        { id: league.id, name: league.name, created_at: league.created_at, activation_at: activationAt },
         currentGw
       );
 
-      // Check if league has been running for 4+ gameweeks
-      // If current_gw - league_start_gw >= 4, the league is locked
       if (currentGw - leagueStartGw >= 4) {
         return {
           success: false,

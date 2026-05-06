@@ -74,9 +74,13 @@ export default function LeagueInviteSheet({
       )}
     >
       <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 24 }}>
-        <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, fontWeight: '700' }}>{title}</TotlText>
+        <TotlText style={{ fontFamily: 'System', fontSize: 16, lineHeight: 20, fontWeight: '700', color: t.color.text }}>
+          {title}
+        </TotlText>
         <TotlText style={{ marginTop: 6, fontFamily: 'System', fontSize: 13, lineHeight: 16, color: t.color.muted }}>
-          Share this code with friends:
+          {url
+            ? 'Copy the code, or tap Share — your message includes the TotL join link.'
+            : 'Copy the code or tap Share.'}
         </TotlText>
 
         <View
@@ -90,7 +94,16 @@ export default function LeagueInviteSheet({
             paddingHorizontal: 14,
           }}
         >
-          <TotlText style={{ fontFamily: 'System', fontSize: 18, lineHeight: 22, fontWeight: '800', letterSpacing: 1.2 }}>
+          <TotlText
+            style={{
+              fontFamily: 'System',
+              fontSize: 18,
+              lineHeight: 22,
+              fontWeight: '800',
+              letterSpacing: 1.2,
+              color: t.color.text,
+            }}
+          >
             {leagueCode}
           </TotlText>
         </View>
@@ -119,8 +132,18 @@ export default function LeagueInviteSheet({
               gap: 8,
             })}
           >
-            <Ionicons name="copy-outline" size={18} color={t.color.muted} />
-            <TotlText style={{ fontFamily: 'System', fontSize: 14, lineHeight: 18, fontWeight: '700' }}>Copy code</TotlText>
+            <Ionicons name="copy-outline" size={18} color={t.color.text} />
+            <TotlText
+              style={{
+                fontFamily: 'System',
+                fontSize: 14,
+                lineHeight: 18,
+                fontWeight: '700',
+                color: t.color.text,
+              }}
+            >
+              Copy code
+            </TotlText>
           </Pressable>
 
           <Pressable
