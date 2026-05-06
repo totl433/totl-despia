@@ -1,3 +1,4 @@
+import { computeLiveGwScoresForGw, computeLiveGwScoresForGwsBatch, rankUserInGwLiveScores } from './liveGwScores.js';
 import { resolveLeagueStartGw } from './leagueStart.js';
 import { upsertSubscriber, unsubscribeSubscriber } from './mailerlite.js';
 
@@ -14,6 +15,154 @@ function calculatePercentile(userValue: number, allValues: number[]): number {
   const rank = allValues.filter((v) => v <= userValue).length;
   const percentile = (rank / allValues.length) * 100;
   return Math.round(percentile * 100) / 100;
+}
+
+/** Football API ids often arrive as numeric strings from PostgREST — strict `typeof === 'number'` misses joins. */
+function parseFiniteApiMatchId(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw.trim());
+    if (Number.isFinite(n)) return Math.trunc(n);
+  }
+  return null;
+}
+
+/** Supabase/PostgREST caps rows (~1000); leaderboard screens page — profile stats must too or GW totals truncate. */
+async function fetchAllRowsPaged<T>(
+  runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await runPage(from, to);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+/** Index live score rows by gw:fixture_index and by api_match_id (covers rows with null gw from ingest). */
+function mergeLiveScoreRowsIntoMaps(
+  rows: any[],
+  liveByGwFi: Map<string, any>,
+  liveByApiMatchId: Map<number, any>
+) {
+  rows.forEach((row: any) => {
+    const gwN = Number(row.gw);
+    const fiN = Number(row.fixture_index);
+    if (Number.isFinite(gwN) && Number.isFinite(fiN)) liveByGwFi.set(`${gwN}:${fiN}`, row);
+    const lid = parseFiniteApiMatchId(row.api_match_id);
+    if (lid != null) liveByApiMatchId.set(lid, row);
+  });
+}
+
+type UserPickRow = { gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' };
+
+/** Normalize DB pick strings so comparisons match `app_gw_results` letters. */
+function normalizePickLetter(pick: unknown): 'H' | 'D' | 'A' | null {
+  const s = typeof pick === 'string' ? pick.trim().toUpperCase() : '';
+  if (s === 'H' || s === 'D' || s === 'A') return s;
+  return null;
+}
+
+function groupFixtureRowsByGw(rows: any[]): Map<number, any[]> {
+  const m = new Map<number, any[]>();
+  rows.forEach((row: any) => {
+    const g = Number(row.gw);
+    if (!Number.isFinite(g)) return;
+    const arr = m.get(g) ?? [];
+    arr.push(row);
+    m.set(g, arr);
+  });
+  return m;
+}
+
+/** Web `fixtures` vs `app_fixtures` code normalization (mirror triggers). */
+function normWebCodeForAppMatch(code: string | null | undefined): string | null {
+  if (typeof code !== 'string' || !code.trim()) return null;
+  const c = code.trim().toUpperCase();
+  return c === 'NFO' ? 'NOT' : c;
+}
+
+function normAppCodeRaw(code: string | null | undefined): string | null {
+  if (typeof code !== 'string' || !code.trim()) return null;
+  return code.trim().toUpperCase();
+}
+
+function webAppFixtureSamePair(
+  w: { home_code?: string | null; away_code?: string | null; home_name?: string | null; away_name?: string | null },
+  a: { home_code?: string | null; away_code?: string | null; home_name?: string | null; away_name?: string | null }
+): boolean {
+  const wh = normWebCodeForAppMatch(w.home_code);
+  const wa = normWebCodeForAppMatch(w.away_code);
+  const ah = normAppCodeRaw(a.home_code);
+  const aa = normAppCodeRaw(a.away_code);
+  if (wh && wa && ah && aa) {
+    return (wh === ah && wa === aa) || (wh === aa && wa === ah);
+  }
+  const wnh = typeof w.home_name === 'string' ? w.home_name.trim().toLowerCase() : '';
+  const wna = typeof w.away_name === 'string' ? w.away_name.trim().toLowerCase() : '';
+  const anh = typeof a.home_name === 'string' ? a.home_name.trim().toLowerCase() : '';
+  const ana = typeof a.away_name === 'string' ? a.away_name.trim().toLowerCase() : '';
+  const webCodesMissing = !wh || !wa;
+  if (webCodesMissing && wnh && wna && anh && ana) {
+    return (wnh === anh && wna === ana) || (wnh === ana && wna === anh);
+  }
+  return false;
+}
+
+/** Map web `fixtures.fixture_index` → app `fixture_index` by pairing teams. */
+function buildWebToAppFixtureIndexMap(webFx: any[], appFx: any[]): Map<number, number> {
+  const m = new Map<number, number>();
+  webFx.forEach((w) => {
+    const wi = Number(w.fixture_index);
+    if (!Number.isFinite(wi) || m.has(wi)) return;
+    for (const a of appFx) {
+      const ai = Number(a.fixture_index);
+      if (!Number.isFinite(ai)) continue;
+      if (webAppFixtureSamePair(w, a)) {
+        m.set(wi, ai);
+        return;
+      }
+    }
+    m.set(wi, wi);
+  });
+  return m;
+}
+
+/** Legacy `picks` rows may use web `fixture_index`; map through web↔app schedules when both exist. */
+function remapLegacyPicksToAppFixtureIndices(
+  legacyRows: Array<{ gw: number; fixture_index: number; pick: string }>,
+  webByGw: Map<number, any[]>,
+  appByGw: Map<number, any[]>
+): UserPickRow[] {
+  const legByGw = new Map<number, Array<{ gw: number; fixture_index: number; pick: string }>>();
+  legacyRows.forEach((p) => {
+    const g = Number(p.gw);
+    if (!Number.isFinite(g)) return;
+    const arr = legByGw.get(g) ?? [];
+    arr.push(p);
+    legByGw.set(g, arr);
+  });
+
+  const out: UserPickRow[] = [];
+  legByGw.forEach((rows, gw) => {
+    const webFx = webByGw.get(gw) ?? [];
+    const appFx = appByGw.get(gw) ?? [];
+    const fiMap =
+      webFx.length > 0 && appFx.length > 0 ? buildWebToAppFixtureIndexMap(webFx, appFx) : new Map<number, number>();
+    rows.forEach((p) => {
+      const rawFi = Number(p.fixture_index);
+      const pick = normalizePickLetter(p.pick);
+      if (!Number.isFinite(rawFi) || !pick) return;
+      const appFi = fiMap.get(rawFi) ?? rawFi;
+      out.push({ gw, fixture_index: appFi, pick });
+    });
+  });
+  return out;
 }
 
 export type ProfileSummary = {
@@ -51,8 +200,16 @@ export async function getProfileSummary(opts: { userId: string; supa: any; acces
   const gwPointsSet = new Set<number>((gwPointsRes.data ?? []).map((r: any) => Number(r.gw)));
   const submissionsSet = new Set<number>((submissionsRes.data ?? []).map((r: any) => Number(r.gw)));
 
+  let anchorGw = latestGw;
+  gwPointsSet.forEach((g) => {
+    if (g > anchorGw) anchorGw = g;
+  });
+  submissionsSet.forEach((g) => {
+    if (g > anchorGw) anchorGw = g;
+  });
+
   let weeksStreak = 0;
-  for (let gw = latestGw; gw >= 1; gw--) {
+  for (let gw = anchorGw; gw >= 1; gw--) {
     if (gwPointsSet.has(gw) || submissionsSet.has(gw)) weeksStreak++;
     else break;
   }
@@ -75,9 +232,12 @@ export async function getProfileSummary(opts: { userId: string; supa: any; acces
 
 export type UserStatsData = {
   lastCompletedGw: number | null;
+  highlightGw?: number | null;
   lastCompletedGwPercentile: number | null;
   overallPercentile: number | null;
   correctPredictionRate: number | null;
+  correctPredictionFieldAvgPct: number | null;
+  correctPredictionVsField: 'above' | 'below' | 'about' | null;
   bestStreak: number;
   bestStreakGwRange: string | null;
   avgPointsPerWeek: number | null;
@@ -89,80 +249,108 @@ export type UserStatsData = {
   mostCorrectTeam: { code: string | null; name: string; percentage: number } | null;
   mostIncorrectTeam: { code: string | null; name: string; percentage: number } | null;
   weeklyParData: Array<{ gw: number; userPoints: number; averagePoints: number }> | null;
-  trophyCabinet: { lastGw: number; form5: number; form10: number; overall: number } | null;
+  gameweekStreak: Array<{ gw: number; points: number | null }> | null;
+  trophyCabinet: { gameweekPodiums: number; monthlyPodiums: number; seasonPodiums: number } | null;
+  lastSeasonChampions: { seasonLabel: string; names: string[] } | null;
 };
 
-function calculateLastGwRank(
-  userId: string,
-  lastCompletedGw: number,
-  allGwPoints: Array<{ user_id: string; gw: number; points: number }>
-) {
-  const lastGwData = allGwPoints.filter((gp) => gp.gw === lastCompletedGw);
-  if (lastGwData.length === 0) return null;
-  const sorted = [...lastGwData].sort((a, b) => b.points - a.points);
-  let currentRank = 1;
-  const ranked = sorted.map((p, idx) => {
-    if (idx > 0 && sorted[idx - 1]!.points !== p.points) currentRank = idx + 1;
-    return { ...p, rank: currentRank };
-  });
-  const me = ranked.find((r) => r.user_id === userId);
-  if (!me) return null;
-  const rankCount = ranked.filter((r) => r.rank === me.rank).length;
-  return { rank: me.rank, total: ranked.length, score: me.points, gw: lastCompletedGw, totalFixtures: 10, isTied: rankCount > 1 };
+/** Keep in sync with `apps/mobile/src/lib/leaderboardMonths.ts` SEASON_2025_26 ranges. */
+const LEADERBOARD_MONTH_BUCKETS: ReadonlyArray<{ startGw: number; endGw: number }> = [
+  { startGw: 1, endGw: 3 },
+  { startGw: 4, endGw: 7 },
+  { startGw: 8, endGw: 10 },
+  { startGw: 11, endGw: 13 },
+  { startGw: 14, endGw: 18 },
+  { startGw: 19, endGw: 22 },
+  { startGw: 23, endGw: 28 },
+  { startGw: 29, endGw: 31 },
+  { startGw: 32, endGw: 35 },
+  { startGw: 36, endGw: 38 },
+];
+
+const CURRENT_CAMPAIGN_END_GW = 38;
+
+function parsePreviousSeasonChampionsFromEnv(): { seasonLabel: string; names: string[] } | null {
+  const raw =
+    typeof process.env.PREVIOUS_SEASON_CHAMPIONS_JSON === 'string'
+      ? process.env.PREVIOUS_SEASON_CHAMPIONS_JSON.trim()
+      : '';
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw) as { seasonLabel?: unknown; names?: unknown };
+    if (typeof o.seasonLabel !== 'string' || !Array.isArray(o.names)) return null;
+    const names = o.names.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+    return { seasonLabel: o.seasonLabel.trim(), names };
+  } catch {
+    return null;
+  }
 }
 
-function calculateSeasonRank(userId: string, overall: Array<{ user_id: string; name: string | null; ocp: number | null }>) {
-  if (overall.length === 0) return null;
-  const sorted = [...overall].sort(
-    (a, b) => (Number(b.ocp ?? 0) - Number(a.ocp ?? 0)) || String(a.name ?? 'User').localeCompare(String(b.name ?? 'User'))
-  );
-  let currentRank = 1;
-  const ranked = sorted.map((p, idx) => {
-    if (idx > 0 && Number(sorted[idx - 1]!.ocp ?? 0) !== Number(p.ocp ?? 0)) currentRank = idx + 1;
-    return { ...p, rank: currentRank };
-  });
-  const me = ranked.find((r) => r.user_id === userId);
-  if (!me) return null;
-  const rankCount = ranked.filter((r) => r.rank === me.rank).length;
-  return { rank: me.rank, total: overall.length, isTied: rankCount > 1 };
-}
-
-function calculateFormRank(
-  userId: string,
-  startGw: number,
-  endGw: number,
-  allGwPoints: Array<{ user_id: string; gw: number; points: number }>,
-  overall: Array<{ user_id: string; name: string | null; ocp: number | null }>
-) {
-  if (endGw < startGw) return null;
-  const formPoints = allGwPoints.filter((gp) => gp.gw >= startGw && gp.gw <= endGw);
-  const userData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
-  overall.forEach((o) => {
-    userData.set(o.user_id, { user_id: o.user_id, name: o.name ?? 'User', formPoints: 0, weeksPlayed: new Set() });
-  });
-  formPoints.forEach((gp) => {
-    const u = userData.get(gp.user_id);
-    if (u) {
-      u.formPoints += Number(gp.points ?? 0);
-      u.weeksPlayed.add(gp.gw);
+/**
+ * Merge finalized results with live score outcomes for one GW (same logic as GlobalScreen
+ * gwLiveFallbackScores). `app_v_gw_points` only sees `app_gw_results`; during live GWs the
+ * leaderboard shows reconstructed scores — streak chips must match.
+ */
+function outcomesForGwFromResultsLive(args: {
+  gw: number;
+  resultsRows: Array<{
+    gw?: number;
+    fixture_index?: number;
+    result?: string | null;
+    home_score?: number | null;
+    away_score?: number | null;
+  }>;
+  fixturesRows: Array<{ gw?: number; fixture_index?: number; api_match_id?: number | null }>;
+  liveRows: Array<{
+    gw?: number;
+    api_match_id?: number | null;
+    fixture_index?: number | null;
+    home_score?: number | null;
+    away_score?: number | null;
+    status?: string | null;
+  }>;
+}): Map<number, 'H' | 'D' | 'A'> {
+  const { gw, resultsRows, fixturesRows, liveRows } = args;
+  const outcomeByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
+  resultsRows.forEach((r) => {
+    if (Number(r.gw) !== gw) return;
+    const fi = Number(r.fixture_index);
+    if (!Number.isFinite(fi)) return;
+    let res = r.result;
+    if (res === 'H' || res === 'D' || res === 'A') {
+      outcomeByFixtureIndex.set(fi, res);
+      return;
+    }
+    const hs = r.home_score;
+    const as = r.away_score;
+    if (typeof hs === 'number' && typeof as === 'number') {
+      outcomeByFixtureIndex.set(fi, hs > as ? 'H' : hs < as ? 'A' : 'D');
     }
   });
-  const sorted = Array.from(userData.values())
-    .filter((u) => {
-      for (let g = startGw; g <= endGw; g++) if (!u.weeksPlayed.has(g)) return false;
-      return true;
-    })
-    .sort((a, b) => b.formPoints - a.formPoints || a.name.localeCompare(b.name));
-  if (sorted.length === 0) return null;
-  let currentRank = 1;
-  const ranked = sorted.map((p, idx) => {
-    if (idx > 0 && sorted[idx - 1]!.formPoints !== p.formPoints) currentRank = idx + 1;
-    return { ...p, rank: currentRank };
+  const apiMatchIdToFixture = new Map<number, number>();
+  fixturesRows.forEach((f) => {
+    if (Number(f.gw) !== gw) return;
+    const aid = parseFiniteApiMatchId(f.api_match_id);
+    const fi = Number(f.fixture_index);
+    if (aid != null && Number.isFinite(fi)) apiMatchIdToFixture.set(aid, fi);
   });
-  const me = ranked.find((r) => r.user_id === userId);
-  if (!me) return null;
-  const rankCount = ranked.filter((r) => r.rank === me.rank).length;
-  return { rank: me.rank, total: ranked.length, isTied: rankCount > 1 };
+  liveRows.forEach((ls) => {
+    const status = ls.status;
+    const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+    if (!started) return;
+    let fixtureIndex: number | undefined;
+    const fiLs = Number(ls.fixture_index);
+    if (Number(ls.gw) === gw && Number.isFinite(fiLs)) fixtureIndex = fiLs;
+    else {
+      const mid = parseFiniteApiMatchId(ls.api_match_id);
+      if (mid != null) fixtureIndex = apiMatchIdToFixture.get(mid);
+    }
+    if (typeof fixtureIndex !== 'number') return;
+    const hs = Number(ls.home_score ?? 0);
+    const as = Number(ls.away_score ?? 0);
+    outcomeByFixtureIndex.set(fixtureIndex, hs > as ? 'H' : hs < as ? 'A' : 'D');
+  });
+  return outcomeByFixtureIndex;
 }
 
 export async function getProfileStats(opts: { userId: string; supa: any }): Promise<UserStatsData> {
@@ -173,9 +361,12 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   const stats: UserStatsData = {
     lastCompletedGw: null,
+    highlightGw: null,
     lastCompletedGwPercentile: null,
     overallPercentile: null,
     correctPredictionRate: null,
+    correctPredictionFieldAvgPct: null,
+    correctPredictionVsField: null,
     bestStreak: 0,
     bestStreakGwRange: null,
     avgPointsPerWeek: null,
@@ -187,113 +378,316 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     mostCorrectTeam: null,
     mostIncorrectTeam: null,
     weeklyParData: null,
+    gameweekStreak: null,
     trophyCabinet: null,
+    lastSeasonChampions: parsePreviousSeasonChampionsFromEnv(),
   };
 
-  // 1) Last completed GW
-  const { data: lastGwData, error: lastGwErr } = await (supa as any)
-    .from('app_gw_results')
-    .select('gw')
-    .order('gw', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (lastGwErr) throw lastGwErr;
-  const lastCompletedGw = (lastGwData?.gw as number | null) ?? null;
-  stats.lastCompletedGw = lastCompletedGw;
-  if (!lastCompletedGw) return stats;
-
-  // 2) Last GW percentile (from app_v_gw_points)
-  const { data: gwPointsForLastGw, error: gwPtsErr } = await (supa as any)
-    .from('app_v_gw_points')
-    .select('user_id, points')
-    .eq('gw', lastCompletedGw);
-  if (gwPtsErr) throw gwPtsErr;
-  if (gwPointsForLastGw?.length) {
-    const allPoints = gwPointsForLastGw.map((p: any) => Number(p.points ?? 0));
-    const userPoints = Number(gwPointsForLastGw.find((p: any) => p.user_id === userId)?.points ?? 0);
-    stats.lastCompletedGwPercentile = calculatePercentile(userPoints, allPoints);
-  }
-
-  // 3) Overall percentile (from app_v_ocp_overall)
-  const { data: overallStandings, error: overallErr } = await (supa as any)
-    .from('app_v_ocp_overall')
-    .select('user_id, name, ocp');
-  if (overallErr) throw overallErr;
-  if (overallStandings?.length) {
-    const allOcp = overallStandings.map((s: any) => Number(s.ocp ?? 0));
-    const userOcp = Number(overallStandings.find((s: any) => s.user_id === userId)?.ocp ?? 0);
-    stats.overallPercentile = calculatePercentile(userOcp, allOcp);
-  }
-
-  // 4) Correct prediction rate
-  const [appPicksRes, legacyPicksRes, resultsRes] = await Promise.all([
-    (supa as any).from('app_picks').select('gw, fixture_index, pick').eq('user_id', userId),
-    (supa as any).from('picks').select('gw, fixture_index, pick').eq('user_id', userId),
-    (supa as any).from('app_gw_results').select('gw, fixture_index, result'),
+  const [{ data: lastGwData, error: lastGwErr }, { data: metaRow, error: metaErr }, overallStandings] = await Promise.all([
+    (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: false }).limit(1).maybeSingle(),
+    (supa as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle(),
+    fetchAllRowsPaged<{ user_id: string; name: string | null; ocp: number | null }>((from, to) =>
+      (supa as any).from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
+    ),
   ]);
-  if (appPicksRes.error) throw appPicksRes.error;
-  // legacy table may not exist in some environments; tolerate missing table.
-  const legacyOk = !(legacyPicksRes as any).error || (legacyPicksRes as any).error?.code === '42P01';
-  if (!legacyOk) throw (legacyPicksRes as any).error;
-  if (resultsRes.error) throw resultsRes.error;
+  if (lastGwErr) throw lastGwErr;
+  if (metaErr) throw metaErr;
 
-  const picksMap = new Map<string, { gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>();
-  (legacyPicksRes.data ?? []).forEach((p: any) => picksMap.set(`${p.gw}:${p.fixture_index}`, p));
-  (appPicksRes.data ?? []).forEach((p: any) => picksMap.set(`${p.gw}:${p.fixture_index}`, p));
-  const allPicks = Array.from(picksMap.values());
+  const lastCompletedGw = (lastGwData?.gw as number | null) ?? null;
+  const metaGwRaw = Number(metaRow?.current_gw);
+  const metaGw = Number.isFinite(metaGwRaw) && metaGwRaw > 0 ? metaGwRaw : null;
 
-  const resultsMap = new Map<string, 'H' | 'D' | 'A'>();
-  (resultsRes.data ?? []).forEach((r: any) => {
-    if (r.result) resultsMap.set(`${r.gw}:${r.fixture_index}`, r.result);
+  const highlightGw =
+    lastCompletedGw != null && metaGw != null
+      ? Math.max(lastCompletedGw, metaGw)
+      : lastCompletedGw ?? metaGw ?? null;
+
+  stats.lastCompletedGw = lastCompletedGw;
+  stats.highlightGw = highlightGw;
+
+  if (!lastCompletedGw && !metaGw) return stats;
+
+  const [myAppPicksPaged, allAppPicksRows, legacyTableProbe] = await Promise.all([
+    fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
+      (supa as any)
+        .from('app_picks')
+        .select('gw, fixture_index, pick')
+        .eq('user_id', userId)
+        .order('gw', { ascending: true })
+        .order('fixture_index', { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
+      (supa as any)
+        .from('app_picks')
+        .select('gw, fixture_index, pick')
+        .order('gw', { ascending: true })
+        .order('fixture_index', { ascending: true })
+        .range(from, to)
+    ),
+    (supa as any).from('picks').select('gw').limit(1),
+  ]);
+
+  let legacyPicksPaged: Array<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }> = [];
+  if (!legacyTableProbe.error) {
+    legacyPicksPaged = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
+      (supa as any)
+        .from('picks')
+        .select('gw, fixture_index, pick')
+        .eq('user_id', userId)
+        .order('gw', { ascending: true })
+        .order('fixture_index', { ascending: true })
+        .range(from, to)
+    );
+  } else if (legacyTableProbe.error?.code !== '42P01') {
+    throw legacyTableProbe.error;
+  }
+
+  const gwForFxLiveFetch = new Set<number>();
+  myAppPicksPaged.forEach((p) => {
+    const g = Number(p.gw);
+    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
+  });
+  legacyPicksPaged.forEach((p) => {
+    const g = Number(p.gw);
+    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
+  });
+  (allAppPicksRows ?? []).forEach((p) => {
+    const g = Number(p.gw);
+    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
+  });
+  const pickGwsSortedForFetch = [...gwForFxLiveFetch].sort((a, b) => a - b);
+
+  let livePickRows: Array<{
+    gw?: number;
+    api_match_id?: number | null;
+    fixture_index?: number | null;
+    home_score?: number | null;
+    away_score?: number | null;
+    status?: string | null;
+  }> = [];
+  let fxPickRows: any[] = [];
+
+  const [resultsRowsFullData, liveFxBundle] = await Promise.all([
+    fetchAllRowsPaged<{
+      gw?: number;
+      fixture_index?: number;
+      result?: string | null;
+      api_match_id?: number | null;
+      home_score?: number | null;
+      away_score?: number | null;
+    }>((from, to) =>
+      (supa as any)
+        .from('app_gw_results')
+        .select('gw, fixture_index, result, api_match_id, home_score, away_score')
+        .order('gw', { ascending: true })
+        .order('fixture_index', { ascending: true })
+        .range(from, to)
+    ),
+    (async (): Promise<{
+      live: Array<{
+        gw?: number;
+        api_match_id?: number | null;
+        fixture_index?: number | null;
+        home_score?: number | null;
+        away_score?: number | null;
+        status?: string | null;
+      }>;
+      fx: any[];
+    }> => {
+      if (pickGwsSortedForFetch.length === 0) return { live: [], fx: [] };
+      const [livePickPaged, fxPickPaged] = await Promise.all([
+        fetchAllRowsPaged<{
+          gw?: number;
+          api_match_id?: number | null;
+          fixture_index?: number | null;
+          home_score?: number | null;
+          away_score?: number | null;
+          status?: string | null;
+        }>((from, to) =>
+          (supa as any)
+            .from('live_scores')
+            .select('gw, api_match_id, fixture_index, home_score, away_score, status')
+            .in('gw', pickGwsSortedForFetch)
+            .order('gw', { ascending: true })
+            .order('fixture_index', { ascending: true })
+            .order('api_match_id', { ascending: true })
+            .range(from, to)
+        ),
+        fetchAllRowsPaged<any>((from, to) =>
+          (supa as any)
+            .from('app_fixtures')
+            .select(
+              'gw, fixture_index, api_match_id, home_code, away_code, home_name, away_name, home_team, away_team'
+            )
+            .in('gw', pickGwsSortedForFetch)
+            .order('gw', { ascending: true })
+            .order('fixture_index', { ascending: true })
+            .order('api_match_id', { ascending: true })
+            .range(from, to)
+        ),
+      ]);
+      return { live: livePickPaged, fx: fxPickPaged };
+    })(),
+  ]);
+
+  livePickRows = liveFxBundle.live;
+  fxPickRows = liveFxBundle.fx;
+
+  const appFxByGwForRemap = groupFixtureRowsByGw(fxPickRows);
+
+  let webFxRows: any[] = [];
+  if (legacyPicksPaged.length > 0) {
+    const legacyGws = [...new Set(legacyPicksPaged.map((p) => Number(p.gw)).filter((n) => Number.isFinite(n)))].sort(
+      (a, b) => a - b
+    );
+    try {
+      webFxRows = await fetchAllRowsPaged<any>((from, to) =>
+        (supa as any)
+          .from('fixtures')
+          .select('gw, fixture_index, home_code, away_code, home_name, away_name')
+          .in('gw', legacyGws)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to)
+      );
+    } catch (err: any) {
+      if (err?.code !== '42P01') throw err;
+    }
+  }
+  const webByGwForRemap = groupFixtureRowsByGw(webFxRows);
+
+  const fixturesPerGwFromFx = new Map<number, number>();
+  fxPickRows.forEach((f: any) => {
+    const g = Number(f.gw);
+    if (!Number.isFinite(g)) return;
+    fixturesPerGwFromFx.set(g, (fixturesPerGwFromFx.get(g) ?? 0) + 1);
+  });
+
+  const appPicksNormalized: UserPickRow[] = [];
+  for (const p of myAppPicksPaged) {
+    const gw = Number(p.gw);
+    const fi = Number(p.fixture_index);
+    const pick = normalizePickLetter(p.pick);
+    if (!Number.isFinite(gw) || !Number.isFinite(fi) || !pick) continue;
+    appPicksNormalized.push({ gw, fixture_index: fi, pick });
+  }
+
+  const appPickCountByGw = new Map<number, number>();
+  appPicksNormalized.forEach((p) => appPickCountByGw.set(p.gw, (appPickCountByGw.get(p.gw) ?? 0) + 1));
+
+  /** Per GW: if app already has a full slate, legacy used different numbering — drop legacy for that GW. Otherwise merge (app overwrites same `gw:fi`). */
+  const mergedPickByKey = new Map<string, UserPickRow>();
+  for (const p of remapLegacyPicksToAppFixtureIndices(legacyPicksPaged, webByGwForRemap, appFxByGwForRemap)) {
+    const fxListed = fixturesPerGwFromFx.get(p.gw) ?? 0;
+    /** Premier League = 10 fixtures; if `fxPickRows` under-counted a GW, still require 10 app picks before ignoring legacy. */
+    const fxNeed = Math.max(fxListed, 10);
+    const appN = appPickCountByGw.get(p.gw) ?? 0;
+    if (appN >= fxNeed) continue;
+    mergedPickByKey.set(`${p.gw}:${p.fixture_index}`, p);
+  }
+  for (const p of appPicksNormalized) {
+    mergedPickByKey.set(`${p.gw}:${p.fixture_index}`, p);
+  }
+  const allPicks = [...mergedPickByKey.values()];
+
+  const gwForOutcomes = new Set<number>();
+  allPicks.forEach((p) => {
+    const g = Number(p.gw);
+    if (Number.isFinite(g)) gwForOutcomes.add(g);
+  });
+  (allAppPicksRows ?? []).forEach((p) => {
+    const g = Number(p.gw);
+    if (Number.isFinite(g)) gwForOutcomes.add(g);
+  });
+  const pickGwsSorted = [...gwForOutcomes].sort((a, b) => a - b);
+
+  const augmentedOutcomeByPickKey = new Map<string, 'H' | 'D' | 'A'>();
+  const resultsRowsFull = resultsRowsFullData as Array<{
+    gw?: number;
+    fixture_index?: number;
+    result?: string | null;
+    api_match_id?: number | null;
+    home_score?: number | null;
+    away_score?: number | null;
+  }>;
+  pickGwsSorted.forEach((gw) => {
+    const om = outcomesForGwFromResultsLive({
+      gw,
+      resultsRows: resultsRowsFull,
+      fixturesRows: fxPickRows,
+      liveRows: livePickRows,
+    });
+    om.forEach((res, fi) => augmentedOutcomeByPickKey.set(`${Number(gw)}:${Number(fi)}`, res));
   });
 
   let correct = 0;
   let total = 0;
   allPicks.forEach((p) => {
-    const res = resultsMap.get(`${p.gw}:${p.fixture_index}`);
+    const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
     if (!res) return;
     total++;
     if (p.pick === res) correct++;
   });
   if (total > 0) stats.correctPredictionRate = (correct / total) * 100;
 
-  // 5) Avg points + best streak + weekly par + trophy cabinet
-  const { data: userGwPoints, error: userGwErr } = await (supa as any)
-    .from('app_v_gw_points')
-    .select('gw, points')
-    .eq('user_id', userId)
-    .order('gw', { ascending: true });
-  if (userGwErr) throw userGwErr;
+  let fieldCorrect = 0;
+  let fieldTotal = 0;
+  for (const p of allAppPicksRows ?? []) {
+    const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
+    if (!res) continue;
+    fieldTotal++;
+    if (p.pick === res) fieldCorrect++;
+  }
+  if (fieldTotal > 0) {
+    stats.correctPredictionFieldAvgPct = (fieldCorrect / fieldTotal) * 100;
+    const mine = stats.correctPredictionRate;
+    if (typeof mine === 'number') {
+      const delta = mine - stats.correctPredictionFieldAvgPct;
+      const band = 2;
+      stats.correctPredictionVsField = delta > band ? 'above' : delta < -band ? 'below' : 'about';
+    }
+  }
 
-  const { data: allGwPoints, error: allGwErr } = await (supa as any)
-    .from('app_v_gw_points')
-    .select('user_id, gw, points')
-    .order('gw', { ascending: true });
-  if (allGwErr) throw allGwErr;
+  const [{ data: submissionRows, error: subErr }, allGwPoints] = await Promise.all([
+    (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
+    fetchAllRowsPaged<{ user_id: string; gw: number; points: number }>((from, to) =>
+      (supa as any)
+        .from('app_v_gw_points')
+        .select('user_id, gw, points')
+        .order('gw', { ascending: true })
+        .order('user_id', { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+  if (subErr) throw subErr;
 
-  const allGwPointsTyped = (allGwPoints ?? []).map((p: any) => ({
+  let allGwPointsTyped = (allGwPoints ?? []).map((p: any) => ({
     user_id: String(p.user_id),
     gw: Number(p.gw),
     points: Number(p.points ?? 0),
   })) as GwPointsUserRow[];
 
-  const userGwPointsTyped = (userGwPoints ?? []).map((p: any) => ({ gw: Number(p.gw), points: Number(p.points ?? 0) })) as GwPointsMeRow[];
-
-  if (userGwPointsTyped.length) {
-    const totalPoints = userGwPointsTyped.reduce((sum, p) => sum + p.points, 0);
-    stats.avgPointsPerWeek = totalPoints / userGwPointsTyped.length;
-
-    let bestGw = { points: -1, gw: 0 };
-    let lowestGw = { points: Number.POSITIVE_INFINITY, gw: 0 };
-    userGwPointsTyped.forEach((p) => {
-      if (p.points > bestGw.points) bestGw = { points: p.points, gw: p.gw };
-      if (p.points < lowestGw.points) lowestGw = { points: p.points, gw: p.gw };
-    });
-    if (bestGw.points >= 0) stats.bestSingleGw = bestGw;
-    if (Number.isFinite(lowestGw.points)) stats.lowestSingleGw = lowestGw;
+  if (metaGw != null) {
+    const liveScores = await computeLiveGwScoresForGw(supa, metaGw);
+    if (liveScores.length > 0) {
+      const scoreMap = new Map(liveScores.map((r) => [r.user_id, r.score]));
+      allGwPointsTyped = [
+        ...allGwPointsTyped.filter((r) => r.gw !== metaGw),
+        ...Array.from(scoreMap.entries()).map(([uid, points]) => ({ user_id: uid, gw: metaGw, points })),
+      ];
+    }
   }
 
-  // Percentiles per GW (for streak + weekly par average)
+  const ocpByUser = new Map<string, number>();
+  allGwPointsTyped.forEach((p) => {
+    ocpByUser.set(p.user_id, (ocpByUser.get(p.user_id) ?? 0) + p.points);
+  });
+  const ocpVals = Array.from(ocpByUser.values());
+  if (ocpVals.length) {
+    stats.overallPercentile = calculatePercentile(ocpByUser.get(userId) ?? 0, ocpVals);
+  }
+
   const byGw = new Map<number, Array<{ user_id: string; points: number }>>();
   allGwPointsTyped.forEach((p) => {
     const arr = byGw.get(p.gw) ?? [];
@@ -301,16 +695,73 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     byGw.set(p.gw, arr);
   });
 
-  const completedGws: number[] = Array.from(
-    new Set<number>((resultsRes.data ?? []).map((r: any) => Number(r?.gw)).filter((n: number) => Number.isFinite(n)))
+  if (highlightGw != null) {
+    const ptsHi = byGw.get(highlightGw) ?? [];
+    if (ptsHi.length) {
+      const allPoints = ptsHi.map((x) => x.points);
+      const userPts = ptsHi.find((x) => x.user_id === userId)?.points ?? 0;
+      stats.lastCompletedGwPercentile = calculatePercentile(userPts, allPoints);
+    }
+  }
+
+  const userGwPointsTyped = allGwPointsTyped
+    .filter((p) => p.user_id === userId)
+    .map((p) => ({ gw: p.gw, points: p.points }))
+    .sort((a, b) => a.gw - b.gw) as GwPointsMeRow[];
+
+  const submissionGwSet = new Set<number>(
+    (submissionRows ?? []).map((r: any) => Number(r.gw)).filter((n: number) => Number.isFinite(n))
+  );
+  const pickGwSet = new Set<number>(
+    allPicks.map((p) => Number(p.gw)).filter((n: number) => Number.isFinite(n))
+  );
+
+  const userPtsFromMergedView = new Map<number, number>(userGwPointsTyped.map((p) => [p.gw, p.points]));
+
+  const resolveUserGwPoints = (gw: number): number => {
+    if (userPtsFromMergedView.has(gw)) return userPtsFromMergedView.get(gw)!;
+    let pts = 0;
+    allPicks.forEach((p) => {
+      if (p.gw !== gw) return;
+      const o = augmentedOutcomeByPickKey.get(`${Number(gw)}:${Number(p.fixture_index)}`);
+      if (o != null && o === p.pick) pts++;
+    });
+    return pts;
+  };
+
+  const playedGwsSorted = [...new Set<number>([...submissionGwSet, ...pickGwSet])].sort((a, b) => a - b);
+
+  if (playedGwsSorted.length) {
+    const resolvedPts = playedGwsSorted.map((gw) => ({ gw, pts: resolveUserGwPoints(gw) }));
+    stats.avgPointsPerWeek = resolvedPts.reduce((s, x) => s + x.pts, 0) / resolvedPts.length;
+
+    let bestGw = { points: -1, gw: 0 };
+    let lowestGw = { points: Number.POSITIVE_INFINITY, gw: 0 };
+    resolvedPts.forEach(({ gw, pts }) => {
+      if (pts > bestGw.points) bestGw = { points: pts, gw };
+      if (pts < lowestGw.points) lowestGw = { points: pts, gw };
+    });
+    if (bestGw.points >= 0) stats.bestSingleGw = bestGw;
+    if (Number.isFinite(lowestGw.points)) stats.lowestSingleGw = lowestGw;
+  }
+
+  const pointsByGw = new Map<number, number>();
+  playedGwsSorted.forEach((gw) => pointsByGw.set(gw, resolveUserGwPoints(gw)));
+
+  const completedGwsBase: number[] = Array.from(
+    new Set<number>((resultsRowsFullData ?? []).map((r: any) => Number(r?.gw)).filter((n: number) => Number.isFinite(n)))
   ).sort((a: number, b: number) => a - b);
+
+  const percentileGwsSet = new Set<number>(completedGwsBase);
+  if (highlightGw != null) percentileGwsSet.add(highlightGw);
+  const completedGws = [...percentileGwsSet].sort((a, b) => a - b);
 
   const gwPercentiles = new Map<number, number>();
   completedGws.forEach((gw) => {
     const pts = byGw.get(gw) ?? [];
     if (!pts.length) return;
     const allPoints = pts.map((x) => x.points);
-    const userPoints = pts.find((x) => x.user_id === userId)?.points ?? 0;
+    const userPoints = pts.find((x) => x.user_id === userId)?.points ?? resolveUserGwPoints(gw);
     gwPercentiles.set(gw, calculatePercentile(userPoints, allPoints));
   });
 
@@ -343,79 +794,182 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const avg = pts.reduce((sum: number, x) => sum + x.points, 0) / Math.max(1, pts.length);
     gwAverages.set(gw, avg);
   });
-  const weeklyPar = userGwPointsTyped
-    .map((p) => ({ gw: p.gw, userPoints: p.points, averagePoints: gwAverages.get(p.gw) }))
-    .filter((x): x is { gw: number; userPoints: number; averagePoints: number } => typeof x.averagePoints === 'number')
-    .sort((a, b) => a.gw - b.gw);
+  const weeklyPar = playedGwsSorted.map((gw) => {
+    const userPoints = resolveUserGwPoints(gw);
+    const avg = gwAverages.get(gw);
+    return {
+      gw,
+      userPoints,
+      averagePoints: typeof avg === 'number' ? avg : userPoints,
+    };
+  });
   stats.weeklyParData = weeklyPar.length ? weeklyPar : null;
 
-  // Trophy cabinet (reuse overallStandings as “overall” baseline for names/users).
-  const trophyCabinet = { lastGw: 0, form5: 0, form10: 0, overall: 0 };
+  const touchedGw = new Set<number>();
+  submissionGwSet.forEach((g) => touchedGw.add(g));
+  pickGwSet.forEach((g) => touchedGw.add(g));
+  pointsByGw.forEach((_pts, g) => touchedGw.add(g));
+
+  const rankedLastCompletedGw = typeof stats.lastCompletedGwPercentile === 'number';
+
+  let minGw: number;
+  let maxGw: number;
+  if (touchedGw.size > 0) {
+    minGw = Math.min(...touchedGw);
+    maxGw = Math.max(lastCompletedGw ?? 0, metaGw ?? 0, highlightGw ?? 0, Math.max(...touchedGw));
+  } else if (rankedLastCompletedGw && lastCompletedGw && lastCompletedGw > 0) {
+    // User appears in last-GW points distribution but picks/submissions didn’t load — still show season ladder.
+    minGw = 1;
+    maxGw = Math.max(lastCompletedGw, metaGw ?? lastCompletedGw, highlightGw ?? lastCompletedGw);
+  } else {
+    minGw = NaN;
+    maxGw = NaN;
+  }
+
+  // Full-season row: if they’ve played since GW1 and are ranked in the latest completed GW, always run through lastCompletedGw.
+  if (rankedLastCompletedGw && lastCompletedGw && lastCompletedGw > 0 && minGw === 1) {
+    maxGw = Math.max(maxGw, lastCompletedGw, metaGw ?? lastCompletedGw, highlightGw ?? lastCompletedGw);
+  }
+
+  const gameweekStreakSlice: Array<{ gw: number; points: number | null }> = [];
+  if (Number.isFinite(minGw) && Number.isFinite(maxGw) && maxGw >= minGw && minGw >= 1) {
+    for (let gw = minGw; gw <= maxGw; gw++) {
+      const played = submissionGwSet.has(gw) || pickGwSet.has(gw);
+      if (!played) {
+        gameweekStreakSlice.push({ gw, points: null });
+        continue;
+      }
+      gameweekStreakSlice.push({
+        gw,
+        points: resolveUserGwPoints(gw),
+      });
+    }
+  }
+
+  stats.gameweekStreak = gameweekStreakSlice.length ? gameweekStreakSlice : null;
+
+  // Trophy cabinet: GW winners, monthly buckets (leaderboard months), season winner after GW38.
+  const trophyCabinet = { gameweekPodiums: 0, monthlyPodiums: 0, seasonPodiums: 0 };
   const overallForRanks = (overallStandings ?? []).map((o: any) => ({
     user_id: String(o.user_id),
     name: (o.name as string | null) ?? 'User',
     ocp: Number(o.ocp ?? 0),
   }));
 
-  completedGws.forEach((gw) => {
-    const lastGwRank = calculateLastGwRank(userId, gw, allGwPointsTyped);
-    if (lastGwRank?.rank === 1) trophyCabinet.lastGw++;
+  const trophyGwUniverse = new Set<number>(completedGwsBase);
+  playedGwsSorted.forEach((gw) => trophyGwUniverse.add(gw));
+  if (typeof lastCompletedGw === 'number' && lastCompletedGw > 0) trophyGwUniverse.add(lastCompletedGw);
+  if (typeof metaGw === 'number' && metaGw > 0) trophyGwUniverse.add(metaGw);
+  const trophyGameweeks = [...trophyGwUniverse].sort((a, b) => a - b);
 
-    if (gw >= 5) {
-      const form5 = calculateFormRank(userId, gw - 4, gw, allGwPointsTyped, overallForRanks);
-      if (form5?.rank === 1) trophyCabinet.form5++;
-    }
-    if (gw >= 10) {
-      const form10 = calculateFormRank(userId, gw - 9, gw, allGwPointsTyped, overallForRanks);
-      if (form10?.rank === 1) trophyCabinet.form10++;
-    }
-
-    // Overall trophy “at gw”: approximate by cumulative points up to gw (matches web’s approach).
-    const usersUpToGw = new Set<string>();
-    allGwPointsTyped.forEach((p) => {
-      if (p.gw <= gw) usersUpToGw.add(p.user_id);
-    });
-    const overallAtGw = Array.from(usersUpToGw).map((uid) => {
-      const sum = allGwPointsTyped
-        .filter((p) => p.user_id === uid && p.gw <= gw)
-        .reduce((s: number, p) => s + p.points, 0);
-      const base = overallForRanks.find((o: any) => o.user_id === uid);
-      return { user_id: uid, name: base?.name ?? null, ocp: sum };
-    });
-    const overallRank = calculateSeasonRank(userId, overallAtGw);
-    if (overallRank?.rank === 1) trophyCabinet.overall++;
+  const gwScoresForTrophies = await computeLiveGwScoresForGwsBatch(supa, trophyGameweeks);
+  trophyGameweeks.forEach((gw) => {
+    const rows = gwScoresForTrophies.get(gw)?.scores ?? [];
+    if (!rows.length) return;
+    // Same visibility rule as Global GW tab: rank whenever live scores exist — do not gate on “all fixtures resulted”.
+    if (rankUserInGwLiveScores(userId, rows) === 1) trophyCabinet.gameweekPodiums++;
   });
+
+  const leaderboardUniverse = new Set<string>();
+  overallForRanks.forEach((o) => leaderboardUniverse.add(o.user_id));
+  allGwPointsTyped.forEach((p) => leaderboardUniverse.add(p.user_id));
+
+  const sumPointsRange = (uid: string, startGw: number, endGw: number) => {
+    let s = 0;
+    for (const p of allGwPointsTyped) {
+      if (p.user_id !== uid) continue;
+      if (p.gw >= startGw && p.gw <= endGw) s += p.points;
+    }
+    return s;
+  };
+
+  const lc = lastCompletedGw ?? 0;
+
+  for (const m of LEADERBOARD_MONTH_BUCKETS) {
+    if (lc < m.endGw) continue;
+    const playedMonth = allGwPointsTyped.some(
+      (p) => p.user_id === userId && p.gw >= m.startGw && p.gw <= m.endGw
+    );
+    if (!playedMonth) continue;
+    let maxMonth = -Infinity;
+    leaderboardUniverse.forEach((uid) => {
+      const v = sumPointsRange(uid, m.startGw, m.endGw);
+      if (v > maxMonth) maxMonth = v;
+    });
+    if (!Number.isFinite(maxMonth)) continue;
+    if (sumPointsRange(userId, m.startGw, m.endGw) === maxMonth) trophyCabinet.monthlyPodiums++;
+  }
+
+  if (lc >= CURRENT_CAMPAIGN_END_GW) {
+    const playedSeason = allGwPointsTyped.some(
+      (p) => p.user_id === userId && p.gw >= 1 && p.gw <= CURRENT_CAMPAIGN_END_GW
+    );
+    if (playedSeason) {
+      let maxSeason = -Infinity;
+      leaderboardUniverse.forEach((uid) => {
+        const v = sumPointsRange(uid, 1, CURRENT_CAMPAIGN_END_GW);
+        if (v > maxSeason) maxSeason = v;
+      });
+      if (Number.isFinite(maxSeason) && sumPointsRange(userId, 1, CURRENT_CAMPAIGN_END_GW) === maxSeason) {
+        trophyCabinet.seasonPodiums = 1;
+      }
+    }
+  }
+
   stats.trophyCabinet = trophyCabinet;
 
   // Chaos index + team stats are expensive; keep parity but avoid exploding if user has no picks.
   if (allPicks.length) {
     const gws: number[] = Array.from(new Set(allPicks.map((p) => Number(p.gw)).filter((n) => Number.isFinite(n)))) as number[];
-    const [allUsersApp, allUsersLegacy] = await Promise.all([
-      (supa as any).from('app_picks').select('gw, fixture_index, pick').in('gw', gws),
-      (supa as any).from('picks').select('gw, fixture_index, pick').in('gw', gws),
-    ]);
-    if (allUsersApp.error) throw allUsersApp.error;
-    const legacy2Ok = !(allUsersLegacy as any).error || (allUsersLegacy as any).error?.code === '42P01';
-    if (!legacy2Ok) throw (allUsersLegacy as any).error;
+
+    let allUsersAppRows: any[] = [];
+    if (gws.length > 0) {
+      allUsersAppRows = await fetchAllRowsPaged<any>((from, to) =>
+        (supa as any)
+          .from('app_picks')
+          .select('gw, fixture_index, pick')
+          .in('gw', gws)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to)
+      );
+    }
+
+    let allUsersLegacyRows: any[] = [];
+    if (gws.length > 0) {
+      try {
+        allUsersLegacyRows = await fetchAllRowsPaged<any>((from, to) =>
+          (supa as any)
+            .from('picks')
+            .select('gw, fixture_index, pick')
+            .in('gw', gws)
+            .order('gw', { ascending: true })
+            .order('fixture_index', { ascending: true })
+            .range(from, to)
+        );
+      } catch (e: any) {
+        if (e?.code !== '42P01') throw e;
+      }
+    }
 
     const pickCounts = new Map<string, Map<'H' | 'D' | 'A', number>>();
     const addCounts = (rows: any[]) => {
       rows.forEach((p) => {
-        const key = `${p.gw}:${p.fixture_index}`;
+        const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
         if (!pickCounts.has(key)) pickCounts.set(key, new Map());
         const m = pickCounts.get(key)!;
         const pick = p.pick as 'H' | 'D' | 'A';
         m.set(pick, (m.get(pick) ?? 0) + 1);
       });
     };
-    addCounts(allUsersLegacy.data ?? []);
-    addCounts(allUsersApp.data ?? []);
+    addCounts(allUsersLegacyRows);
+    addCounts(allUsersAppRows);
 
     let chaosPicks = 0;
     let chaosCorrect = 0;
     let totalChecked = 0;
     allPicks.forEach((p) => {
-      const key = `${p.gw}:${p.fixture_index}`;
+      const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
       const counts = pickCounts.get(key);
       if (!counts) return;
       const totalPickers = Array.from(counts.values()).reduce((s, n) => s + n, 0);
@@ -425,7 +979,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
       totalChecked++;
       if (pct <= 25) {
         chaosPicks++;
-        const res = resultsMap.get(key);
+        const res = augmentedOutcomeByPickKey.get(key);
         if (res && res === p.pick) chaosCorrect++;
       }
     });
@@ -435,50 +989,79 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
       stats.chaosTotalCount = chaosPicks;
     }
 
-    // Team stats: requires fixtures mapping for picked+resulted fixtures.
-    const { data: fixturesData, error: fxErr } = await (supa as any)
-      .from('app_fixtures')
-      .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team, api_match_id');
-    if (fxErr) throw fxErr;
-    const fixturesMap = new Map<string, any>();
-    (fixturesData ?? []).forEach((f: any) => {
-      if (f.api_match_id) return;
-      fixturesMap.set(`${f.gw}:${f.fixture_index}`, f);
-    });
+    // Team stats: same keys as correct-call rate — for each *pick* with a result, join `app_fixtures` (always fetch; don't rely on `fxPickRows` subset).
+    const fxByKeyTeam = new Map<string, any>();
+    if (gws.length > 0) {
+      const fxTeamRows = await fetchAllRowsPaged<any>((from, to) =>
+        (supa as any)
+          .from('app_fixtures')
+          .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team')
+          .in('gw', gws)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to)
+      );
+      fxTeamRows.forEach((f: any) => {
+        fxByKeyTeam.set(`${Number(f.gw)}:${Number(f.fixture_index)}`, f);
+      });
+    }
 
     const teamStats = new Map<string, { correct: number; total: number; code: string | null; name: string }>();
-    allPicks.forEach((p) => {
-      const key = `${p.gw}:${p.fixture_index}`;
-      const fixture = fixturesMap.get(key);
-      const result = resultsMap.get(key);
-      if (!fixture || !result) return;
-      const userGotItRight = p.pick === result;
 
-      const homeCode = typeof fixture.home_code === 'string' ? fixture.home_code : null;
-      const awayCode = typeof fixture.away_code === 'string' ? fixture.away_code : null;
-      const homeName = String(fixture.home_name || fixture.home_team || 'Home');
-      const awayName = String(fixture.away_name || fixture.away_team || 'Away');
+    /** Each fixture credits **both** clubs the same way: right pick → both correct++ ; wrong → neither gets correct++. */
+    const bumpBothTeams = (fixture: any, gotItRight: boolean) => {
+      const homeCode = typeof fixture.home_code === 'string' && fixture.home_code.trim() ? fixture.home_code.trim() : null;
+      const awayCode = typeof fixture.away_code === 'string' && fixture.away_code.trim() ? fixture.away_code.trim() : null;
+      const homeName = String(fixture.home_name || fixture.home_team || 'Home').trim() || 'Home';
+      const awayName = String(fixture.away_name || fixture.away_team || 'Away').trim() || 'Away';
 
-      const bump = (code: string | null, name: string) => {
-        if (!code) return;
-        const k = String(code).toUpperCase();
-        const existing = teamStats.get(k) ?? { correct: 0, total: 0, code, name };
+      const bumpOne = (code: string | null, displayName: string) => {
+        const name = displayName.trim() || 'Unknown';
+        const mapKey = code ? code.toUpperCase() : `__NAME__:${name.toUpperCase().replace(/\s+/g, ' ')}`;
+        const existing = teamStats.get(mapKey) ?? { correct: 0, total: 0, code: code, name };
         existing.total++;
-        if (userGotItRight) existing.correct++;
-        teamStats.set(k, existing);
+        if (gotItRight) existing.correct++;
+        if (code && !existing.code) existing.code = code;
+        teamStats.set(mapKey, existing);
       };
-      bump(homeCode, homeName);
-      bump(awayCode, awayName);
-    });
+      bumpOne(homeCode, homeName);
+      bumpOne(awayCode, awayName);
+    };
+
+    for (const p of allPicks) {
+      const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
+      const result = augmentedOutcomeByPickKey.get(key);
+      if (!result) continue;
+      const fx = fxByKeyTeam.get(key);
+      if (!fx) continue;
+      bumpBothTeams(fx, p.pick === result);
+    }
 
     let mostCorrect: { code: string | null; name: string; percentage: number } | null = null;
     let mostIncorrect: { code: string | null; name: string; percentage: number } | null = null;
+    let mostCorrectWeight = -1;
+    let mostIncorrectWeight = -1;
     teamStats.forEach((s) => {
-      if (s.total < 3) return;
+      if (s.total < 1) return;
       const correctPct = (s.correct / s.total) * 100;
       const incorrectPct = ((s.total - s.correct) / s.total) * 100;
-      if (!mostCorrect || correctPct > mostCorrect.percentage) mostCorrect = { code: s.code, name: s.name, percentage: correctPct };
-      if (!mostIncorrect || incorrectPct > mostIncorrect.percentage) mostIncorrect = { code: s.code, name: s.name, percentage: incorrectPct };
+      if (!Number.isFinite(correctPct) || !Number.isFinite(incorrectPct)) return;
+      const beatsCorrect =
+        !mostCorrect ||
+        correctPct > mostCorrect.percentage ||
+        (correctPct === mostCorrect.percentage && s.total > mostCorrectWeight);
+      if (beatsCorrect) {
+        mostCorrect = { code: s.code, name: s.name, percentage: correctPct };
+        mostCorrectWeight = s.total;
+      }
+      const beatsIncorrect =
+        !mostIncorrect ||
+        incorrectPct > mostIncorrect.percentage ||
+        (incorrectPct === mostIncorrect.percentage && s.total > mostIncorrectWeight);
+      if (beatsIncorrect) {
+        mostIncorrect = { code: s.code, name: s.name, percentage: incorrectPct };
+        mostIncorrectWeight = s.total;
+      }
     });
     stats.mostCorrectTeam = mostCorrect;
     stats.mostIncorrectTeam = mostIncorrect;
