@@ -567,6 +567,10 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   stats.lastCompletedGw = lastCompletedGw;
   stats.highlightGw = highlightGw;
 
+  /** Omit live / future GW from pick-based aggregates (avoids “0 pts on GW36”, skewed chaos, etc.). */
+  const statsEligibleGwCap =
+    typeof lastCompletedGw === 'number' && lastCompletedGw > 0 ? lastCompletedGw : null;
+
   if (!lastCompletedGw && !metaGw) return stats;
 
   const [myAppPicksPaged, allAppPicksRows, legacyTableProbe] = await Promise.all([
@@ -786,6 +790,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   let correct = 0;
   let total = 0;
   allPicks.forEach((p) => {
+    const gw = Number(p.gw);
+    if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) return;
     const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
     if (!res) return;
     total++;
@@ -796,6 +802,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   let fieldCorrect = 0;
   let fieldTotal = 0;
   for (const p of allAppPicksRows ?? []) {
+    const gw = Number(p.gw);
+    if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) continue;
     const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
     if (!res) continue;
     fieldTotal++;
@@ -893,8 +901,12 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   const playedGwsSorted = [...new Set<number>([...submissionGwSet, ...pickGwSet])].sort((a, b) => a - b);
 
-  if (playedGwsSorted.length) {
-    const resolvedPts = playedGwsSorted.map((gw) => ({ gw, pts: resolveUserGwPoints(gw) }));
+  /** Avg / best / worst GW & weekly par chart — finalized gameweeks only (`statsEligibleGwCap`). */
+  const playedGwsCompletedOnlySorted =
+    statsEligibleGwCap != null ? playedGwsSorted.filter((gw) => gw <= statsEligibleGwCap) : [];
+
+  if (playedGwsCompletedOnlySorted.length) {
+    const resolvedPts = playedGwsCompletedOnlySorted.map((gw) => ({ gw, pts: resolveUserGwPoints(gw) }));
     stats.avgPointsPerWeek = resolvedPts.reduce((s, x) => s + x.pts, 0) / resolvedPts.length;
 
     let bestGw = { points: -1, gw: 0 };
@@ -956,7 +968,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const avg = pts.reduce((sum: number, x) => sum + x.points, 0) / Math.max(1, pts.length);
     gwAverages.set(gw, avg);
   });
-  const weeklyPar = playedGwsSorted.map((gw) => {
+  const weeklyPar = playedGwsCompletedOnlySorted.map((gw) => {
     const userPoints = resolveUserGwPoints(gw);
     const avg = gwAverages.get(gw);
     return {
@@ -1140,6 +1152,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     let chaosCorrect = 0;
     let totalChecked = 0;
     allPicks.forEach((p) => {
+      const gw = Number(p.gw);
+      if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) return;
       const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
       const counts = pickCounts.get(key);
       if (!counts) return;
@@ -1208,6 +1222,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     };
 
     for (const p of allPicks) {
+      const gw = Number(p.gw);
+      if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) continue;
       const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
       const result = augmentedOutcomeByPickKey.get(key);
       if (!result) continue;

@@ -33,9 +33,13 @@ type PopupCardsContextValue = {
   openWelcomeSimulatorStack: () => void;
   openManualResultsRecall: (gw: number) => void;
   openManualResultsScoreSheet: (gw: number) => void;
+  /** Score sheet on top; Results card next after dismiss (same GW). */
+  openManualResultsScoreSheetThenResults: (gw: number) => void;
   openManualResultsScoreSheetShare: (gw: number) => void;
   openManualRoundUpStack: (gw: number, options?: { newGameweekGw?: number | null; includeResults?: boolean }) => void;
   openSimulatorDoPredictionsCard: () => void;
+  /** Opens stacked personal winner cards (most recent GW/month first). */
+  openTrophyCabinetPersonalWinners: (kind: 'gameweek' | 'monthly', gwsDescending: number[]) => void;
 };
 
 const PopupCardsContext = React.createContext<PopupCardsContextValue | null>(null);
@@ -324,6 +328,25 @@ export default function PopupCardsProvider({ children }: { children: React.React
     [openStack]
   );
 
+  const openManualResultsScoreSheetThenResults = React.useCallback(
+    (gw: number) => {
+      openStack(
+        [
+          createPopupCard('resultsScoreSheet', {
+            id: `manual-score-sheet-then-results-gw${gw}`,
+            eventKey: `resultsScoreSheet:gw${gw}`,
+          }),
+          createPopupCard('results', {
+            id: `manual-results-under-score-sheet-gw${gw}`,
+            eventKey: `results:gw${gw}`,
+          }),
+        ],
+        false
+      );
+    },
+    [openStack]
+  );
+
   const openManualResultsScoreSheetShare = React.useCallback(
     (gw: number) => {
       const card = createPopupCard('resultsScoreSheet', {
@@ -364,6 +387,23 @@ export default function PopupCardsProvider({ children }: { children: React.React
       void run();
     },
     [openStack, userId]
+  );
+
+  const openTrophyCabinetPersonalWinners = React.useCallback(
+    (kind: 'gameweek' | 'monthly', gwsDescending: number[]) => {
+      const uniq = [...new Set(gwsDescending)].filter((gw) => typeof gw === 'number' && gw > 0);
+      if (!uniq.length) return;
+      uniq.sort((a, b) => b - a);
+      const variant = kind === 'gameweek' ? 'gameweek' : 'monthly';
+      const cards = uniq.map((gw) =>
+        createPopupCard('personalWinner', {
+          id: `trophy-cabinet-${variant}-gw${gw}`,
+          eventKey: `personalWinner:${variant}:gw${gw}`,
+        })
+      );
+      openStack(cards, false);
+    },
+    [openStack]
   );
 
   const openSimulatorResultsExample = React.useCallback(
@@ -572,8 +612,10 @@ export default function PopupCardsProvider({ children }: { children: React.React
       openWelcomeSimulatorStack,
       openManualResultsRecall,
       openManualResultsScoreSheet,
+      openManualResultsScoreSheetThenResults,
       openManualResultsScoreSheetShare,
       openManualRoundUpStack,
+      openTrophyCabinetPersonalWinners,
     }),
     [
       activeStack,
@@ -582,6 +624,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
       openManualResultsRecall,
       openManualRoundUpStack,
       openManualResultsScoreSheet,
+      openManualResultsScoreSheetThenResults,
       openManualResultsScoreSheetShare,
       openPostGwReturnSimulatorStack,
       openSimulatorCard,
@@ -589,6 +632,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
       openSimulatorPersonalWinnerExample,
       openSimulatorWinnersExample,
       openWelcomeSimulatorStack,
+      openTrophyCabinetPersonalWinners,
     ]
   );
 

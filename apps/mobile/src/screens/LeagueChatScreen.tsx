@@ -135,7 +135,7 @@ export default function LeagueChatScreen() {
           if (delErr) throw delErr;
 
           await queryClient.invalidateQueries({ queryKey: ['leagues'] });
-          navigation.navigate('LeaguesList');
+          navigation.navigate('Tabs' as any, { screen: 'Leagues', params: { screen: 'LeaguesList' } } as any);
         } catch (e: any) {
           Alert.alert('Couldn’t leave league', e?.message ?? 'Failed to leave league. Please try again.', [{ text: 'OK' }]);
         } finally {

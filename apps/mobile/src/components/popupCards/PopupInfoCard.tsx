@@ -651,6 +651,7 @@ function fallbackName(userId: string): string {
 async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentUserId: string | null): Promise<PersonalWinnerCardPayload | null> {
   if (!currentUserId) return null;
   const victoryType = parsePersonalWinnerTypeFromEventKey(eventKey);
+  const uidNorm = String(currentUserId).trim().toLowerCase();
 
   let gw = parseGwFromEventKey(eventKey);
   if (!gw) {
@@ -665,20 +666,48 @@ async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentU
   }
   if (!gw) return null;
 
-  const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-    supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .eq('gw', gw)
-      .order('user_id', { ascending: true })
-      .range(from, to)
-  );
-  if (!gwRows.length) return null;
-
-  const gwWinningPoints = Math.max(...gwRows.map((row) => Number(row.points ?? 0)));
-  const gwWinnerIds = gwRows.filter((row) => Number(row.points ?? 0) === gwWinningPoints).map((row) => String(row.user_id));
   if (victoryType === 'gameweek') {
-    if (!gwWinnerIds.includes(currentUserId)) return null;
+    try {
+      const live = await api.getGlobalGwLiveTable(gw);
+      const liveRows = live?.rows ?? [];
+      if (liveRows.length > 0) {
+        const scores = liveRows.map((row: { user_id?: string; score?: number | null }) => ({
+          user_id: String(row.user_id ?? '').toLowerCase(),
+          score: Number(row.score ?? 0),
+        }));
+        const top = Math.max(...scores.map((r) => r.score));
+        const winnerIds = scores.filter((r) => r.score === top).map((r) => r.user_id);
+        if (winnerIds.includes(uidNorm)) {
+          return {
+            gw,
+            victoryType,
+            label: `Gameweek ${gw}`,
+            points: top,
+            winnerCount: winnerIds.length,
+            joint: winnerIds.length > 1,
+          };
+        }
+        return null;
+      }
+    } catch {
+      // Fall through to view-backed points when live table is unavailable.
+    }
+
+    const gwRowsOnly = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+      supabase
+        .from('app_v_gw_points')
+        .select('user_id, gw, points')
+        .eq('gw', gw)
+        .order('user_id', { ascending: true })
+        .range(from, to)
+    );
+    if (!gwRowsOnly.length) return null;
+
+    const gwWinningPoints = Math.max(...gwRowsOnly.map((row) => Number(row.points ?? 0)));
+    const gwWinnerIds = gwRowsOnly
+      .filter((row) => Number(row.points ?? 0) === gwWinningPoints)
+      .map((row) => String(row.user_id).toLowerCase());
+    if (!gwWinnerIds.includes(uidNorm)) return null;
     return {
       gw,
       victoryType,
@@ -690,41 +719,38 @@ async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentU
   }
 
   const month = getMonthForGw(gw);
-  if (month && gw === month.endGw) {
-    const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-      supabase
-        .from('app_v_gw_points')
-        .select('user_id, gw, points')
-        .gte('gw', month.startGw)
-        .lte('gw', month.endGw)
-        .order('gw', { ascending: true })
-        .order('user_id', { ascending: true })
-        .range(from, to)
-    );
-    if (monthRows.length) {
-      const monthlyTotalsByUser = new Map<string, number>();
-      monthRows.forEach((row) => {
-        const userId = String(row.user_id);
-        monthlyTotalsByUser.set(userId, (monthlyTotalsByUser.get(userId) ?? 0) + Number(row.points ?? 0));
-      });
-      const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
-      const monthlyWinnerIds = Array.from(monthlyTotalsByUser.entries())
-        .filter(([, score]) => score === monthlyTop)
-        .map(([userId]) => userId);
-      if (monthlyWinnerIds.includes(currentUserId)) {
-        return {
-          gw,
-          victoryType,
-          label: month.label,
-          points: monthlyTop,
-          winnerCount: monthlyWinnerIds.length,
-          joint: monthlyWinnerIds.length > 1,
-        };
-      }
-    }
-  }
+  if (!month || gw !== month.endGw) return null;
 
-  return null;
+  const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+    supabase
+      .from('app_v_gw_points')
+      .select('user_id, gw, points')
+      .gte('gw', month.startGw)
+      .lte('gw', month.endGw)
+      .order('gw', { ascending: true })
+      .order('user_id', { ascending: true })
+      .range(from, to)
+  );
+  if (!monthRows.length) return null;
+
+  const monthlyTotalsByUser = new Map<string, number>();
+  monthRows.forEach((row) => {
+    const rowUserId = String(row.user_id).toLowerCase();
+    monthlyTotalsByUser.set(rowUserId, (monthlyTotalsByUser.get(rowUserId) ?? 0) + Number(row.points ?? 0));
+  });
+  const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
+  const monthlyWinnerIds = Array.from(monthlyTotalsByUser.entries())
+    .filter(([, score]) => score === monthlyTop)
+    .map(([userId]) => userId);
+  if (!monthlyWinnerIds.includes(uidNorm)) return null;
+  return {
+    gw,
+    victoryType,
+    label: month.label,
+    points: monthlyTop,
+    winnerCount: monthlyWinnerIds.length,
+    joint: monthlyWinnerIds.length > 1,
+  };
 }
 
 function AchievementMetric({

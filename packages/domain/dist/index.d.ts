@@ -260,11 +260,29 @@ export declare const EmailPreferencesSchema: z.ZodObject<{
     news_updates: z.ZodBoolean;
 }, z.core.$strip>;
 export type EmailPreferences = z.infer<typeof EmailPreferencesSchema>;
+/** Profile trophy counts; accepts partial payloads (e.g. older BFF) and coerces missing keys to 0. */
+export declare const TrophyCabinetSchema: z.ZodPipe<z.ZodTransform<{
+    gameweekPodiums: number;
+    monthlyPodiums: number;
+    seasonPodiums: number;
+} | null, unknown>, z.ZodNullable<z.ZodObject<{
+    gameweekPodiums: z.ZodNumber;
+    monthlyPodiums: z.ZodNumber;
+    seasonPodiums: z.ZodNumber;
+}, z.core.$strip>>>;
+export type TrophyCabinet = z.infer<typeof TrophyCabinetSchema>;
 export declare const UserStatsDataSchema: z.ZodObject<{
     lastCompletedGw: z.ZodNullable<z.ZodNumber>;
+    highlightGw: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     lastCompletedGwPercentile: z.ZodNullable<z.ZodNumber>;
     overallPercentile: z.ZodNullable<z.ZodNumber>;
     correctPredictionRate: z.ZodNullable<z.ZodNumber>;
+    correctPredictionFieldAvgPct: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    correctPredictionVsField: z.ZodOptional<z.ZodNullable<z.ZodEnum<{
+        above: "above";
+        below: "below";
+        about: "about";
+    }>>>;
     bestStreak: z.ZodNumber;
     bestStreakGwRange: z.ZodNullable<z.ZodString>;
     avgPointsPerWeek: z.ZodNullable<z.ZodNumber>;
@@ -279,27 +297,38 @@ export declare const UserStatsDataSchema: z.ZodObject<{
     chaosIndex: z.ZodNullable<z.ZodNumber>;
     chaosCorrectCount: z.ZodNullable<z.ZodNumber>;
     chaosTotalCount: z.ZodNullable<z.ZodNumber>;
-    mostCorrectTeam: z.ZodNullable<z.ZodObject<{
+    mostCorrectTeam: z.ZodOptional<z.ZodNullable<z.ZodObject<{
         code: z.ZodNullable<z.ZodString>;
         name: z.ZodString;
         percentage: z.ZodNumber;
-    }, z.core.$strip>>;
-    mostIncorrectTeam: z.ZodNullable<z.ZodObject<{
+    }, z.core.$strip>>>;
+    mostIncorrectTeam: z.ZodOptional<z.ZodNullable<z.ZodObject<{
         code: z.ZodNullable<z.ZodString>;
         name: z.ZodString;
         percentage: z.ZodNumber;
-    }, z.core.$strip>>;
+    }, z.core.$strip>>>;
     weeklyParData: z.ZodNullable<z.ZodArray<z.ZodObject<{
         gw: z.ZodNumber;
         userPoints: z.ZodNumber;
         averagePoints: z.ZodNumber;
     }, z.core.$strip>>>;
-    trophyCabinet: z.ZodNullable<z.ZodObject<{
-        lastGw: z.ZodNumber;
-        form5: z.ZodNumber;
-        form10: z.ZodNumber;
-        overall: z.ZodNumber;
-    }, z.core.$strip>>;
+    gameweekStreak: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
+        gw: z.ZodNumber;
+        points: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strip>>>>;
+    trophyCabinet: z.ZodPipe<z.ZodTransform<{
+        gameweekPodiums: number;
+        monthlyPodiums: number;
+        seasonPodiums: number;
+    } | null, unknown>, z.ZodNullable<z.ZodObject<{
+        gameweekPodiums: z.ZodNumber;
+        monthlyPodiums: z.ZodNumber;
+        seasonPodiums: z.ZodNumber;
+    }, z.core.$strip>>>;
+    lastSeasonChampions: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        seasonLabel: z.ZodString;
+        names: z.ZodArray<z.ZodString>;
+    }, z.core.$strip>>>;
 }, z.core.$strip>;
 export type UserStatsData = z.infer<typeof UserStatsDataSchema>;
 export declare const BrandedLeaderboardSchema: z.ZodObject<{

@@ -163,11 +163,46 @@ export const EmailPreferencesSchema = z.object({
 });
 export type EmailPreferences = z.infer<typeof EmailPreferencesSchema>;
 
+/** Profile trophy counts; accepts partial payloads (e.g. older BFF) and coerces missing keys to 0. */
+export const TrophyCabinetSchema = z.preprocess(
+  (raw) => {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== 'object') {
+      return { gameweekPodiums: 0, monthlyPodiums: 0, seasonPodiums: 0 };
+    }
+    const o = raw as Record<string, unknown>;
+    const num = (v: unknown) =>
+      typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    return {
+      gameweekPodiums: num(o.gameweekPodiums),
+      monthlyPodiums: num(o.monthlyPodiums),
+      seasonPodiums: num(o.seasonPodiums),
+    };
+  },
+  z
+    .object({
+      gameweekPodiums: z.number().int().nonnegative(),
+      monthlyPodiums: z.number().int().nonnegative(),
+      seasonPodiums: z.number().int().nonnegative(),
+    })
+    .nullable()
+);
+
+export type TrophyCabinet = z.infer<typeof TrophyCabinetSchema>;
+
 export const UserStatsDataSchema = z.object({
+  /** Highest GW with any finalized result row in `app_gw_results` (used for results navigation). */
   lastCompletedGw: z.number().int().positive().nullable(),
+  /** Latest GW reflected in stats UI — max(lastCompletedGw, app_meta.current_gw when set). */
+  highlightGw: z.number().int().positive().nullable().optional(),
+  /** Percentile for `highlightGw` after merging live scores into GW points (matches leaderboards). */
   lastCompletedGwPercentile: z.number().nullable(),
   overallPercentile: z.number().nullable(),
   correctPredictionRate: z.number().nullable(),
+  /** Mean correct-call rate across every scored pick in `app_picks` (same scoring rules as `correctPredictionRate`). Omitted on older API builds. */
+  correctPredictionFieldAvgPct: z.number().nullable().optional(),
+  /** User vs `correctPredictionFieldAvgPct` (±2 pts ≈ average). Omitted on older API builds. */
+  correctPredictionVsField: z.enum(['above', 'below', 'about']).nullable().optional(),
   bestStreak: z.number().int().nonnegative(),
   bestStreakGwRange: z.string().nullable(),
   avgPointsPerWeek: z.number().nullable(),
@@ -176,8 +211,14 @@ export const UserStatsDataSchema = z.object({
   chaosIndex: z.number().nullable(),
   chaosCorrectCount: z.number().int().nonnegative().nullable(),
   chaosTotalCount: z.number().int().nonnegative().nullable(),
-  mostCorrectTeam: z.object({ code: z.string().nullable(), name: z.string(), percentage: z.number() }).nullable(),
-  mostIncorrectTeam: z.object({ code: z.string().nullable(), name: z.string(), percentage: z.number() }).nullable(),
+  mostCorrectTeam: z
+    .object({ code: z.string().nullable(), name: z.string(), percentage: z.number() })
+    .nullable()
+    .optional(),
+  mostIncorrectTeam: z
+    .object({ code: z.string().nullable(), name: z.string(), percentage: z.number() })
+    .nullable()
+    .optional(),
   weeklyParData: z
     .array(
       z.object({
@@ -187,14 +228,25 @@ export const UserStatsDataSchema = z.object({
       })
     )
     .nullable(),
-  trophyCabinet: z
+  /** Contiguous gameweeks in your streak; points match leaderboard logic (results + live scores), same rule every GW. */
+  gameweekStreak: z
+    .array(
+      z.object({
+        gw: z.number().int().positive(),
+        points: z.number().nullable(),
+      })
+    )
+    .nullable()
+    .optional(),
+  trophyCabinet: TrophyCabinetSchema,
+  /** Populated when ops set `PREVIOUS_SEASON_CHAMPIONS_JSON` on the BFF; otherwise null. */
+  lastSeasonChampions: z
     .object({
-      lastGw: z.number().int().nonnegative(),
-      form5: z.number().int().nonnegative(),
-      form10: z.number().int().nonnegative(),
-      overall: z.number().int().nonnegative(),
+      seasonLabel: z.string(),
+      names: z.array(z.string()),
     })
-    .nullable(),
+    .nullable()
+    .optional(),
 });
 export type UserStatsData = z.infer<typeof UserStatsDataSchema>;
 

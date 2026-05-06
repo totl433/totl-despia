@@ -527,7 +527,7 @@ export default function LeagueDetailScreen() {
           if (error) throw error;
 
           await queryClient.invalidateQueries({ queryKey: ['leagues'] });
-          navigation.navigate('LeaguesList');
+          navigation.navigate('Tabs' as any, { screen: 'Leagues', params: { screen: 'LeaguesList' } } as any);
         } catch (e: any) {
           Alert.alert('Couldn’t leave league', e?.message ?? 'Failed to leave league. Please try again.', [{ text: 'OK' }]);
         } finally {
@@ -651,7 +651,7 @@ export default function LeagueDetailScreen() {
     const { error: leagueError } = await (supabase as any).from('leagues').delete().eq('id', leagueId);
     if (leagueError) throw leagueError;
     await queryClient.invalidateQueries({ queryKey: ['leagues'] });
-    navigation.navigate('LeaguesList');
+    navigation.navigate('Tabs' as any, { screen: 'Leagues', params: { screen: 'LeaguesList' } } as any);
   }, [leagueId, navigation, queryClient]);
 
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
@@ -1193,6 +1193,7 @@ export default function LeagueDetailScreen() {
             title={String(params.name ?? '')}
             subtitle={leagueHeaderSubtitle}
             avatarUri={headerAvatarUri}
+            onPressMenu={() => setMenuOpen(true)}
             onPressBack={() => {
               // Prefer native back-stack pop to avoid chat <-> league navigation loops.
               if (navigation?.canGoBack?.()) {
