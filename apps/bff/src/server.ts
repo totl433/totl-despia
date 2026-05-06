@@ -20,6 +20,7 @@ import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 import { requireUser } from './auth.js';
 import { captureException, initSentry } from './sentry.js';
 import { computeGwResults } from './gwResults.js';
+import { computeLiveGwScoresForGw } from './liveGwScores.js';
 import {
   getEmailPreferences,
   getProfileStats,
@@ -814,8 +815,10 @@ app.get('/v1/profile/summary', async (req) => {
 
 app.get('/v1/profile/stats', async (req) => {
   await requireUser(req, supabase);
-  const { userId, supa } = getAuthedSupa(req as any);
-  return getProfileStats({ userId, supa });
+  const { userId } = getAuthedSupa(req as any);
+  /** Service role avoids silent empty reads when JWT-facing RLS blocks web `fixtures` / ingest gaps on mirrored tables (team stats need full fixture joins). User identity still comes from verified Bearer token above. */
+  const adminSupa = createSupabaseAdminClient(env);
+  return getProfileStats({ userId, supa: adminSupa });
 });
 
 app.get('/v1/profile/unicorns', async (req) => {
@@ -1020,86 +1023,22 @@ app.get('/v1/leaderboards/gw/:gw/live', async (req) => {
   const params = z.object({ gw: z.coerce.number().int().positive() }).parse((req as any).params);
   const gw = params.gw;
 
-  const [submissionsRes, picksRes, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
-    (supa as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
-    (supa as any).from('app_picks').select('user_id, fixture_index, pick').eq('gw', gw),
-    (supa as any).from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
-    (supa as any).from('app_gw_results').select('fixture_index, result').eq('gw', gw),
-    (supa as any).from('app_fixtures').select('fixture_index, api_match_id').eq('gw', gw),
-  ]);
+  const scoreRows = await computeLiveGwScoresForGw(supa, gw);
 
-  if (submissionsRes.error) throw submissionsRes.error;
-  if (picksRes.error) throw picksRes.error;
-  if (liveScoresRes.error) throw liveScoresRes.error;
-  if (resultsRes.error) throw resultsRes.error;
-  if (fixturesRes.error) throw fixturesRes.error;
-
-  const picks = (picksRes.data ?? []).filter((p: any) => p.pick === 'H' || p.pick === 'D' || p.pick === 'A');
-  const submittedIds = new Set<string>([
-    ...((submissionsRes.data ?? []) as any[]).map((s: any) => String(s.user_id)),
-    ...picks.map((p: any) => String(p.user_id)),
-  ]);
-
-  if (!submittedIds.size) {
+  if (!scoreRows.length) {
     return { gw, rows: [] as Array<{ user_id: string; name: string; score: number }> };
   }
 
-  const { data: usersData, error: usersErr } = await (supa as any)
-    .from('users')
-    .select('id,name')
-    .in('id', Array.from(submittedIds));
+  const submittedIds = scoreRows.map((r) => r.user_id);
+  const { data: usersData, error: usersErr } = await (supa as any).from('users').select('id,name').in('id', submittedIds);
   if (usersErr) throw usersErr;
 
-  const outcomeByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
-  (resultsRes.data ?? []).forEach((r: any) => {
-    if (r.result === 'H' || r.result === 'D' || r.result === 'A') outcomeByFixtureIndex.set(r.fixture_index, r.result);
-  });
-
-  const fixtures = fixturesRes.data ?? [];
-  const apiMatchIdToFixtureIndex = new Map<number, number>();
-  fixtures.forEach((f: any) => {
-    if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
-  });
-
-  (liveScoresRes.data ?? []).forEach((ls: any) => {
-    const status = ls.status;
-    const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
-    if (!started) return;
-    const fixtureIndex =
-      typeof ls.fixture_index === 'number'
-        ? ls.fixture_index
-        : typeof ls.api_match_id === 'number'
-          ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
-          : undefined;
-    if (fixtureIndex === undefined) return;
-    const hs = Number(ls.home_score ?? 0);
-    const as = Number(ls.away_score ?? 0);
-    const out: 'H' | 'D' | 'A' = hs > as ? 'H' : hs < as ? 'A' : 'D';
-    outcomeByFixtureIndex.set(fixtureIndex, out);
-  });
-
-  const picksByFixtureIndex = new Map<number, Array<{ user_id: string; pick: 'H' | 'D' | 'A' }>>();
-  picks.forEach((p: any) => {
-    if (!submittedIds.has(String(p.user_id))) return;
-    const arr = picksByFixtureIndex.get(p.fixture_index) ?? [];
-    arr.push({ user_id: String(p.user_id), pick: p.pick });
-    picksByFixtureIndex.set(p.fixture_index, arr);
-  });
-
+  const scoreByUser = new Map(scoreRows.map((r) => [r.user_id, r.score]));
   const rows: Array<{ user_id: string; name: string; score: number }> = (usersData ?? []).map((u: any) => ({
     user_id: String(u.id),
     name: typeof u.name === 'string' && u.name.trim() ? u.name : 'User',
-    score: 0,
+    score: Number(scoreByUser.get(String(u.id)) ?? 0),
   }));
-
-  outcomeByFixtureIndex.forEach((outcome, fixtureIndex) => {
-    const thesePicks = picksByFixtureIndex.get(fixtureIndex) ?? [];
-    thesePicks.forEach((p) => {
-      if (p.pick !== outcome) return;
-      const r = rows.find((x: { user_id: string; name: string; score: number }) => x.user_id === p.user_id);
-      if (r) r.score += 1;
-    });
-  });
 
   rows.sort(
     (a: { user_id: string; name: string; score: number }, b: { user_id: string; name: string; score: number }) =>

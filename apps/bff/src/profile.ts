@@ -92,6 +92,168 @@ function normAppCodeRaw(code: string | null | undefined): string | null {
   return code.trim().toUpperCase();
 }
 
+/**
+ * TLAs we accept as Premier League when joining picks → `app_fixtures`.
+ * Keeps Champions League / etc. rows (PAR, PSV, …) from corrupting team stats when they share `gw` buckets.
+ * Includes relegated clubs so older gameweeks still resolve.
+ */
+const PREMIER_LEAGUE_TEAM_CODES = new Set<string>([
+  'ARS',
+  'AVL',
+  'BOU',
+  'BRE',
+  'BHA',
+  'BUR',
+  'CHE',
+  'CRY',
+  'EVE',
+  'FUL',
+  'IPS',
+  'LEE',
+  'LEI',
+  'LIV',
+  'MCI',
+  'MUN',
+  'NEW',
+  'NFO',
+  'SOU',
+  'SUN',
+  'TOT',
+  'WHU',
+  'WOL',
+]);
+
+function canonicalPremierTeamCode(code: string | null | undefined): string | null {
+  const c = normAppCodeRaw(code);
+  if (!c) return null;
+  return c === 'NOT' ? 'NFO' : c;
+}
+
+/** Stable labels for stats cards (never trust `app_fixtures` names when rows can be corrupted). */
+const PREMIER_CODE_DISPLAY_NAME: Record<string, string> = {
+  ARS: 'Arsenal',
+  AVL: 'Aston Villa',
+  BOU: 'Bournemouth',
+  BRE: 'Brentford',
+  BHA: 'Brighton',
+  BUR: 'Burnley',
+  CHE: 'Chelsea',
+  CRY: 'Crystal Palace',
+  EVE: 'Everton',
+  FUL: 'Fulham',
+  IPS: 'Ipswich Town',
+  LEE: 'Leeds United',
+  LEI: 'Leicester City',
+  LIV: 'Liverpool',
+  MCI: 'Man City',
+  MUN: 'Man United',
+  NEW: 'Newcastle',
+  NFO: "Nott'm Forest",
+  SOU: 'Southampton',
+  SUN: 'Sunderland',
+  TOT: 'Spurs',
+  WHU: 'West Ham',
+  WOL: 'Wolves',
+};
+
+/** Club labels we never treat as Premier League fixtures (UCL / other comps accidentally keyed like PL rows). */
+const NON_PREMIER_CLUB_NAME_MARKERS = [
+  'paris saint-germain',
+  'paris saint germain',
+  'psv',
+  'psv eindhoven',
+  'bayern',
+  'borussia',
+  'fc bayern',
+  'barcelona',
+  'fc barcelona',
+  'real madrid',
+  'atlético de madrid',
+  'atletico de madrid',
+  'atlético madrid',
+  'atletico madrid',
+  'juventus',
+  'inter milan',
+  'fc internazionale',
+  'ac milan',
+  'ssc napoli',
+  'napoli',
+  'sl benfica',
+  'benfica',
+  'fc porto',
+  'fc schalke',
+  'ajax',
+  'feyenoord',
+  'club brugge',
+  'galatasaray',
+  'fenerbahçe',
+  'sporting cp',
+  'fc salzburg',
+  'rb leipzig',
+  'bayer leverkusen',
+  'eintracht frankfurt',
+  'olympique',
+  'as monaco',
+  'lyonnais',
+  'lyon',
+  'marseille',
+];
+
+function normalizedFixtureClubBlob(f: {
+  home_code?: string | null;
+  away_code?: string | null;
+  home_name?: string | null;
+  away_name?: string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+}): string {
+  const parts = [
+    f.home_code,
+    f.away_code,
+    f.home_name,
+    f.away_name,
+    f.home_team,
+    f.away_team,
+  ]
+    .map((x) =>
+      String(x ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+    )
+    .filter(Boolean);
+  return parts.join(' | ');
+}
+
+function fixtureReferencesKnownNonPremierClub(f: {
+  home_code?: string | null;
+  away_code?: string | null;
+  home_name?: string | null;
+  away_name?: string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+}): boolean {
+  const blob = normalizedFixtureClubBlob(f);
+  if (!blob) return false;
+  return NON_PREMIER_CLUB_NAME_MARKERS.some((m) => blob.includes(m));
+}
+
+function fixtureRowIsPremierLeague(f: {
+  home_code?: string | null;
+  away_code?: string | null;
+  home_name?: string | null;
+  away_name?: string | null;
+  home_team?: string | null;
+  away_team?: string | null;
+}): boolean {
+  const h = canonicalPremierTeamCode(f.home_code);
+  const a = canonicalPremierTeamCode(f.away_code);
+  if (!h || !a) return false;
+  if (!PREMIER_LEAGUE_TEAM_CODES.has(h) || !PREMIER_LEAGUE_TEAM_CODES.has(a)) return false;
+  if (fixtureReferencesKnownNonPremierClub(f)) return false;
+  return true;
+}
+
 function webAppFixtureSamePair(
   w: { home_code?: string | null; away_code?: string | null; home_name?: string | null; away_name?: string | null },
   a: { home_code?: string | null; away_code?: string | null; home_name?: string | null; away_name?: string | null }
@@ -831,9 +993,18 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     maxGw = Math.max(maxGw, lastCompletedGw, metaGw ?? lastCompletedGw, highlightGw ?? lastCompletedGw);
   }
 
+  /** Participation streak chips only — never extend into current/live GW (`highlightGw` / app_meta). */
+  const streakLadderMaxGw =
+    typeof lastCompletedGw === 'number' && lastCompletedGw > 0 ? Math.min(maxGw, lastCompletedGw) : maxGw;
+
   const gameweekStreakSlice: Array<{ gw: number; points: number | null }> = [];
-  if (Number.isFinite(minGw) && Number.isFinite(maxGw) && maxGw >= minGw && minGw >= 1) {
-    for (let gw = minGw; gw <= maxGw; gw++) {
+  if (
+    Number.isFinite(minGw) &&
+    Number.isFinite(maxGw) &&
+    streakLadderMaxGw >= minGw &&
+    minGw >= 1
+  ) {
+    for (let gw = minGw; gw <= streakLadderMaxGw; gw++) {
       const played = submissionGwSet.has(gw) || pickGwSet.has(gw);
       if (!played) {
         gameweekStreakSlice.push({ gw, points: null });
@@ -1002,6 +1173,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
           .range(from, to)
       );
       fxTeamRows.forEach((f: any) => {
+        if (!fixtureRowIsPremierLeague(f)) return;
         fxByKeyTeam.set(`${Number(f.gw)}:${Number(f.fixture_index)}`, f);
       });
     }
@@ -1010,22 +1182,29 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
     /** Each fixture credits **both** clubs the same way: right pick → both correct++ ; wrong → neither gets correct++. */
     const bumpBothTeams = (fixture: any, gotItRight: boolean) => {
-      const homeCode = typeof fixture.home_code === 'string' && fixture.home_code.trim() ? fixture.home_code.trim() : null;
-      const awayCode = typeof fixture.away_code === 'string' && fixture.away_code.trim() ? fixture.away_code.trim() : null;
-      const homeName = String(fixture.home_name || fixture.home_team || 'Home').trim() || 'Home';
-      const awayName = String(fixture.away_name || fixture.away_team || 'Away').trim() || 'Away';
-
-      const bumpOne = (code: string | null, displayName: string) => {
-        const name = displayName.trim() || 'Unknown';
-        const mapKey = code ? code.toUpperCase() : `__NAME__:${name.toUpperCase().replace(/\s+/g, ' ')}`;
-        const existing = teamStats.get(mapKey) ?? { correct: 0, total: 0, code: code, name };
+      /** Never aggregate `__NAME__:*` keys — corrupted rows can show Paris with bogus TLAs. */
+      const bumpOne = (codeRaw: string | null | undefined, displayFallback: string) => {
+        const canon = canonicalPremierTeamCode(codeRaw);
+        if (!canon || !PREMIER_LEAGUE_TEAM_CODES.has(canon)) return;
+        const label = PREMIER_CODE_DISPLAY_NAME[canon] ?? (displayFallback.trim() || canon);
+        const existing = teamStats.get(canon) ?? { correct: 0, total: 0, code: canon, name: label };
         existing.total++;
         if (gotItRight) existing.correct++;
-        if (code && !existing.code) existing.code = code;
-        teamStats.set(mapKey, existing);
+        existing.name = PREMIER_CODE_DISPLAY_NAME[canon] ?? existing.name;
+        teamStats.set(canon, existing);
       };
-      bumpOne(homeCode, homeName);
-      bumpOne(awayCode, awayName);
+
+      const homeCode =
+        typeof fixture.home_code === 'string' && fixture.home_code.trim() ? fixture.home_code.trim() : null;
+      const awayCode =
+        typeof fixture.away_code === 'string' && fixture.away_code.trim() ? fixture.away_code.trim() : null;
+      const homeFb =
+        String(fixture.home_name || fixture.home_team || 'Home').trim() || 'Home';
+      const awayFb =
+        String(fixture.away_name || fixture.away_team || 'Away').trim() || 'Away';
+
+      bumpOne(homeCode, homeFb);
+      bumpOne(awayCode, awayFb);
     };
 
     for (const p of allPicks) {
