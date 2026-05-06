@@ -671,7 +671,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   if (metaGw != null) {
     const liveScores = await computeLiveGwScoresForGw(supa, metaGw);
     if (liveScores.length > 0) {
-      const scoreMap = new Map(liveScores.map((r) => [r.user_id, r.score]));
+      const scoreMap = new Map(liveScores.map((r: { user_id: string; score: number }) => [r.user_id, r.score]));
       allGwPointsTyped = [
         ...allGwPointsTyped.filter((r) => r.gw !== metaGw),
         ...Array.from(scoreMap.entries()).map(([uid, points]) => ({ user_id: uid, gw: metaGw, points })),
