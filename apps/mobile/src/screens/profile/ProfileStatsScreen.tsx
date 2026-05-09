@@ -1,5 +1,5 @@
 import React, { type PropsWithChildren } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, InteractionManager, Pressable, ScrollView, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -27,6 +27,7 @@ import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
+import { supabase } from '../../lib/supabase';
 import StatsHeroVisual from '../../components/profileStats/StatsHeroVisual';
 import StatsGameweekStreakStrip from '../../components/profileStats/StatsGameweekStreakStrip';
 import StatsParChart, { WeeklyParChartToggle } from '../../components/profileStats/StatsParChart';
@@ -150,6 +151,17 @@ export default function ProfileStatsScreen() {
     enabled: !!userId,
   });
 
+  /** Paging `app_v_gw_points` is heavy — wait until profile stats landed, then hydrate after animations. */
+  const [deferLeaderboardHydration, setDeferLeaderboardHydration] = React.useState(false);
+  React.useEffect(() => {
+    setDeferLeaderboardHydration(false);
+  }, [userId]);
+  React.useEffect(() => {
+    if (!statsQ.data || statsQ.error) return;
+    const handle = InteractionManager.runAfterInteractions(() => setDeferLeaderboardHydration(true));
+    return () => handle.cancel();
+  }, [statsQ.data, statsQ.error]);
+
   const stats = statsQ.data ?? null;
   const fieldAvgFromApi =
     typeof stats?.correctPredictionFieldAvgPct === 'number' ? stats.correctPredictionFieldAvgPct : null;
@@ -182,14 +194,19 @@ export default function ProfileStatsScreen() {
   const gwPointsQ = useQuery({
     queryKey: ['leaderboards', 'gwPointsView', 'paged-v2'],
     queryFn: fetchAppGwPointsPaged,
+    enabled: !!userId && !!stats && deferLeaderboardHydration,
+    staleTime: 3 * 60_000,
   });
-
-  const liveGwTrophyWins = useGameweekTrophyWinsFromLeaderboardApi(userId, gwPointsQ.data);
 
   const gwLiveTableQ = useQuery({
     enabled: typeof activeLeaderboardGw === 'number' && !!userId,
     queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw],
     queryFn: () => api.getGlobalGwLiveTable(activeLeaderboardGw as number),
+  });
+
+  const liveGwTrophyWins = useGameweekTrophyWinsFromLeaderboardApi(userId, gwPointsQ.data, {
+    substituteLiveGw: typeof activeLeaderboardGw === 'number' ? activeLeaderboardGw : null,
+    substituteLiveRows: gwLiveTableQ.data?.rows ?? null,
   });
 
   const myLiveGwScore = React.useMemo(() => {

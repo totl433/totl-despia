@@ -1,13 +1,15 @@
 import React from 'react';
-import { Alert, TextInput, View } from 'react-native';
-import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
+import { Alert, View } from 'react-native';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
 import { TotlText, useTokens } from '@totl/ui';
 import GlobalButton from '../GlobalButton';
 
 /**
- * CreateJoinLeagueSheet
- * Light-theme bottom sheet (no X) to match Despia's Create/Join tray structure.
+ * CreateJoinLeagueSheet — light-theme bottom sheet (no X).
+ * Snap height tracks laid-out content (+ handle) so excess space isn’t trapped under Join.
  */
+const BOTTOM_SHEET_HANDLE_HEIGHT = 24;
+
 export default function CreateJoinLeagueSheet({
   open,
   onClose,
@@ -29,7 +31,9 @@ export default function CreateJoinLeagueSheet({
 }) {
   const t = useTokens();
   const ref = React.useRef<BottomSheetModal>(null);
-  const snapPoints = React.useMemo(() => [432], []);
+  const [snapHeight, setSnapHeight] = React.useState(() => BOTTOM_SHEET_HANDLE_HEIGHT + 360);
+
+  const snapPoints = React.useMemo(() => [snapHeight], [snapHeight]);
 
   React.useEffect(() => {
     if (open) {
@@ -39,6 +43,11 @@ export default function CreateJoinLeagueSheet({
     ref.current?.dismiss();
   }, [open]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => ref.current?.snapToIndex(0));
+  }, [open, snapHeight]);
+
   const normalizedCode = joinCode.trim().toUpperCase();
   const canJoin = normalizedCode.length === 5 && !joining;
 
@@ -46,6 +55,12 @@ export default function CreateJoinLeagueSheet({
     <BottomSheetModal
       ref={ref}
       snapPoints={snapPoints}
+      enableDynamicSizing={false}
+      bottomInset={0}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      enableBlurKeyboardOnGesture
       enablePanDownToClose
       onDismiss={onClose}
       backgroundStyle={{ backgroundColor: t.color.surface }}
@@ -54,7 +69,17 @@ export default function CreateJoinLeagueSheet({
         <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.35} pressBehavior="close" />
       )}
     >
-      <BottomSheetView style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 24 }}>
+      <BottomSheetView style={{ flexGrow: 0 }}>
+        <View
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h < 48) return;
+            const next = Math.ceil(h + BOTTOM_SHEET_HANDLE_HEIGHT + 2);
+            const clamped = Math.min(Math.max(next, BOTTOM_SHEET_HANDLE_HEIGHT + 280), 560);
+            setSnapHeight((prev) => (Math.abs(prev - clamped) < 4 ? prev : clamped));
+          }}
+          style={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: 12 }}
+        >
         <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 22, color: '#000000' }}>
           Create or join
         </TotlText>
@@ -73,7 +98,7 @@ export default function CreateJoinLeagueSheet({
           join with code
         </TotlText>
         <View style={{ height: 10 }} />
-        <TextInput
+        <BottomSheetTextInput
           value={joinCode}
           onChangeText={(txt) => setJoinCode(txt.toUpperCase())}
           placeholder="ABCDE"
@@ -136,6 +161,7 @@ export default function CreateJoinLeagueSheet({
           disabled={!canJoin}
           onPress={onPressJoin}
         />
+        </View>
       </BottomSheetView>
     </BottomSheetModal>
   );

@@ -10,6 +10,7 @@ import { api } from '../lib/api';
 import { env } from '../env';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import MiniLeagueListItem from '../components/miniLeagues/MiniLeagueListItem';
+import MiniLeaguesSubmissionLegend from '../components/miniLeagues/MiniLeaguesSubmissionLegend';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import CreateJoinLeagueSheet from '../components/miniLeagues/CreateJoinLeagueSheet';
@@ -64,6 +65,7 @@ function LeagueRow({
   enabled,
   currentGw,
   tableGw,
+  submissionPreviewGw,
   meId,
   fallbackMeId,
   onPress,
@@ -72,6 +74,8 @@ function LeagueRow({
   enabled: boolean;
   currentGw: number | null;
   tableGw: number | null;
+  /** GW used for member “submitted” ticks (usually home viewing Gw; may differ from leaderboard `tableGw` before kickoff). */
+  submissionPreviewGw: number | null;
   meId: string | null;
   fallbackMeId: string | null;
   onPress: () => void;
@@ -124,6 +128,27 @@ function LeagueRow({
     queryKey: ['leagueGwTable', leagueId, tableGw],
     queryFn: () => api.getLeagueGwTable(leagueId, tableGw as number),
   });
+
+  const needSeparateSubmissionTable =
+    typeof submissionPreviewGw === 'number' &&
+    typeof tableGw === 'number' &&
+    submissionPreviewGw !== tableGw;
+
+  const { data: submissionPreviewTable } = useQuery<LeagueTableResponse>({
+    enabled:
+      enabled &&
+      needSeparateSubmissionTable &&
+      typeof submissionPreviewGw === 'number' &&
+      !isDevFakeLeague &&
+      !isDormantLeague &&
+      typeof resolvedLeagueStartGw === 'number' &&
+      submissionPreviewGw >= resolvedLeagueStartGw,
+    queryKey: ['leagueGwTable', leagueId, submissionPreviewGw],
+    queryFn: () => api.getLeagueGwTable(leagueId, submissionPreviewGw as number),
+  });
+
+  const submissionStatusTable = needSeparateSubmissionTable ? submissionPreviewTable : table;
+
   const memberCount: number | null =
     typeof table?.totalMembers === 'number' && Number.isFinite(table.totalMembers)
       ? table.totalMembers
@@ -334,10 +359,14 @@ function LeagueRow({
             hasSubmitted: true,
           }));
         }
+        const st = submissionStatusTable;
+        const submissionsReady = st != null;
         const submitted = new Set<string>(
-          Array.isArray((table as any)?.submittedUserIds)
-            ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
-            : (table?.rows ?? []).map((r: any) => String(r?.user_id ?? '')).filter(Boolean)
+          submissionsReady
+            ? Array.isArray((st as any)?.submittedUserIds)
+              ? ((st as any).submittedUserIds as unknown[]).map((x) => String(x))
+              : (st?.rows ?? []).map((r: any) => String(r?.user_id ?? '')).filter(Boolean)
+            : []
         );
         return members
           .map((m: any) => {
@@ -346,7 +375,7 @@ function LeagueRow({
             id,
             name: String(m.name ?? ''),
             avatarUri: typeof m.avatar_url === 'string' && m.avatar_url.startsWith('http') ? m.avatar_url : null,
-            hasSubmitted: submitted.has(id),
+            hasSubmitted: submissionsReady ? submitted.has(id) : undefined,
           };
           })
           .sort((a, b) => {
@@ -493,6 +522,12 @@ export default function LeaguesScreen() {
       }),
     [effectiveCurrentGw, home?.fixtures, home?.liveScores, liveByFixtureIndexRealtime, viewingGw]
   );
+  /** GW whose submission status we show on list avatars — mirrors what users are predicting for. */
+  const submissionPreviewGw =
+    typeof viewingGw === 'number' ? viewingGw : typeof leagueTableGw === 'number' ? leagueTableGw : null;
+  /** For footer legend copy; falls back when preview Gw is unresolved. */
+  const submissionLegendGameweek =
+    submissionPreviewGw ?? viewingGw ?? effectiveCurrentGw ?? null;
   const { data: headerGwLiveTable } = useQuery({
     enabled: gwState === 'LIVE' && typeof viewingGw === 'number' && !!meId,
     queryKey: ['headerGwLiveTable', viewingGw],
@@ -632,10 +667,8 @@ export default function LeaguesScreen() {
     void queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey;
-        return (
-          (key[0] === 'leagueGwTable' && key[2] === viewingGw) ||
-          (key[0] === 'headerGwLiveTable' && key[1] === viewingGw)
-        );
+        if (key[0] === 'headerGwLiveTable' && key[1] === viewingGw) return true;
+        return key[0] === 'leagueGwTable';
       },
     });
   }, [gwState, liveByFixtureIndexRealtime, queryClient, viewingGw]);
@@ -648,20 +681,19 @@ export default function LeaguesScreen() {
       await Promise.allSettled([
         withTimeout(refetch(), 8000),
         withTimeout(refetchHome(), 8000),
-        typeof viewingGw === 'number'
-          ? withTimeout(
-              queryClient.invalidateQueries({
-                predicate: (query) => {
-                  const key = query.queryKey;
-                  return (
-                    (key[0] === 'leagueGwTable' && key[2] === viewingGw) ||
-                    (key[0] === 'headerGwLiveTable' && key[1] === viewingGw)
-                  );
-                },
-              }),
-              8000
-            )
-          : Promise.resolve(),
+        withTimeout(
+          queryClient.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey;
+              if (key[0] === 'headerGwLiveTable') {
+                return typeof viewingGw === 'number' && key[1] === viewingGw;
+              }
+              // Submission ticks + standings can use different GWs per row; refresh all league tables.
+              return key[0] === 'leagueGwTable';
+            },
+          }),
+          8000
+        ),
       ]);
     } finally {
       setPullRefreshing(false);
@@ -1033,26 +1065,35 @@ export default function LeaguesScreen() {
         }
         ListFooterComponent={
           <>
-            {showListView && (data?.leagues?.length ?? 0) > 0 ? (
-              <View style={{ marginTop: 14, marginBottom: 6 }}>
-                <Pressable
-                  onPress={() => {
-                    setJoinError(null);
-                    setCreateJoinOpen(true);
-                  }}
-                  style={({ pressed }) => ({
-                    width: '100%',
-                    paddingVertical: 12,
-                    paddingHorizontal: 14,
-                    borderRadius: 14,
-                    backgroundColor: t.color.brand,
-                    opacity: pressed ? 0.92 : 1,
-                    transform: [{ scale: pressed ? 0.99 : 1 }],
-                  })}
-                >
-                  <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Create or Join</TotlText>
-                </Pressable>
-              </View>
+            {showListView && listLeagues.length > 0 ? (
+              <>
+                {typeof submissionLegendGameweek === 'number' ? (
+                  <View style={{ marginTop: 14, marginBottom: 14 }}>
+                    <MiniLeaguesSubmissionLegend gameweek={submissionLegendGameweek} />
+                  </View>
+                ) : null}
+                <View style={{ marginBottom: 6 }}>
+                  <Pressable
+                    onPress={() => {
+                      setJoinError(null);
+                      setCreateJoinOpen(true);
+                    }}
+                    style={({ pressed }) => ({
+                      width: '100%',
+                      paddingVertical: 12,
+                      paddingHorizontal: 14,
+                      borderRadius: 14,
+                      backgroundColor: t.color.brand,
+                      opacity: pressed ? 0.92 : 1,
+                      transform: [{ scale: pressed ? 0.99 : 1 }],
+                    })}
+                  >
+                    <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>
+                      Create or Join
+                    </TotlText>
+                  </Pressable>
+                </View>
+              </>
             ) : null}
             {__DEV__ ? (
               <View style={{ marginTop: 10 }}>
@@ -1075,6 +1116,7 @@ export default function LeaguesScreen() {
               enabled={enabled}
               currentGw={effectiveCurrentGw}
               tableGw={leagueTableGw}
+              submissionPreviewGw={submissionPreviewGw}
               meId={meId ?? null}
               fallbackMeId={unreadMeId ?? null}
               onPress={() => {

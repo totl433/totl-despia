@@ -17,6 +17,12 @@ import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
 import type { PopupCardKind } from './types';
 import { getMediumName } from '../../../../../src/lib/teamNames';
+import {
+  buildLiveScoreMapForFixtures,
+  hydrateLiveScoreFromDb,
+  liveScoreHasNumericLine,
+  scoreStringsForFixtureRow,
+} from '../../lib/scoreSheetLiveScores';
 
 type GwPointsRow = { user_id: string; gw: number; points: number };
 type UserRow = { id: string; name: string | null; avatar_url: string | null };
@@ -1123,6 +1129,37 @@ function ResultsUserPill({ profile }: { profile?: ProfileSummary | null }) {
   );
 }
 
+type ResultsScoreSheetQueryData = { gw: number; results: GwResults; snapshot: HomeSnapshot; liveByFixture: Map<number, LiveScore> };
+
+async function hydrateScoreSheetLiveByFixture(snapshot: HomeSnapshot, gw: number): Promise<Map<number, LiveScore>> {
+  const fixtures = snapshot.fixtures;
+  const baseRows = snapshot.liveScores;
+  let liveByFixture = buildLiveScoreMapForFixtures(fixtures, baseRows);
+
+  const resultByFx = new Map<number, Pick>();
+  for (const row of snapshot.gwResults) resultByFx.set(row.fixture_index, row.result);
+
+  const needsSupplement = fixtures.some((fx) => {
+    const fi = Number(fx.fixture_index);
+    if (!Number.isFinite(fi)) return false;
+    if (!resultByFx.has(fi)) return false;
+    return !liveScoreHasNumericLine(liveByFixture.get(fi));
+  });
+
+  if (!needsSupplement) return liveByFixture;
+
+  const { data, error } = await supabase.from('live_scores').select('*').eq('gw', gw);
+  if (error || !data?.length) return liveByFixture;
+
+  const extra: LiveScore[] = [];
+  for (const raw of data) {
+    const row = hydrateLiveScoreFromDb(raw as Record<string, unknown>);
+    if (row) extra.push(row);
+  }
+  liveByFixture = buildLiveScoreMapForFixtures(fixtures, [...baseRows, ...extra]);
+  return liveByFixture;
+}
+
 function ScoreSheetFixtureRow({
   fixture,
   liveScore,
@@ -1142,10 +1179,8 @@ function ScoreSheetFixtureRow({
   const awayBadge = TEAM_BADGES[awayCode] ?? null;
   const homeLabel = homeCode || getMediumName(String(fixture.home_name ?? fixture.home_team ?? 'HOME')).slice(0, 3).toUpperCase();
   const awayLabel = awayCode || getMediumName(String(fixture.away_name ?? fixture.away_team ?? 'AWAY')).slice(0, 3).toUpperCase();
-  const hasScore = typeof liveScore?.home_score === 'number' && typeof liveScore?.away_score === 'number';
-  const homeScore = hasScore ? String(liveScore?.home_score) : '-';
-  const awayScore = hasScore ? String(liveScore?.away_score) : '-';
   const winningPick = result ?? null;
+  const { home: homeScore, away: awayScore } = scoreStringsForFixtureRow(liveScore, winningPick);
   const pickedCorrect = !!pick && !!winningPick && pick === winningPick;
   const showOutcomeMarker = !!pick && !!winningPick;
 
@@ -1239,9 +1274,11 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['popup-card', 'results-score-sheet', eventKey ?? 'none'],
     staleTime: 60_000,
-    queryFn: async (): Promise<{ gw: number; results: GwResults; snapshot: HomeSnapshot } | null> => {
+    queryFn: async (): Promise<ResultsScoreSheetQueryData | null> => {
       if (eventKey === 'simulator:resultsScoreSheet:example') {
-        return buildSimulatorResultsScoreSheetPayload();
+        const p = buildSimulatorResultsScoreSheetPayload();
+        const liveByFixture = await hydrateScoreSheetLiveByFixture(p.snapshot, p.gw);
+        return { ...p, liveByFixture };
       }
 
       let gw = parseGwFromEventKey(eventKey);
@@ -1258,7 +1295,8 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
       if (!gw) return null;
       const snapshot = await api.getHomeSnapshot({ gw });
       const results = await api.getGwResults(gw).catch(() => buildResultsFromScoreSheetSnapshot(snapshot));
-      return { gw, results, snapshot };
+      const liveByFixture = await hydrateScoreSheetLiveByFixture(snapshot, gw);
+      return { gw, results, snapshot, liveByFixture };
     },
   });
   const { data: profileSummary } = useQuery<ProfileSummary>({
@@ -1288,14 +1326,11 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
     );
   }
 
-  const liveByFixture = new Map<number, LiveScore>();
-  data.snapshot.liveScores.forEach((liveScore) => {
-    if (typeof liveScore.fixture_index === 'number') liveByFixture.set(liveScore.fixture_index, liveScore);
-  });
   const resultByFixture = new Map<number, Pick>();
   data.snapshot.gwResults.forEach((row) => resultByFixture.set(row.fixture_index, row.result));
   const fixtures = [...data.snapshot.fixtures].sort((a, b) => Number(a.fixture_index) - Number(b.fixture_index));
   const hasUnfinishedFixtures = fixtures.some((fixture) => !resultByFixture.has(Number(fixture.fixture_index)));
+  const { liveByFixture } = data;
 
   return (
     <View style={{ flex: 1, width: '100%', paddingTop: 0, paddingBottom: 0 }}>

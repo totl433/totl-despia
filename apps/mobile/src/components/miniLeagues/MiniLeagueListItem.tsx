@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, Pressable, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 function initial1(name: string): string {
   const trimmed = String(name ?? '').trim();
@@ -12,22 +13,23 @@ function initial1(name: string): string {
 function MemberChip({
   name,
   avatarUri,
-  hasSubmitted = false,
+  hasSubmitted,
 }: {
   name: string;
   avatarUri?: string | null;
+  /** Only show the green submitted tick when `true`; omit or `undefined` while loading or unknown. */
   hasSubmitted?: boolean;
 }) {
   const t = useTokens();
   const size = 32;
+  const BADGE = 17;
   return (
-    <View style={{ width: size, height: size }}>
+    <View style={{ width: size, height: size }} collapsable={false}>
       <View
         style={{
           width: size,
           height: size,
           borderRadius: 999,
-          // Flat chips (no coloured rings)
           backgroundColor: '#CED5D2',
           overflow: 'hidden',
           alignItems: 'center',
@@ -42,6 +44,24 @@ function MemberChip({
           </TotlText>
         )}
       </View>
+      {hasSubmitted === true ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: -3,
+            bottom: -3,
+            width: BADGE,
+            height: BADGE,
+            borderRadius: BADGE / 2,
+            backgroundColor: t.color.success,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <MaterialIcons name="check" size={14} color="#FFFFFF" />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -61,7 +81,13 @@ export default function MiniLeagueListItem({
   avatarUri: string | null;
   submittedCount: number | null;
   totalMembers: number | null;
-  membersPreview: Array<{ id: string; name: string; avatarUri?: string | null; hasSubmitted?: boolean }>;
+  membersPreview: Array<{
+    id: string;
+    name: string;
+    avatarUri?: string | null;
+    /** Submitted picks for current open/viewing GW; omit while status is still loading. */
+    hasSubmitted?: boolean;
+  }>;
   memberCount?: number | null;
   myRank?: number | null;
   unreadCount?: number | null;
@@ -84,6 +110,9 @@ export default function MiniLeagueListItem({
   }
 
   const rankLabel = typeof myRank === 'number' && Number.isFinite(myRank) ? ordinal(Math.max(1, Math.round(myRank))) : '—';
+
+  const previewCount = membersPreview.length;
+  const chipOverlapPx = previewCount >= 6 ? 10 : previewCount <= 1 ? 0 : 5;
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1, transform: [{ scale: pressed ? 0.995 : 1 }] })}>
@@ -125,12 +154,12 @@ export default function MiniLeagueListItem({
                 <View
                   key={m.id}
                   style={{
-                    marginLeft: idx === 0 ? 0 : -10,
+                    marginLeft: idx === 0 ? 0 : -chipOverlapPx,
                     zIndex: idx,
                     elevation: idx,
                   }}
                 >
-                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} hasSubmitted />
+                  <MemberChip name={m.name} avatarUri={m.avatarUri ?? null} hasSubmitted={m.hasSubmitted} />
                 </View>
               ))}
             </View>
