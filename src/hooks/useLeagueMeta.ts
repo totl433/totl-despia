@@ -11,7 +11,7 @@ export type LeagueMetaLeague = {
   avatar?: string | null;
 };
 
-export type LeagueMetaMember = { id: string; name: string };
+export type LeagueMetaMember = { id: string; name: string; created_at?: string | null };
 
 interface UseLeagueMetaProps {
   code: string;
@@ -51,9 +51,16 @@ export function useLeagueMeta({ code, userId }: UseLeagueMetaProps): UseLeagueMe
   const [members, setMembers] = useState<LeagueMetaMember[]>(() => {
     if (!league?.id) return [];
     try {
-      const cachedMembers = getCached<Array<[string, string]>>(`league:members:${league.id}`);
+      const cachedMembers = getCached<Array<[string, string] | [string, string, string | null]>>(`league:members:${league.id}`);
       if (cachedMembers?.length) {
-        return cachedMembers.map(([id, name]) => ({ id, name: name || '(no name)' }));
+        return cachedMembers.map((row) => {
+          const [id, name, created_at] = row;
+          return {
+            id,
+            name: name || '(no name)',
+            created_at: typeof created_at === 'string' ? created_at : null,
+          };
+        });
       }
     } catch {
       // ignore
@@ -105,6 +112,7 @@ export function useLeagueMeta({ code, userId }: UseLeagueMetaProps): UseLeagueMe
           (mm as any[])?.map((r) => ({
             id: r.users.id as string,
             name: (r.users.name as string) ?? '(no name)',
+            created_at: typeof r.created_at === 'string' ? r.created_at : null,
           })) ?? [];
 
         const memSorted = [...fetchedMembers].sort((a, b) => a.name.localeCompare(b.name));
@@ -113,7 +121,7 @@ export function useLeagueMeta({ code, userId }: UseLeagueMetaProps): UseLeagueMe
         setMembers(memSorted);
         setCached(
           `league:members:${currentLeague.id}`,
-          memSorted.map((m) => [m.id, m.name]),
+          memSorted.map((m) => [m.id, m.name, m.created_at ?? null]),
           60 * 5
         );
       }

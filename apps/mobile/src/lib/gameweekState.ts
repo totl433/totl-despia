@@ -68,6 +68,83 @@ export function getGameweekStateFromSnapshot(input: {
   return 'LIVE';
 }
 
+/**
+ * Stats / streak “Round Up” should match Home: GW is final only after the last scheduled kickoff has FINISHED,
+ * not when `app_gw_results` max gw has moved (partial GW rows can exist mid-week).
+ */
+export type StatsGwCompletionContext = {
+  currentGw: number | null;
+  probeHome: {
+    fixtures: FixtureKickoff[];
+    liveScores: LiveScoreLike[];
+    hasSubmittedViewingGw: boolean;
+  } | null;
+  probeGw: number | null;
+  probeLoading: boolean;
+  lastCompletedGw: number | null;
+};
+
+export function isGwFullyCompleteForStatsRoundUp(args: {
+  gw: number;
+  /** `HomeSnapshot.currentGw` from `/v1/home` (meta line). */
+  currentGw: number | null | undefined;
+  /** Snapshot from `getHomeSnapshot({ gw })` where `gw` matches this chip (usually `highlightGw` or `currentGw`). */
+  probeHome: { fixtures: FixtureKickoff[]; liveScores: LiveScoreLike[]; hasSubmittedViewingGw: boolean } | null | undefined;
+  /** `gw` passed to `getHomeSnapshot` for `probeHome` — when it differs from `args.gw`, probe data must not be used. */
+  probeGw: number | null | undefined;
+  /** BFF `lastCompletedGw` — can be ahead of true final; only used when meta GW unknown or probe missing. */
+  lastCompletedGw: number | null | undefined;
+  probeLoading?: boolean;
+}): boolean {
+  const { gw, currentGw, probeHome, probeGw, lastCompletedGw, probeLoading } = args;
+  const meta = typeof currentGw === 'number' && currentGw > 0 ? currentGw : null;
+
+  const legacyFinal = (): boolean => {
+    if (lastCompletedGw == null || typeof lastCompletedGw !== 'number' || lastCompletedGw <= 0) return true;
+    return gw <= lastCompletedGw;
+  };
+
+  if (meta == null) return legacyFinal();
+
+  if (gw < meta) return true;
+  if (gw > meta) return false;
+
+  // gw === meta (current meta gameweek)
+  if (probeLoading && !probeHome) return false;
+  if (probeHome != null && typeof probeGw === 'number' && probeGw === gw) {
+    return (
+      getGameweekStateFromSnapshot({
+        fixtures: probeHome.fixtures ?? [],
+        liveScores: probeHome.liveScores ?? [],
+        hasSubmittedViewingGw: !!probeHome.hasSubmittedViewingGw,
+      }) === 'RESULTS_PRE_GW'
+    );
+  }
+  return legacyFinal();
+}
+
+export function isGwStatsLiveDot(args: {
+  gw: number;
+  scored: boolean;
+  currentGw: number | null | undefined;
+  probeHome: { fixtures: FixtureKickoff[]; liveScores: LiveScoreLike[]; hasSubmittedViewingGw: boolean } | null | undefined;
+  probeGw: number | null | undefined;
+  lastCompletedGw: number | null | undefined;
+  probeLoading?: boolean;
+}): boolean {
+  if (!args.scored) return false;
+  const meta = typeof args.currentGw === 'number' && args.currentGw > 0 ? args.currentGw : null;
+  if (meta != null && args.gw > meta) return false;
+  return !isGwFullyCompleteForStatsRoundUp({
+    gw: args.gw,
+    currentGw: args.currentGw,
+    probeHome: args.probeHome,
+    probeGw: args.probeGw,
+    lastCompletedGw: args.lastCompletedGw,
+    probeLoading: args.probeLoading,
+  });
+}
+
 export function hasGameweekKickoffStarted(input: {
   fixtures: FixtureKickoff[];
   liveScores: LiveScoreLike[];

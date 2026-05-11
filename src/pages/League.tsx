@@ -37,7 +37,7 @@ const MAX_MEMBERS = 8;
    Types
    ========================= */
 type League = { id: string; name: string; code: string; created_at?: string; created_by?: string; avatar?: string | null };
-type Member = { id: string; name: string };
+type Member = { id: string; name: string; created_at?: string | null };
 
 type Fixture = {
   api_match_id?: number | null;
@@ -1788,7 +1788,16 @@ ${shareUrl}`;
       const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
       const gw7StartLeagues = ['The Bird league'];
       
-      const leagueStartGw = await getLeagueStartGw(league, currentGw);
+      const activationAt = getLeagueActivationAt(members.map((m) => ({ created_at: m.created_at ?? null })));
+      const leagueStartGw = await getLeagueStartGw(
+        {
+          id: league.id,
+          name: league.name,
+          created_at: league.created_at,
+          activation_at: activationAt,
+        },
+        currentGw
+      );
       let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
       
       // CRITICAL: Exclude currentGw only if it's still live (not all fixtures have results)

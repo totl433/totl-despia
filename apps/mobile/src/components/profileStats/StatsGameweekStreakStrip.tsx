@@ -8,6 +8,11 @@ import {
   countTrailingGameweekParticipationStreak,
   type GameweekStreakRow,
 } from '../../lib/gameweekStreakCount';
+import {
+  isGwFullyCompleteForStatsRoundUp,
+  isGwStatsLiveDot,
+  type StatsGwCompletionContext,
+} from '../../lib/gameweekState';
 
 export type { GameweekStreakRow };
 
@@ -15,13 +20,29 @@ const STREAK_SCORE_SIZE = 54;
 /** Ionicons measure taller than type at equal pt — keep flame visually shorter than the digits */
 const STREAK_FLAME_SIZE = Math.round(STREAK_SCORE_SIZE * 0.78);
 
+/** When `lastCompletedGw` is unknown, allow Round Up for any scored chip (previous behaviour). */
+function gwHasFinalResultsLegacy(gw: number, lastCompletedGw: number | null | undefined): boolean {
+  if (lastCompletedGw == null || typeof lastCompletedGw !== 'number' || lastCompletedGw <= 0) return true;
+  return gw <= lastCompletedGw;
+}
+
+function gwIsLiveIncompleteLegacy(gw: number, lastCompletedGw: number | null | undefined): boolean {
+  return typeof lastCompletedGw === 'number' && lastCompletedGw > 0 && gw > lastCompletedGw;
+}
+
 /** Horizontal chips: ladder of GWs (played → pts, skipped → —). Big number = trailing consecutive played weeks. */
 export default function StatsGameweekStreakStrip({
   rows,
+  lastCompletedGw,
+  statsGwCompletion,
   nestInsideStatCard,
   onViewScoresheet,
 }: {
   rows: GameweekStreakRow[];
+  /** Fallback when `statsGwCompletion` is missing (older callers). */
+  lastCompletedGw?: number | null;
+  /** Home snapshot probe — aligns Round Up / live dot with last-fixture-finished (not `app_gw_results` max gw). */
+  statsGwCompletion?: StatsGwCompletionContext | null;
   /** Flat layout on `StatCard` surface (no inner gradient frame). */
   nestInsideStatCard?: boolean;
   /** Opens score sheet then Results card for that GW (`openManualResultsScoreSheetThenResults`). Labelled “Round Up” in UI. */
@@ -74,6 +95,32 @@ export default function StatsGameweekStreakStrip({
     >
       {rows.map((row) => {
         const scored = typeof row.points === 'number';
+        const c = statsGwCompletion;
+        const showLiveDot = c
+          ? isGwStatsLiveDot({
+              gw: row.gw,
+              scored,
+              currentGw: c.currentGw,
+              probeHome: c.probeHome,
+              probeGw: c.probeGw,
+              lastCompletedGw: c.lastCompletedGw,
+              probeLoading: c.probeLoading,
+            })
+          : scored && gwIsLiveIncompleteLegacy(row.gw, lastCompletedGw);
+        const showRoundUp = Boolean(
+          onViewScoresheet &&
+            scored &&
+            (c
+              ? isGwFullyCompleteForStatsRoundUp({
+                  gw: row.gw,
+                  currentGw: c.currentGw,
+                  probeHome: c.probeHome,
+                  probeGw: c.probeGw,
+                  lastCompletedGw: c.lastCompletedGw,
+                  probeLoading: c.probeLoading,
+                })
+              : gwHasFinalResultsLegacy(row.gw, lastCompletedGw))
+        );
         return (
           <View
             key={row.gw}
@@ -91,17 +138,29 @@ export default function StatsGameweekStreakStrip({
               {`GW${row.gw}`}
             </TotlText>
             {scored ? (
-              <TotlText style={{ marginTop: 6, fontSize: 22, fontWeight: '900', color: t.color.text }}>
-                {`${row.points} pts`}
-              </TotlText>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 }}
+                accessibilityLabel={showLiveDot ? `Gameweek ${row.gw}, ${row.points} points, live` : undefined}
+              >
+                {showLiveDot ? (
+                  <View
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }}
+                  />
+                ) : null}
+                <TotlText style={{ fontSize: 22, fontWeight: '900', color: t.color.text }}>
+                  {`${row.points} pts`}
+                </TotlText>
+              </View>
             ) : (
               <TotlText variant="muted" style={{ marginTop: 6, fontSize: 18, fontWeight: '800' }}>
                 —
               </TotlText>
             )}
-            {onViewScoresheet && scored ? (
+            {showRoundUp ? (
               <Pressable
-                onPress={() => onViewScoresheet(row.gw)}
+                onPress={() => onViewScoresheet?.(row.gw)}
                 accessibilityRole="button"
                 accessibilityLabel={`View Round Up for gameweek ${row.gw}`}
                 hitSlop={{ top: 6, bottom: 4, left: 4, right: 4 }}

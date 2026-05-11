@@ -274,13 +274,10 @@ export default function HomeScreen() {
     () => ({ ...(fallbackTeamPositionsByCode ?? {}), ...predictedTeamPositionsByCode }),
     [fallbackTeamPositionsByCode, predictedTeamPositionsByCode]
   );
-  const hasActiveLiveGames = React.useMemo(() => {
-    const liveScores = home?.liveScores ?? [];
-    return liveScores.some((ls) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED');
-  }, [home?.liveScores]);
-  const hasAnyGwResults = (home?.gwResults?.length ?? 0) > 0;
-  const inferredResultsPreGw = !hasActiveLiveGames && hasAnyGwResults;
-  const isResultsPreGw = gwState === 'RESULTS_PRE_GW' || inferredResultsPreGw;
+  // RESULTS_PRE_GW only when the last GW fixture is FINISHED (see getGameweekStateFromSnapshot).
+  // Do not infer from "no live games + some results": mid-GW gaps (e.g. Mon kickoff after weekend FTs)
+  // would wrongly show Round Up and results header before the GW is complete.
+  const isResultsPreGw = gwState === 'RESULTS_PRE_GW';
   const showRoundUpButton = isResultsPreGw && typeof viewingGw === 'number';
   const showReadyToMoveOn =
     typeof currentGw === 'number' && typeof viewingGw === 'number' ? viewingGw < currentGw : false;

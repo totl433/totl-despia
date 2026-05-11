@@ -19,6 +19,9 @@ export type GwLiveStateForMonth = {
   hasGwKickoffStarted?: boolean;
 };
 
+/** Last scheduled gameweek of the configured season (mobile popups / champion flow). */
+export const SEASON_LAST_GW = 38;
+
 const SEASON_2025_26: MonthAllocation[] = [
   { monthKey: '2025-08', label: 'August 2025', startGw: 1, endGw: 3 },
   { monthKey: '2025-09', label: 'September 2025', startGw: 4, endGw: 7 },

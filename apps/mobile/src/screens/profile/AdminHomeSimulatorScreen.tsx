@@ -1251,6 +1251,8 @@ export default function AdminHomeSimulatorScreen() {
             { key: 'winners-20-20', label: 'Winners 20+20', onPress: () => openSimulatorWinnersExample('20each') },
             { key: 'new-gw', label: 'New Game Week', onPress: () => openSimulatorCard('newGameweek') },
             { key: 'do-predictions', label: 'Do Predictions', onPress: () => openSimulatorDoPredictionsCard() },
+            { key: 'champion-ml', label: 'Champion ML', onPress: () => openSimulatorCard('championMiniLeague') },
+            { key: 'champion-overall', label: 'Champion Overall', onPress: () => openSimulatorCard('championOverall') },
             { key: 'welcome', label: 'Welcome', onPress: () => openWelcomeSimulatorStack() },
             { key: 'post-gw-return-stack', label: 'Post GW Return Stack', onPress: () => openPostGwReturnSimulatorStack() },
             { key: 'main-stack', label: 'Load Main Stack', onPress: () => openMainSimulatorStack() },

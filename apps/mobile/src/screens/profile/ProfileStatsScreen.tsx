@@ -26,7 +26,11 @@ import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
-import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
+import {
+  getGameweekStateFromSnapshot,
+  isGwFullyCompleteForStatsRoundUp,
+  type StatsGwCompletionContext,
+} from '../../lib/gameweekState';
 import { supabase } from '../../lib/supabase';
 import StatsHeroVisual from '../../components/profileStats/StatsHeroVisual';
 import StatsGameweekStreakStrip from '../../components/profileStats/StatsGameweekStreakStrip';
@@ -163,6 +167,48 @@ export default function ProfileStatsScreen() {
   }, [statsQ.data, statsQ.error]);
 
   const stats = statsQ.data ?? null;
+
+  const statsRoundUpProbeGw = React.useMemo(() => {
+    const h = stats?.highlightGw;
+    const c = homeSnapshotQ.data?.currentGw;
+    if (typeof h === 'number' && h > 0) return h;
+    if (typeof c === 'number' && c > 0) return c;
+    return null;
+  }, [stats?.highlightGw, homeSnapshotQ.data?.currentGw]);
+
+  /** Fixtures + live_scores for the headline GW — `lastCompletedGw` alone can be 36 while Monday’s match is still scheduled. */
+  const homeRoundUpProbeQ = useQuery({
+    queryKey: ['homeSnapshot', 'statsGwRoundUpProbe', statsRoundUpProbeGw],
+    queryFn: () => api.getHomeSnapshot({ gw: statsRoundUpProbeGw! }),
+    enabled: typeof statsRoundUpProbeGw === 'number' && statsRoundUpProbeGw > 0,
+    staleTime: 15_000,
+  });
+
+  const statsGwCompletion = React.useMemo((): StatsGwCompletionContext | null => {
+    const probe = homeRoundUpProbeQ.data;
+    const currentGw = homeSnapshotQ.data?.currentGw ?? null;
+    if (typeof statsRoundUpProbeGw !== 'number' || statsRoundUpProbeGw < 1) return null;
+    return {
+      currentGw,
+      probeHome: probe
+        ? {
+            fixtures: probe.fixtures ?? [],
+            liveScores: probe.liveScores ?? [],
+            hasSubmittedViewingGw: !!probe.hasSubmittedViewingGw,
+          }
+        : null,
+      probeGw: statsRoundUpProbeGw,
+      probeLoading: homeRoundUpProbeQ.isLoading,
+      lastCompletedGw: stats?.lastCompletedGw ?? null,
+    };
+  }, [
+    homeRoundUpProbeQ.data,
+    homeRoundUpProbeQ.isLoading,
+    homeSnapshotQ.data?.currentGw,
+    stats?.lastCompletedGw,
+    statsRoundUpProbeGw,
+  ]);
+
   const fieldAvgFromApi =
     typeof stats?.correctPredictionFieldAvgPct === 'number' ? stats.correctPredictionFieldAvgPct : null;
 
@@ -263,6 +309,7 @@ export default function ProfileStatsScreen() {
 
   const refreshing =
     homeSnapshotQ.isRefetching ||
+    homeRoundUpProbeQ.isRefetching ||
     statsQ.isRefetching ||
     gwPointsQ.isRefetching ||
     ranksQ.isRefetching ||
@@ -270,6 +317,7 @@ export default function ProfileStatsScreen() {
   const onRefresh = React.useCallback(() => {
     void Promise.all([
       homeSnapshotQ.refetch(),
+      homeRoundUpProbeQ.refetch(),
       statsQ.refetch(),
       gwPointsQ.refetch(),
       ranksQ.refetch(),
@@ -277,7 +325,7 @@ export default function ProfileStatsScreen() {
       leaguePickAvgQ.refetch(),
       queryClient.invalidateQueries({ queryKey: ['leaderboards', 'gwLiveTable'] }),
     ]);
-  }, [gwLiveTableQ, gwPointsQ, homeSnapshotQ, leaguePickAvgQ, queryClient, ranksQ, statsQ]);
+  }, [gwLiveTableQ, gwPointsQ, homeRoundUpProbeQ, homeSnapshotQ, leaguePickAvgQ, queryClient, ranksQ, statsQ]);
 
   React.useEffect(() => {
     const snap = homeSnapshotQ.data ?? null;
@@ -321,13 +369,40 @@ export default function ProfileStatsScreen() {
     [weeklyParFromLeaderboard, stats]
   );
 
+  /** Weekly chart: omit in-progress meta GW (same “last fixture finished” rule as Round Up / live dot). */
+  const weeklyParChartRows = React.useMemo(() => {
+    if (!weeklyPar.length) return weeklyPar;
+    const c = statsGwCompletion;
+    if (c && typeof c.currentGw === 'number' && c.currentGw >= 1) {
+      return weeklyPar.filter(
+        (r) =>
+          r.gw < c.currentGw ||
+          isGwFullyCompleteForStatsRoundUp({
+            gw: r.gw,
+            currentGw: c.currentGw,
+            probeHome: c.probeHome,
+            probeGw: c.probeGw,
+            lastCompletedGw: c.lastCompletedGw,
+            probeLoading: c.probeLoading,
+          })
+      );
+    }
+    if (typeof stats?.lastCompletedGw === 'number' && stats.lastCompletedGw > 0) {
+      return weeklyPar.filter((r) => r.gw <= stats.lastCompletedGw);
+    }
+    return weeklyPar;
+  }, [weeklyPar, statsGwCompletion, stats?.lastCompletedGw]);
+
+  const weeklyParChartLatestGw =
+    weeklyParChartRows.length > 0 ? weeklyParChartRows[weeklyParChartRows.length - 1]!.gw : null;
+
   /** GW where your margin above the pool average was largest (same rows as the weekly chart). */
   const bestVsAvgWeek = React.useMemo(() => {
-    if (weeklyPar.length === 0) return null;
-    let bestGw = weeklyPar[0]!.gw;
-    let bestMargin = weeklyPar[0]!.userPoints - weeklyPar[0]!.averagePoints;
-    for (let i = 1; i < weeklyPar.length; i++) {
-      const d = weeklyPar[i]!;
+    if (weeklyParChartRows.length === 0) return null;
+    let bestGw = weeklyParChartRows[0]!.gw;
+    let bestMargin = weeklyParChartRows[0]!.userPoints - weeklyParChartRows[0]!.averagePoints;
+    for (let i = 1; i < weeklyParChartRows.length; i++) {
+      const d = weeklyParChartRows[i]!;
       const margin = d.userPoints - d.averagePoints;
       if (margin > bestMargin) {
         bestMargin = margin;
@@ -335,7 +410,7 @@ export default function ProfileStatsScreen() {
       }
     }
     return { gw: bestGw, margin: bestMargin };
-  }, [weeklyPar]);
+  }, [weeklyParChartRows]);
 
   const resolvedFieldAvgPct = fieldAvgFromApi ?? leaguePickAvgQ.data ?? null;
 
@@ -434,6 +509,8 @@ export default function ProfileStatsScreen() {
             <StatCard style={{ marginBottom: 0 }}>
               <StatsGameweekStreakStrip
                 rows={streakRowsForStrip}
+                lastCompletedGw={stats?.lastCompletedGw ?? null}
+                statsGwCompletion={statsGwCompletion}
                 nestInsideStatCard
                 onViewScoresheet={openManualResultsScoreSheetThenResults}
               />
@@ -444,6 +521,7 @@ export default function ProfileStatsScreen() {
 
         <StatsHeroVisual
           stats={stats}
+          statsGwCompletion={statsGwCompletion}
           onPressViewRoundUp={stats?.lastCompletedGw ? openHeroRoundUp : undefined}
           onPressViewLeaderboards={openLeaderboards2526}
         />
@@ -454,7 +532,7 @@ export default function ProfileStatsScreen() {
             Correct prediction rate
           </TotlText>
           <TotlText style={{ marginTop: 14, fontSize: 44, lineHeight: 48, fontWeight: '900', color: t.color.text }}>
-            {typeof stats?.correctPredictionRate === 'number' ? `${stats.correctPredictionRate.toFixed(0)}%` : '—'}
+            {typeof stats?.correctPredictionRate === 'number' ? `${stats.correctPredictionRate.toFixed(2)}%` : '—'}
           </TotlText>
           {correctPredictionContextLine ? (
             <TotlText variant="muted" style={{ marginTop: 10, fontSize: 13, lineHeight: 18, fontWeight: '600' }}>
@@ -491,7 +569,7 @@ export default function ProfileStatsScreen() {
           </StatCard>
         ) : null}
 
-        {weeklyPar.length > 0 ? (
+        {weeklyParChartRows.length > 0 ? (
           <>
             <StatCard style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -501,14 +579,14 @@ export default function ProfileStatsScreen() {
                 <WeeklyParChartToggle complex={parChartShowComplex} onChange={setParChartShowComplex} />
               </View>
               <StatsParChart
-                weeklyData={weeklyPar}
-                latestGw={stats?.lastCompletedGw ?? null}
+                weeklyData={weeklyParChartRows}
+                latestGw={weeklyParChartLatestGw}
                 showInfo={parChartShowComplex}
                 nestInsideStatCard
               />
               {(() => {
-                const above = weeklyPar.filter((d) => d.userPoints > d.averagePoints).length;
-                const pct = weeklyPar.length ? Math.round((above / weeklyPar.length) * 100) : 0;
+                const above = weeklyParChartRows.filter((d) => d.userPoints > d.averagePoints).length;
+                const pct = weeklyParChartRows.length ? Math.round((above / weeklyParChartRows.length) * 100) : 0;
                 return (
                   <View style={{ marginTop: 10 }}>
                     <TotlText style={{ fontSize: 14, fontWeight: '700', color: t.color.text }}>
@@ -519,7 +597,7 @@ export default function ProfileStatsScreen() {
               })()}
             </StatCard>
             {(() => {
-              const totalSwing = weeklyPar.reduce((sum, d) => sum + (d.userPoints - d.averagePoints), 0);
+              const totalSwing = weeklyParChartRows.reduce((sum, d) => sum + (d.userPoints - d.averagePoints), 0);
               const swingText =
                 totalSwing >= 0 ? `+${totalSwing.toFixed(1)}` : `${totalSwing.toFixed(1)}`;
               if (swingText === '0.0') return null;

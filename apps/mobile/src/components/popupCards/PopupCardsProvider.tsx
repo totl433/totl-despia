@@ -6,7 +6,8 @@ import type { HomeSnapshot } from '@totl/domain';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
-import { getMonthForGw } from '../../lib/leaderboardMonths';
+import { fetchMiniLeagueChampionSummariesForUser, fetchOverallChampionSummaryForUser } from '../../lib/championEligibility';
+import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
 import { hasSeenPopupCard, markPopupCardSeen, markPopupCardsSeen } from '../../lib/popupCardsStorage';
 import { createMainPopupStack, createPopupCard, createWelcomePopupStack } from './popupCardsCatalog';
 import PopupCardStack from './PopupCardStack';
@@ -58,6 +59,35 @@ async function fetchAllSupabaseRows<T>(
     if (page.length < pageSize) break;
   }
   return rows;
+}
+
+async function buildSeasonChampionPopupDescriptors(userId: string, currentGwMeta: number | null): Promise<PopupCardDescriptor[]> {
+  const resolverGw =
+    typeof currentGwMeta === 'number' && Number.isFinite(currentGwMeta) ? Math.max(currentGwMeta, SEASON_LAST_GW) : SEASON_LAST_GW;
+
+  const [ml, overall] = await Promise.all([
+    fetchMiniLeagueChampionSummariesForUser({ userId, currentGwMeta: resolverGw, latestGw: SEASON_LAST_GW }),
+    fetchOverallChampionSummaryForUser(userId),
+  ]);
+
+  const cards: PopupCardDescriptor[] = [];
+  for (const s of ml) {
+    cards.push(
+      createPopupCard('championMiniLeague', {
+        id: `champion-ml-${s.leagueId}-gw${SEASON_LAST_GW}`,
+        eventKey: `championMiniLeague:${s.leagueId}:gw${SEASON_LAST_GW}`,
+      })
+    );
+  }
+  if (overall) {
+    cards.push(
+      createPopupCard('championOverall', {
+        id: `champion-overall-gw${SEASON_LAST_GW}`,
+        eventKey: `championOverall:gw${SEASON_LAST_GW}`,
+      })
+    );
+  }
+  return cards;
 }
 
 async function getPersonalWinnerCardsForGw(userId: string, gw: number): Promise<{ gameweek: boolean; monthly: boolean }> {
@@ -567,7 +597,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
           }
         }
 
-        const eligibleCards = createMainPopupStack({
+        const mainCards = createMainPopupStack({
           resultsGw: viewingGw,
           newGameweekGw: newGameweekEligible ? currentGw : null,
           includeResults: gameweekState === 'RESULTS_PRE_GW' && !!home.hasSubmittedViewingGw,
@@ -576,6 +606,21 @@ export default function PopupCardsProvider({ children }: { children: React.React
           includeWinners: gameweekState === 'RESULTS_PRE_GW',
           includeNewGameweek: newGameweekEligible,
         });
+
+        let championCards: PopupCardDescriptor[] = [];
+        const seasonFinalePopup =
+          viewingGw === SEASON_LAST_GW &&
+          gameweekState === 'RESULTS_PRE_GW' &&
+          !!home.hasSubmittedViewingGw;
+        if (seasonFinalePopup) {
+          try {
+            championCards = await buildSeasonChampionPopupDescriptors(userId, currentGw);
+          } catch (error) {
+            console.error('[PopupCardsProvider] Failed to build season champion popup cards:', error);
+          }
+        }
+
+        const eligibleCards = [...mainCards, ...championCards];
 
         if (!eligibleCards.length) return;
 

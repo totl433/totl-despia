@@ -88,16 +88,19 @@ export async function resolveLeagueStartGw(
   if (anchorTs && currentGw) {
     const anchorTime = new Date(anchorTs);
 
+    // Align with Tables / Expo: app pipeline is source of truth (not legacy gw_results/fixtures).
     const { data: resultsData } = await supabase
-      .from("gw_results")
+      .from("app_gw_results")
       .select("gw")
       .order("gw", { ascending: true });
 
-    const completedGws = resultsData ? [...new Set(resultsData.map((r) => r.gw))] : [];
+    const completedGws = resultsData
+      ? [...new Set(resultsData.map((r) => r.gw))].sort((a, b) => a - b)
+      : [];
 
     for (const gw of completedGws) {
       const { data: firstFixture } = await supabase
-        .from("fixtures")
+        .from("app_fixtures")
         .select("kickoff_time")
         .eq("gw", gw)
         .order("kickoff_time", { ascending: true })

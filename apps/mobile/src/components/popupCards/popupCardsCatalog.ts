@@ -14,6 +14,10 @@ function buildTitle(kind: PopupCardKind): string {
       return 'New Game Week';
     case 'doPredictions':
       return 'Do Your Predictions';
+    case 'championMiniLeague':
+      return 'Champion';
+    case 'championOverall':
+      return '2025/26 Overall Champion';
     case 'welcome1':
       return 'Welcome 1';
     case 'welcome2':

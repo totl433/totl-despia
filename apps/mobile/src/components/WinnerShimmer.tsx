@@ -12,7 +12,7 @@ export default function WinnerShimmer({
   durationMs: number;
   delayMs: number;
   opacity: number;
-  tint: 'white' | 'gold';
+  tint: 'white' | 'gold' | 'silver';
   /** When true, first shimmer runs immediately; subsequent runs use delayMs. */
   skipFirstDelay?: boolean;
 }) {
@@ -64,7 +64,9 @@ export default function WinnerShimmer({
   const shimmerColors =
     tint === 'gold'
       ? (['transparent', 'rgba(253, 230, 138, 0.55)', 'transparent'] as const)
-      : (['transparent', 'rgba(255,255,255,0.75)', 'transparent'] as const);
+      : tint === 'silver'
+        ? (['transparent', 'rgba(226, 232, 240, 0.88)', 'rgba(186, 230, 253, 0.62)', 'rgba(233, 213, 255, 0.48)', 'transparent'] as const)
+        : (['transparent', 'rgba(255,255,255,0.75)', 'transparent'] as const);
 
   return (
     <View

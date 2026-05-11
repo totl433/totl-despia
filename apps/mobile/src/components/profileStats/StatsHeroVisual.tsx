@@ -3,6 +3,8 @@ import { Pressable, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
 import type { UserStatsData } from '@totl/domain';
 
+import { isGwFullyCompleteForStatsRoundUp, type StatsGwCompletionContext } from '../../lib/gameweekState';
+
 function topPlayersSentence(pct: number | null | undefined): string {
   if (typeof pct !== 'number' || Number.isNaN(pct)) return '—';
   const top = Math.max(1, Math.min(99, Math.round(100 - pct)));
@@ -11,10 +13,12 @@ function topPlayersSentence(pct: number | null | undefined): string {
 
 export default function StatsHeroVisual({
   stats,
+  statsGwCompletion,
   onPressViewRoundUp,
   onPressViewLeaderboards,
 }: {
   stats: UserStatsData | null;
+  statsGwCompletion?: StatsGwCompletionContext | null;
   /** Score sheet then Results for `lastCompletedGw` — same as streak strip. */
   onPressViewRoundUp?: () => void;
   /** Opens main tab leaderboards (2025/26 / Global) */
@@ -23,6 +27,27 @@ export default function StatsHeroVisual({
   const t = useTokens();
   const heroGw = stats?.highlightGw ?? stats?.lastCompletedGw ?? null;
   const resultsSheetGw = stats?.lastCompletedGw ?? null;
+  const headlineGw = stats?.highlightGw ?? stats?.lastCompletedGw ?? null;
+  const legacyRoundUpVisible =
+    !(
+      typeof stats?.highlightGw === 'number' &&
+      typeof stats?.lastCompletedGw === 'number' &&
+      stats.highlightGw > stats.lastCompletedGw
+    );
+  const showHeroRoundUp =
+    !!resultsSheetGw &&
+    !!onPressViewRoundUp &&
+    headlineGw != null &&
+    (statsGwCompletion
+      ? isGwFullyCompleteForStatsRoundUp({
+          gw: headlineGw,
+          currentGw: statsGwCompletion.currentGw,
+          probeHome: statsGwCompletion.probeHome,
+          probeGw: statsGwCompletion.probeGw,
+          lastCompletedGw: statsGwCompletion.lastCompletedGw,
+          probeLoading: statsGwCompletion.probeLoading,
+        })
+      : legacyRoundUpVisible);
 
   return (
     <View
@@ -46,7 +71,7 @@ export default function StatsHeroVisual({
             <TotlText style={{ marginTop: 8, fontSize: 19, lineHeight: 24, fontWeight: '900', color: t.color.text }}>
               {topPlayersSentence(stats?.lastCompletedGwPercentile ?? null)}
             </TotlText>
-            {resultsSheetGw && onPressViewRoundUp ? (
+            {showHeroRoundUp ? (
               <Pressable
                 onPress={onPressViewRoundUp}
                 accessibilityRole="button"

@@ -5,6 +5,8 @@ export type PopupCardKind =
   | 'winners'
   | 'newGameweek'
   | 'doPredictions'
+  | 'championMiniLeague'
+  | 'championOverall'
   | 'welcome1'
   | 'welcome2'
   | 'welcome3';

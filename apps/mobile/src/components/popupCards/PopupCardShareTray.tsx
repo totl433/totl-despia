@@ -27,6 +27,10 @@ function getPopupShareMessage(card: PopupCardDescriptor): string {
       return "Check out this week's TOTL winners.";
     case 'newGameweek':
       return 'A new TOTL Gameweek is ready to go.';
+    case 'championMiniLeague':
+      return 'I won my mini league on TOTL.';
+    case 'championOverall':
+      return "I'm the overall TOTL champion this season.";
     default:
       return 'Check this out on TOTL.';
   }

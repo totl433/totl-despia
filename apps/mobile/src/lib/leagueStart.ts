@@ -127,9 +127,45 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
 
   if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) return withMeta.start_gw;
 
-  if (withMeta.activation_at) return resolveStartGwFromTimestamp(withMeta.activation_at, currentGw);
+  const anchorTs = withMeta.activation_at ?? withMeta.created_at;
+  if (anchorTs && currentGw) {
+    const anchorTime = new Date(anchorTs);
 
-  return resolveStartGwFromTimestamp(withMeta.created_at, currentGw);
+    const { data: resultsData } = await (supabase as any)
+      .from('app_gw_results')
+      .select('gw')
+      .order('gw', { ascending: true });
+
+    const completedGws = resultsData
+      ? [...new Set((resultsData as { gw: number }[]).map((r) => r.gw))].sort((a, b) => a - b)
+      : [];
+
+    for (const gw of completedGws) {
+      const { data: firstFixture } = await (supabase as any)
+        .from('app_fixtures')
+        .select('kickoff_time')
+        .eq('gw', gw)
+        .order('kickoff_time', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (firstFixture?.kickoff_time) {
+        const firstKickoff = new Date(firstFixture.kickoff_time as string);
+        const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
+        if (anchorTime < deadlineTime) {
+          return gw;
+        }
+      }
+    }
+
+    if (completedGws.length > 0) {
+      return Math.max(...completedGws) + 1;
+    }
+
+    return currentGw;
+  }
+
+  return currentGw;
 }
 
 export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {

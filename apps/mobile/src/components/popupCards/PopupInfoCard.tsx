@@ -1,17 +1,35 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, View } from 'react-native';
+import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import type { DimensionValue, ImageSourcePropType } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
+import Svg, {
+  Defs,
+  G,
+  LinearGradient as SvgLinearGradient,
+  Mask,
+  Path,
+  Pattern,
+  Polygon,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { TotlText } from '@totl/ui';
 import type { Fixture, GwResults, HomeSnapshot, LiveScore, Pick, ProfileSummary } from '@totl/domain';
+
+import {
+  fetchMiniLeagueChampionSummaryForUserAndLeague,
+  fetchOverallChampionSummaryForUser,
+  type MiniLeagueChampionSummary,
+  type OverallChampionSummary,
+} from '../../lib/championEligibility';
 
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
-import { getMonthForGw } from '../../lib/leaderboardMonths';
+import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
@@ -58,6 +76,19 @@ type PersonalWinnerCardPayload = {
 
 const SEASON_RANK_BADGE = require('../../../assets/icons/season-rank-badge.png');
 const FIVE_WEEK_FORM_BADGE = require('../../../assets/icons/5-week-form-badge.png');
+
+/** Overall champion card backdrop trophy (SVG matches Ionicons 7 `trophy` glyph). */
+const TROPHY_WATERMARK_SIZE = 260;
+/** Mini-league champion watermark — larger silhouette than overall silver card. */
+const MINI_LEAGUE_TROPHY_WATERMARK_SIZE = 336;
+/** Nudge watermark down so it matches visual center of the card (body shares space with footer strip). */
+const TROPHY_VERTICAL_ALIGN_OFFSET = 14;
+/** Ionicons 7 trophy.svg — silhouette mask for interior holo. */
+const IONICON_TROPHY_PATH =
+  'M464 80h-60.1a4 4 0 01-4-4V63.92a32 32 0 00-32-31.92l-223.79.26a32 32 0 00-31.94 31.93V76a4 4 0 01-4 4H48a16 16 0 00-16 16v16c0 54.53 30 112.45 76.52 125.35a7.82 7.82 0 015.55 5.9c5.77 26.89 23.52 52.5 51.41 73.61 20.91 15.83 45.85 27.5 68.27 32.48a8 8 0 016.25 7.8V444a4 4 0 01-4 4h-59.55c-8.61 0-16 6.62-16.43 15.23A16 16 0 00176 480h159.55c8.61 0 16-6.62 16.43-15.23A16 16 0 00336 448h-60a4 4 0 01-4-4v-86.86a8 8 0 016.25-7.8c22.42-5 47.36-16.65 68.27-32.48 27.89-21.11 45.64-46.72 51.41-73.61a7.82 7.82 0 015.55-5.9C450 224.45 480 166.53 480 112V96a16 16 0 00-16-16zM112 198.22a4 4 0 01-6 3.45c-10.26-6.11-17.75-15.37-22.14-21.89-11.91-17.69-19-40.67-19.79-63.63a4 4 0 014-4.15h40a4 4 0 014 4c-.02 27.45-.07 58.87-.07 82.22zm316.13-18.44c-4.39 6.52-11.87 15.78-22.13 21.89a4 4 0 01-6-3.46c0-26.51 0-56.63-.05-82.21a4 4 0 014-4h40a4 4 0 014 4.15c-.79 22.96-7.9 45.94-19.81 63.63z';
+/** Heroicons-style cup (matches profile trophy cabinet) — distinct from overall Ionicons watermark. viewBox 24×24. */
+const MINI_LEAGUE_HERO_TROPHY_PATH =
+  'M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695-2.1323 4.89-4.8018 4.9941-.8777 1.5207-2.4019 2.6195-4.1982 2.9209V19h3c.5523 0 1 .4477 1 1s-.4477 1-1 1H8c-.55228 0-1-.4477-1-1s.44772-1 1-1h3v-3.085c-1.7965-.3015-3.32148-1.4-4.19922-2.9209C4.13175 12.8895 2 10.6947 2 8V7c0-1.10457.89543-2 2-2h2c0-1.10457.89543-2 2-2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4-1.7909 4-4V5H8zM4 8c0 1.32848.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 .2878-.0223.5706-.0615.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z';
 const TEN_WEEK_FORM_BADGE = require('../../../assets/icons/10-week-form-badge.png');
 
 function ResultsSectionTitle({ title, badge }: { title: string; badge: ImageSourcePropType }) {
@@ -976,7 +1007,14 @@ function ResultsTrophies({ trophies }: { trophies: GwResults['trophies'] }) {
   );
 }
 
-function MiniLeagueVictoryPill({ league }: { league: GwResults['mlVictoryData'][number] }) {
+function MiniLeagueVictoryPill({
+  league,
+  fullWidth,
+}: {
+  league: GwResults['mlVictoryData'][number];
+  /** When set, pill fills its grid cell (see `MiniLeagueVictoryGrid`). */
+  fullWidth?: boolean;
+}) {
   const id = String(league.id);
   const name = String(league.name ?? 'League');
   const avatarUri = resolveLeagueAvatarUri(league.avatar ?? null) ?? resolveLeagueAvatarUri(getDefaultMlAvatarFilename(id));
@@ -985,8 +1023,10 @@ function MiniLeagueVictoryPill({ league }: { league: GwResults['mlVictoryData'][
     <View
       style={{
         height: 28,
-        minWidth: 112,
-        maxWidth: 148,
+        width: fullWidth ? '100%' : undefined,
+        minWidth: fullWidth ? 0 : 112,
+        maxWidth: fullWidth ? undefined : 148,
+        alignSelf: fullWidth ? 'stretch' : undefined,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -994,9 +1034,9 @@ function MiniLeagueVictoryPill({ league }: { league: GwResults['mlVictoryData'][
         borderWidth: 1,
         borderColor: 'transparent',
         backgroundColor: 'transparent',
-        paddingHorizontal: 8,
-        marginHorizontal: 3,
-        marginTop: 6,
+        paddingHorizontal: fullWidth ? 6 : 8,
+        marginHorizontal: fullWidth ? 0 : 3,
+        marginTop: fullWidth ? 0 : 6,
         overflow: 'hidden',
       }}
     >
@@ -1028,6 +1068,38 @@ function MiniLeagueVictoryPill({ league }: { league: GwResults['mlVictoryData'][
       <TotlText numberOfLines={1} style={{ flexShrink: 1, color: '#FFFFFF', fontSize: 10, lineHeight: 12, fontWeight: '900' }}>
         {name}
       </TotlText>
+    </View>
+  );
+}
+
+/** Rows of three — matches static `WinnerColumnsScroller` grid so many ML wins stay inside the card. */
+function MiniLeagueVictoryGrid({ leagues }: { leagues: GwResults['mlVictoryData'] }) {
+  const COLS = 3;
+  const GAP = 6;
+  const PAD = 18;
+  const rows = React.useMemo(() => chunkItems(leagues, COLS), [leagues]);
+
+  return (
+    <View style={{ width: '100%', marginTop: 8, paddingHorizontal: PAD }}>
+      {rows.map((row, rowIndex) => (
+        <View
+          key={`ml-win-row-${rowIndex}`}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'flex-start',
+            marginTop: rowIndex === 0 ? 0 : GAP,
+          }}
+        >
+          {Array.from({ length: COLS }, (_, colIndex) => {
+            const league = row[colIndex];
+            return (
+              <View key={`ml-win-${rowIndex}-${colIndex}`} style={{ flex: 1, minWidth: 0, marginLeft: colIndex === 0 ? 0 : GAP }}>
+                {league ? <MiniLeagueVictoryPill league={league} fullWidth /> : null}
+              </View>
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 }
@@ -1512,14 +1584,13 @@ function ResultsCardBody({
               <TotlText style={{ color: '#64748B', fontSize: 11, lineHeight: 14, marginTop: titleToContentGap, textAlign: 'center' }}>
                 You topped {results.mlVictories} mini-league{results.mlVictories === 1 ? '' : 's'} this week
               </TotlText>
-              <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-                {(results.mlVictoryData.length > 0
-                  ? results.mlVictoryData
-                  : results.mlVictoryNames.map((name, index) => ({ id: `ml-win-${index}`, name, avatar: null }))
-                ).map((league) => (
-                  <MiniLeagueVictoryPill key={league.id} league={league} />
-                ))}
-              </View>
+              <MiniLeagueVictoryGrid
+                leagues={
+                  results.mlVictoryData.length > 0
+                    ? results.mlVictoryData
+                    : results.mlVictoryNames.map((name, index) => ({ id: `ml-win-${index}`, name, avatar: null }))
+                }
+              />
             </>
           ) : (
             <MiniLeagueNoWinPanel hasMiniLeagues={hasMiniLeagueMemberships} onPressMiniLeagues={handlePressMiniLeagues} />
@@ -2296,6 +2367,1153 @@ function ResultsEmeraldBorder() {
   );
 }
 
+function parseChampionMiniLeagueEventKey(eventKey?: string | null): { leagueId: string; gw: number } | null {
+  if (!eventKey) return null;
+  if (eventKey === 'simulator:championMiniLeague') return { leagueId: '__sim__', gw: SEASON_LAST_GW };
+  const m = /^championMiniLeague:([^:]+):gw(\d+)$/.exec(eventKey);
+  if (!m) return null;
+  return { leagueId: m[1], gw: Number(m[2]) };
+}
+
+function parseChampionOverallEventKey(eventKey?: string | null): boolean {
+  if (!eventKey) return false;
+  return eventKey === 'simulator:championOverall' || /^championOverall:gw\d+$/.test(eventKey);
+}
+
+function buildSimulatorMiniLeagueChampionPayload(): MiniLeagueChampionSummary {
+  return {
+    leagueId: '__sim__',
+    leagueName: 'Sunday League Legends',
+    jointChampions: 1,
+    mltPts: 87,
+    unicorns: 12,
+    ocp: 241,
+  };
+}
+
+function buildSimulatorOverallChampionPayload(): OverallChampionSummary {
+  return { jointChampions: 1, ocp: 412 };
+}
+
+/**
+ * Broken-glass / foil micro texture — jagged diagonal shards + crossing scratches (no axis-aligned checker blocks).
+ */
+function ChampionJaggedDiagonalFoilMicro({ tone }: { tone: 'warm' | 'cool' }) {
+  const id = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'jd';
+  const fills =
+      tone === 'cool'
+      ? {
+          a: 'rgba(248,250,252,0.38)',
+          b: 'rgba(226,232,240,0.22)',
+          c: 'rgba(186,230,253,0.15)',
+          edge: 'rgba(255,255,255,0.09)',
+          scratch: 'rgba(224,231,255,0.22)',
+        }
+      : {
+          a: 'rgba(255,255,255,0.42)',
+          b: 'rgba(254,243,199,0.26)',
+          c: 'rgba(255,251,235,0.2)',
+          edge: 'rgba(255,255,255,0.11)',
+          scratch: 'rgba(255,255,255,0.28)',
+        };
+  const baseOpacity = tone === 'cool' ? 0.13 : 0.17;
+
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { opacity: baseOpacity }]}>
+      <Svg width="100%" height="100%" viewBox="0 0 120 120" preserveAspectRatio="none">
+        <Defs>
+          <Pattern id={`${id}-m`} patternUnits="userSpaceOnUse" width={56} height={56}>
+            <Path
+              d="M0 56 L0 29 L6.5 19 L17 27 L28 15 L40 24 L52 11 L56 8 L56 56 L41 49 L28 56 L14 47 L4 52 Z"
+              fill={fills.a}
+              stroke={fills.edge}
+              strokeWidth={0.45}
+            />
+            <Path
+              d="M56 0 L56 27 L49.5 37 L39 29 L27 41 L16 32 L4 45 L0 38 L0 6 L11 0 L26 9 L39 0 L52 6 Z"
+              fill={fills.b}
+              stroke={fills.edge}
+              strokeWidth={0.45}
+            />
+            <Path d="M0 0 L24 0 L12 14 L0 8 Z" fill={fills.c} stroke={fills.edge} strokeWidth={0.25} />
+            <Path d="M56 56 L32 56 L44 42 L56 48 Z" fill={fills.c} stroke={fills.edge} strokeWidth={0.25} />
+            <Path d="M0 40 L22 56 L8 56 Z" fill={fills.c} opacity={0.75} />
+            <Path d="M56 16 L34 0 L48 0 Z" fill={fills.c} opacity={0.75} />
+            <Path d="M4 0 L56 48" stroke={fills.scratch} strokeWidth={0.35} opacity={0.55} />
+            <Path d="M0 52 L48 4" stroke={fills.scratch} strokeWidth={0.28} opacity={0.45} />
+          </Pattern>
+          <Pattern
+            id={`${id}-x`}
+            patternUnits="userSpaceOnUse"
+            width={56}
+            height={56}
+            patternTransform="rotate(38 28 28)"
+          >
+            <Path d="M-8 28 L64 28" stroke={fills.edge} strokeWidth={0.22} opacity={0.65} />
+            <Path d="M14 -8 L14 64" stroke={fills.scratch} strokeWidth={0.18} opacity={0.4} />
+            <Path d="M0 0 L56 56" stroke={fills.scratch} strokeWidth={0.15} opacity={0.35} />
+          </Pattern>
+        </Defs>
+        <Rect width={120} height={120} fill={`url(#${id}-m)`} />
+        <Rect width={120} height={120} fill={`url(#${id}-x)`} opacity={tone === 'cool' ? 0.52 : 0.85} />
+      </Svg>
+    </View>
+  );
+}
+
+/** Wide holo sweep — cyan / magenta / violet / silver (overall champion, distinct from gold ML card). */
+function OverallSilverHoloRainbowSweep({ animated }: { animated: boolean }) {
+  const x = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!animated) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(x, {
+          toValue: 1,
+          duration: 3800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(x, {
+          toValue: 0,
+          duration: 3800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      x.stopAnimation();
+    };
+  }, [animated, x]);
+  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-200, 200] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: -36,
+        bottom: -36,
+        left: '-42%',
+        width: '185%',
+        opacity: 0.46,
+        transform: [{ translateX }, { rotate: '19deg' }],
+      }}
+    >
+      <LinearGradient
+        colors={[
+          'rgba(255,255,255,0)',
+          'rgba(34,211,238,0.26)',
+          'rgba(167,139,250,0.24)',
+          'rgba(241,245,249,0.4)',
+          'rgba(148,163,184,0.22)',
+          'rgba(125,211,252,0.26)',
+          'rgba(226,232,240,0.22)',
+          'rgba(255,255,255,0)',
+        ]}
+        locations={[0, 0.1, 0.26, 0.42, 0.55, 0.72, 0.88, 1]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={{ flex: 1 }}
+      />
+    </Animated.View>
+  );
+}
+
+/** Second sweep axis for depth — pearlescent vertical drift. */
+function OverallSilverHoloCounterSweep({ animated }: { animated: boolean }) {
+  const y = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!animated) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(y, {
+          toValue: 1,
+          duration: 5200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(y, {
+          toValue: 0,
+          duration: 5200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      y.stopAnimation();
+    };
+  }, [animated, y]);
+  const translateY = y.interpolate({ inputRange: [0, 1], outputRange: [-140, 140] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: '-30%',
+        bottom: '-30%',
+        left: 0,
+        right: 0,
+        opacity: 0.3,
+        transform: [{ translateY }, { rotate: '-13deg' }],
+      }}
+    >
+      <LinearGradient
+        colors={[
+          'rgba(255,255,255,0)',
+          'rgba(196,181,253,0.26)',
+          'rgba(241,245,249,0.38)',
+          'rgba(148,163,184,0.2)',
+          'rgba(226,232,240,0.28)',
+          'rgba(255,255,255,0)',
+        ]}
+        locations={[0, 0.22, 0.45, 0.58, 0.78, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ flex: 1 }}
+      />
+    </Animated.View>
+  );
+}
+
+type CoolShardTri = { key: string; points: string; fill: string };
+
+/** Card-wide silver foil (overall champion bg) — kept softer than trophy interior. */
+const COOL_HOLO_SHARD_PALETTE = [
+  'rgba(224,231,255,0.3)',
+  'rgba(165,243,252,0.26)',
+  'rgba(233,213,255,0.24)',
+  'rgba(241,245,249,0.34)',
+  'rgba(186,230,253,0.22)',
+  'rgba(196,181,253,0.2)',
+  'rgba(207,250,254,0.2)',
+  'rgba(248,250,252,0.3)',
+  'rgba(125,211,252,0.22)',
+];
+
+/** Silver/chrome prism shards inside trophy — softer alpha so watermark blends into bg. */
+const COOL_HOLO_SHARD_PALETTE_INTERIOR = [
+  'rgba(241,245,249,0.38)',
+  'rgba(226,232,240,0.36)',
+  'rgba(203,213,225,0.34)',
+  'rgba(248,250,252,0.42)',
+  'rgba(148,163,184,0.28)',
+  'rgba(203,213,225,0.32)',
+  'rgba(226,232,240,0.38)',
+  'rgba(186,230,253,0.26)',
+  'rgba(215,226,239,0.34)',
+];
+
+/** Card-wide warm gold prism foil — mirrors overall silver mesh palette roles. */
+const WARM_GOLD_HOLO_SHARD_PALETTE = [
+  'rgba(254,243,199,0.34)',
+  'rgba(251,191,36,0.32)',
+  'rgba(245,158,11,0.28)',
+  'rgba(253,224,71,0.3)',
+  'rgba(255,251,235,0.36)',
+  'rgba(234,179,8,0.26)',
+  'rgba(252,211,77,0.28)',
+  'rgba(254,215,170,0.26)',
+  'rgba(250,204,21,0.3)',
+];
+
+/** Gold foil shards inside mini-league trophy watermark. */
+const WARM_GOLD_HOLO_SHARD_PALETTE_INTERIOR = [
+  'rgba(255,251,235,0.42)',
+  'rgba(254,243,199,0.4)',
+  'rgba(251,191,36,0.38)',
+  'rgba(245,158,11,0.34)',
+  'rgba(253,224,71,0.36)',
+  'rgba(234,179,8,0.32)',
+  'rgba(252,211,77,0.34)',
+  'rgba(254,215,170,0.3)',
+  'rgba(250,204,21,0.36)',
+];
+
+const AnimatedSvgG = Animated.createAnimatedComponent(G);
+/** Animated `G` loses usable merged props in RN typings — cast for holo sweep transforms. */
+const AnimatedTrophyHoloG = AnimatedSvgG as unknown as React.ComponentType<{
+  children?: React.ReactNode;
+  style?: object;
+}>;
+
+function buildCoolTriangularShardMesh(
+  keyPrefix: string,
+  viewW: number,
+  viewH: number,
+  cols: number,
+  rows: number,
+  palette: readonly string[] = COOL_HOLO_SHARD_PALETTE
+): CoolShardTri[] {
+  const cw = viewW / cols;
+  const rh = viewH / rows;
+  const out: CoolShardTri[] = [];
+  let k = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * cw;
+      const y = r * rh;
+      const idx = r * cols + c;
+      const fill = palette[idx % palette.length];
+      if ((r + c) % 2 === 0) {
+        out.push({
+          key: `${keyPrefix}-t${k++}`,
+          points: `${x},${y} ${x + cw},${y} ${x},${y + rh}`,
+          fill,
+        });
+        out.push({
+          key: `${keyPrefix}-t${k++}`,
+          points: `${x + cw},${y} ${x + cw},${y + rh} ${x},${y + rh}`,
+          fill,
+        });
+      } else {
+        out.push({
+          key: `${keyPrefix}-t${k++}`,
+          points: `${x},${y} ${x + cw},${y} ${x + cw},${y + rh}`,
+          fill,
+        });
+        out.push({
+          key: `${keyPrefix}-t${k++}`,
+          points: `${x},${y} ${x + cw},${y + rh} ${x},${y + rh}`,
+          fill,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Shard mesh tuned for cool chrome / prism foil (overall only). */
+function OverallSilverTriangularShardFoil() {
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'ovsil';
+  const shards = React.useMemo(() => buildCoolTriangularShardMesh(uid, 100, 100, 10, 12), [uid]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          opacity: 0.46,
+          transform: [{ skewX: '-5deg' }],
+        },
+      ]}
+    >
+      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {shards.map((s) => (
+          <Polygon key={s.key} points={s.points} fill={s.fill} stroke="rgba(255,255,255,0.1)" strokeWidth={0.22} />
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
+function OverallSilverBaseGradients() {
+  return (
+    <>
+      <LinearGradient
+        colors={['#1e293b', '#334155', '#3d5166', '#64748b', '#cbd5e1', '#e8eef4']}
+        start={{ x: 0.15, y: 1 }}
+        end={{ x: 0.92, y: 0.08 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+      <LinearGradient
+        colors={['rgba(30,41,59,0.28)', 'rgba(255,255,255,0)', 'rgba(241,245,249,0.42)']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+    </>
+  );
+}
+
+function MiniLeagueGoldBaseGradients() {
+  return (
+    <>
+      <LinearGradient
+        colors={['#422006', '#713f12', '#a16207', '#ca8a04', '#eab308', '#fef9c3']}
+        start={{ x: 0.15, y: 1 }}
+        end={{ x: 0.92, y: 0.08 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+      <LinearGradient
+        colors={['rgba(69,26,3,0.38)', 'rgba(255,255,255,0)', 'rgba(254,243,199,0.42)']}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+      />
+    </>
+  );
+}
+
+/** Shard mesh for mini-league gold holo — parallel to `OverallSilverTriangularShardFoil`. */
+function MiniLeagueGoldTriangularShardFoil() {
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'mlg';
+  const shards = React.useMemo(
+    () => buildCoolTriangularShardMesh(uid, 100, 100, 10, 12, WARM_GOLD_HOLO_SHARD_PALETTE),
+    [uid]
+  );
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          opacity: 0.46,
+          transform: [{ skewX: '-5deg' }],
+        },
+      ]}
+    >
+      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {shards.map((s) => (
+          <Polygon key={s.key} points={s.points} fill={s.fill} stroke="rgba(255,251,235,0.12)" strokeWidth={0.22} />
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
+/** Horizontal warm gold / amber holo sweep — mirrors `OverallSilverHoloRainbowSweep`. */
+function MiniLeagueGoldHoloRainbowSweep({ animated }: { animated: boolean }) {
+  const x = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!animated) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(x, {
+          toValue: 1,
+          duration: 3800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(x, {
+          toValue: 0,
+          duration: 3800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      x.stopAnimation();
+    };
+  }, [animated, x]);
+  const translateX = x.interpolate({ inputRange: [0, 1], outputRange: [-200, 200] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: -36,
+        bottom: -36,
+        left: '-42%',
+        width: '185%',
+        opacity: 0.44,
+        transform: [{ translateX }, { rotate: '19deg' }],
+      }}
+    >
+      <LinearGradient
+        colors={[
+          'rgba(255,255,255,0)',
+          'rgba(251,191,36,0.34)',
+          'rgba(254,215,170,0.28)',
+          'rgba(253,224,71,0.4)',
+          'rgba(245,158,11,0.26)',
+          'rgba(254,243,199,0.36)',
+          'rgba(234,179,8,0.24)',
+          'rgba(255,255,255,0)',
+        ]}
+        locations={[0, 0.1, 0.26, 0.42, 0.55, 0.72, 0.88, 1]}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={{ flex: 1 }}
+      />
+    </Animated.View>
+  );
+}
+
+/** Vertical pearlescent drift — mirrors `OverallSilverHoloCounterSweep`. */
+function MiniLeagueGoldHoloCounterSweep({ animated }: { animated: boolean }) {
+  const y = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (!animated) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(y, {
+          toValue: 1,
+          duration: 5200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(y, {
+          toValue: 0,
+          duration: 5200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      y.stopAnimation();
+    };
+  }, [animated, y]);
+  const translateY = y.interpolate({ inputRange: [0, 1], outputRange: [-140, 140] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: '-30%',
+        bottom: '-30%',
+        left: 0,
+        right: 0,
+        opacity: 0.32,
+        transform: [{ translateY }, { rotate: '-13deg' }],
+      }}
+    >
+      <LinearGradient
+        colors={[
+          'rgba(255,255,255,0)',
+          'rgba(251,146,60,0.28)',
+          'rgba(254,243,199,0.38)',
+          'rgba(217,119,6,0.22)',
+          'rgba(253,224,71,0.3)',
+          'rgba(255,255,255,0)',
+        ]}
+        locations={[0, 0.22, 0.45, 0.58, 0.78, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ flex: 1 }}
+      />
+    </Animated.View>
+  );
+}
+
+/** Amber → gold foil + dual holo sweeps; structure matches `ChampionOverallSilverHoloBackground`. */
+function ChampionMiniLeagueGoldHoloBackground({ animated = true }: { animated?: boolean }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 28, overflow: 'hidden' }}>
+      <MiniLeagueGoldBaseGradients />
+      {animated ? (
+        <>
+          <ChampionJaggedDiagonalFoilMicro tone="warm" />
+          <MiniLeagueGoldTriangularShardFoil />
+          <MiniLeagueGoldHoloCounterSweep animated />
+          <MiniLeagueGoldHoloRainbowSweep animated />
+          <WinnerShimmer durationMs={1100} delayMs={0} opacity={0.56} tint="gold" skipFirstDelay />
+          <WinnerShimmer durationMs={1600} delayMs={140} opacity={0.4} tint="gold" />
+          <WinnerShimmer durationMs={2100} delayMs={280} opacity={0.32} tint="white" />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/** Slate → chrome → silver highlight; triangular foil + dual holo sweeps (trophy interior uses separate masked fill in body). */
+function ChampionOverallSilverHoloBackground({ animated = true }: { animated?: boolean }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 28, overflow: 'hidden' }}>
+      <OverallSilverBaseGradients />
+      {animated ? (
+        <>
+          <ChampionJaggedDiagonalFoilMicro tone="cool" />
+          <OverallSilverTriangularShardFoil />
+          <OverallSilverHoloCounterSweep animated />
+          <OverallSilverHoloRainbowSweep animated />
+          <WinnerShimmer durationMs={1100} delayMs={0} opacity={0.56} tint="silver" skipFirstDelay />
+          <WinnerShimmer durationMs={1600} delayMs={140} opacity={0.4} tint="silver" />
+          <WinnerShimmer durationMs={2100} delayMs={280} opacity={0.32} tint="white" />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/** Triangular prism mesh + animated silver/chrome sweeps, clipped to trophy. */
+function ChampionOverallTrophyWatermark() {
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'ovTr';
+  const maskId = `${uid}m`;
+  const gidRb = `${uid}hol_rb`;
+  const gidPr = `${uid}hol_pr`;
+  const gidRad = `${uid}hol_rad`;
+  const sz = TROPHY_WATERMARK_SIZE;
+  const half = sz / 2;
+  const shards = React.useMemo(
+    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 14, 17, COOL_HOLO_SHARD_PALETTE_INTERIOR),
+    [uid]
+  );
+  const shardStroke = 0.22 * (512 / 100);
+
+  const sweepX = React.useRef(new Animated.Value(0)).current;
+  const sweepY = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    const lx = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweepX, {
+          toValue: 1,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+        Animated.timing(sweepX, {
+          toValue: 0,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    const ly = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweepY, {
+          toValue: 1,
+          duration: 4000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(sweepY, {
+          toValue: 0,
+          duration: 4000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    lx.start();
+    ly.start();
+    return () => {
+      lx.stop();
+      ly.stop();
+      sweepX.stopAnimation();
+      sweepY.stopAnimation();
+    };
+  }, [sweepX, sweepY]);
+
+  const tx = sweepX.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
+  const ty = sweepY.interpolate({ inputRange: [0, 1], outputRange: [-110, 110] });
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width: sz,
+        height: sz,
+        marginLeft: -half,
+        marginTop: -half + TROPHY_VERTICAL_ALIGN_OFFSET,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Svg width={sz} height={sz} viewBox="0 0 512 512" opacity={0.68}>
+        <Defs>
+          <Mask id={maskId}>
+            <Rect width="512" height="512" fill="#000" />
+            <Path d={IONICON_TROPHY_PATH} fill="#fff" />
+          </Mask>
+          <SvgLinearGradient id={gidRb} x1="0" y1="0.5" x2="1" y2="0.5">
+            <Stop offset="0" stopColor="#ffffff" stopOpacity={0} />
+            <Stop offset="0.12" stopColor="#cbd5e1" stopOpacity={0.38} />
+            <Stop offset="0.28" stopColor="#f8fafc" stopOpacity={0.48} />
+            <Stop offset="0.42" stopColor="#94a3b8" stopOpacity={0.34} />
+            <Stop offset="0.55" stopColor="#e2e8f0" stopOpacity={0.45} />
+            <Stop offset="0.68" stopColor="#64748b" stopOpacity={0.28} />
+            <Stop offset="0.82" stopColor="#bae6fd" stopOpacity={0.24} />
+            <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+          </SvgLinearGradient>
+          <SvgLinearGradient id={gidPr} x1="0.5" y1="0" x2="0.5" y2="1">
+            <Stop offset="0" stopColor="#ffffff" stopOpacity={0} />
+            <Stop offset="0.24" stopColor="#e2e8f0" stopOpacity={0.42} />
+            <Stop offset="0.46" stopColor="#f1f5f9" stopOpacity={0.46} />
+            <Stop offset="0.58" stopColor="#94a3b8" stopOpacity={0.32} />
+            <Stop offset="0.76" stopColor="#cbd5e1" stopOpacity={0.38} />
+            <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+          </SvgLinearGradient>
+          <RadialGradient id={gidRad} cx="40%" cy="34%" rx="72%" ry="78%" fy="30%">
+            <Stop offset="0" stopColor="#f8fafc" stopOpacity={0.38} />
+            <Stop offset="0.32" stopColor="#cbd5e1" stopOpacity={0.28} />
+            <Stop offset="0.58" stopColor="#94a3b8" stopOpacity={0.18} />
+            <Stop offset="1" stopColor="#f1f5f9" stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <G mask={`url(#${maskId})`}>
+          <Rect x="0" y="0" width="512" height="512" fill="rgba(248,250,252,0.14)" />
+          <Rect x="0" y="0" width="512" height="512" fill={`url(#${gidRad})`} opacity={0.55} />
+          <G opacity={0.72} transform="translate(256 255) skewX(-5) translate(-256 -255)">
+            {shards.map((s) => (
+              <Polygon
+                key={s.key}
+                points={s.points}
+                fill={s.fill}
+                stroke="rgba(248,250,252,0.22)"
+                strokeWidth={shardStroke}
+              />
+            ))}
+          </G>
+          <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
+            <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
+          </AnimatedTrophyHoloG>
+          <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
+            <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
+          </AnimatedTrophyHoloG>
+        </G>
+      </Svg>
+    </View>
+  );
+}
+
+/** Heroicons cup silhouette + warm gold holo — paired with `ChampionMiniLeagueGoldHoloBackground`. */
+function ChampionMiniLeagueTrophyWatermark() {
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'mlTr';
+  const maskId = `${uid}m`;
+  const gidRb = `${uid}hol_rb`;
+  const gidPr = `${uid}hol_pr`;
+  const gidRad = `${uid}hol_rad`;
+  const sz = MINI_LEAGUE_TROPHY_WATERMARK_SIZE;
+  const half = sz / 2;
+  const shards = React.useMemo(
+    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 14, 17, WARM_GOLD_HOLO_SHARD_PALETTE_INTERIOR),
+    [uid]
+  );
+  const shardStroke = 0.22 * (512 / 100);
+
+  const sweepX = React.useRef(new Animated.Value(0)).current;
+  const sweepY = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    const lx = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweepX, {
+          toValue: 1,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+        Animated.timing(sweepX, {
+          toValue: 0,
+          duration: 2600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    const ly = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweepY, {
+          toValue: 1,
+          duration: 4000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+        Animated.timing(sweepY, {
+          toValue: 0,
+          duration: 4000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    lx.start();
+    ly.start();
+    return () => {
+      lx.stop();
+      ly.stop();
+      sweepX.stopAnimation();
+      sweepY.stopAnimation();
+    };
+  }, [sweepX, sweepY]);
+
+  const tx = sweepX.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
+  const ty = sweepY.interpolate({ inputRange: [0, 1], outputRange: [-110, 110] });
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width: sz,
+        height: sz,
+        marginLeft: -half,
+        marginTop: -half + TROPHY_VERTICAL_ALIGN_OFFSET,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Svg width={sz} height={sz} viewBox="0 0 512 512" opacity={0.66}>
+        <Defs>
+          <Mask id={maskId}>
+            <Rect width="512" height="512" fill="#000" />
+            <G transform="translate(256 266) scale(14.25) translate(-12 -12)">
+              <Path d={MINI_LEAGUE_HERO_TROPHY_PATH} fill="#fff" />
+            </G>
+          </Mask>
+          <SvgLinearGradient id={gidRb} x1="0" y1="0.5" x2="1" y2="0.5">
+            <Stop offset="0" stopColor="#ffffff" stopOpacity={0} />
+            <Stop offset="0.12" stopColor="#fcd34d" stopOpacity={0.42} />
+            <Stop offset="0.28" stopColor="#fef3c7" stopOpacity={0.5} />
+            <Stop offset="0.42" stopColor="#d97706" stopOpacity={0.36} />
+            <Stop offset="0.55" stopColor="#fde68a" stopOpacity={0.44} />
+            <Stop offset="0.68" stopColor="#b45309" stopOpacity={0.28} />
+            <Stop offset="0.82" stopColor="#fbbf24" stopOpacity={0.34} />
+            <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+          </SvgLinearGradient>
+          <SvgLinearGradient id={gidPr} x1="0.5" y1="0" x2="0.5" y2="1">
+            <Stop offset="0" stopColor="#ffffff" stopOpacity={0} />
+            <Stop offset="0.24" stopColor="#fde68a" stopOpacity={0.44} />
+            <Stop offset="0.46" stopColor="#fef9c3" stopOpacity={0.46} />
+            <Stop offset="0.58" stopColor="#d97706" stopOpacity={0.34} />
+            <Stop offset="0.76" stopColor="#fcd34d" stopOpacity={0.4} />
+            <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
+          </SvgLinearGradient>
+          <RadialGradient id={gidRad} cx="40%" cy="34%" rx="72%" ry="78%" fy="30%">
+            <Stop offset="0" stopColor="#fffbeb" stopOpacity={0.4} />
+            <Stop offset="0.32" stopColor="#fcd34d" stopOpacity={0.3} />
+            <Stop offset="0.58" stopColor="#ca8a04" stopOpacity={0.22} />
+            <Stop offset="1" stopColor="#fef3c7" stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <G mask={`url(#${maskId})`}>
+          <Rect x="0" y="0" width="512" height="512" fill="rgba(255,251,235,0.15)" />
+          <Rect x="0" y="0" width="512" height="512" fill={`url(#${gidRad})`} opacity={0.55} />
+          <G opacity={0.72} transform="translate(256 255) skewX(-5) translate(-256 -255)">
+            {shards.map((s) => (
+              <Polygon
+                key={s.key}
+                points={s.points}
+                fill={s.fill}
+                stroke="rgba(255,251,235,0.24)"
+                strokeWidth={shardStroke}
+              />
+            ))}
+          </G>
+          <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
+            <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
+          </AnimatedTrophyHoloG>
+          <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
+            <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
+          </AnimatedTrophyHoloG>
+        </G>
+      </Svg>
+    </View>
+  );
+}
+
+function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
+  const { data: authUser } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      return data.user ?? null;
+    },
+    staleTime: 60_000,
+  });
+  const userId = authUser?.id ? String(authUser.id) : null;
+
+  const { data: homeSnap } = useQuery<HomeSnapshot>({
+    queryKey: ['homeSnapshot'],
+    queryFn: () => api.getHomeSnapshot(),
+    staleTime: 60_000,
+  });
+
+  const parsed = parseChampionMiniLeagueEventKey(eventKey);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['popup-card', 'championMiniLeague', eventKey ?? 'none', userId ?? 'anon', homeSnap?.currentGw ?? null],
+    enabled: !!userId && !!parsed,
+    staleTime: 60_000,
+    queryFn: async (): Promise<MiniLeagueChampionSummary | null> => {
+      if (!parsed || !userId) return null;
+      if (parsed.leagueId === '__sim__') return buildSimulatorMiniLeagueChampionPayload();
+      const resolverGw =
+        typeof homeSnap?.currentGw === 'number' && Number.isFinite(homeSnap.currentGw)
+          ? Math.max(homeSnap.currentGw, SEASON_LAST_GW)
+          : SEASON_LAST_GW;
+      return fetchMiniLeagueChampionSummaryForUserAndLeague({
+        userId,
+        leagueId: parsed.leagueId,
+        currentGwMeta: resolverGw,
+        latestGw: parsed.gw,
+      });
+    },
+  });
+
+  const { data: profileSummary } = useQuery<ProfileSummary>({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !parsed) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Loading…
+        </TotlText>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Champion
+        </TotlText>
+      </View>
+    );
+  }
+
+  const joint = data.jointChampions > 1;
+
+  return (
+    <View style={{ flex: 1, width: '100%' }}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 0 }]}>
+        <ChampionMiniLeagueTrophyWatermark />
+      </View>
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingTop: 4,
+          paddingBottom: 4,
+          zIndex: 1,
+        }}
+      >
+        <View style={{ alignItems: 'center', marginBottom: 22, width: '100%' }}>
+          <PersonalWinnerHeader
+            profile={profileSummary}
+            data={{
+              gw: SEASON_LAST_GW,
+              victoryType: 'monthly',
+              label: `GW${SEASON_LAST_GW} • Mini league`,
+              points: data.mltPts,
+              winnerCount: data.jointChampions,
+              joint,
+            }}
+          />
+          <TotlText
+            style={{
+              color: '#FFFBEB',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 17,
+              letterSpacing: 1.4,
+              lineHeight: 22,
+              textAlign: 'center',
+              marginTop: 6,
+            }}
+          >
+            2025/26
+          </TotlText>
+          <TotlText
+            style={{
+              color: '#FFFFFF',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 26,
+              letterSpacing: 2.4,
+              lineHeight: 30,
+              textAlign: 'center',
+              marginTop: 6,
+              paddingHorizontal: 6,
+            }}
+          >
+            {joint ? 'MINI LEAGUE CHAMPIONS' : 'MINI LEAGUE CHAMPION'}
+          </TotlText>
+        </View>
+
+        <View style={{ width: '100%', alignItems: 'center', paddingHorizontal: 16, gap: 8 }}>
+          <TotlText
+            style={{
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: '800',
+              fontSize: 14,
+              lineHeight: 20,
+              textAlign: 'center',
+            }}
+          >
+            {joint ? 'Joint first place in' : 'First place in'}
+          </TotlText>
+          <TotlText
+            style={{
+              color: '#FFFFFF',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 14,
+              lineHeight: 20,
+              textAlign: 'center',
+              textTransform: 'uppercase',
+              paddingHorizontal: 8,
+            }}
+          >
+            {data.leagueName}
+          </TotlText>
+          <TotlText
+            style={{
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: '800',
+              fontSize: 14,
+              lineHeight: 20,
+              textAlign: 'center',
+            }}
+          >
+            {joint
+              ? `${data.jointChampions} of you tied at the top on mini-league table points — football heritage among friends.`
+              : `${data.mltPts} table pts, ${data.unicorns} unicorns, ${data.ocp} OCP — elite among friends this season.`}
+          </TotlText>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ChampionOverallCardBody({ eventKey }: { eventKey?: string }) {
+  const { data: authUser } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      return data.user ?? null;
+    },
+    staleTime: 60_000,
+  });
+  const userId = authUser?.id ? String(authUser.id) : null;
+  const looksValid = parseChampionOverallEventKey(eventKey);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['popup-card', 'championOverall', eventKey ?? 'none', userId ?? 'anon'],
+    enabled: !!userId && looksValid,
+    staleTime: 60_000,
+    queryFn: async (): Promise<OverallChampionSummary | null> => {
+      if (!userId) return null;
+      if (eventKey === 'simulator:championOverall') return buildSimulatorOverallChampionPayload();
+      return fetchOverallChampionSummaryForUser(userId);
+    },
+  });
+
+  const { data: profileSummary } = useQuery<ProfileSummary>({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !looksValid) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Loading…
+        </TotlText>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+        <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
+          Champion
+        </TotlText>
+      </View>
+    );
+  }
+
+  const joint = data.jointChampions > 1;
+
+  return (
+    <View style={{ flex: 1, width: '100%' }}>
+      <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 0 }]}>
+        <ChampionOverallTrophyWatermark />
+      </View>
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingTop: 4,
+          paddingBottom: 4,
+          zIndex: 1,
+        }}
+      >
+        <View style={{ alignItems: 'center', marginBottom: 22, width: '100%' }}>
+          <PersonalWinnerHeader
+            profile={profileSummary}
+            data={{
+              gw: SEASON_LAST_GW,
+              victoryType: 'monthly',
+              label: 'Overall table',
+              points: data.ocp,
+              winnerCount: data.jointChampions,
+              joint,
+            }}
+          />
+          <TotlText
+            style={{
+              color: '#F1F5F9',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 17,
+              letterSpacing: 1.4,
+              lineHeight: 22,
+              textAlign: 'center',
+              marginTop: 6,
+            }}
+          >
+            2025/26
+          </TotlText>
+          <TotlText
+            style={{
+              color: '#FFFFFF',
+              fontFamily: 'Gramatika-Bold',
+              fontWeight: '900',
+              fontSize: 26,
+              letterSpacing: 2.4,
+              lineHeight: 30,
+              textAlign: 'center',
+              marginTop: 6,
+              paddingHorizontal: 6,
+            }}
+          >
+            {joint ? 'OVERALL CHAMPIONS' : 'OVERALL CHAMPION'}
+          </TotlText>
+        </View>
+
+        <View style={{ width: '100%', alignItems: 'center', paddingHorizontal: 16 }}>
+          <TotlText
+            style={{
+              color: 'rgba(255,255,255,0.92)',
+              fontWeight: '800',
+              fontSize: 14,
+              lineHeight: 20,
+              textAlign: 'center',
+            }}
+          >
+            {joint
+              ? `The best predictors in TOTL this season — ${data.jointChampions} of you tied on overall OCP. Football heritage secured.`
+              : 'The best predictor in TOTL this season. Football heritage secured.'}
+          </TotlText>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function PopupInfoCard({
   kind,
   title,
@@ -2317,13 +3535,15 @@ export default function PopupInfoCard({
 }) {
   const showWinnersFrame = kind === 'winners';
   const showPersonalWinnerFrame = kind === 'personalWinner';
+  const showChampionWinner = kind === 'championMiniLeague' || kind === 'championOverall';
   const showResultsFrame = false;
   const showNewGameweekFrame = kind === 'newGameweek';
   const showDoPredictionsCard = kind === 'doPredictions';
-  const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame;
+  const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame || showChampionWinner;
   const showEmeraldCard = kind === 'newGameweek';
   const runDecorativeAnimations = isTopCard && !isShareAsset;
   const personalWinnerVariant = showPersonalWinnerFrame ? parsePersonalWinnerTypeFromEventKey(eventKey) : 'gameweek';
+  const lightCloseButton = showEmeraldCard || showPersonalWinnerFrame || showChampionWinner;
   const content = (
     <View
       style={{
@@ -2338,6 +3558,13 @@ export default function PopupInfoCard({
       }}
     >
       {showPersonalWinnerFrame ? <PersonalWinnerShinyBackground animated={runDecorativeAnimations} variant={personalWinnerVariant} /> : null}
+      {showChampionWinner ? (
+        kind === 'championOverall' ? (
+          <ChampionOverallSilverHoloBackground animated={runDecorativeAnimations} />
+        ) : (
+          <ChampionMiniLeagueGoldHoloBackground animated={runDecorativeAnimations} />
+        )
+      ) : null}
       {showWinnersFrame ? <WinnersAnimatedBorder animated={runDecorativeAnimations} /> : null}
       {showResultsFrame ? <ResultsEmeraldBorder /> : null}
       {isTopCard && onClose ? (
@@ -2356,11 +3583,11 @@ export default function PopupInfoCard({
             borderRadius: 18,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: showEmeraldCard ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.05)',
+            backgroundColor: lightCloseButton ? 'rgba(255,255,255,0.16)' : 'rgba(15,23,42,0.05)',
             opacity: pressed ? 0.75 : 1,
           })}
         >
-          <Ionicons name="close" size={20} color={showEmeraldCard ? '#FFFFFF' : '#0F172A'} />
+          <Ionicons name="close" size={20} color={lightCloseButton ? '#FFFFFF' : '#0F172A'} />
         </Pressable>
       ) : null}
 
@@ -2377,6 +3604,10 @@ export default function PopupInfoCard({
           <NewGameweekCardBody eventKey={eventKey} onClose={onClose} />
         ) : kind === 'doPredictions' ? (
           <DoPredictionsCardBody eventKey={eventKey} onClose={onClose} />
+        ) : kind === 'championMiniLeague' ? (
+          <ChampionMiniLeagueCardBody eventKey={eventKey} />
+        ) : kind === 'championOverall' ? (
+          <ChampionOverallCardBody eventKey={eventKey} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <TotlText
@@ -2421,8 +3652,6 @@ export default function PopupInfoCard({
       </View>
     </View>
   );
-
-  if (!showWinnersFrame) return content;
 
   return content;
 }

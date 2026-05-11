@@ -515,6 +515,59 @@ function outcomesForGwFromResultsLive(args: {
   return outcomeByFixtureIndex;
 }
 
+function parseKickoffMs(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+/**
+ * True when the meta gameweek’s last scheduled fixture is FINISHED and nothing is IN_PLAY/PAUSED
+ * (aligns with mobile `getGameweekStateFromSnapshot` → RESULTS_PRE_GW).
+ * If there are no `app_fixtures` rows for `metaGw` in `fxRows`, returns true (caller skips narrowing).
+ */
+function isMetaGwFullyFinishedForStats(metaGw: number, fxRows: any[], liveRows: any[], now = new Date()): boolean {
+  const rawFx = (fxRows ?? []).filter((f: any) => Number(f?.gw) === metaGw);
+  if (rawFx.length === 0) return true;
+
+  const fixturesWithKick = rawFx
+    .map((f: any) => ({
+      kick: parseKickoffMs(f?.kickoff_time),
+      fixture_index: typeof f?.fixture_index === 'number' ? f.fixture_index : null,
+      api_match_id: parseFiniteApiMatchId(f?.api_match_id),
+    }))
+    .filter((x): x is { kick: number; fixture_index: number | null; api_match_id: number | null } => x.kick != null)
+    .sort((a, b) => a.kick - b.kick);
+
+  if (fixturesWithKick.length === 0) return false;
+
+  if (now.getTime() < fixturesWithKick[0]!.kick) return false;
+
+  const liveAll = liveRows ?? [];
+  const liveForGw = liveAll.filter((ls: any) => !Number.isFinite(Number(ls?.gw)) || Number(ls?.gw) === metaGw);
+  if (liveForGw.some((ls: any) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED')) return false;
+
+  const last = fixturesWithKick[fixturesWithKick.length - 1]!;
+  const lastFi = last.fixture_index;
+  const lastAid = last.api_match_id;
+
+  let lastLive: any = null;
+  if (typeof lastFi === 'number') {
+    lastLive =
+      liveForGw.find((ls: any) => Number(ls?.fixture_index) === lastFi && Number(ls?.gw) === metaGw) ??
+      liveForGw.find((ls: any) => Number(ls?.fixture_index) === lastFi) ??
+      null;
+  }
+  if (!lastLive && lastAid != null) {
+    lastLive =
+      liveForGw.find((ls: any) => parseFiniteApiMatchId(ls?.api_match_id) === lastAid) ??
+      liveAll.find((ls: any) => parseFiniteApiMatchId(ls?.api_match_id) === lastAid) ??
+      null;
+  }
+
+  return lastLive?.status === 'FINISHED';
+}
+
 export async function getProfileStats(opts: { userId: string; supa: any }): Promise<UserStatsData> {
   const { userId, supa } = opts;
 
@@ -573,20 +626,13 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   if (!lastCompletedGw && !metaGw) return stats;
 
-  const [myAppPicksPaged, allAppPicksRows, legacyTableProbe] = await Promise.all([
+  /** Never load unscoped `app_picks` — it grows with every user × GW and was widening live/fixture fetches to the whole season for everyone. */
+  const [myAppPicksPaged, legacyTableProbe] = await Promise.all([
     fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
       (supa as any)
         .from('app_picks')
         .select('gw, fixture_index, pick')
         .eq('user_id', userId)
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true })
-        .range(from, to)
-    ),
-    fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
-      (supa as any)
-        .from('app_picks')
-        .select('gw, fixture_index, pick')
         .order('gw', { ascending: true })
         .order('fixture_index', { ascending: true })
         .range(from, to)
@@ -618,10 +664,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const g = Number(p.gw);
     if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
   });
-  (allAppPicksRows ?? []).forEach((p) => {
-    const g = Number(p.gw);
-    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
-  });
+  /** Always load fixtures/live for the meta line GW so `finalizedStatsGwCap` can detect last-kickoff FINISHED even if pick rows are missing or only legacy. */
+  if (typeof metaGw === 'number' && metaGw > 0) gwForFxLiveFetch.add(metaGw);
   const pickGwsSortedForFetch = [...gwForFxLiveFetch].sort((a, b) => a - b);
 
   let livePickRows: Array<{
@@ -684,7 +728,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
           (supa as any)
             .from('app_fixtures')
             .select(
-              'gw, fixture_index, api_match_id, home_code, away_code, home_name, away_name, home_team, away_team'
+              'gw, fixture_index, api_match_id, kickoff_time, home_code, away_code, home_name, away_name, home_team, away_team'
             )
             .in('gw', pickGwsSortedForFetch)
             .order('gw', { ascending: true })
@@ -699,6 +743,18 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   livePickRows = liveFxBundle.live;
   fxPickRows = liveFxBundle.fx;
+
+  /**
+   * `app_gw_results` max `gw` can advance mid-week while the last fixture is still scheduled — treat that GW as
+   * not finished for best/worst/avg/weekly par / pick-rate caps (same idea as mobile last-fixture FINISHED).
+   */
+  let finalizedStatsGwCap: number | null = statsEligibleGwCap;
+  if (typeof metaGw === 'number' && metaGw > 0 && finalizedStatsGwCap != null && finalizedStatsGwCap >= metaGw) {
+    const hasFxForMeta = (fxPickRows ?? []).some((f: any) => Number(f?.gw) === metaGw);
+    if (hasFxForMeta && !isMetaGwFullyFinishedForStats(metaGw, fxPickRows, livePickRows)) {
+      finalizedStatsGwCap = metaGw > 1 ? metaGw - 1 : null;
+    }
+  }
 
   const appFxByGwForRemap = groupFixtureRowsByGw(fxPickRows);
 
@@ -762,10 +818,6 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const g = Number(p.gw);
     if (Number.isFinite(g)) gwForOutcomes.add(g);
   });
-  (allAppPicksRows ?? []).forEach((p) => {
-    const g = Number(p.gw);
-    if (Number.isFinite(g)) gwForOutcomes.add(g);
-  });
   const pickGwsSorted = [...gwForOutcomes].sort((a, b) => a - b);
 
   const augmentedOutcomeByPickKey = new Map<string, 'H' | 'D' | 'A'>();
@@ -791,7 +843,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   let total = 0;
   allPicks.forEach((p) => {
     const gw = Number(p.gw);
-    if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) return;
+    if (finalizedStatsGwCap != null && Number.isFinite(gw) && gw > finalizedStatsGwCap) return;
     const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
     if (!res) return;
     total++;
@@ -801,13 +853,23 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   let fieldCorrect = 0;
   let fieldTotal = 0;
-  for (const p of allAppPicksRows ?? []) {
-    const gw = Number(p.gw);
-    if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) continue;
-    const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
-    if (!res) continue;
-    fieldTotal++;
-    if (p.pick === res) fieldCorrect++;
+  if (finalizedStatsGwCap != null && finalizedStatsGwCap >= 1) {
+    const allAppPicksRowsForField = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
+      (from, to) =>
+        (supa as any)
+          .from('app_picks')
+          .select('gw, fixture_index, pick')
+          .lte('gw', finalizedStatsGwCap)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to)
+    );
+    for (const p of allAppPicksRowsForField) {
+      const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
+      if (!res) continue;
+      fieldTotal++;
+      if (p.pick === res) fieldCorrect++;
+    }
   }
   if (fieldTotal > 0) {
     stats.correctPredictionFieldAvgPct = (fieldCorrect / fieldTotal) * 100;
@@ -901,9 +963,9 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   const playedGwsSorted = [...new Set<number>([...submissionGwSet, ...pickGwSet])].sort((a, b) => a - b);
 
-  /** Avg / best / worst GW & weekly par chart — finalized gameweeks only (`statsEligibleGwCap`). */
+  /** Avg / best / worst GW & weekly par chart — finalized gameweeks only (`finalizedStatsGwCap`). */
   const playedGwsCompletedOnlySorted =
-    statsEligibleGwCap != null ? playedGwsSorted.filter((gw) => gw <= statsEligibleGwCap) : [];
+    finalizedStatsGwCap != null ? playedGwsSorted.filter((gw) => gw <= finalizedStatsGwCap) : [];
 
   if (playedGwsCompletedOnlySorted.length) {
     const resolvedPts = playedGwsCompletedOnlySorted.map((gw) => ({ gw, pts: resolveUserGwPoints(gw) }));
@@ -1153,7 +1215,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     let totalChecked = 0;
     allPicks.forEach((p) => {
       const gw = Number(p.gw);
-      if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) return;
+      if (finalizedStatsGwCap != null && Number.isFinite(gw) && gw > finalizedStatsGwCap) return;
       const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
       const counts = pickCounts.get(key);
       if (!counts) return;
@@ -1223,7 +1285,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
     for (const p of allPicks) {
       const gw = Number(p.gw);
-      if (statsEligibleGwCap != null && Number.isFinite(gw) && gw > statsEligibleGwCap) continue;
+      if (finalizedStatsGwCap != null && Number.isFinite(gw) && gw > finalizedStatsGwCap) continue;
       const key = `${Number(p.gw)}:${Number(p.fixture_index)}`;
       const result = augmentedOutcomeByPickKey.get(key);
       if (!result) continue;
