@@ -1,3 +1,4 @@
+import { orderCompletedGwsByFirstKickoff } from '@totl/domain';
 import { supabase } from './supabase';
 
 type LeagueRecord = {
@@ -5,7 +6,8 @@ type LeagueRecord = {
   name?: string | null;
   created_at?: string | null;
   activation_at?: string | null;
-  start_gw?: number | null;
+  /** Only used if present on the league object (playtotl `useLeagueMeta` does not load this from DB). */
+  start_gw?: unknown;
 };
 
 const DEADLINE_BUFFER_MINUTES = 75;
@@ -26,25 +28,52 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
   return LEAGUE_START_OVERRIDES[name];
 }
 
-type LeagueMemberRecord = {
-  created_at?: string | null;
-};
+/** Coerce `leagues.start_gw` from API/PostgREST (number or numeric string). */
+export function parseOptionalGw(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
 
+function isParseableInstant(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value.trim()));
+}
+
+/** Same filter as web `src/lib/leagueStart.ts` (excludes date-only strings length 10). */
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && value.length > 10;
 }
 
+/**
+ * Second member join time for competitive clock — must match web `getLeagueActivationAt`
+ * (`src/lib/leagueStart.ts`) so mini-league season windows match playtotl.
+ */
+export function getLeagueActivationAt(members: Array<{ created_at?: string | null }> | null | undefined): string | null {
+  const joinedAt = (members ?? [])
+    .map((m) => m.created_at)
+    .filter(isIsoDate)
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  return joinedAt[1] ?? null;
+}
+
+/** Mirror web `ensureLeagueMeta`: only name + created_at (no `start_gw` column fetch). */
 async function ensureLeagueMeta(league: LeagueRecord): Promise<LeagueRecord> {
   const needsName = typeof league.name !== 'string';
   const needsCreatedAt = typeof league.created_at !== 'string';
-  if (!needsName && !needsCreatedAt) return league;
 
-  const { data, error } = await (supabase as any)
-    .from('leagues')
-    .select('name, created_at')
-    .eq('id', league.id)
-    .maybeSingle();
-  if (error || !data) return league;
+  if (!needsName && !needsCreatedAt) {
+    return league;
+  }
+
+  const { data, error } = await (supabase as any).from('leagues').select('name, created_at').eq('id', league.id).maybeSingle();
+
+  if (error || !data) {
+    return league;
+  }
 
   return {
     ...league,
@@ -84,7 +113,7 @@ async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
           deadlineTime: new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000),
         });
       });
-      return rows;
+      return rows.sort((a, b) => a.deadlineTime.getTime() - b.deadlineTime.getTime());
     })();
   }
 
@@ -92,7 +121,7 @@ async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
 }
 
 async function resolveStartGwFromTimestamp(timestamp: string | null | undefined, currentGw: number): Promise<number> {
-  if (!isIsoDate(timestamp) || !currentGw) return currentGw;
+  if (!isParseableInstant(timestamp) || !currentGw) return currentGw;
   const activatedAt = new Date(timestamp);
   if (Number.isNaN(activatedAt.getTime())) return currentGw;
 
@@ -105,12 +134,18 @@ async function resolveStartGwFromTimestamp(timestamp: string | null | undefined,
   return currentGw;
 }
 
-export function getLeagueActivationAt(members: LeagueMemberRecord[] | null | undefined): string | null {
-  const joinedAt = (members ?? [])
-    .map((member) => member.created_at)
-    .filter(isIsoDate)
-    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-  return joinedAt[1] ?? null;
+export async function fetchLeagueActivationAt(leagueId: string): Promise<string | null> {
+  const { data, error } = await (supabase as any)
+    .from('league_members')
+    .select('user_id, created_at, users(id, name, avatar_url)')
+    .eq('league_id', leagueId)
+    .limit(200);
+  if (error) throw error;
+  return getLeagueActivationAt(
+    (data ?? []).map((r: { created_at?: string | null }) => ({
+      created_at: typeof r.created_at === 'string' ? r.created_at : null,
+    }))
+  );
 }
 
 /**
@@ -125,7 +160,11 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
   const override = getLeagueStartOverride(withMeta.name ?? null);
   if (typeof override === 'number') return override;
 
-  if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) return withMeta.start_gw;
+  // Web `resolveLeagueStartGw` only uses `start_gw` if already on the league object (not loaded in `useLeagueMeta`).
+  if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) {
+    const fromObject = parseOptionalGw(withMeta.start_gw);
+    if (fromObject !== null) return fromObject;
+  }
 
   const anchorTs = withMeta.activation_at ?? withMeta.created_at;
   if (anchorTs && currentGw) {
@@ -137,10 +176,11 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
       .order('gw', { ascending: true });
 
     const completedGws = resultsData
-      ? [...new Set((resultsData as { gw: number }[]).map((r) => r.gw))].sort((a, b) => a - b)
+      ? [...new Set((resultsData as { gw: number }[]).map((r) => r.gw))]
       : [];
+    const completedOrdered = await orderCompletedGwsByFirstKickoff(supabase as any, completedGws);
 
-    for (const gw of completedGws) {
+    for (const gw of completedOrdered) {
       const { data: firstFixture } = await (supabase as any)
         .from('app_fixtures')
         .select('kickoff_time')
@@ -169,7 +209,7 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
 }
 
 export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {
-  if (!isIsoDate(memberCreatedAt)) return fallbackStartGw;
+  if (!isParseableInstant(memberCreatedAt)) return fallbackStartGw;
   const resolved = await resolveStartGwFromTimestamp(memberCreatedAt, currentGw);
   return Math.max(fallbackStartGw, resolved);
 }

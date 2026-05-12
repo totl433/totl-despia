@@ -2,7 +2,7 @@ import React from 'react';
 import { FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigation, useScrollToTop } from '@react-navigation/native';
+import { useNavigation, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import Reanimated, { Easing, LinearTransition, useSharedValue } from 'react-native-reanimated';
 
@@ -29,6 +29,7 @@ import { DEV_FAKE_LEAGUE_ID, DEV_FAKE_LEAGUE_MEMBERS, DEV_FAKE_LEAGUE_NAME, isDe
 import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEvent, formatHeaderScoreLabel } from '../lib/headerLiveScore';
 import { useLiveScores } from '../hooks/useLiveScores';
 import usePopupCards from '../hooks/usePopupCards';
+import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -399,6 +400,7 @@ function LeagueRow({
 
 export default function LeaguesScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<LeaguesStackParamList, 'LeaguesList'>>();
   const t = useTokens();
   const { openManualResultsScoreSheetShare } = usePopupCards();
   const { width: screenWidth } = useWindowDimensions();
@@ -645,6 +647,13 @@ export default function LeaguesScreen() {
   const [joinError, setJoinError] = React.useState<string | null>(null);
   const [joining, setJoining] = React.useState(false);
 
+  React.useEffect(() => {
+    if (!route.params?.openCreateJoin) return;
+    setJoinError(null);
+    setCreateJoinOpen(true);
+    navigation.setParams({ openCreateJoin: undefined });
+  }, [navigation, route.params?.openCreateJoin]);
+
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
   const [initialLoadTimedOut, setInitialLoadTimedOut] = React.useState(false);
   React.useEffect(() => {
@@ -819,7 +828,7 @@ export default function LeaguesScreen() {
                   opacity: pressed ? 0.9 : 1,
                 })}
               >
-                <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>Retry</TotlText>
+                <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', textAlign: 'center' }}>Retry</TotlText>
               </Pressable>
             </Card>
           </View>
@@ -1088,7 +1097,7 @@ export default function LeaguesScreen() {
                       transform: [{ scale: pressed ? 0.99 : 1 }],
                     })}
                   >
-                    <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium, textAlign: 'center' }}>
+                    <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Medium', textAlign: 'center' }}>
                       Create or Join
                     </TotlText>
                   </Pressable>

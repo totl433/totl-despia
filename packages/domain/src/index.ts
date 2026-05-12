@@ -454,3 +454,12 @@ export const UnicornCardSchema = z.object({
   league_names: z.array(z.string()),
 });
 export type UnicornCard = z.infer<typeof UnicornCardSchema>;
+
+export {
+  computeWebParityMiniLeagueSeasonRows,
+  getLeagueActivationAt,
+  orderCompletedGwsByFirstKickoff,
+  type LeagueSeasonTableRow,
+  type MiniLeagueSeasonComputeOptions,
+  type MiniLeagueSeasonPreload,
+} from './leagueSeasonTableWeb.js';

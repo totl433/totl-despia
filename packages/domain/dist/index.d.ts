@@ -914,4 +914,5 @@ export declare const UnicornCardSchema: z.ZodObject<{
     league_names: z.ZodArray<z.ZodString>;
 }, z.core.$strip>;
 export type UnicornCard = z.infer<typeof UnicornCardSchema>;
+export { computeWebParityMiniLeagueSeasonRows, getLeagueActivationAt, orderCompletedGwsByFirstKickoff, type LeagueSeasonTableRow, type MiniLeagueSeasonComputeOptions, type MiniLeagueSeasonPreload, } from './leagueSeasonTableWeb.js';
 //# sourceMappingURL=index.d.ts.map

@@ -35,6 +35,7 @@ import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
 import type { PopupCardKind } from './types';
 import { getMediumName } from '../../../../../src/lib/teamNames';
+import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
 import {
   buildLiveScoreMapForFixtures,
   hydrateLiveScoreFromDb,
@@ -1825,6 +1826,330 @@ function DoPredictionsCardBody({ eventKey, onClose }: { eventKey?: string; onClo
   );
 }
 
+type WelcomeIconName = React.ComponentProps<typeof Ionicons>['name'];
+
+type WelcomeCardCopy = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  icon: WelcomeIconName;
+  gradient: [string, string, string];
+  ctaLabel?: string;
+  subtext?: string;
+};
+
+function getWelcomeCardCopy(kind: PopupCardKind | undefined): WelcomeCardCopy {
+  switch (kind) {
+    case 'welcome2':
+      return {
+        eyebrow: 'Mini leagues',
+        title: 'Mini Leagues are where the chaos happens.',
+        body:
+          'Create a league with friends, family, or work rivals and battle it out every gameweek for trophies, bragging rights, and top spot in the group chat.',
+        icon: 'people',
+        gradient: ['#1C8376', '#0F766E', '#0F172A'],
+      };
+    case 'welcome3':
+      return {
+        eyebrow: 'Global tables',
+        title: 'Compete with everyone.',
+        body:
+          "Don't worry if you joined the season late - there's a new leaderboard every month. Climb the global 2025/26 tables, unlock trophies, and earn bragging rights all season long.",
+        icon: 'earth',
+        gradient: ['#2563EB', '#7C3AED', '#0F172A'],
+      };
+    case 'welcome4':
+      return {
+        eyebrow: 'First gameweek',
+        title: 'Ready for your first Gameweek?',
+        body: 'Make your predictions, climb the tables, and start your TOTL season.',
+        icon: 'football',
+        gradient: ['#FACC15', '#1C8376', '#0F172A'],
+      };
+    case 'welcome1':
+    default:
+      return {
+        eyebrow: 'Welcome',
+        title: 'Welcome to TOTL!',
+        body:
+          'The football predictions game where every call counts. Predict match outcomes each gameweek, climb the tables, and compete with friends and football fans around the world.',
+        icon: 'sparkles',
+        gradient: ['#22C55E', '#1C8376', '#0F172A'],
+      };
+  }
+}
+
+function WelcomeCardBody({ kind, eventKey, onClose }: { kind?: PopupCardKind; eventKey?: string; onClose?: () => void }) {
+  const copy = getWelcomeCardCopy(kind);
+  const isSimulatorOpenPredictions = eventKey?.startsWith('simulator:welcome:open-predictions') === true;
+  const simulatorGw = isSimulatorOpenPredictions ? parseGwFromEventKey(eventKey) : null;
+  const { data: home } = useQuery({
+    queryKey: ['homeSnapshot'],
+    queryFn: () => api.getHomeSnapshot(),
+    staleTime: 60_000,
+  });
+
+  const gameweekState = React.useMemo(() => {
+    if (!home) return null;
+    return getGameweekStateFromSnapshot({
+      fixtures: home.fixtures ?? [],
+      liveScores: home.liveScores ?? [],
+      hasSubmittedViewingGw: !!home.hasSubmittedViewingGw,
+    });
+  }, [home]);
+
+  const currentGw =
+    typeof simulatorGw === 'number'
+      ? simulatorGw
+      : typeof home?.currentGw === 'number'
+        ? home.currentGw
+        : typeof home?.viewingGw === 'number'
+          ? home.viewingGw
+          : null;
+  const nextGw = typeof currentGw === 'number' ? currentGw + 1 : null;
+  const deadline = React.useMemo(() => getPredictionsDeadline(home?.fixtures ?? null), [home?.fixtures]);
+  const canPredict =
+    kind === 'welcome4' &&
+    (isSimulatorOpenPredictions ||
+      ((gameweekState === 'GW_OPEN' || gameweekState === 'GW_PREDICTED' || gameweekState == null) &&
+        (deadline == null || deadline.getTime() > Date.now())));
+
+  const welcome4Body =
+    kind === 'welcome4' && !canPredict && currentGw
+      ? `You've missed the deadline for Gameweek ${currentGw} - but Gameweek ${nextGw ?? currentGw + 1} is coming soon.`
+      : copy.body;
+  const ctaLabel =
+    kind === 'welcome4'
+      ? canPredict
+        ? currentGw
+          ? `Predict for Gameweek ${currentGw}`
+          : 'Predict for this Gameweek'
+        : 'Start or Join a Mini League'
+      : copy.ctaLabel;
+  const secondaryCtaLabel = kind === 'welcome4' && canPredict ? 'Start or Join a Mini League' : null;
+  const welcome4Subtext =
+    kind === 'welcome4' && !canPredict
+      ? nextGw
+        ? `Gameweek ${nextGw} Coming Soon`
+        : 'Next Gameweek Coming Soon'
+      : null;
+
+  const openMiniLeaguesCreateJoin = () => {
+    onClose?.();
+    requestAnimationFrame(() => {
+      if (navigationRef.isReady()) {
+        (navigationRef as any).navigate('Tabs', {
+          screen: 'Leagues',
+          params: { screen: 'LeaguesList', params: { openCreateJoin: true } },
+        });
+      }
+    });
+  };
+
+  const handlePrimaryAction = () => {
+    if (kind === 'welcome4' && !canPredict) {
+      openMiniLeaguesCreateJoin();
+      return;
+    }
+
+    if (kind === 'welcome4' && canPredict) {
+      onClose?.();
+      requestAnimationFrame(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('PredictionsFlow');
+        }
+      });
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden' }}>
+      <LinearGradient
+        colors={copy.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: -24, right: -24, bottom: -24, left: -24 }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: 196,
+          height: 196,
+          borderRadius: 98,
+          right: -78,
+          top: -58,
+          backgroundColor: 'rgba(255,255,255,0.14)',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: 150,
+          height: 150,
+          borderRadius: 75,
+          left: -62,
+          bottom: 34,
+          backgroundColor: 'rgba(250,204,21,0.16)',
+        }}
+      />
+
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingHorizontal: 2,
+          paddingTop: 40,
+          paddingBottom: 72,
+        }}
+      >
+        <View
+          style={{
+            width: 68,
+            height: 68,
+            borderRadius: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(255,255,255,0.17)',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.24)',
+            transform: [{ rotate: '-4deg' }],
+          }}
+        >
+          <Ionicons name={copy.icon} size={34} color="#FFFFFF" />
+        </View>
+
+        <TotlText
+          style={{
+            color: 'rgba(255,255,255,0.78)',
+            fontFamily: 'Gramatika-Bold',
+            fontWeight: '900',
+            fontSize: 12,
+            lineHeight: 14,
+            letterSpacing: 1.6,
+            textTransform: 'uppercase',
+            marginTop: 14,
+          }}
+        >
+          {copy.eyebrow}
+        </TotlText>
+        <TotlText
+          style={{
+            color: '#FFFFFF',
+            fontFamily: 'Gramatika-Bold',
+            textAlign: 'center',
+            fontWeight: '900',
+            fontSize: 23,
+            lineHeight: 27,
+            marginTop: 8,
+            maxWidth: 292,
+          }}
+        >
+          {copy.title}
+        </TotlText>
+        <TotlText
+          style={{
+            color: 'rgba(255,255,255,0.84)',
+            textAlign: 'center',
+            marginTop: 10,
+            fontSize: 13,
+            lineHeight: 18,
+            maxWidth: 292,
+          }}
+        >
+          {welcome4Body}
+        </TotlText>
+
+        {ctaLabel ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={ctaLabel}
+            onPress={handlePrimaryAction}
+            style={({ pressed }) => ({
+              marginTop: 16,
+              width: '100%',
+              maxWidth: 286,
+              paddingHorizontal: 16,
+              paddingVertical: 13,
+              borderRadius: 18,
+              backgroundColor: '#FFFFFF',
+              opacity: pressed ? 0.86 : 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000000',
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 5,
+              transform: [{ scale: pressed ? 0.99 : 1 }],
+            })}
+          >
+            <Ionicons name={canPredict ? 'football' : 'people'} size={17} color="#0F172A" />
+            <View style={{ width: 8 }} />
+            <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', fontSize: 13, lineHeight: 16, fontWeight: '900' }}>
+              {ctaLabel}
+            </TotlText>
+          </Pressable>
+        ) : null}
+
+        {secondaryCtaLabel ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={secondaryCtaLabel}
+            onPress={openMiniLeaguesCreateJoin}
+            style={({ pressed }) => ({
+              marginTop: 12,
+              width: '100%',
+              maxWidth: 286,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.48)',
+              backgroundColor: 'rgba(255,255,255,0.14)',
+              opacity: pressed ? 0.78 : 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+            })}
+          >
+            <Ionicons name="people" size={17} color="#FFFFFF" />
+            <View style={{ width: 8 }} />
+            <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', fontSize: 12, lineHeight: 15, fontWeight: '900' }}>
+              {secondaryCtaLabel}
+            </TotlText>
+          </Pressable>
+        ) : null}
+
+        {welcome4Subtext || copy.subtext ? (
+          <TotlText
+            style={{
+              color: 'rgba(255,255,255,0.72)',
+              textAlign: 'center',
+              marginTop: 9,
+              fontSize: 11,
+              lineHeight: 15,
+              maxWidth: 276,
+            }}
+          >
+            {welcome4Subtext ?? copy.subtext}
+          </TotlText>
+        ) : null}
+      </View>
+
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+        <TotlText style={{ color: 'rgba(255,255,255,0.74)', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
+          Swipe away when you&apos;re done
+        </TotlText>
+        <View style={{ marginTop: 6 }}>
+          <SwipeFingerIcon color="rgba(255,255,255,0.74)" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function WinnersCardBody({ eventKey }: { eventKey?: string }) {
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
@@ -3539,8 +3864,9 @@ export default function PopupInfoCard({
   const showResultsFrame = false;
   const showNewGameweekFrame = kind === 'newGameweek';
   const showDoPredictionsCard = kind === 'doPredictions';
+  const showWelcomeCard = kind === 'welcome1' || kind === 'welcome2' || kind === 'welcome3' || kind === 'welcome4';
   const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame || showChampionWinner;
-  const showEmeraldCard = kind === 'newGameweek';
+  const showEmeraldCard = kind === 'newGameweek' || showWelcomeCard;
   const runDecorativeAnimations = isTopCard && !isShareAsset;
   const personalWinnerVariant = showPersonalWinnerFrame ? parsePersonalWinnerTypeFromEventKey(eventKey) : 'gameweek';
   const lightCloseButton = showEmeraldCard || showPersonalWinnerFrame || showChampionWinner;
@@ -3550,11 +3876,11 @@ export default function PopupInfoCard({
         flex: 1,
         backgroundColor: showEmeraldCard ? '#1C8376' : showInsetFrame ? 'transparent' : '#FFFFFF',
         borderRadius: 28,
-        paddingHorizontal: showDoPredictionsCard ? 0 : 24,
-        paddingTop: showDoPredictionsCard ? 0 : kind === 'resultsScoreSheet' ? 18 : 24,
-        paddingBottom: showDoPredictionsCard ? 0 : 22,
+        paddingHorizontal: showDoPredictionsCard || showWelcomeCard ? 0 : 24,
+        paddingTop: showDoPredictionsCard || showWelcomeCard ? 0 : kind === 'resultsScoreSheet' ? 18 : 24,
+        paddingBottom: showDoPredictionsCard || showWelcomeCard ? 0 : 22,
         justifyContent: 'space-between',
-        overflow: showInsetFrame || showDoPredictionsCard ? 'hidden' : 'visible',
+        overflow: showInsetFrame || showDoPredictionsCard || showWelcomeCard ? 'hidden' : 'visible',
       }}
     >
       {showPersonalWinnerFrame ? <PersonalWinnerShinyBackground animated={runDecorativeAnimations} variant={personalWinnerVariant} /> : null}
@@ -3608,6 +3934,8 @@ export default function PopupInfoCard({
           <ChampionMiniLeagueCardBody eventKey={eventKey} />
         ) : kind === 'championOverall' ? (
           <ChampionOverallCardBody eventKey={eventKey} />
+        ) : showWelcomeCard ? (
+          <WelcomeCardBody kind={kind} eventKey={eventKey} onClose={onClose} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <TotlText
@@ -3626,7 +3954,7 @@ export default function PopupInfoCard({
         )}
       </View>
 
-      <View style={{ minHeight: showDoPredictionsCard ? 0 : 26, alignItems: 'center', justifyContent: 'flex-end' }}>
+      <View style={{ minHeight: showDoPredictionsCard || showWelcomeCard ? 0 : 26, alignItems: 'center', justifyContent: 'flex-end' }}>
         {isTopCard && secondaryActionLabel && onSecondaryAction ? (
           <Pressable
             accessibilityRole="button"

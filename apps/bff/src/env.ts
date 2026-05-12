@@ -51,25 +51,33 @@ export function loadEnv(input: NodeJS.ProcessEnv): Env {
   // Support a visible `env.local` file for local development.
   const cwd = process.cwd();
   const fromBffEnvLocal = readEnvFile(path.join(cwd, 'env.local'));
+  const fromBffDotEnv = readEnvFile(path.join(cwd, '.env'));
+  const fromRootDotEnv = readEnvFile(path.resolve(cwd, '..', '..', '.env'));
 
   // Convenience: if BFF env vars are missing, reuse the mobile app's local values.
   const fromMobileEnvLocal = readEnvFile(path.resolve(cwd, '..', 'mobile', 'env.local'));
+  const fromMobileDotEnv = readEnvFile(path.resolve(cwd, '..', 'mobile', '.env'));
+  const fromMobileCombined = { ...fromMobileDotEnv, ...fromMobileEnvLocal };
 
   const merged: Record<string, string | undefined> = {
+    ...fromRootDotEnv,
+    ...fromBffDotEnv,
     ...Object.fromEntries(Object.entries(input).map(([k, v]) => [k, v ?? undefined])),
     ...fromBffEnvLocal,
   };
 
   merged.SUPABASE_URL =
     merged.SUPABASE_URL ??
-    fromMobileEnvLocal.EXPO_PUBLIC_SUPABASE_URL ??
-    fromMobileEnvLocal.SUPABASE_URL;
+    fromMobileCombined.EXPO_PUBLIC_SUPABASE_URL ??
+    fromMobileCombined.SUPABASE_URL ??
+    fromRootDotEnv.SUPABASE_URL;
   merged.SUPABASE_ANON_KEY =
     sanitizeAnonKey(merged.SUPABASE_ANON_KEY) ??
-    sanitizeAnonKey(fromMobileEnvLocal.EXPO_PUBLIC_SUPABASE_ANON_KEY) ??
-    sanitizeAnonKey(fromMobileEnvLocal.SUPABASE_ANON_KEY);
-  merged.SITE_URL = merged.SITE_URL ?? fromMobileEnvLocal.EXPO_PUBLIC_SITE_URL;
+    sanitizeAnonKey(fromMobileCombined.EXPO_PUBLIC_SUPABASE_ANON_KEY) ??
+    sanitizeAnonKey(fromMobileCombined.SUPABASE_ANON_KEY) ??
+    sanitizeAnonKey(fromRootDotEnv.SUPABASE_ANON_KEY);
+  merged.SITE_URL =
+    merged.SITE_URL ?? fromMobileCombined.EXPO_PUBLIC_SITE_URL ?? fromRootDotEnv.SITE_URL;
 
   return EnvSchema.parse(merged);
 }
-

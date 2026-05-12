@@ -169,6 +169,21 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
     },
 
+    async getLeagueSeasonTable(leagueId: string): Promise<{
+      rows: Array<{
+        user_id: string;
+        name: string;
+        mltPts: number;
+        ocp: number;
+        unicorns: number;
+        wins: number;
+        draws: number;
+        form: Array<'W' | 'D' | 'L'>;
+      }>;
+    }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/season-table`, { method: 'GET' });
+    },
+
     async getLeagueAdmin(leagueId: string): Promise<{ isAdmin: boolean }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/admin`, { method: 'GET' });
     },

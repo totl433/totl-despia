@@ -1,5 +1,5 @@
 import { api } from './api';
-import { getLeagueActivationAt, resolveLeagueStartGw } from './leagueStart';
+import { getLeagueActivationAt, resolveLeagueStartGw, resolveMemberStartGw } from './leagueStart';
 import { supabase } from './supabase';
 import { isDevFakeLeagueId } from './devFakeLeague';
 import { SEASON_LAST_GW } from './leaderboardMonths';
@@ -27,19 +27,30 @@ type GwScore = { user_id: string; score: number; unicorns: number };
 async function computeMiniLeagueChampionSummaryForLeague(args: {
   leagueId: string;
   leagueName: string;
-  memberIds: string[];
+  members: Array<{ id: string; created_at?: string | null }>;
   seasonStartGw: number;
   latestGw: number;
   userId: string;
 }): Promise<MiniLeagueChampionSummary | null> {
-  const { leagueId, leagueName, memberIds, seasonStartGw, latestGw, userId } = args;
+  const { leagueId, leagueName, members, seasonStartGw, latestGw, userId } = args;
+  const memberIds = members.map((m) => String(m.id ?? '')).filter(Boolean);
   if (memberIds.length < 2 || latestGw < seasonStartGw) return null;
+
+  const latestSeasonGw = latestGw;
+  const memberPickMinGw = new Map<string, number>();
+  await Promise.all(
+    members.map(async (m) => {
+      const id = String(m.id ?? '');
+      if (!id) return;
+      const joinGw = await resolveMemberStartGw(typeof m.created_at === 'string' ? m.created_at : null, seasonStartGw, latestSeasonGw);
+      memberPickMinGw.set(id, joinGw);
+    })
+  );
 
   const resultsRes = await (supabase as any)
     .from('app_gw_results')
     .select('gw,fixture_index,result')
-    .gte('gw', seasonStartGw)
-    .lte('gw', latestGw);
+    .gte('gw', seasonStartGw);
   if (resultsRes.error) throw resultsRes.error;
 
   const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
@@ -57,23 +68,28 @@ async function computeMiniLeagueChampionSummaryForLeague(args: {
     )
   ).sort((a, b) => a - b);
 
-  let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw);
-  relevantGws = relevantGws.filter((gw) => gw <= latestGw);
+  let relevantGws = gwsWithResults.filter((gwNum) => gwNum >= seasonStartGw);
 
-  if (relevantGws.includes(latestGw)) {
-    const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
+  if (relevantGws.includes(latestSeasonGw)) {
+    const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestSeasonGw);
     if (!fixturesForCurrentGwRes.error) {
       const fixtureCount = (fixturesForCurrentGwRes.data ?? []).length;
       const resultCountForCurrentGw = Array.from(outcomeByGwFixture.keys()).filter(
-        (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestGw
+        (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestSeasonGw
       ).length;
       if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
-        relevantGws = relevantGws.filter((gw) => gw < latestGw);
+        relevantGws = relevantGws.filter((gwNum) => gwNum < latestSeasonGw);
       }
     }
+  } else {
+    relevantGws = relevantGws.filter((gwNum) => gwNum < latestSeasonGw);
   }
 
   if (relevantGws.length === 0) return null;
+
+  const relevantGwsSet = new Set(relevantGws);
+  const minPickGw = Math.min(...relevantGws);
+  const maxPickGw = Math.max(...relevantGws);
 
   const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = [];
   let from = 0;
@@ -83,15 +99,20 @@ async function computeMiniLeagueChampionSummaryForLeague(args: {
       .from('app_picks')
       .select('user_id,gw,fixture_index,pick')
       .in('user_id', memberIds)
-      .gte('gw', seasonStartGw)
-      .lte('gw', latestGw)
+      .gte('gw', minPickGw)
+      .lte('gw', maxPickGw)
       .order('gw', { ascending: true })
       .order('fixture_index', { ascending: true })
       .order('user_id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
     if (pageRes.error) throw pageRes.error;
     const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
-    picks.push(...page.filter((pick) => relevantGws.includes(pick.gw)));
+    for (const row of page) {
+      if (!relevantGwsSet.has(row.gw)) continue;
+      const floor = memberPickMinGw.get(String(row.user_id)) ?? seasonStartGw;
+      if (row.gw < floor) continue;
+      picks.push(row);
+    }
     if (page.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
@@ -211,6 +232,7 @@ export async function fetchMiniLeagueChampionSummariesForUser(args: {
           name: typeof league?.name === 'string' ? league.name : summary.name,
           created_at: typeof league?.created_at === 'string' ? league.created_at : undefined,
           activation_at: leagueActivationAt,
+          start_gw: (league as { start_gw?: unknown } | null)?.start_gw,
         },
         currentGwMeta
       );
@@ -218,7 +240,7 @@ export async function fetchMiniLeagueChampionSummariesForUser(args: {
       const computed = await computeMiniLeagueChampionSummaryForLeague({
         leagueId,
         leagueName: String(summary.name ?? league?.name ?? 'Mini league'),
-        memberIds,
+        members: members as Array<{ id: string; created_at?: string | null }>,
         seasonStartGw,
         latestGw,
         userId,
@@ -254,6 +276,7 @@ export async function fetchMiniLeagueChampionSummaryForUserAndLeague(args: {
       name: typeof league?.name === 'string' ? league.name : undefined,
       created_at: typeof league?.created_at === 'string' ? league.created_at : undefined,
       activation_at: leagueActivationAt,
+      start_gw: (league as { start_gw?: unknown } | null)?.start_gw,
     },
     currentGwMeta
   );
@@ -261,7 +284,7 @@ export async function fetchMiniLeagueChampionSummaryForUserAndLeague(args: {
   return computeMiniLeagueChampionSummaryForLeague({
     leagueId,
     leagueName: typeof league?.name === 'string' ? league.name : 'Mini league',
-    memberIds,
+    members: members as Array<{ id: string; created_at?: string | null }>,
     seasonStartGw,
     latestGw,
     userId,
@@ -278,4 +301,43 @@ export async function fetchOverallChampionSummaryForUser(userId: string): Promis
 
   if (!cohort.includes(userId)) return null;
   return { jointChampions: cohort.length, ocp: maxOcp };
+}
+
+/**
+ * Every scheduled fixture in the season finale GW has a recorded H/D/A result.
+ * Champion cards and Season trophies are only meaningful after this (not mid-season table leaders).
+ */
+export async function isSeasonFinaleGwFullyComplete(): Promise<boolean> {
+  const gw = SEASON_LAST_GW;
+  const fixturesRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', gw);
+  if (fixturesRes.error) return false;
+  const fixtureCount = (fixturesRes.data ?? []).length;
+  if (fixtureCount === 0) return false;
+
+  const resultsRes = await (supabase as any).from('app_gw_results').select('fixture_index,result').eq('gw', gw);
+  if (resultsRes.error) return false;
+  const results = (resultsRes.data ?? []) as Array<{ fixture_index?: number; result?: string }>;
+  const settled = new Set<number>();
+  for (const r of results) {
+    if (r.result !== 'H' && r.result !== 'D' && r.result !== 'A') continue;
+    const fi = Number(r.fixture_index);
+    if (Number.isFinite(fi)) settled.add(fi);
+  }
+  return settled.size >= fixtureCount;
+}
+
+/**
+ * Season champion cards count (mini-league wins + overall champion if applicable).
+ * Only non-zero after the season finale gameweek is fully resulted (same product rule as auto champion popups).
+ */
+export async function fetchChampionTrophyCount(userId: string, currentGwMeta: number | null): Promise<number> {
+  if (!(await isSeasonFinaleGwFullyComplete())) return 0;
+
+  const resolverGw =
+    typeof currentGwMeta === 'number' && Number.isFinite(currentGwMeta) ? Math.max(currentGwMeta, SEASON_LAST_GW) : SEASON_LAST_GW;
+  const [ml, overall] = await Promise.all([
+    fetchMiniLeagueChampionSummariesForUser({ userId, currentGwMeta: resolverGw, latestGw: SEASON_LAST_GW }),
+    fetchOverallChampionSummaryForUser(userId),
+  ]);
+  return ml.length + (overall ? 1 : 0);
 }

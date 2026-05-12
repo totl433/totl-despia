@@ -24,6 +24,8 @@ function buildTitle(kind: PopupCardKind): string {
       return 'Welcome 2';
     case 'welcome3':
       return 'Welcome 3';
+    case 'welcome4':
+      return 'Welcome 4';
   }
 }
 
@@ -89,11 +91,18 @@ export function createMainPopupStack({
   return cards;
 }
 
-export function createWelcomePopupStack(userId: string | null | undefined): PopupCardDescriptor[] {
+export function createWelcomePopupStack(
+  userId: string | null | undefined,
+  options: { simulatorOpenPredictions?: boolean; simulatorGw?: number } = {}
+): PopupCardDescriptor[] {
   const eventBase = userId ?? 'guest';
+  const welcome4EventKey = options.simulatorOpenPredictions
+    ? `simulator:welcome:open-predictions:gw${options.simulatorGw ?? 39}`
+    : 'welcome:4';
   return [
     createPopupCard('welcome1', { id: `welcome-1-${eventBase}`, eventKey: 'welcome:1' }),
     createPopupCard('welcome2', { id: `welcome-2-${eventBase}`, eventKey: 'welcome:2' }),
     createPopupCard('welcome3', { id: `welcome-3-${eventBase}`, eventKey: 'welcome:3' }),
+    createPopupCard('welcome4', { id: `welcome-4-${eventBase}`, eventKey: welcome4EventKey }),
   ];
 }

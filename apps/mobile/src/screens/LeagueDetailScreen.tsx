@@ -3,7 +3,16 @@ import { Alert, Image, Pressable, Share, ScrollView, View, useWindowDimensions }
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
-import type { Fixture, GwResultRow, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
+import {
+  computeWebParityMiniLeagueSeasonRows,
+  orderCompletedGwsByFirstKickoff,
+  type Fixture,
+  type GwResultRow,
+  type HomeSnapshot,
+  type LiveScore,
+  type LiveStatus,
+  type Pick,
+} from '@totl/domain';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { LinearTransition } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,7 +44,7 @@ import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/lea
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueManagementSheet, { type LeagueManagementMember } from '../components/league/LeagueManagementSheet';
 import { env } from '../env';
-import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
+import { fetchLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
@@ -211,11 +220,23 @@ export default function LeagueDetailScreen() {
     setSelectedGw(Math.max(1, Math.trunc(defaultTableGw)));
   }, [defaultTableGw, selectedGw]);
 
+  const { data: completedGwsChronological } = useQuery<number[]>({
+    queryKey: ['completedGwsChronological', 'v1'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('app_gw_results').select('gw');
+      if (error) throw error;
+      const gws = [...new Set(((data ?? []) as Array<{ gw?: number | null }>).map((r) => Number(r.gw)).filter(Number.isFinite))] as number[];
+      return orderCompletedGwsByFirstKickoff(supabase as any, gws);
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const availableGws = React.useMemo(() => {
+    if (completedGwsChronological?.length) return completedGwsChronological;
     const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : null;
     if (!maxGw || maxGw < 1) return [];
     return Array.from({ length: maxGw }, (_, i) => i + 1);
-  }, [currentGw, viewingGw]);
+  }, [completedGwsChronological, currentGw, viewingGw]);
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
@@ -234,7 +255,7 @@ export default function LeagueDetailScreen() {
     name?: string;
     code?: string;
     created_at?: string | null;
-    start_gw?: number | null;
+    start_gw?: unknown;
     avatar?: string | null;
   };
 
@@ -266,42 +287,46 @@ export default function LeagueDetailScreen() {
   const seasonShowUnicorns = members.length >= 3;
   const [seasonShowForm, setSeasonShowForm] = React.useState(false);
   const [seasonRulesOpen, setSeasonRulesOpen] = React.useState(false);
-  const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
   const isDormantLeague = !isDevFakeLeague && !leagueDetailsLoading && members.length < 2;
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
     queryKey: [
-      'leagueStartGwV3',
+      'leagueStartGwV6',
       leagueId,
       seasonGw,
       String(leagueMeta?.name ?? params.name ?? ''),
       String(leagueMeta?.created_at ?? ''),
-      String(leagueActivationAt ?? ''),
-      String(leagueMeta?.start_gw ?? ''),
     ],
-    queryFn: async () =>
-      resolveLeagueStartGw(
+    queryFn: async () => {
+      const activationAt = await fetchLeagueActivationAt(leagueId);
+      // Match web `League.tsx`: `getLeagueStartGw` is called without `start_gw` (useLeagueMeta does not load it).
+      return resolveLeagueStartGw(
         {
           id: leagueId,
           name: String(leagueMeta?.name ?? params.name ?? ''),
           created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
-          activation_at: leagueActivationAt,
-          start_gw: typeof leagueMeta?.start_gw === 'number' ? leagueMeta.start_gw : null,
+          activation_at: activationAt,
         },
         seasonGw as number
-      ),
+      );
+    },
     staleTime: 5 * 60_000,
   });
   const seasonStartGwResolved = isDevFakeLeague || isDormantLeague || typeof resolvedLeagueStartGw === 'number';
   const seasonStartGw = isDevFakeLeague ? 1 : typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
   const seasonIsLateStartingLeague = seasonStartGw > 1;
-  const tableAvailableGws = React.useMemo(() => availableGws.filter((gw) => gw >= seasonStartGw), [availableGws, seasonStartGw]);
+  const tableAvailableGws = React.useMemo(() => {
+    if (!seasonStartGwResolved) return [];
+    if (seasonStartGw <= 1) return availableGws;
+    const startIdx = availableGws.findIndex((gw) => gw === seasonStartGw);
+    if (startIdx >= 0) return availableGws.slice(startIdx).filter((gw) => gw >= seasonStartGw);
+    return [];
+  }, [availableGws, seasonStartGw, seasonStartGwResolved]);
   const leagueStartsInFuture =
     !isDevFakeLeague &&
     !isDormantLeague &&
     seasonStartGwResolved &&
-    typeof effectiveCurrentGw === 'number' &&
-    seasonStartGw > effectiveCurrentGw;
+    tableAvailableGws.length === 0;
 
   /** Opens the invite bottom sheet (same UX as overflow → Invite). */
   const openLeagueInviteTray = React.useCallback(async () => {
@@ -324,7 +349,7 @@ export default function LeagueDetailScreen() {
       typeof selectedGw === 'number' &&
       seasonStartGwResolved &&
       !isDormantLeague &&
-      selectedGw >= seasonStartGw &&
+      tableAvailableGws.includes(selectedGw) &&
       !isDevFakeLeague,
     queryKey: ['leagueGwTable', leagueId, selectedGw],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
@@ -390,7 +415,7 @@ export default function LeagueDetailScreen() {
   React.useEffect(() => {
     if (!seasonStartGwResolved) return;
     if (selectedGw === null) return;
-    if (selectedGw >= seasonStartGw) return;
+    if (tableAvailableGws.includes(selectedGw)) return;
     const nextGw = tableAvailableGws[tableAvailableGws.length - 1] ?? seasonStartGw;
     setSelectedGw(nextGw);
   }, [seasonStartGw, seasonStartGwResolved, selectedGw, tableAvailableGws]);
@@ -544,8 +569,9 @@ export default function LeagueDetailScreen() {
           const leagueName = String(leagueMeta?.name ?? params.name ?? '');
           // Match joinLeagueByCode: dormant (<2 members) can always invite; lock uses activation (2nd join), not league creation.
           if (members.length >= 2 && gw !== null) {
+            const activationAt = await fetchLeagueActivationAt(leagueId);
             const startGw = await resolveLeagueStartGw(
-              { id: leagueId, name: leagueName, created_at: createdAt, activation_at: leagueActivationAt },
+              { id: leagueId, name: leagueName, created_at: createdAt, activation_at: activationAt },
               gw
             );
             if (gw - startGw >= 4) {
@@ -613,7 +639,6 @@ export default function LeagueDetailScreen() {
       currentGw,
       env.EXPO_PUBLIC_SITE_URL,
       handleEditBadge,
-      leagueActivationAt,
       leagueId,
       leagueMeta?.code,
       leagueMeta?.created_at,
@@ -657,192 +682,46 @@ export default function LeagueDetailScreen() {
   const { data: seasonRows, isLoading: seasonLoading, refetch: refetchSeasonRows, isRefetching: seasonRowsRefetching } = useQuery<
     LeagueSeasonRow[]
   >({
-    enabled: members.length >= 2 && typeof seasonGw === 'number' && seasonStartGwResolved && !isDormantLeague && !isDevFakeLeague,
-    // NOTE: v2 key invalidates persisted cached season tables after score calculation changes.
-    queryKey: ['leagueSeasonTableV3', leagueId, seasonGw, effectiveCurrentGw, seasonStartGw, members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(',')],
+    enabled: members.length >= 2 && !isDormantLeague && !isDevFakeLeague && seasonStartGwResolved,
+    queryKey: ['leagueSeasonTable', 'v26', leagueId, seasonStartGw],
     queryFn: async () => {
-      const memberIds = members.map((m: any) => String(m.id));
-      const showUnicorns = memberIds.length >= 3;
-      const latestGw = seasonGw as number;
-      const resultsRes = await (supabase as any)
-        .from('app_gw_results')
-        .select('gw,fixture_index,result')
-        .gte('gw', seasonStartGw)
-        .lte('gw', latestGw);
-      if (resultsRes.error) throw resultsRes.error;
-
-      const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
-      // IMPORTANT: fetch picks in stable ordered pages to avoid Supabase truncation
-      // and pagination drift on larger leagues / longer seasons.
-      const picks: Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }> = [];
-      const PAGE_SIZE = 1000;
-      let from = 0;
-      while (true) {
-        const pageRes = await (supabase as any)
-          .from('app_picks')
-          .select('user_id,gw,fixture_index,pick')
-          .in('user_id', memberIds)
-          .gte('gw', seasonStartGw)
-          .lte('gw', latestGw)
-          .order('gw', { ascending: true })
-          .order('fixture_index', { ascending: true })
-          .order('user_id', { ascending: true })
-          .range(from, from + PAGE_SIZE - 1);
-        if (pageRes.error) throw pageRes.error;
-        const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
-        picks.push(...page);
-        if (page.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
+      const preload = {
+        members: members
+          .filter((m: any) => m?.id)
+          .map((m: any) => ({
+            id: String(m.id),
+            name: String(m.name ?? 'User'),
+            created_at: typeof m.created_at === 'string' ? m.created_at : null,
+          })),
+        league: leagueMeta
+          ? {
+              id: leagueId,
+              name: leagueMeta.name ?? null,
+              created_at: typeof leagueMeta.created_at === 'string' ? leagueMeta.created_at : null,
+            }
+          : null,
+      };
+      try {
+        const rows = (await computeWebParityMiniLeagueSeasonRows(supabase as any, leagueId, preload, {
+          leagueStartGw: seasonStartGw,
+        })) as LeagueSeasonRow[];
+        if (rows.length > 0) return rows;
+      } catch {
+        // ignore
       }
-      const outcomeByGwFixture = new Map<string, 'H' | 'D' | 'A'>();
-      results.forEach((r) => {
-        if (r.result !== 'H' && r.result !== 'D' && r.result !== 'A') return;
-        outcomeByGwFixture.set(`${r.gw}:${r.fixture_index}`, r.result);
-      });
-
-      const gwsWithResults = Array.from(
-        new Set(
-          Array.from(outcomeByGwFixture.keys())
-            .map((k) => Number.parseInt(k.split(':')[0] ?? '', 10))
-            .filter((gw) => Number.isFinite(gw))
-        )
-      ).sort((a, b) => a - b);
-
-      // Only count GWs with actual saved results. This prevents phantom all-draw rounds.
-      let relevantGws = gwsWithResults.filter((gw) => gw >= seasonStartGw && gw <= latestGw);
-      const isViewingPreviousGw = typeof effectiveCurrentGw === 'number' && latestGw < effectiveCurrentGw;
-      if (isViewingPreviousGw) {
-        // When the app is still viewing the previous GW before the next one kicks off,
-        // keep that previous GW in the season table even though currentGw has already advanced.
-      } else if (relevantGws.includes(latestGw)) {
-        const fixturesForLatestGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
-        if (fixturesForLatestGwRes.error) throw fixturesForLatestGwRes.error;
-        const fixtureCount = (fixturesForLatestGwRes.data ?? []).length;
-        const resultCountForLatestGw = Array.from(outcomeByGwFixture.keys()).filter(
-          (k) => Number.parseInt(k.split(':')[0] ?? '', 10) === latestGw
-        ).length;
-        if (fixtureCount > 0 && resultCountForLatestGw < fixtureCount) {
-          relevantGws = relevantGws.filter((gw) => gw < latestGw);
+      try {
+        const res = await api.getLeagueSeasonTable(leagueId);
+        if (Array.isArray(res.rows) && res.rows.length > 0) {
+          return res.rows as LeagueSeasonRow[];
         }
-      } else {
-        relevantGws = relevantGws.filter((gw) => gw < latestGw);
+      } catch {
+        // ignore
       }
-
-      if (relevantGws.length === 0) return [];
-
-      type GwScore = { user_id: string; score: number; unicorns: number };
-      const perGw = new Map<number, Map<string, GwScore>>();
-      relevantGws.forEach((g) => {
-        const m = new Map<string, GwScore>();
-        memberIds.forEach((uid) =>
-          m.set(uid, {
-            user_id: uid,
-            score: 0,
-            unicorns: 0,
-          })
-        );
-        perGw.set(g, m);
-      });
-
-      const picksByGwFixture = new Map<string, Array<{ user_id: string; pick: string }>>();
-      picks.forEach((p) => {
-        const key = `${p.gw}:${p.fixture_index}`;
-        const arr = picksByGwFixture.get(key) ?? [];
-        arr.push({ user_id: p.user_id, pick: p.pick });
-        picksByGwFixture.set(key, arr);
-      });
-
-      relevantGws.forEach((g) => {
-        const gwMap = perGw.get(g)!;
-        // Iterate outcomes for this GW (do not require all fixtures to have results).
-        const outcomesForGw = Array.from(outcomeByGwFixture.entries())
-          .filter(([k]) => Number.parseInt(k.split(':')[0] ?? '', 10) === g)
-          .map(([k, out]) => ({ fixtureIndex: Number.parseInt(k.split(':')[1] ?? '', 10), out }))
-          .filter((x) => Number.isFinite(x.fixtureIndex));
-
-        outcomesForGw.forEach(({ fixtureIndex, out }) => {
-          const these = picksByGwFixture.get(`${g}:${fixtureIndex}`) ?? [];
-          const correct = these.filter((p) => p.pick === out).map((p) => p.user_id);
-          these.forEach((p) => {
-            if (p.pick !== out) return;
-            const row = gwMap.get(p.user_id);
-            if (row) row.score += 1;
-          });
-
-          if (showUnicorns && correct.length === 1) {
-            const uid = correct[0];
-            const row = gwMap.get(uid);
-            if (row) row.unicorns += 1;
-          }
-        });
-      });
-
-      const mltPts = new Map<string, number>();
-      const ocp = new Map<string, number>();
-      const unis = new Map<string, number>();
-      const wins = new Map<string, number>();
-      const draws = new Map<string, number>();
-      const form = new Map<string, Array<'W' | 'D' | 'L'>>();
-      memberIds.forEach((uid) => {
-        mltPts.set(uid, 0);
-        ocp.set(uid, 0);
-        unis.set(uid, 0);
-        wins.set(uid, 0);
-        draws.set(uid, 0);
-        form.set(uid, []);
-      });
-
-      relevantGws.forEach((g) => {
-        const rows = Array.from(perGw.get(g)!.values());
-        rows.forEach((r) => {
-          // OCP in this table should align to leaderboards for the same GW window.
-          ocp.set(r.user_id, (ocp.get(r.user_id) ?? 0) + r.score);
-          unis.set(r.user_id, (unis.get(r.user_id) ?? 0) + r.unicorns);
-        });
-
-        rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns);
-        if (!rows.length) return;
-        const top = rows[0];
-        const coTop = rows.filter((r) => r.score === top.score && r.unicorns === top.unicorns);
-
-        if (coTop.length === 1) {
-          mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
-          wins.set(top.user_id, (wins.get(top.user_id) ?? 0) + 1);
-          form.get(top.user_id)!.push('W');
-          rows.slice(1).forEach((r) => form.get(r.user_id)!.push('L'));
-        } else {
-          coTop.forEach((r) => {
-            mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
-            draws.set(r.user_id, (draws.get(r.user_id) ?? 0) + 1);
-            form.get(r.user_id)!.push('D');
-          });
-          rows
-            .filter((r) => !coTop.find((t) => t.user_id === r.user_id))
-            .forEach((r) => form.get(r.user_id)!.push('L'));
-        }
-      });
-
-      const nameById = new Map<string, string>();
-      members.forEach((m: any) => nameById.set(String(m.id), String(m.name ?? 'User')));
-
-      const out: LeagueSeasonRow[] = memberIds.map((uid) => ({
-        user_id: uid,
-        name: nameById.get(uid) ?? 'User',
-        mltPts: mltPts.get(uid) ?? 0,
-        ocp: ocp.get(uid) ?? 0,
-        unicorns: unis.get(uid) ?? 0,
-        wins: wins.get(uid) ?? 0,
-        draws: draws.get(uid) ?? 0,
-        form: form.get(uid) ?? [],
-      }));
-
-      out.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
-      return out;
+      return [];
     },
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnReconnect: true,
-    // Season standings should be stable; refresh via pull-to-refresh/navigation.
     refetchInterval: false,
   });
 

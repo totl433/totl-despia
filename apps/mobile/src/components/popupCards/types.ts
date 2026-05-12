@@ -9,7 +9,8 @@ export type PopupCardKind =
   | 'championOverall'
   | 'welcome1'
   | 'welcome2'
-  | 'welcome3';
+  | 'welcome3'
+  | 'welcome4';
 
 export interface PopupCardDescriptor {
   id: string;

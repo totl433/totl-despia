@@ -1762,6 +1762,10 @@ ${shareUrl}`;
         return;
       }
 
+      if (!league) {
+        return;
+      }
+
       // Use app results for mini-league calculations (app data source)
       const { data: rs } = await supabase.from("app_gw_results").select("gw,fixture_index,result");
       const resultList = (rs as ResultRowRaw[]) ?? [];

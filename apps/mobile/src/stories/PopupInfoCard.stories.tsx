@@ -48,6 +48,7 @@ export const Results: Story = {
 export const Welcome: Story = {
   render: (args) => <Preview {...args} />,
   args: {
+    kind: 'welcome1',
     title: 'Welcome 1',
     isTopCard: true,
     onClose: () => {},

@@ -48,7 +48,7 @@ export async function resolveLeagueStartGw(
     const gwDeadlines = Array.from(firstKickoffByGw.entries())
       .map(([gw, kickoff]) => ({ gw, deadlineTime: new Date(new Date(kickoff).getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000) }))
       .filter((row) => !Number.isNaN(row.deadlineTime.getTime()))
-      .sort((a, b) => a.gw - b.gw);
+      .sort((a, b) => a.deadlineTime.getTime() - b.deadlineTime.getTime());
 
     for (const row of gwDeadlines) {
       if (leagueActivatedAt < row.deadlineTime) return row.gw;

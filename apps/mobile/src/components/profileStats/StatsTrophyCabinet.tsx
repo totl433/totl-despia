@@ -153,7 +153,7 @@ function TrophyTile({ label, count, onPress }: { label: string; count: number; o
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityHint="Opens your winner cards for this trophy type, newest first"
+        accessibilityHint="Opens winner or season champion cards for this trophy type"
         accessibilityLabel={`${label} trophies, view winner cards`}
         style={({ pressed }) => [shellStyle, { opacity: pressed ? 0.9 : 1 }]}
       >
@@ -168,29 +168,37 @@ function TrophyTile({ label, count, onPress }: { label: string; count: number; o
 export default function StatsTrophyCabinet({
   gameweekWins,
   monthlyWins,
+  seasonWins,
   onPressGameweek,
   onPressMonthly,
+  onPressSeason,
 }: {
   gameweekWins: number;
   monthlyWins: number;
+  /** Season champion cards (mini-league + overall), same eligibility as end-of-season champion popups. */
+  seasonWins: number;
   onPressGameweek?: () => void;
   onPressMonthly?: () => void;
+  onPressSeason?: () => void;
 }) {
   const t = useTokens();
 
   const items = [
     { label: 'Gameweek', count: gameweekWins, onPress: onPressGameweek },
     { label: 'Monthly', count: monthlyWins, onPress: onPressMonthly },
+    { label: 'Season', count: seasonWins, onPress: onPressSeason },
   ];
-  const total = gameweekWins + monthlyWins;
+  const total = gameweekWins + monthlyWins + seasonWins;
   const anyTappable =
-    (gameweekWins > 0 && !!onPressGameweek) || (monthlyWins > 0 && !!onPressMonthly);
+    (gameweekWins > 0 && !!onPressGameweek) ||
+    (monthlyWins > 0 && !!onPressMonthly) ||
+    (seasonWins > 0 && !!onPressSeason);
   const footerTapCue = Platform.OS === 'web' ? 'Click a trophy to open your cards.' : 'Tap a trophy to open your cards.';
 
   const onInfo = () => {
     Alert.alert(
       'Leaderboard trophy cabinet',
-      'You earn a trophy when you finish first on the global leaderboard for a completed gameweek or monthly period. If several players tie for first, everyone at the top gets a trophy.'
+      'Gameweek and Monthly: you earn a trophy when you finish first on the global leaderboard for a completed gameweek or monthly period. If several players tie for first, everyone at the top gets a trophy.\n\nSeason: each champion card counts as a trophy — every mini-league you won for the full season, plus overall TOTL champion when you qualify. These only appear after the final gameweek (GW38) has every result in, not for mid-season table leaders.'
     );
   };
 
@@ -220,7 +228,7 @@ export default function StatsTrophyCabinet({
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
         {items.map((it) => (
           <TrophyTile key={it.label} label={it.label} count={it.count} onPress={it.onPress} />
         ))}

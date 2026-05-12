@@ -22,6 +22,7 @@ import {
   formatCorrectRateVsLeague,
 } from '../../lib/predictionLeagueAverage';
 import { computeMonthlyWinnerEndGwsDescending } from '../../lib/trophyCabinetBrowse';
+import { fetchChampionTrophyCount } from '../../lib/championEligibility';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -107,7 +108,8 @@ export default function ProfileStatsScreen() {
   const t = useTokens();
   const queryClient = useQueryClient();
   const navigation = useNavigation<any>();
-  const { openManualResultsScoreSheetThenResults, openTrophyCabinetPersonalWinners } = usePopupCards();
+  const { openManualResultsScoreSheetThenResults, openTrophyCabinetPersonalWinners, openTrophyCabinetChampionCards } =
+    usePopupCards();
   const lastAutoRefreshedGwRef = React.useRef<number | null>(null);
   const [parChartShowComplex, setParChartShowComplex] = React.useState(false);
 
@@ -255,6 +257,13 @@ export default function ProfileStatsScreen() {
     substituteLiveRows: gwLiveTableQ.data?.rows ?? null,
   });
 
+  const championTrophyQ = useQuery({
+    queryKey: ['championTrophyCabinet', userId, homeSnapshotQ.data?.currentGw ?? null],
+    queryFn: () => fetchChampionTrophyCount(userId!, homeSnapshotQ.data?.currentGw ?? null),
+    enabled: !!userId,
+    staleTime: 60_000,
+  });
+
   const myLiveGwScore = React.useMemo(() => {
     if (!userId || typeof activeLeaderboardGw !== 'number') return null;
     const mine = (gwLiveTableQ.data?.rows ?? []).find((r) => String(r.user_id) === String(userId));
@@ -313,7 +322,8 @@ export default function ProfileStatsScreen() {
     statsQ.isRefetching ||
     gwPointsQ.isRefetching ||
     ranksQ.isRefetching ||
-    gwLiveTableQ.isRefetching;
+    gwLiveTableQ.isRefetching ||
+    championTrophyQ.isRefetching;
   const onRefresh = React.useCallback(() => {
     void Promise.all([
       homeSnapshotQ.refetch(),
@@ -324,6 +334,7 @@ export default function ProfileStatsScreen() {
       gwLiveTableQ.refetch(),
       leaguePickAvgQ.refetch(),
       queryClient.invalidateQueries({ queryKey: ['leaderboards', 'gwLiveTable'] }),
+      queryClient.invalidateQueries({ queryKey: ['championTrophyCabinet'] }),
     ]);
   }, [gwLiveTableQ, gwPointsQ, homeRoundUpProbeQ, homeSnapshotQ, leaguePickAvgQ, queryClient, ranksQ, statsQ]);
 
@@ -431,6 +442,7 @@ export default function ProfileStatsScreen() {
     return Math.max(server, liveGwTrophyWins.wins);
   }, [liveGwTrophyWins.pending, liveGwTrophyWins.wins, stats?.trophyCabinet?.gameweekPodiums]);
   const monthlyTrophyCount = stats?.trophyCabinet?.monthlyPodiums ?? 0;
+  const seasonTrophyCount = championTrophyQ.data ?? 0;
 
   /** Align month completion cutoff with stats + home ranks (highlightGw can edge ahead of lastCompletedGw). */
   const statsLcResolved = React.useMemo(() => {
@@ -468,6 +480,10 @@ export default function ProfileStatsScreen() {
     }
     openTrophyCabinetPersonalWinners('monthly', monthlyWinnerEndGwsDesc);
   }, [monthlyWinnerEndGwsDesc, openTrophyCabinetPersonalWinners]);
+
+  const handleSeasonTrophyPress = React.useCallback(() => {
+    void openTrophyCabinetChampionCards();
+  }, [openTrophyCabinetChampionCards]);
 
   const showInitialSpinner =
     authUserLoading || (!!userId && statsQ.isLoading && !statsQ.data && !statsQ.error);
@@ -669,8 +685,10 @@ export default function ProfileStatsScreen() {
           <StatsTrophyCabinet
             gameweekWins={gameweekTrophyCount}
             monthlyWins={monthlyTrophyCount}
+            seasonWins={seasonTrophyCount}
             onPressGameweek={gameweekTrophyCount > 0 ? handleGameweekTrophyPress : undefined}
             onPressMonthly={monthlyTrophyCount > 0 ? handleMonthlyTrophyPress : undefined}
+            onPressSeason={seasonTrophyCount > 0 ? handleSeasonTrophyPress : undefined}
           />
         </StatCard>
 

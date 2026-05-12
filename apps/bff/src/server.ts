@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import { z } from 'zod';
 import {
+  computeWebParityMiniLeagueSeasonRows,
   FixtureSchema,
   GwResultRowSchema,
   GwResultsSchema,
@@ -629,7 +630,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
   const params = LeagueParamsSchema.parse((req as any).params);
 
   const [leagueRes, membersRes] = await Promise.all([
-    (supa as any).from('leagues').select('id, name, code, avatar, created_at').eq('id', params.leagueId).maybeSingle(),
+    (supa as any).from('leagues').select('id, name, code, avatar, created_at, start_gw').eq('id', params.leagueId).maybeSingle(),
     (supa as any)
       .from('league_members')
       .select('user_id, created_at, users(id, name, avatar_url)')
@@ -649,6 +650,15 @@ app.get('/v1/leagues/:leagueId', async (req) => {
   }));
 
   return { league: leagueRes.data, members };
+});
+
+/** Season mini-league table — same numbers as playtotl.com (`League.tsx` season effect). */
+app.get('/v1/leagues/:leagueId/season-table', async (req) => {
+  await requireUser(req, supabase);
+  const { supa } = getAuthedSupa(req as any);
+  const params = LeagueParamsSchema.parse((req as any).params);
+  const rows = await computeWebParityMiniLeagueSeasonRows(supa, params.leagueId);
+  return { rows };
 });
 
 /** Returns whether the current user is the league creator (admin). Does not touch the main league endpoint. */

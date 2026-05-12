@@ -6,7 +6,7 @@ import type { HomeSnapshot } from '@totl/domain';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
-import { fetchMiniLeagueChampionSummariesForUser, fetchOverallChampionSummaryForUser } from '../../lib/championEligibility';
+import { fetchMiniLeagueChampionSummariesForUser, fetchOverallChampionSummaryForUser, isSeasonFinaleGwFullyComplete } from '../../lib/championEligibility';
 import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
 import { hasSeenPopupCard, markPopupCardSeen, markPopupCardsSeen } from '../../lib/popupCardsStorage';
 import { createMainPopupStack, createPopupCard, createWelcomePopupStack } from './popupCardsCatalog';
@@ -41,6 +41,8 @@ type PopupCardsContextValue = {
   openSimulatorDoPredictionsCard: () => void;
   /** Opens stacked personal winner cards (most recent GW/month first). */
   openTrophyCabinetPersonalWinners: (kind: 'gameweek' | 'monthly', gwsDescending: number[]) => void;
+  /** Opens stacked season champion cards (mini-leagues then overall), same stack as end-of-season popups. */
+  openTrophyCabinetChampionCards: () => void | Promise<void>;
 };
 
 const PopupCardsContext = React.createContext<PopupCardsContextValue | null>(null);
@@ -251,7 +253,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
 
   const openWelcomeSimulatorStack = React.useCallback(() => {
     if (!userId) return;
-    openStack(createWelcomePopupStack(userId), false);
+    openStack(createWelcomePopupStack(userId, { simulatorOpenPredictions: true, simulatorGw: 39 }), false);
   }, [openStack, userId]);
 
   const openMainSimulatorStack = React.useCallback(() => {
@@ -298,7 +300,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
 
   const openSimulatorCard = React.useCallback(
     (kind: PopupCardKind) => {
-      if (kind === 'welcome1' || kind === 'welcome2' || kind === 'welcome3') {
+      if (kind === 'welcome1' || kind === 'welcome2' || kind === 'welcome3' || kind === 'welcome4') {
         openWelcomeSimulatorStack();
         return;
       }
@@ -435,6 +437,19 @@ export default function PopupCardsProvider({ children }: { children: React.React
     },
     [openStack]
   );
+
+  const openTrophyCabinetChampionCards = React.useCallback(async () => {
+    if (!userId) return;
+    try {
+      if (!(await isSeasonFinaleGwFullyComplete())) return;
+      const currentGwMeta = typeof home?.currentGw === 'number' ? home.currentGw : null;
+      const cards = await buildSeasonChampionPopupDescriptors(userId, currentGwMeta);
+      if (!cards.length) return;
+      openStack(cards, false);
+    } catch (error) {
+      console.error('[PopupCardsProvider] Failed to open champion trophy cards:', error);
+    }
+  }, [home?.currentGw, openStack, userId]);
 
   const openSimulatorResultsExample = React.useCallback(
     (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => {
@@ -661,6 +676,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
       openManualResultsScoreSheetShare,
       openManualRoundUpStack,
       openTrophyCabinetPersonalWinners,
+      openTrophyCabinetChampionCards,
     }),
     [
       activeStack,
@@ -678,6 +694,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
       openSimulatorWinnersExample,
       openWelcomeSimulatorStack,
       openTrophyCabinetPersonalWinners,
+      openTrophyCabinetChampionCards,
     ]
   );
 
