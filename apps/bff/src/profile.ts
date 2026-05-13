@@ -851,37 +851,34 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   });
   if (total > 0) stats.correctPredictionRate = (correct / total) * 100;
 
-  let fieldCorrect = 0;
-  let fieldTotal = 0;
-  if (finalizedStatsGwCap != null && finalizedStatsGwCap >= 1) {
-    const allAppPicksRowsForField = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
-      (from, to) =>
-        (supa as any)
-          .from('app_picks')
-          .select('gw, fixture_index, pick')
-          .lte('gw', finalizedStatsGwCap)
-          .order('gw', { ascending: true })
-          .order('fixture_index', { ascending: true })
-          .range(from, to)
-    );
-    for (const p of allAppPicksRowsForField) {
-      const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
-      if (!res) continue;
-      fieldTotal++;
-      if (p.pick === res) fieldCorrect++;
+  const fieldAveragePromise = (async (): Promise<number | null> => {
+    let fieldCorrect = 0;
+    let fieldTotal = 0;
+    if (finalizedStatsGwCap != null && finalizedStatsGwCap >= 1) {
+      const allAppPicksRowsForField = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
+        (from, to) =>
+          (supa as any)
+            .from('app_picks')
+            .select('gw, fixture_index, pick')
+            .lte('gw', finalizedStatsGwCap)
+            .order('gw', { ascending: true })
+            .order('fixture_index', { ascending: true })
+            .range(from, to)
+      );
+      for (const p of allAppPicksRowsForField) {
+        const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
+        if (!res) continue;
+        fieldTotal++;
+        if (p.pick === res) fieldCorrect++;
+      }
     }
-  }
-  if (fieldTotal > 0) {
-    stats.correctPredictionFieldAvgPct = (fieldCorrect / fieldTotal) * 100;
-    const mine = stats.correctPredictionRate;
-    if (typeof mine === 'number') {
-      const delta = mine - stats.correctPredictionFieldAvgPct;
-      const band = 2;
-      stats.correctPredictionVsField = delta > band ? 'above' : delta < -band ? 'below' : 'about';
-    }
-  }
+    return fieldTotal > 0 ? (fieldCorrect / fieldTotal) * 100 : null;
+  })();
 
-  const [{ data: submissionRows, error: subErr }, allGwPoints] = await Promise.all([
+  const liveScoresForMetaGwPromise =
+    metaGw != null ? computeLiveGwScoresForGw(supa, metaGw) : Promise.resolve([] as Array<{ user_id: string; score: number }>);
+
+  const [{ data: submissionRows, error: subErr }, allGwPoints, fieldAveragePct, liveScoresForMetaGw] = await Promise.all([
     (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
     fetchAllRowsPaged<{ user_id: string; gw: number; points: number }>((from, to) =>
       (supa as any)
@@ -891,8 +888,20 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
         .order('user_id', { ascending: true })
         .range(from, to)
     ),
+    fieldAveragePromise,
+    liveScoresForMetaGwPromise,
   ]);
   if (subErr) throw subErr;
+
+  if (typeof fieldAveragePct === 'number') {
+    stats.correctPredictionFieldAvgPct = fieldAveragePct;
+    const mine = stats.correctPredictionRate;
+    if (typeof mine === 'number') {
+      const delta = mine - fieldAveragePct;
+      const band = 2;
+      stats.correctPredictionVsField = delta > band ? 'above' : delta < -band ? 'below' : 'about';
+    }
+  }
 
   let allGwPointsTyped = (allGwPoints ?? []).map((p: any) => ({
     user_id: String(p.user_id),
@@ -901,9 +910,8 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   })) as GwPointsUserRow[];
 
   if (metaGw != null) {
-    const liveScores = await computeLiveGwScoresForGw(supa, metaGw);
-    if (liveScores.length > 0) {
-      const scoreMap = new Map(liveScores.map((r: { user_id: string; score: number }) => [r.user_id, r.score]));
+    if (liveScoresForMetaGw.length > 0) {
+      const scoreMap = new Map(liveScoresForMetaGw.map((r: { user_id: string; score: number }) => [r.user_id, r.score]));
       allGwPointsTyped = [
         ...allGwPointsTyped.filter((r) => r.gw !== metaGw),
         ...Array.from(scoreMap.entries()).map(([uid, points]) => ({ user_id: uid, gw: metaGw, points })),
@@ -1167,35 +1175,53 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   if (allPicks.length) {
     const gws: number[] = Array.from(new Set(allPicks.map((p) => Number(p.gw)).filter((n) => Number.isFinite(n)))) as number[];
 
-    let allUsersAppRows: any[] = [];
-    if (gws.length > 0) {
-      allUsersAppRows = await fetchAllRowsPaged<any>((from, to) =>
-        (supa as any)
-          .from('app_picks')
-          .select('gw, fixture_index, pick')
-          .in('gw', gws)
-          .order('gw', { ascending: true })
-          .order('fixture_index', { ascending: true })
-          .range(from, to)
-      );
-    }
+    const allUsersAppRowsPromise =
+      gws.length > 0
+        ? fetchAllRowsPaged<any>((from, to) =>
+            (supa as any)
+              .from('app_picks')
+              .select('gw, fixture_index, pick')
+              .in('gw', gws)
+              .order('gw', { ascending: true })
+              .order('fixture_index', { ascending: true })
+              .range(from, to)
+          )
+        : Promise.resolve([] as any[]);
 
-    let allUsersLegacyRows: any[] = [];
-    if (gws.length > 0) {
-      try {
-        allUsersLegacyRows = await fetchAllRowsPaged<any>((from, to) =>
-          (supa as any)
-            .from('picks')
-            .select('gw, fixture_index, pick')
-            .in('gw', gws)
-            .order('gw', { ascending: true })
-            .order('fixture_index', { ascending: true })
-            .range(from, to)
-        );
-      } catch (e: any) {
-        if (e?.code !== '42P01') throw e;
-      }
-    }
+    const allUsersLegacyRowsPromise =
+      gws.length > 0
+        ? fetchAllRowsPaged<any>((from, to) =>
+            (supa as any)
+              .from('picks')
+              .select('gw, fixture_index, pick')
+              .in('gw', gws)
+              .order('gw', { ascending: true })
+              .order('fixture_index', { ascending: true })
+              .range(from, to)
+          ).catch((e: any) => {
+            if (e?.code !== '42P01') throw e;
+            return [] as any[];
+          })
+        : Promise.resolve([] as any[]);
+
+    const fxTeamRowsPromise =
+      gws.length > 0
+        ? fetchAllRowsPaged<any>((from, to) =>
+            (supa as any)
+              .from('app_fixtures')
+              .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team')
+              .in('gw', gws)
+              .order('gw', { ascending: true })
+              .order('fixture_index', { ascending: true })
+              .range(from, to)
+          )
+        : Promise.resolve([] as any[]);
+
+    const [allUsersAppRows, allUsersLegacyRows, fxTeamRows] = await Promise.all([
+      allUsersAppRowsPromise,
+      allUsersLegacyRowsPromise,
+      fxTeamRowsPromise,
+    ]);
 
     const pickCounts = new Map<string, Map<'H' | 'D' | 'A', number>>();
     const addCounts = (rows: any[]) => {
@@ -1238,21 +1264,10 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
     // Team stats: same keys as correct-call rate — for each *pick* with a result, join `app_fixtures` (always fetch; don't rely on `fxPickRows` subset).
     const fxByKeyTeam = new Map<string, any>();
-    if (gws.length > 0) {
-      const fxTeamRows = await fetchAllRowsPaged<any>((from, to) =>
-        (supa as any)
-          .from('app_fixtures')
-          .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team')
-          .in('gw', gws)
-          .order('gw', { ascending: true })
-          .order('fixture_index', { ascending: true })
-          .range(from, to)
-      );
-      fxTeamRows.forEach((f: any) => {
-        if (!fixtureRowIsPremierLeague(f)) return;
-        fxByKeyTeam.set(`${Number(f.gw)}:${Number(f.fixture_index)}`, f);
-      });
-    }
+    fxTeamRows.forEach((f: any) => {
+      if (!fixtureRowIsPremierLeague(f)) return;
+      fxByKeyTeam.set(`${Number(f.gw)}:${Number(f.fixture_index)}`, f);
+    });
 
     const teamStats = new Map<string, { correct: number; total: number; code: string | null; name: string }>();
 

@@ -630,7 +630,7 @@ app.get('/v1/leagues/:leagueId', async (req) => {
   const params = LeagueParamsSchema.parse((req as any).params);
 
   const [leagueRes, membersRes] = await Promise.all([
-    (supa as any).from('leagues').select('id, name, code, avatar, created_at, start_gw').eq('id', params.leagueId).maybeSingle(),
+    (supa as any).from('leagues').select('id, name, code, avatar, created_at').eq('id', params.leagueId).maybeSingle(),
     (supa as any)
       .from('league_members')
       .select('user_id, created_at, users(id, name, avatar_url)')
@@ -825,10 +825,10 @@ app.get('/v1/profile/summary', async (req) => {
 
 app.get('/v1/profile/stats', async (req) => {
   await requireUser(req, supabase);
-  const { userId } = getAuthedSupa(req as any);
-  /** Service role avoids silent empty reads when JWT-facing RLS blocks web `fixtures` / ingest gaps on mirrored tables (team stats need full fixture joins). User identity still comes from verified Bearer token above. */
-  const adminSupa = createSupabaseAdminClient(env);
-  return getProfileStats({ userId, supa: adminSupa });
+  const { userId, supa } = getAuthedSupa(req as any);
+  /** Service role is preferred for full stats joins, but local dev should not hard-fail when the secret is unavailable. */
+  const statsSupa = env.SUPABASE_SERVICE_ROLE_KEY ? createSupabaseAdminClient(env) : supa;
+  return getProfileStats({ userId, supa: statsSupa });
 });
 
 app.get('/v1/profile/unicorns', async (req) => {

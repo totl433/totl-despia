@@ -1202,7 +1202,29 @@ function ResultsUserPill({ profile }: { profile?: ProfileSummary | null }) {
   );
 }
 
-type ResultsScoreSheetQueryData = { gw: number; results: GwResults; snapshot: HomeSnapshot; liveByFixture: Map<number, LiveScore> };
+type ResultsScoreSheetQueryData = { gw: number; results: GwResults; snapshot: HomeSnapshot; liveByFixture: unknown };
+
+function toNumberMap<T>(input: unknown): Map<number, T> {
+  if (input instanceof Map) {
+    const out = new Map<number, T>();
+    input.forEach((value, key) => out.set(Number(key), value as T));
+    return out;
+  }
+  if (Array.isArray(input)) {
+    const out = new Map<number, T>();
+    input.forEach((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return;
+      out.set(Number(entry[0]), entry[1] as T);
+    });
+    return out;
+  }
+  if (input && typeof input === 'object') {
+    const out = new Map<number, T>();
+    Object.entries(input as Record<string, unknown>).forEach(([key, value]) => out.set(Number(key), value as T));
+    return out;
+  }
+  return new Map<number, T>();
+}
 
 async function hydrateScoreSheetLiveByFixture(snapshot: HomeSnapshot, gw: number): Promise<Map<number, LiveScore>> {
   const fixtures = snapshot.fixtures;
@@ -1351,7 +1373,7 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
       if (eventKey === 'simulator:resultsScoreSheet:example') {
         const p = buildSimulatorResultsScoreSheetPayload();
         const liveByFixture = await hydrateScoreSheetLiveByFixture(p.snapshot, p.gw);
-        return { ...p, liveByFixture };
+        return { ...p, liveByFixture: [...liveByFixture.entries()] };
       }
 
       let gw = parseGwFromEventKey(eventKey);
@@ -1369,7 +1391,7 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
       const snapshot = await api.getHomeSnapshot({ gw });
       const results = await api.getGwResults(gw).catch(() => buildResultsFromScoreSheetSnapshot(snapshot));
       const liveByFixture = await hydrateScoreSheetLiveByFixture(snapshot, gw);
-      return { gw, results, snapshot, liveByFixture };
+      return { gw, results, snapshot, liveByFixture: [...liveByFixture.entries()] };
     },
   });
   const { data: profileSummary } = useQuery<ProfileSummary>({
@@ -1403,7 +1425,7 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
   data.snapshot.gwResults.forEach((row) => resultByFixture.set(row.fixture_index, row.result));
   const fixtures = [...data.snapshot.fixtures].sort((a, b) => Number(a.fixture_index) - Number(b.fixture_index));
   const hasUnfinishedFixtures = fixtures.some((fixture) => !resultByFixture.has(Number(fixture.fixture_index)));
-  const { liveByFixture } = data;
+  const liveByFixture = toNumberMap<LiveScore>(data.liveByFixture);
 
   return (
     <View style={{ flex: 1, width: '100%', paddingTop: 0, paddingBottom: 0 }}>
@@ -1879,6 +1901,10 @@ function getWelcomeCardCopy(kind: PopupCardKind | undefined): WelcomeCardCopy {
   }
 }
 
+function preventTextWidow(text: string): string {
+  return text.replace(/\s+(\S+)$/, '\u00A0$1');
+}
+
 function WelcomeCardBody({ kind, eventKey, onClose }: { kind?: PopupCardKind; eventKey?: string; onClose?: () => void }) {
   const copy = getWelcomeCardCopy(kind);
   const isSimulatorOpenPredictions = eventKey?.startsWith('simulator:welcome:open-predictions') === true;
@@ -2052,12 +2078,12 @@ function WelcomeCardBody({ kind, eventKey, onClose }: { kind?: PopupCardKind; ev
             color: 'rgba(255,255,255,0.84)',
             textAlign: 'center',
             marginTop: 10,
-            fontSize: 13,
-            lineHeight: 18,
+            fontSize: 14.5,
+            lineHeight: 20,
             maxWidth: 292,
           }}
         >
-          {welcome4Body}
+          {preventTextWidow(welcome4Body)}
         </TotlText>
 
         {ctaLabel ? (
@@ -2138,7 +2164,7 @@ function WelcomeCardBody({ kind, eventKey, onClose }: { kind?: PopupCardKind; ev
         ) : null}
       </View>
 
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 24, alignItems: 'center', justifyContent: 'center' }}>
         <TotlText style={{ color: 'rgba(255,255,255,0.74)', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
           Swipe away when you&apos;re done
         </TotlText>
@@ -2323,14 +2349,48 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
   if (!hasMonthly) {
     return (
       <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
-        <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 22, lineHeight: 26 }}>
-          Gameweek {data.gw} Winners
+        <View
+          style={{
+            width: 46,
+            height: 46,
+            borderRadius: 23,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 12,
+            overflow: 'hidden',
+            shadowColor: '#F59E0B',
+            shadowOpacity: 0.16,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 5 },
+          }}
+        >
+          <LinearGradient
+            colors={['#FEF3C7', '#FED7AA', '#FCE7F3']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          <Ionicons name="trophy" size={22} color="#B45309" />
+        </View>
+        <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 24, lineHeight: 28 }}>
+          Gameweek {data.gw} {gwWinnerCount === 1 ? 'Winner' : 'Winners'}
         </TotlText>
         <View style={{ width: '100%', marginTop: titleToContentGap, alignItems: 'center' }}>
-          <TotlText style={{ color: '#475569', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontSize: 13, lineHeight: 17, fontWeight: '900' }}>
-            25/26 Leaderboard
-          </TotlText>
-          <TotlText style={{ color: '#0F172A', textAlign: 'center', marginTop: copyGap, marginBottom: titleToContentGap, fontSize: 13, lineHeight: 17, fontWeight: '700' }}>
+          <View
+            style={{
+              borderRadius: 999,
+              backgroundColor: 'rgba(28,131,118,0.08)',
+              borderWidth: 1,
+              borderColor: 'rgba(28,131,118,0.16)',
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+            }}
+          >
+            <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '900' }}>
+              25/26 Leaderboard
+            </TotlText>
+          </View>
+          <TotlText style={{ color: '#0F172A', textAlign: 'center', marginTop: copyGap + 2, marginBottom: titleToContentGap, fontSize: 14, lineHeight: 19, fontWeight: '800' }}>
             {gwJoint
               ? `${gwWinnersLabel} this week with ${data.gwWinningPoints} points!`
               : `1 winner this week with ${data.gwWinningPoints} points!`}
@@ -2345,7 +2405,7 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
     <View style={{ flex: 1, width: '100%', justifyContent: 'space-evenly', paddingTop: 12, paddingBottom: 12 }}>
       <View style={{ width: '100%', alignItems: 'center' }}>
         <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 22, lineHeight: 26 }}>
-          Gameweek {data.gw} Winners
+          Gameweek {data.gw} {gwWinnerCount === 1 ? 'Winner' : 'Winners'}
         </TotlText>
         <View style={{ width: '100%', marginTop: titleToContentGap, alignItems: 'center' }}>
           <TotlText style={{ color: '#475569', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontSize: 13, lineHeight: 17, fontWeight: '900' }}>
@@ -2629,34 +2689,28 @@ function WinnersAnimatedBorder({ animated = true }: { animated?: boolean }) {
           bottom: 0,
           borderRadius: 28,
           overflow: 'hidden',
+          backgroundColor: '#F7F1E6',
         }}
       >
         <LinearGradient
-          colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
+          colors={['rgba(254,243,199,0.36)', 'rgba(247,241,230,0.96)', 'rgba(28,131,118,0.10)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
         />
         {animated ? (
           <>
-            <WinnerShimmer durationMs={1200} delayMs={0} opacity={0.95} tint="white" skipFirstDelay />
-            <WinnerShimmer durationMs={1800} delayMs={380} opacity={0.55} tint="gold" />
+            <WinnerShimmer durationMs={1700} delayMs={0} opacity={0.18} tint="white" skipFirstDelay />
+            <WinnerShimmer durationMs={2400} delayMs={520} opacity={0.12} tint="gold" />
           </>
         ) : null}
+        <Ionicons
+          name="trophy"
+          size={238}
+          color="rgba(120,113,108,0.045)"
+          style={{ position: 'absolute', top: '50%', marginTop: -119, alignSelf: 'center' }}
+        />
       </View>
-
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 10,
-          right: 10,
-          bottom: 10,
-          left: 10,
-          borderRadius: 18,
-          backgroundColor: '#FFFFFF',
-        }}
-      />
     </>
   );
 }

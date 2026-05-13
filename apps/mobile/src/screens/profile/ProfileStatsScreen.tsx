@@ -140,6 +140,7 @@ export default function ProfileStatsScreen() {
   const homeSnapshotQ = useQuery({
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
+    staleTime: 15_000,
   });
 
   const { data: userData, isLoading: authUserLoading } = useQuery({
@@ -155,6 +156,7 @@ export default function ProfileStatsScreen() {
     queryKey: ['profile-stats', userId ?? 'pending'],
     queryFn: () => api.getProfileStats(),
     enabled: !!userId,
+    staleTime: 2 * 60_000,
   });
 
   /** Paging `app_v_gw_points` is heavy — wait until profile stats landed, then hydrate after animations. */
@@ -225,6 +227,7 @@ export default function ProfileStatsScreen() {
   const ranksQ = useQuery({
     queryKey: ['homeRanks'],
     queryFn: () => api.getHomeRanks(),
+    staleTime: 30_000,
   });
 
   const activeLeaderboardGw = React.useMemo(() => {
@@ -250,6 +253,7 @@ export default function ProfileStatsScreen() {
     enabled: typeof activeLeaderboardGw === 'number' && !!userId,
     queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw],
     queryFn: () => api.getGlobalGwLiveTable(activeLeaderboardGw as number),
+    staleTime: 15_000,
   });
 
   const liveGwTrophyWins = useGameweekTrophyWinsFromLeaderboardApi(userId, gwPointsQ.data, {
@@ -291,7 +295,7 @@ export default function ProfileStatsScreen() {
     else if (st.gameweekStreak && st.gameweekStreak.length > 0) rows = st.gameweekStreak;
     else rows = streakFallbackFromWeeklyPar(st);
 
-    return capGameweekStreakRowsAtLastCompleted(rows, st.lastCompletedGw);
+    return capGameweekStreakRowsAtLastCompleted(rows, st?.lastCompletedGw ?? null);
   }, [stats, streakRowsOverride]);
 
   /** Same pool as monthly/global leaderboard — not BFF `weeklyParData` (can truncate). */
@@ -385,12 +389,13 @@ export default function ProfileStatsScreen() {
     if (!weeklyPar.length) return weeklyPar;
     const c = statsGwCompletion;
     if (c && typeof c.currentGw === 'number' && c.currentGw >= 1) {
+      const currentGw = c.currentGw;
       return weeklyPar.filter(
         (r) =>
-          r.gw < c.currentGw ||
+          r.gw < currentGw ||
           isGwFullyCompleteForStatsRoundUp({
             gw: r.gw,
-            currentGw: c.currentGw,
+            currentGw,
             probeHome: c.probeHome,
             probeGw: c.probeGw,
             lastCompletedGw: c.lastCompletedGw,
@@ -399,7 +404,8 @@ export default function ProfileStatsScreen() {
       );
     }
     if (typeof stats?.lastCompletedGw === 'number' && stats.lastCompletedGw > 0) {
-      return weeklyPar.filter((r) => r.gw <= stats.lastCompletedGw);
+      const lastCompletedGw = stats.lastCompletedGw;
+      return weeklyPar.filter((r) => r.gw <= lastCompletedGw);
     }
     return weeklyPar;
   }, [weeklyPar, statsGwCompletion, stats?.lastCompletedGw]);
@@ -491,7 +497,7 @@ export default function ProfileStatsScreen() {
     return (
       <Screen fullBleed>
         <PageHeader title="Stats" leftAction={backAction} />
-        <CenteredSpinner loading />
+        <CenteredSpinner loading label="Crunching the numbers…" />
       </Screen>
     );
   }

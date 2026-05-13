@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View, type ViewStyle } from 'react-native';
-import { useTokens } from '@totl/ui';
+import { TotlText, useTokens } from '@totl/ui';
 
 /**
  * Small, centered loading spinner for initial/empty loads.
@@ -9,10 +9,12 @@ import { useTokens } from '@totl/ui';
 export default function CenteredSpinner({
   loading,
   delayMs = 200,
+  label,
   style,
 }: {
   loading: boolean;
   delayMs?: number;
+  label?: string;
   style?: ViewStyle;
 }) {
   const t = useTokens();
@@ -34,6 +36,11 @@ export default function CenteredSpinner({
   return (
     <View style={[{ flex: 1, alignItems: 'center', justifyContent: 'center' }, style]}>
       <ActivityIndicator size="small" color={brand} />
+      {label ? (
+        <TotlText variant="muted" style={{ marginTop: 12, fontSize: 14, fontWeight: '700' }}>
+          {label}
+        </TotlText>
+      ) : null}
     </View>
   );
 }
