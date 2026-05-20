@@ -17,7 +17,7 @@ describe('shouldRetryBrandedLeaderboardActivation', () => {
     expect(
       shouldRetryBrandedLeaderboardActivation({
         status: 402,
-        message: 'A fresh purchase is required for this leaderboard.',
+        message: 'A new season access purchase is required for this leaderboard.',
       })
     ).toBe(false);
   });
@@ -46,7 +46,7 @@ describe('retryBrandedLeaderboardActivation', () => {
   it('does not retry a product mismatch error', async () => {
     const runAttempt = vi.fn<() => Promise<string>>().mockRejectedValue({
       status: 402,
-      message: 'A fresh purchase is required for this leaderboard.',
+      message: 'A new season access purchase is required for this leaderboard.',
     });
 
     await expect(

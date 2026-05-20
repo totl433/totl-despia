@@ -76,7 +76,7 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
           queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-manage'] }),
         ]);
       } catch (err: any) {
-        Alert.alert('Could not restore', err?.message ?? 'Please try again.');
+        Alert.alert('Could not show leaderboard', err?.message ?? 'Please try again.');
       } finally {
         setRestoringId(null);
       }
@@ -139,7 +139,7 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
                 textAlign: 'center',
               }}
             >
-              Branded leaderboards are coming soon
+              No branded leaderboards yet
             </TotlText>
             <TotlText
               style={{
@@ -150,8 +150,9 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
                 marginTop: 12,
               }}
             >
-              Special TOTL competitions with their own tables, hosts and bragging rights. They are going to be great.
+              Enter a join code to unlock season access for a paid leaderboard or join a free one.
             </TotlText>
+            <Button title="Enter a join code" onPress={handleJoin} style={{ marginTop: 18, minWidth: 220 }} />
           </View>
         </View>
       </Screen>
@@ -234,10 +235,10 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
           />
           <View style={{ height: 24 }} />
           <LeaderboardSection
-            title="Restorable"
-            description="Leaderboards you've removed but can add back without rejoining from scratch."
+            title="Hidden from tab"
+            description="Leaderboards you've removed from the tab bar. Add them back here without rejoining from scratch."
             items={restorableItems}
-            emptyLabel="No restorable branded leaderboards."
+            emptyLabel="No hidden branded leaderboards."
             onRestore={handleRestore}
             restoringId={restoringId}
           />
@@ -245,9 +246,9 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
             <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 32, alignItems: 'center' }}>
               <TotlText variant="muted">No branded leaderboards yet</TotlText>
               <TotlText variant="muted" style={{ marginTop: 4, fontSize: 13, textAlign: 'center' }}>
-                Join a leaderboard to get started, then manage it here later.
+                Use a join code to access a branded leaderboard, then manage it here later.
               </TotlText>
-              <Button title="Join a leaderboard" onPress={handleJoin} style={{ marginTop: 16, minWidth: 220 }} />
+              <Button title="Enter a join code" onPress={handleJoin} style={{ marginTop: 16, minWidth: 220 }} />
             </View>
           ) : null}
         </ScrollView>
@@ -306,12 +307,12 @@ function LeaderboardSection({
                     disabled={restoringId === item.leaderboard.id}
                   >
                     <TotlText style={{ color: '#fff', fontWeight: '700' }}>
-                      {restoringId === item.leaderboard.id ? 'Restoring...' : 'Restore'}
+                      {restoringId === item.leaderboard.id ? 'Adding back...' : 'Show again'}
                     </TotlText>
                   </Pressable>
                 ) : null
               }
-              statusLabel={'can_restore' in item && item.can_restore ? 'Removed from tab' : undefined}
+              statusLabel={'can_restore' in item && item.can_restore ? 'Hidden from tab' : undefined}
             />
           </View>
         ))
@@ -382,8 +383,8 @@ function LeaderboardCard({
         {item.subscription && (
           <TotlText style={{ fontSize: 12, color: t.color.muted, marginTop: 4 }}>
             {item.subscription.status === 'active'
-              ? 'Active subscription'
-              : `Subscription ${item.subscription.status}`}
+              ? 'Active season access'
+              : `Season access ${item.subscription.status}`}
           </TotlText>
         )}
         {statusLabel ? (

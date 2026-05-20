@@ -800,7 +800,7 @@ export default function BrandedLeaderboardScreen({
                 <TotlText variant="muted" style={{ textAlign: 'center', marginBottom: 16 }}>
                   {detail.leaderboard.price_type === 'free' || !detail.requiresPurchase
                     ? 'Enter your join code to compete.'
-                    : `Subscribe to compete — ${(detail.leaderboard.season_price_cents / 100).toFixed(2)} ${detail.leaderboard.currency}/season`}
+                    : `Unlock season access to compete — ${(detail.leaderboard.season_price_cents / 100).toFixed(2)} ${detail.leaderboard.currency}/season`}
                 </TotlText>
                 <Pressable
                   onPress={() => {
@@ -1048,7 +1048,7 @@ export default function BrandedLeaderboardScreen({
           </View>
         )}
 
-        {/* Floating subscribe button when paywall dismissed */}
+        {/* Floating season-access button when paywall dismissed */}
         {isPaywalled && paywallDismissed && (
           <Pressable
             onPress={() => setPaywallDismissed(false)}
@@ -1070,7 +1070,7 @@ export default function BrandedLeaderboardScreen({
             })}
           >
             <TotlText style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
-              Subscribe
+              Unlock season access
             </TotlText>
           </Pressable>
         )}

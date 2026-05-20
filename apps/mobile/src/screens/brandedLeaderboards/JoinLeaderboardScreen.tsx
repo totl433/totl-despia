@@ -68,7 +68,7 @@ export default function JoinLeaderboardScreen() {
           {resolvedName ? `Join ${resolvedName}` : 'Join a Leaderboard'}
         </TotlText>
         <TotlText variant="muted" style={{ textAlign: 'center', marginBottom: 24 }}>
-          Enter your join code below
+          Enter your join code below. Paid leaderboards will show season access before you join.
         </TotlText>
 
         <TextInput

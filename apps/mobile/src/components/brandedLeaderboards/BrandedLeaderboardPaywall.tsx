@@ -235,7 +235,7 @@ export default function BrandedLeaderboardPaywall({
       ) : (
         <Pressable
           onPress={() => {
-            Alert.alert('Not Available', 'This subscription is not yet available. Please try again later.');
+            Alert.alert('Not Available', 'Season access is not available right now. Please try again later.');
           }}
           style={({ pressed }) => ({
             backgroundColor: '#000',
@@ -255,7 +255,7 @@ export default function BrandedLeaderboardPaywall({
         variant="muted"
         style={{ textAlign: 'center', fontSize: 12, marginTop: 14, lineHeight: 16 }}
       >
-        Leave anytime, all leagues can be managed in Settings.
+        One purchase unlocks this leaderboard for the season. You can hide it later from Settings.
       </TotlText>
     </View>
   );

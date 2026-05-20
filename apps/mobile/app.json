@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "Top of the League",
     "slug": "mobile",
-    "version": "2.0.9",
+    "version": "2.0.21",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,11 +14,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.despia.totlnative",
-      "buildNumber": "30",
+      "buildNumber": "42",
       "infoPlist": {
+        "CFBundleDisplayName": "Top of the League",
+        "CFBundleName": "Top of the League",
         "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Top of the League uses your photo library so you can choose a profile picture and upload images for mini-league badges and chat group icons.",
         "NSLocationWhenInUseUsageDescription": "TOTL does not use your location for core features. This permission may be requested by an included library, but the app does not use your location to track you."
       }
     },
@@ -36,6 +39,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Top of the League uses your photo library so you can choose a profile picture and upload images for mini-league badges and chat group icons.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "expo-font",
       "react-native-bottom-tabs"
     ],

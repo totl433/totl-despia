@@ -175,20 +175,6 @@ export async function fetchOffering(offeringId: string): Promise<PurchasesOfferi
   }
 }
 
-export async function restorePurchases(): Promise<CustomerInfo | null> {
-  const { data } = await supabase.auth.getSession();
-  await configurePurchases(data.session?.user?.id ?? null);
-  if (!available) return null;
-  try {
-    const Purchases = getPurchases();
-    if (!Purchases) return null;
-    return await Purchases.restorePurchases();
-  } catch (err) {
-    console.warn('[Purchases] restorePurchases failed', err);
-    return null;
-  }
-}
-
 export function hasEntitlement(customerInfo: CustomerInfo, entitlementId: string): boolean {
   return !!customerInfo.entitlements.active[entitlementId];
 }

@@ -740,7 +740,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     }
 
     if (sawVerifiedPurchase) {
-      throw Object.assign(new Error('A fresh purchase is required for this leaderboard.'), {
+      throw Object.assign(new Error('A new season access purchase is required for this leaderboard.'), {
         statusCode: 402,
         code: 'PURCHASE_REQUIRED',
       });
@@ -1367,7 +1367,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     const hasActivePurchase = (subscriptions ?? []).length > 0;
     const canRestore = leaderboard.price_type === 'free' || hasActivePurchase;
     if (!canRestore) {
-      throw Object.assign(new Error('An active purchase is required to restore this leaderboard.'), {
+      throw Object.assign(new Error('An active season access purchase is required to show this leaderboard again.'), {
         statusCode: 402,
         code: 'PURCHASE_REQUIRED',
       });
