@@ -6,6 +6,7 @@ import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { getCached, removeCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
+import { hasNextGameweek, SEASON_LAST_GW } from "../lib/season";
 
 /**
  * Shows different banners based on game state:
@@ -70,6 +71,11 @@ export default function PredictionsBanner() {
           .eq("gw", currentGw);
         
         if ((rsCount ?? 0) > 0) {
+          if (!hasNextGameweek(currentGw)) {
+            setVisible(false);
+            return;
+          }
+
           const { count: nextGwFxCount } = await supabase
             .from("app_fixtures")
             .select("id", { count: "exact", head: true })
@@ -130,6 +136,10 @@ export default function PredictionsBanner() {
       // If userViewingGw is null or >= currentGw, user has moved on (no banner)
       // If userViewingGw < currentGw, user hasn't moved on (show banner)
       if (!hasMovedOn && userViewingGw !== null && userViewingGw < currentGw) {
+        if (!hasNextGameweek(userViewingGw) || currentGw > SEASON_LAST_GW) {
+          if (alive) setVisible(false);
+          return;
+        }
         // New GW published - show "GW ready" banner
         if (alive) {
           setNewGwNumber(currentGw);
@@ -233,6 +243,11 @@ export default function PredictionsBanner() {
         // Hide banner in these states
         if (alive) setVisible(false);
       } else if (state === 'RESULTS_PRE_GW') {
+        if (!hasNextGameweek(effectiveGw)) {
+          if (alive) setVisible(false);
+          return;
+        }
+
         // Check if next GW is published in app_meta (not just if fixtures exist)
         // Fixtures can exist (mirrored from web) even if GW isn't published on app yet
         const nextGw = effectiveGw + 1;
@@ -426,7 +441,7 @@ export default function PredictionsBanner() {
   if (!visible) return null;
   
   // GW Ready banner (new GW published, user needs to transition)
-  if (bannerType === "gw-ready" && newGwNumber) {
+  if (bannerType === "gw-ready" && newGwNumber && newGwNumber <= SEASON_LAST_GW) {
     return (
       <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10" data-banner-height>
         <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-center justify-between gap-4">
@@ -476,9 +491,13 @@ export default function PredictionsBanner() {
   
   // Coming soon banner (RESULTS_PRE_GW, next GW not published)
   if (bannerType === "watch-space" && effectiveViewingGwCalculated) {
+    const nextDisplayGw = effectiveViewingGwCalculated + 1;
+    if (!hasNextGameweek(effectiveViewingGwCalculated)) {
+      return null;
+    }
     return (
       <GameweekBanner
-        gameweek={effectiveViewingGwCalculated + 1}
+        gameweek={nextDisplayGw}
         variant="coming-soon"
       />
     );
