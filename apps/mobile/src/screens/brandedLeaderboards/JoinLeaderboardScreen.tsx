@@ -63,7 +63,7 @@ export default function JoinLeaderboardScreen() {
 
   return (
     <Screen>
-      <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
+      <View style={{ flex: 1, padding: 24, paddingTop: 64 }}>
         <TotlText variant="heading" style={{ fontSize: 24, textAlign: 'center', marginBottom: 8 }}>
           {resolvedName ? `Join ${resolvedName}` : 'Join a Leaderboard'}
         </TotlText>
