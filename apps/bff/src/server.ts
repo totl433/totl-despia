@@ -31,6 +31,12 @@ import {
 } from './profile.js';
 import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reporting.js';
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
+import {
+  applySeasonFilter,
+  getSeasonTables,
+  resolveSeasonCtx,
+  seasonDisplayGw,
+} from './seasonStack.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -122,25 +128,50 @@ app.get('/v1/home', async (req) => {
 
   const query = HomeQuerySchema.parse((req as any).query);
 
-  // Use an authed client so all reads respect RLS and user context.
-  const { data: meta, error: metaError } = await (supa as any)
-    .from('app_meta')
-    .select('current_gw')
-    .eq('id', 1)
-    .maybeSingle();
-  if (metaError) throw metaError;
+  // Dual-stack: testers with use_season_stack → Pile B; everyone else → legacy app_*
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  const currentGw = seasonCtx.currentGw;
+  const viewingGw = seasonDisplayGw(seasonCtx, query.gw ?? null);
 
-  const currentGw = (meta?.current_gw as number | null) ?? 1;
+  if (seasonCtx.useSeasonStack) {
+    req.log.info(
+      {
+        seasonId: seasonCtx.seasonId,
+        seasonLabel: seasonCtx.seasonLabel,
+        currentGw,
+        viewingGw,
+      },
+      'home: season stack active'
+    );
+  }
 
-  const { data: prefs } = await (supa as any)
-    .from('user_notification_preferences')
-    .select('current_viewing_gw')
+  let fixturesQ = (supa as any)
+    .from(tables.fixtures)
+    .select('*')
+    .eq('gw', viewingGw)
+    .order('fixture_index', { ascending: true });
+  fixturesQ = applySeasonFilter(fixturesQ, seasonCtx);
+
+  let picksQ = (supa as any)
+    .from(tables.picks)
+    .select('fixture_index, pick')
     .eq('user_id', userId)
-    .maybeSingle();
+    .eq('gw', viewingGw);
+  picksQ = applySeasonFilter(picksQ, seasonCtx);
 
-  const userViewingGw: number | null = prefs?.current_viewing_gw ?? null;
-  const defaultViewingGw = userViewingGw !== null && userViewingGw < currentGw ? userViewingGw : currentGw;
-  const viewingGw = query.gw ?? defaultViewingGw;
+  let resultsQ = (supa as any)
+    .from(tables.results)
+    .select('fixture_index, result')
+    .eq('gw', viewingGw);
+  resultsQ = applySeasonFilter(resultsQ, seasonCtx);
+
+  let submissionQ = (supa as any)
+    .from(tables.submissions)
+    .select('submitted_at')
+    .eq('user_id', userId)
+    .eq('gw', viewingGw);
+  submissionQ = applySeasonFilter(submissionQ, seasonCtx);
 
   const [
     fixturesRes,
@@ -149,31 +180,12 @@ app.get('/v1/home', async (req) => {
     gwResultsRes,
     submissionRes,
   ] = await Promise.all([
-    (supa as any)
-      .from('app_fixtures')
-      .select('*')
-      .eq('gw', viewingGw)
-      .order('fixture_index', { ascending: true }),
-
-    (supa as any)
-      .from('app_picks')
-      .select('fixture_index, pick')
-      .eq('user_id', userId)
-      .eq('gw', viewingGw),
-
+    fixturesQ,
+    picksQ,
+    // live_scores stays legacy-keyed by gw for now; 26/27 won't have live until poll is season-aware
     (supa as any).from('live_scores').select('*').eq('gw', viewingGw),
-
-    (supa as any)
-      .from('app_gw_results')
-      .select('fixture_index, result')
-      .eq('gw', viewingGw),
-
-    (supa as any)
-      .from('app_gw_submissions')
-      .select('submitted_at')
-      .eq('user_id', userId)
-      .eq('gw', viewingGw)
-      .maybeSingle(),
+    resultsQ,
+    submissionQ.maybeSingle(),
   ]);
 
   if (fixturesRes.error) throw fixturesRes.error;
@@ -183,8 +195,12 @@ app.get('/v1/home', async (req) => {
   if (submissionRes.error) throw submissionRes.error;
 
   const fixtures: HomeSnapshot['fixtures'] = [];
-  for (const f of (fixturesRes.data ?? []) as unknown[]) {
-    const parsed = FixtureSchema.safeParse(f);
+  for (const f of (fixturesRes.data ?? []) as Array<Record<string, unknown>>) {
+    const normalized = {
+      ...f,
+      id: f?.id != null ? String(f.id) : `${viewingGw}-${f?.fixture_index ?? 0}`,
+    };
+    const parsed = FixtureSchema.safeParse(normalized);
     if (parsed.success) fixtures.push(parsed.data);
     else req.log.warn({ issues: parsed.error.issues }, 'dropping invalid fixture row');
   }
@@ -705,33 +721,36 @@ app.get('/v1/predictions', async (req) => {
   const { userId, supa } = getAuthedSupa(req as any);
   const query = PredictionsQuerySchema.parse((req as any).query);
 
-  const { data: meta, error: metaError } = await (supa as any)
-    .from('app_meta')
-    .select('current_gw')
-    .eq('id', 1)
-    .maybeSingle();
-  if (metaError) throw metaError;
-  const currentGw = (meta?.current_gw as number | null) ?? 1;
-
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  const currentGw = seasonCtx.currentGw;
   const gw = query.gw ?? currentGw;
 
+  let fixturesQ = (supa as any)
+    .from(tables.fixtures)
+    .select('*')
+    .eq('gw', gw)
+    .order('fixture_index', { ascending: true });
+  fixturesQ = applySeasonFilter(fixturesQ, seasonCtx);
+
+  let picksQ = (supa as any)
+    .from(tables.picks)
+    .select('fixture_index, pick')
+    .eq('user_id', userId)
+    .eq('gw', gw);
+  picksQ = applySeasonFilter(picksQ, seasonCtx);
+
+  let submissionQ = (supa as any)
+    .from(tables.submissions)
+    .select('submitted_at')
+    .eq('user_id', userId)
+    .eq('gw', gw);
+  submissionQ = applySeasonFilter(submissionQ, seasonCtx);
+
   const [fixturesRes, picksRes, submissionRes, formsRes] = await Promise.all([
-    (supa as any)
-      .from('app_fixtures')
-      .select('*')
-      .eq('gw', gw)
-      .order('fixture_index', { ascending: true }),
-    (supa as any)
-      .from('app_picks')
-      .select('fixture_index, pick')
-      .eq('user_id', userId)
-      .eq('gw', gw),
-    (supa as any)
-      .from('app_gw_submissions')
-      .select('submitted_at')
-      .eq('user_id', userId)
-      .eq('gw', gw)
-      .maybeSingle(),
+    fixturesQ,
+    picksQ,
+    submissionQ.maybeSingle(),
     (supa as any).from('app_team_forms').select('team_code, form, league_position').eq('gw', gw),
   ]);
 
@@ -772,14 +791,26 @@ app.post('/v1/predictions/save', async (req) => {
 
   if (body.picks.length === 0) return { ok: true };
 
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+
+  if (seasonCtx.useSeasonStack && !seasonCtx.seasonId) {
+    throw Object.assign(new Error('Season stack enabled but no season_id'), { statusCode: 400 });
+  }
+
   const rows = body.picks.map((p) => ({
     user_id: userId,
     gw: body.gw,
     fixture_index: p.fixture_index,
     pick: p.pick,
+    ...(seasonCtx.useSeasonStack && seasonCtx.seasonId
+      ? { season_id: seasonCtx.seasonId }
+      : {}),
   }));
 
-  const { error } = await (supa as any).from('app_picks').upsert(rows, { onConflict: 'user_id,gw,fixture_index' });
+  const { error } = await (supa as any)
+    .from(tables.picks)
+    .upsert(rows, { onConflict: tables.picksOnConflict });
   if (error) throw error;
   return { ok: true };
 });
@@ -793,12 +824,25 @@ app.post('/v1/predictions/submit', async (req) => {
   const { userId, supa } = getAuthedSupa(req as any);
   const body = SubmitPredictionsBodySchema.parse((req as any).body);
 
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+
+  if (seasonCtx.useSeasonStack && !seasonCtx.seasonId) {
+    throw Object.assign(new Error('Season stack enabled but no season_id'), { statusCode: 400 });
+  }
+
+  const row = {
+    user_id: userId,
+    gw: body.gw,
+    submitted_at: new Date().toISOString(),
+    ...(seasonCtx.useSeasonStack && seasonCtx.seasonId
+      ? { season_id: seasonCtx.seasonId }
+      : {}),
+  };
+
   const { error } = await (supa as any)
-    .from('app_gw_submissions')
-    .upsert(
-      { user_id: userId, gw: body.gw, submitted_at: new Date().toISOString() },
-      { onConflict: 'user_id,gw' }
-    );
+    .from(tables.submissions)
+    .upsert(row, { onConflict: tables.submissionsOnConflict });
   if (error) throw error;
   return { ok: true };
 });
