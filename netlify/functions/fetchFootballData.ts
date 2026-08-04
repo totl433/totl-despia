@@ -120,6 +120,8 @@ export const handler: Handler = async (event) => {
     const dateFrom = params.get('dateFrom');
     const dateTo = params.get('dateTo');
     const status = params.get('status');
+    // FD season start year (e.g. 2026 for 2026/27). Required for future matchdays.
+    const season = params.get('season');
 
     // Build API URL
     let apiUrl = `${FOOTBALL_DATA_BASE_URL}/competitions/${competition}/matches`;
@@ -129,6 +131,7 @@ export const handler: Handler = async (event) => {
     if (dateFrom) urlParams.append('dateFrom', dateFrom);
     if (dateTo) urlParams.append('dateTo', dateTo);
     if (status) urlParams.append('status', status);
+    if (season) urlParams.append('season', season);
     
     if (urlParams.toString()) {
       apiUrl += '?' + urlParams.toString();
