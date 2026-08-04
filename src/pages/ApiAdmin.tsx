@@ -75,29 +75,33 @@ type SeasonRuntime = {
 function formatKickoffLabel(iso: string | null): string {
  if (!iso) return "TBC";
  const kickoff = new Date(iso);
- const today = new Date();
- today.setHours(0, 0, 0, 0);
- const tomorrow = new Date(today);
- tomorrow.setDate(today.getDate() + 1);
- const kickoffDate = new Date(kickoff);
- kickoffDate.setHours(0, 0, 0, 0);
- let dateLabel = "";
- if (kickoffDate.getTime() === today.getTime()) {
- dateLabel = "TODAY";
- } else if (kickoffDate.getTime() === tomorrow.getTime()) {
- dateLabel = "TOMORROW";
- } else {
- dateLabel = kickoff.toLocaleDateString(undefined, {
+ if (Number.isNaN(kickoff.getTime())) return "TBC";
+
+ const ukDate = new Intl.DateTimeFormat("en-GB", {
+ timeZone: "Europe/London",
  weekday: "short",
- month: "short",
  day: "numeric",
+ month: "short",
  year: "numeric",
- });
- }
- const timeStr = `${String(kickoff.getUTCHours()).padStart(2, "0")}:${String(
- kickoff.getUTCMinutes()
- ).padStart(2, "0")} UTC`;
- return `${dateLabel} ${timeStr}`;
+ }).format(kickoff);
+
+ const ukTime = new Intl.DateTimeFormat("en-GB", {
+ timeZone: "Europe/London",
+ hour: "2-digit",
+ minute: "2-digit",
+ hour12: false,
+ }).format(kickoff);
+
+ // BST vs GMT so it's clear these aren't UTC walls
+ const parts = new Intl.DateTimeFormat("en-GB", {
+ timeZone: "Europe/London",
+ timeZoneName: "short",
+ hour: "2-digit",
+ }).formatToParts(kickoff);
+ const tz =
+ parts.find((p) => p.type === "timeZoneName")?.value || "UK";
+
+ return `${ukDate} ${ukTime} ${tz}`;
 }
 
 // Get Netlify function base URL dynamically based on current environment
@@ -1225,27 +1229,7 @@ export default function ApiAdmin() {
  <div className="space-y-2">
  {availableMatches.map((match) => {
  const isSelected = Array.from(selectedFixtures.values()).some(f => f.api_match_id === match.id);
- const kickoff = new Date(match.utcDate);
- 
- const today = new Date();
- today.setHours(0, 0, 0, 0);
- const tomorrow = new Date(today);
- tomorrow.setDate(today.getDate() + 1);
- 
- const kickoffDate = new Date(kickoff);
- kickoffDate.setHours(0, 0, 0, 0);
- 
- let dateLabel = '';
- if (kickoffDate.getTime() === today.getTime()) {
- dateLabel = 'TODAY';
- } else if (kickoffDate.getTime() === tomorrow.getTime()) {
- dateLabel = 'TOMORROW';
- } else {
- dateLabel = kickoff.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
- }
- 
- const timeStr = `${String(kickoff.getUTCHours()).padStart(2, '0')}:${String(kickoff.getUTCMinutes()).padStart(2, '0')} UTC`;
- const kickoffStr = `${dateLabel} ${timeStr}`;
+ const kickoffStr = formatKickoffLabel(match.utcDate);
  
  return (
  <div
