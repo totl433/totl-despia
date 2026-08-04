@@ -23,10 +23,15 @@ function seasonTablesNow() {
   return getSeasonTables(getActiveSeasonCtx() ?? { useSeasonStack: false });
 }
 
-function withSeasonFilter<T extends { eq: (c: string, v: unknown) => T }>(q: T): T {
+/** Apply season_id filter when Pile B is active (typed loosely for PostgREST builders). */
+function withSeasonFilter(q: any): any {
   const ctx = getActiveSeasonCtx();
   if (ctx?.useSeasonStack && ctx.seasonId) return q.eq("season_id", ctx.seasonId);
   return q;
+}
+
+async function seasonMaybeSingle(q: any): Promise<{ data: any; error: any }> {
+  return await withSeasonFilter(q).maybeSingle();
 }
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
@@ -1021,13 +1026,13 @@ if (alive && fixturesData.length > 0) {
  let isSubmitted = false;
  if (user?.id && fixturesData.length > 0) {
  const pickTables = seasonTablesNow();
- const { data: submission } = await withSeasonFilter(
+ const { data: submission } = await seasonMaybeSingle(
   supabase
    .from(pickTables.submissions)
    .select("submitted_at")
    .eq("gw", gwToDisplay)
    .eq("user_id", user.id)
- ).maybeSingle();
+ );
  
  // Always set submission state, even if component appears to be unmounting
  if (submission?.submitted_at) {
@@ -1697,13 +1702,13 @@ useEffect(() => {
 
  // CRITICAL: Ensure we're not already submitted (safety check)
  const tables = seasonTablesNow();
- const { data: existingSubmission } = await withSeasonFilter(
+ const { data: existingSubmission } = await seasonMaybeSingle(
   supabase
    .from(tables.submissions)
    .select('submitted_at')
    .eq('user_id', user.id)
    .eq('gw', currentGw)
- ).maybeSingle();
+ );
  
  if (existingSubmission?.submitted_at) {
  setSubmitted(true);
