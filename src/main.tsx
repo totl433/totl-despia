@@ -320,6 +320,13 @@ const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
 import { AuthGate } from "./features/auth";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useSeasonStack } from "./hooks/useSeasonStack";
+
+function SeasonStackHydrator({ children }: { children: React.ReactNode }) {
+  // Keep Pile B / legacy table routing in sync for all screens
+  useSeasonStack();
+  return <>{children}</>;
+}
 import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
@@ -988,7 +995,9 @@ function AppContent() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
-      <AppShell />
+      <SeasonStackHydrator>
+        <AppShell />
+      </SeasonStackHydrator>
     </AuthProvider>
   </React.StrictMode>
 );

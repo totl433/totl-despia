@@ -1,9 +1,39 @@
 import { supabase } from "./supabase";
 import { getCached } from "./cache";
+import { getActiveSeasonCtx } from "./activeSeasonCtx";
+import { getSeasonTables } from "./seasonStack";
 
 export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 
 const DEADLINE_BUFFER_MINUTES = 75;
+
+async function fetchFixturesForGw(gw: number) {
+  const ctx = getActiveSeasonCtx();
+  const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+  let q = supabase
+    .from(tables.fixtures)
+    .select("fixture_index, kickoff_time")
+    .eq("gw", gw)
+    .order("kickoff_time", { ascending: true });
+  if (ctx?.useSeasonStack && ctx.seasonId) {
+    q = q.eq("season_id", ctx.seasonId);
+  }
+  return q;
+}
+
+async function fetchUserSubmission(userId: string, gw: number) {
+  const ctx = getActiveSeasonCtx();
+  const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+  let q = supabase
+    .from(tables.submissions)
+    .select("submitted_at")
+    .eq("user_id", userId)
+    .eq("gw", gw);
+  if (ctx?.useSeasonStack && ctx.seasonId) {
+    q = q.eq("season_id", ctx.seasonId);
+  }
+  return q.maybeSingle();
+}
 
 /**
  * Determines the global state of a gameweek (not user-specific):
@@ -60,11 +90,7 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
     if (!fetchPromise) {
       // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
           fixtureFetchPromises.delete(gw);
@@ -186,11 +212,7 @@ export async function getUserGameweekState(gw: number, userId: string | null | u
     if (!fetchPromise) {
       // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
           fixtureFetchPromises.delete(gw);
@@ -243,12 +265,7 @@ async function calculateUserGameweekState(fixtures: Array<{ fixture_index: numbe
     } else {
       // Before deadline - check if user has submitted
       if (userId) {
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", userId)
-          .eq("gw", gw)
-          .maybeSingle();
+        const { data: submission } = await fetchUserSubmission(userId, gw);
         
         const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
         
@@ -312,11 +329,7 @@ export async function isGameweekFinished(gw: number): Promise<boolean> {
     if (!fetchPromise) {
       // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
           fixtureFetchPromises.delete(gw);

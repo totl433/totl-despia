@@ -12,10 +12,22 @@ import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
+import { useSeasonStack } from "../hooks/useSeasonStack";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables } from "../lib/seasonStack";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 
+function seasonTablesNow() {
+  return getSeasonTables(getActiveSeasonCtx() ?? { useSeasonStack: false });
+}
+
+function withSeasonFilter<T extends { eq: (c: string, v: unknown) => T }>(q: T): T {
+  const ctx = getActiveSeasonCtx();
+  if (ctx?.useSeasonStack && ctx.seasonId) return q.eq("season_id", ctx.seasonId);
+  return q;
+}
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
  let hash = 0;
@@ -153,6 +165,8 @@ export default function PredictionsPage() {
  // Use centralized hook for display GW (single source of truth)
  // This subscribes to real-time updates when user clicks "MOVE ON GW" button
  const { displayGw } = useDisplayGameweek();
+ // Hydrate active season ctx so getActiveSeasonCtx works in this screen
+ useSeasonStack();
 
  const [currentGw, setCurrentGw] = useState<number | null>(null);
  const [currentIndex, setCurrentIndex] = useState(0);
@@ -863,12 +877,15 @@ setResults(resultsMap);
  }
  }
 
- // Fetch fixtures from app_fixtures table
- const { data: savedFixtures, error: fixturesError } = await supabase
- .from("app_fixtures")
- .select("*")
- .eq("gw", gwToDisplay)
- .order("fixture_index", { ascending: true });
+ // Fetch fixtures (legacy app_fixtures or Pile B app_season_fixtures for testers)
+ const tables = seasonTablesNow();
+ const { data: savedFixtures, error: fixturesError } = await withSeasonFilter(
+  supabase
+   .from(tables.fixtures)
+   .select("*")
+   .eq("gw", gwToDisplay)
+   .order("fixture_index", { ascending: true })
+ );
  
  if (fixturesError) {
  throw new Error(`Failed to load fixtures: ${fixturesError.message}`);
@@ -1003,12 +1020,14 @@ if (alive && fixturesData.length > 0) {
  // This prevents the swipe view from showing even briefly
  let isSubmitted = false;
  if (user?.id && fixturesData.length > 0) {
- const { data: submission } = await supabase
- .from("app_gw_submissions")
- .select("submitted_at")
- .eq("gw", gwToDisplay)
- .eq("user_id", user.id)
- .maybeSingle();
+ const pickTables = seasonTablesNow();
+ const { data: submission } = await withSeasonFilter(
+  supabase
+   .from(pickTables.submissions)
+   .select("submitted_at")
+   .eq("gw", gwToDisplay)
+   .eq("user_id", user.id)
+ ).maybeSingle();
  
  // Always set submission state, even if component appears to be unmounting
  if (submission?.submitted_at) {
@@ -1063,11 +1082,13 @@ if (alive && fixturesData.length > 0) {
      if (delaysMs[attempt] > 0) {
        await new Promise((r) => setTimeout(r, delaysMs[attempt]));
      }
-     const { data, error } = await supabase
-       .from("app_picks")
+     const { data, error } = await withSeasonFilter(
+       supabase
+       .from(seasonTablesNow().picks)
        .select("gw,fixture_index,pick")
        .eq("gw", gwToDisplay)
-       .eq("user_id", user!.id);
+       .eq("user_id", user!.id)
+     );
      if (!error && Array.isArray(data)) {
        return data as Array<{ gw: number; fixture_index: number; pick: "H" | "D" | "A" }>;
      }
@@ -1675,12 +1696,14 @@ useEffect(() => {
   // #endregion agent log
 
  // CRITICAL: Ensure we're not already submitted (safety check)
- const { data: existingSubmission } = await supabase
- .from('app_gw_submissions')
- .select('submitted_at')
- .eq('user_id', user.id)
- .eq('gw', currentGw)
- .maybeSingle();
+ const tables = seasonTablesNow();
+ const { data: existingSubmission } = await withSeasonFilter(
+  supabase
+   .from(tables.submissions)
+   .select('submitted_at')
+   .eq('user_id', user.id)
+   .eq('gw', currentGw)
+ ).maybeSingle();
  
  if (existingSubmission?.submitted_at) {
  setSubmitted(true);
@@ -1688,13 +1711,15 @@ useEffect(() => {
  }
  
  // Save all picks - CRITICAL: Only save picks that match current fixtures
+ const ctx = getActiveSeasonCtx();
  const picksArray = Array.from(picks.values())
  .filter(pick => pick.matchday === currentGw) // Safety: only current GW
  .map(pick => ({
  user_id: user.id,
  gw: currentGw,
  fixture_index: pick.fixture_index,
- pick: pick.pick
+ pick: pick.pick,
+ ...(ctx?.useSeasonStack && ctx.seasonId ? { season_id: ctx.seasonId } : {}),
  }));
 
   // #region agent log
@@ -1711,9 +1736,9 @@ useEffect(() => {
  }
 
  const { error: picksError } = await supabase
- .from('app_picks')
+ .from(tables.picks)
  .upsert(picksArray, { 
- onConflict: 'user_id,gw,fixture_index',
+ onConflict: tables.picksOnConflict,
  ignoreDuplicates: false 
  });
 
@@ -1731,7 +1756,7 @@ useEffect(() => {
   (async () => {
     try {
       const [appRead, webRead] = await Promise.all([
-        supabase.from('app_picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
+        withSeasonFilter(supabase.from(tables.picks).select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id)),
         supabase.from('picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
       ]);
       const appRows = (appRead.data ?? []) as Array<{fixture_index:number;pick:"H"|"D"|"A"}>;
@@ -1755,13 +1780,14 @@ useEffect(() => {
  // Save submission - CRITICAL: Only create submission after picks are saved successfully
  // This ensures picks and submission are in sync
  const { error: submissionError } = await supabase
- .from('app_gw_submissions')
+ .from(tables.submissions)
  .upsert({
  user_id: user.id,
  gw: currentGw,
- submitted_at: new Date().toISOString()
+ submitted_at: new Date().toISOString(),
+ ...(ctx?.useSeasonStack && ctx.seasonId ? { season_id: ctx.seasonId } : {}),
  }, {
- onConflict: 'user_id,gw'
+ onConflict: tables.submissionsOnConflict
  });
 
  if (submissionError) {
