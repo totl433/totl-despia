@@ -55,11 +55,50 @@ type SeasonRow = {
  status: string;
 };
 
+type SeasonFixtureRow = {
+ fixture_index: number;
+ home_team: string;
+ away_team: string;
+ home_code: string | null;
+ away_code: string | null;
+ kickoff_time: string | null;
+ api_match_id: number | null;
+ status: string | null;
+};
+
 type SeasonRuntime = {
  id: number;
  current_season_id: string | null;
  current_gw: number;
 } | null;
+
+function formatKickoffLabel(iso: string | null): string {
+ if (!iso) return "TBC";
+ const kickoff = new Date(iso);
+ const today = new Date();
+ today.setHours(0, 0, 0, 0);
+ const tomorrow = new Date(today);
+ tomorrow.setDate(today.getDate() + 1);
+ const kickoffDate = new Date(kickoff);
+ kickoffDate.setHours(0, 0, 0, 0);
+ let dateLabel = "";
+ if (kickoffDate.getTime() === today.getTime()) {
+ dateLabel = "TODAY";
+ } else if (kickoffDate.getTime() === tomorrow.getTime()) {
+ dateLabel = "TOMORROW";
+ } else {
+ dateLabel = kickoff.toLocaleDateString(undefined, {
+ weekday: "short",
+ month: "short",
+ day: "numeric",
+ year: "numeric",
+ });
+ }
+ const timeStr = `${String(kickoff.getUTCHours()).padStart(2, "0")}:${String(
+ kickoff.getUTCMinutes()
+ ).padStart(2, "0")} UTC`;
+ return `${dateLabel} ${timeStr}`;
+}
 
 // Get Netlify function base URL dynamically based on current environment
 const getFunctionsBase = () => {
@@ -108,9 +147,11 @@ export default function ApiAdmin() {
  const [seasonRuntime, setSeasonRuntime] = useState<SeasonRuntime>(null);
  const [fixtureCounts, setFixtureCounts] = useState<Record<string, number>>({});
  const [newSeasonGw1Count, setNewSeasonGw1Count] = useState<number | null>(null);
+ const [newSeasonFixtures, setNewSeasonFixtures] = useState<SeasonFixtureRow[]>([]);
  const [seasonsLoading, setSeasonsLoading] = useState(false);
  const [seasonsBusy, setSeasonsBusy] = useState(false);
  const [seasonsError, setSeasonsError] = useState("");
+ const [seasonsOk, setSeasonsOk] = useState("");
  const [showSeasonsExtra, setShowSeasonsExtra] = useState(false);
  const [showLaunchSeasonConfirm, setShowLaunchSeasonConfirm] = useState(false);
  // Advanced / extra-info controls only
@@ -150,26 +191,34 @@ export default function ApiAdmin() {
 
  const season2627 =
  seasonRows.find((s) => s.label === NEW_SEASON_LABEL) ||
- seasonRows[seasonRows.length - 1] ||
  null;
  if (season2627) {
- const { count, error: countErr } = await supabase
+ const { data: fxRows, error: fxErr } = await supabase
  .from("app_season_fixtures")
- .select("*", { count: "exact", head: true })
+ .select(
+ "fixture_index, home_team, away_team, home_code, away_code, kickoff_time, api_match_id, status"
+ )
  .eq("season_id", season2627.id)
- .eq("gw", NEW_SEASON_GW);
- if (countErr) {
+ .eq("gw", NEW_SEASON_GW)
+ .order("fixture_index", { ascending: true });
+ if (fxErr) {
+ console.error("[ApiAdmin] season fixtures:", fxErr);
+ setNewSeasonFixtures([]);
  setNewSeasonGw1Count(null);
  } else {
- setNewSeasonGw1Count(count ?? 0);
+ const list = (fxRows || []) as SeasonFixtureRow[];
+ setNewSeasonFixtures(list);
+ setNewSeasonGw1Count(list.length);
  }
  } else {
+ setNewSeasonFixtures([]);
  setNewSeasonGw1Count(null);
  }
  } catch (e: unknown) {
  setSeasonsError(e instanceof Error ? e.message : "Failed to load seasons");
  setSeasons([]);
  setSeasonRuntime(null);
+ setNewSeasonFixtures([]);
  setNewSeasonGw1Count(null);
  } finally {
  setSeasonsLoading(false);
@@ -178,7 +227,7 @@ export default function ApiAdmin() {
 
  const season2627 = seasons.find((s) => s.label === NEW_SEASON_LABEL) || null;
  const season2627Ready =
- !!season2627 && (newSeasonGw1Count ?? 0) >= 10;
+ !!season2627 && newSeasonFixtures.length >= 10;
  const season2627Launched =
  !!season2627 &&
  seasonRuntime?.current_season_id === season2627.id &&
@@ -187,6 +236,7 @@ export default function ApiAdmin() {
  const loadNewSeasonGw1 = async () => {
  setSeasonsBusy(true);
  setSeasonsError("");
+ setSeasonsOk("");
  try {
  const payload = await callSeasonAdmin({
  action: "load",
@@ -197,8 +247,25 @@ export default function ApiAdmin() {
  gw: NEW_SEASON_GW,
  replace: true,
  });
- setOk(
- `✅ Loaded ${payload.fixtureCount} fixtures for ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`
+ // Prefer fixtures returned by the function for instant list
+ if (Array.isArray(payload.fixtures) && payload.fixtures.length > 0) {
+ const mapped = (payload.fixtures as Array<Record<string, unknown>>).map(
+ (f, i) => ({
+ fixture_index: Number(f.fixture_index ?? i),
+ home_team: String(f.home_team ?? ""),
+ away_team: String(f.away_team ?? ""),
+ home_code: (f.home_code as string) || null,
+ away_code: (f.away_code as string) || null,
+ kickoff_time: (f.kickoff_time as string) || null,
+ api_match_id: (f.api_match_id as number) ?? null,
+ status: (f.status as string) || null,
+ })
+ );
+ setNewSeasonFixtures(mapped);
+ setNewSeasonGw1Count(mapped.length);
+ }
+ setSeasonsOk(
+ `✅ Loaded ${payload.fixtureCount ?? newSeasonFixtures.length} fixtures — review the list, then Launch when ready`
  );
  await refreshSeasons();
  } catch (e: unknown) {
@@ -207,7 +274,6 @@ export default function ApiAdmin() {
  setSeasonsBusy(false);
  }
  };
-
  const launchNewSeason = async () => {
  if (!season2627) {
  setSeasonsError(`${NEW_SEASON_LABEL} season not found — load fixtures first`);
@@ -222,7 +288,7 @@ export default function ApiAdmin() {
  gw: NEW_SEASON_GW,
  });
  setShowLaunchSeasonConfirm(false);
- setOk(`✅ Launched ${payload.opened?.label} GW ${payload.opened?.gw}`);
+ setSeasonsOk(`✅ Launched ${payload.opened?.label} GW ${payload.opened?.gw}`);
  await refreshSeasons();
  } catch (e: unknown) {
  setSeasonsError(e instanceof Error ? e.message : "Launch failed");
@@ -755,6 +821,11 @@ export default function ApiAdmin() {
  {seasonsError}
  </div>
  )}
+ {seasonsOk && (
+ <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-sm">
+ {seasonsOk}
+ </div>
+ )}
 
  <div className="mb-4">
  {seasonsLoading ? (
@@ -765,7 +836,7 @@ export default function ApiAdmin() {
  </span>
  ) : season2627Ready ? (
  <span className="text-sm font-medium text-emerald-700">
- ✅ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} ready — {newSeasonGw1Count} fixtures loaded
+ ✅ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} ready — {newSeasonFixtures.length} fixtures loaded
  </span>
  ) : (
  <span className="text-sm font-medium text-amber-700">
@@ -775,14 +846,14 @@ export default function ApiAdmin() {
  )}
  </div>
 
- <div className="flex flex-col sm:flex-row gap-3">
+ <div className="flex flex-col sm:flex-row gap-3 mb-4">
  <button
  type="button"
  disabled={seasonsBusy}
  onClick={() => void loadNewSeasonGw1()}
  className="flex-1 px-4 py-3 bg-[#1C8376] text-white rounded-lg font-semibold disabled:opacity-50"
  >
- {seasonsBusy ? "Working…" : `Load fixtures · ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`}
+ {seasonsBusy ? "Loading matches…" : `Load fixtures · ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`}
  </button>
  <button
  type="button"
@@ -803,14 +874,41 @@ export default function ApiAdmin() {
  </button>
  </div>
 
+ {/* Match list — same idea as old Load Matches list */}
+ {newSeasonFixtures.length > 0 && (
+ <div className="mb-4">
+ <div className="flex items-center justify-between mb-3">
+ <h3 className="text-lg font-semibold text-slate-800">
+ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} fixtures ({newSeasonFixtures.length})
+ </h3>
+ </div>
+ <div className="space-y-2">
+ {newSeasonFixtures.map((f) => (
+ <div
+ key={`${f.fixture_index}-${f.api_match_id ?? "x"}`}
+ className="p-3 border-2 rounded-lg bg-[#1C8376]/10 border-[#1C8376]"
+ >
+ <div className="font-medium text-slate-800">
+ {f.home_team} vs {f.away_team}
+ </div>
+ <div className="text-xs text-slate-500">
+ {formatKickoffLabel(f.kickoff_time)}
+ {f.status ? ` · ${f.status}` : ""}
+ {f.api_match_id ? ` · #${f.api_match_id}` : ""}
+ </div>
+ </div>
+ ))}
+ </div>
+ </div>
+ )}
+
  <button
  type="button"
  onClick={() => setShowSeasonsExtra((v) => !v)}
- className="mt-4 text-sm text-slate-500 underline"
+ className="text-sm text-slate-500 underline"
  >
  {showSeasonsExtra ? "Hide extra info" : "Extra info"}
  </button>
-
  {showSeasonsExtra && (
  <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 space-y-3">
  <p>
@@ -924,6 +1022,11 @@ export default function ApiAdmin() {
 
  {/* Current GW Status — normal mid-season publish flow */}
  <div className="bg-white border-2 border-slate-300 rounded-lg p-4 mb-6">
+ {currentGw != null && currentGw >= 38 && (
+ <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">
+ Season finished (GW {currentGw}). For <strong>2026/27</strong>, use the panel above — not “next GW {nextGw}” below.
+ </div>
+ )}
  <div className="flex items-center justify-between">
  <div>
  <div className="text-sm text-slate-600 mb-1">Current Gameweek</div>

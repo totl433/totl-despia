@@ -334,7 +334,7 @@ export const handler: Handler = async (event) => {
       const { data: inserted, error: insErr } = await sb
         .from('app_season_fixtures')
         .insert(rows)
-        .select('fixture_index, home_team, away_team, kickoff_time, api_match_id');
+        .select('fixture_index, home_team, away_team, home_code, away_code, kickoff_time, api_match_id, status');
       if (insErr) throw insErr;
 
       return json(200, {
