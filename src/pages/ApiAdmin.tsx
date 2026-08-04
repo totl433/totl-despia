@@ -100,18 +100,23 @@ export default function ApiAdmin() {
  const [checkingFinished, setCheckingFinished] = useState(false);
 
  // Pile B multi-season (web Api Admin only — never writes legacy app_meta)
+ const NEW_SEASON_LABEL = "2026/27";
+ const NEW_SEASON_FD_YEAR = 2026;
+ const NEW_SEASON_GW = 1;
+
  const [seasons, setSeasons] = useState<SeasonRow[]>([]);
  const [seasonRuntime, setSeasonRuntime] = useState<SeasonRuntime>(null);
  const [fixtureCounts, setFixtureCounts] = useState<Record<string, number>>({});
+ const [newSeasonGw1Count, setNewSeasonGw1Count] = useState<number | null>(null);
  const [seasonsLoading, setSeasonsLoading] = useState(false);
  const [seasonsBusy, setSeasonsBusy] = useState(false);
- const [seasonsNote, setSeasonsNote] = useState("");
  const [seasonsError, setSeasonsError] = useState("");
- const [loadLabel, setLoadLabel] = useState("2026/27");
- const [loadFdSeason, setLoadFdSeason] = useState(2026);
- const [loadGw, setLoadGw] = useState(1);
- const [openSeasonId, setOpenSeasonId] = useState("");
- const [openGw, setOpenGw] = useState(1);
+ const [showSeasonsExtra, setShowSeasonsExtra] = useState(false);
+ const [showLaunchSeasonConfirm, setShowLaunchSeasonConfirm] = useState(false);
+ // Advanced / extra-info controls only
+ const [loadLabel, setLoadLabel] = useState(NEW_SEASON_LABEL);
+ const [loadFdSeason, setLoadFdSeason] = useState(NEW_SEASON_FD_YEAR);
+ const [loadGw, setLoadGw] = useState(NEW_SEASON_GW);
 
  const callSeasonAdmin = async (body: Record<string, unknown>) => {
  const { data: sessionData } = await supabase.auth.getSession();
@@ -138,24 +143,91 @@ export default function ApiAdmin() {
  setSeasonsError("");
  try {
  const payload = await callSeasonAdmin({ action: "list" });
- setSeasons(payload.seasons || []);
+ const seasonRows: SeasonRow[] = payload.seasons || [];
+ setSeasons(seasonRows);
  setSeasonRuntime(payload.runtime || null);
  setFixtureCounts(payload.fixtureCounts || {});
- if (!openSeasonId && payload.seasons?.length) {
- const draft =
- payload.seasons.find((s: SeasonRow) => s.label === "2026/27") ||
- payload.seasons[payload.seasons.length - 1];
- if (draft) setOpenSeasonId(draft.id);
+
+ const season2627 =
+ seasonRows.find((s) => s.label === NEW_SEASON_LABEL) ||
+ seasonRows[seasonRows.length - 1] ||
+ null;
+ if (season2627) {
+ const { count, error: countErr } = await supabase
+ .from("app_season_fixtures")
+ .select("*", { count: "exact", head: true })
+ .eq("season_id", season2627.id)
+ .eq("gw", NEW_SEASON_GW);
+ if (countErr) {
+ setNewSeasonGw1Count(null);
+ } else {
+ setNewSeasonGw1Count(count ?? 0);
  }
- setSeasonsNote(
- `Legacy pile still on GW ${payload.legacy?.current_gw ?? "?"}. Pile B runtime is separate.`
- );
+ } else {
+ setNewSeasonGw1Count(null);
+ }
  } catch (e: unknown) {
  setSeasonsError(e instanceof Error ? e.message : "Failed to load seasons");
  setSeasons([]);
  setSeasonRuntime(null);
+ setNewSeasonGw1Count(null);
  } finally {
  setSeasonsLoading(false);
+ }
+ };
+
+ const season2627 = seasons.find((s) => s.label === NEW_SEASON_LABEL) || null;
+ const season2627Ready =
+ !!season2627 && (newSeasonGw1Count ?? 0) >= 10;
+ const season2627Launched =
+ !!season2627 &&
+ seasonRuntime?.current_season_id === season2627.id &&
+ seasonRuntime?.current_gw === NEW_SEASON_GW;
+
+ const loadNewSeasonGw1 = async () => {
+ setSeasonsBusy(true);
+ setSeasonsError("");
+ try {
+ const payload = await callSeasonAdmin({
+ action: "load",
+ label: NEW_SEASON_LABEL,
+ yearStart: NEW_SEASON_FD_YEAR,
+ yearEnd: NEW_SEASON_FD_YEAR + 1,
+ footballDataSeason: NEW_SEASON_FD_YEAR,
+ gw: NEW_SEASON_GW,
+ replace: true,
+ });
+ setOk(
+ `✅ Loaded ${payload.fixtureCount} fixtures for ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`
+ );
+ await refreshSeasons();
+ } catch (e: unknown) {
+ setSeasonsError(e instanceof Error ? e.message : "Load failed");
+ } finally {
+ setSeasonsBusy(false);
+ }
+ };
+
+ const launchNewSeason = async () => {
+ if (!season2627) {
+ setSeasonsError(`${NEW_SEASON_LABEL} season not found — load fixtures first`);
+ return;
+ }
+ setSeasonsBusy(true);
+ setSeasonsError("");
+ try {
+ const payload = await callSeasonAdmin({
+ action: "open",
+ seasonId: season2627.id,
+ gw: NEW_SEASON_GW,
+ });
+ setShowLaunchSeasonConfirm(false);
+ setOk(`✅ Launched ${payload.opened?.label} GW ${payload.opened?.gw}`);
+ await refreshSeasons();
+ } catch (e: unknown) {
+ setSeasonsError(e instanceof Error ? e.message : "Launch failed");
+ } finally {
+ setSeasonsBusy(false);
  }
  };
 
@@ -661,16 +733,12 @@ export default function ApiAdmin() {
  return (
  <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
  <div className="max-w-4xl mx-auto">
- {/* Pile B — multi-season (web Api Admin only) */}
+ {/* New season — keep this as simple as a normal GW publish */}
  <div className="bg-white border-2 border-teal-600 rounded-lg p-4 mb-6">
- <div className="flex items-start justify-between gap-3 mb-3">
+ <div className="flex items-center justify-between gap-3 mb-3">
  <div>
- <div className="text-lg font-semibold text-slate-900">Seasons (folder stack)</div>
- <p className="text-sm text-slate-600 mt-1">
- Load fixtures into a season folder from Football Data. Open season hard-switches{" "}
- <em>folder-aware</em> clients only — never touches the App Store / legacy{" "}
- <code className="text-xs">app_meta.current_gw</code>.
- </p>
+ <div className="text-sm text-slate-600">New season</div>
+ <div className="text-2xl font-bold text-slate-900">{NEW_SEASON_LABEL} · GW {NEW_SEASON_GW}</div>
  </div>
  <button
  type="button"
@@ -683,88 +751,116 @@ export default function ApiAdmin() {
  </div>
 
  {seasonsError && (
- <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+ <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
  {seasonsError}
  </div>
  )}
- {seasonsNote && !seasonsError && (
- <div className="mb-3 text-xs text-slate-500">{seasonsNote}</div>
- )}
 
- <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded text-sm">
- <div className="font-medium text-slate-800 mb-1">Pile B runtime</div>
- {seasonRuntime?.current_season_id ? (
- <div className="text-slate-700">
- Season{" "}
- <span className="font-semibold">
- {seasons.find((s) => s.id === seasonRuntime.current_season_id)?.label ??
- seasonRuntime.current_season_id.slice(0, 8)}
+ <div className="mb-4">
+ {seasonsLoading ? (
+ <span className="text-sm text-slate-500">Checking fixtures…</span>
+ ) : season2627Launched ? (
+ <span className="text-sm font-medium text-emerald-700">
+ ✅ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} is live
  </span>
- {" · "}GW {seasonRuntime.current_gw}
- </div>
+ ) : season2627Ready ? (
+ <span className="text-sm font-medium text-emerald-700">
+ ✅ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} ready — {newSeasonGw1Count} fixtures loaded
+ </span>
  ) : (
- <div className="text-slate-500">Not set (schema missing or bootstrap not run)</div>
+ <span className="text-sm font-medium text-amber-700">
+ ⏳ Fixtures not ready yet
+ {newSeasonGw1Count != null ? ` (${newSeasonGw1Count}/10)` : ""}
+ </span>
  )}
- <div className="mt-2 text-slate-600">
- Legacy current GW: <span className="font-semibold">GW {currentGw ?? "…"}</span>
- </div>
  </div>
 
- {seasons.length > 0 && (
- <div className="mb-4 overflow-x-auto">
- <table className="w-full text-sm text-left">
- <thead>
- <tr className="text-slate-500 border-b">
- <th className="py-1 pr-2">Label</th>
- <th className="py-1 pr-2">FD year</th>
- <th className="py-1 pr-2">Status</th>
- <th className="py-1">Fixtures</th>
- </tr>
- </thead>
- <tbody>
- {seasons.map((s) => (
- <tr key={s.id} className="border-b border-slate-100">
- <td className="py-1.5 pr-2 font-medium">{s.label}</td>
- <td className="py-1.5 pr-2">{s.football_data_season}</td>
- <td className="py-1.5 pr-2">{s.status}</td>
- <td className="py-1.5">{fixtureCounts[s.id] ?? 0}</td>
- </tr>
- ))}
- </tbody>
- </table>
- </div>
- )}
-
- <div className="grid sm:grid-cols-2 gap-4">
- <div className="border border-slate-200 rounded p-3">
- <div className="font-medium text-slate-800 mb-2">Load season gameweek</div>
- <label className="block text-xs text-slate-500 mb-1">Season label</label>
- <input
- className="w-full mb-2 px-2 py-1.5 border rounded text-sm"
- value={loadLabel}
- onChange={(e) => setLoadLabel(e.target.value)}
- placeholder="2026/27"
- />
- <label className="block text-xs text-slate-500 mb-1">Football Data season year</label>
- <input
- type="number"
- className="w-full mb-2 px-2 py-1.5 border rounded text-sm"
- value={loadFdSeason}
- onChange={(e) => setLoadFdSeason(Number(e.target.value))}
- />
- <label className="block text-xs text-slate-500 mb-1">Gameweek</label>
- <input
- type="number"
- min={1}
- max={38}
- className="w-full mb-3 px-2 py-1.5 border rounded text-sm"
- value={loadGw}
- onChange={(e) => setLoadGw(Number(e.target.value))}
- />
+ <div className="flex flex-col sm:flex-row gap-3">
  <button
  type="button"
  disabled={seasonsBusy}
- className="w-full px-3 py-2 bg-teal-700 text-white rounded font-medium text-sm disabled:opacity-50"
+ onClick={() => void loadNewSeasonGw1()}
+ className="flex-1 px-4 py-3 bg-[#1C8376] text-white rounded-lg font-semibold disabled:opacity-50"
+ >
+ {seasonsBusy ? "Working…" : `Load fixtures · ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`}
+ </button>
+ <button
+ type="button"
+ disabled={seasonsBusy || !season2627Ready || season2627Launched}
+ onClick={() => setShowLaunchSeasonConfirm(true)}
+ className="flex-1 px-4 py-3 bg-amber-700 text-white rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+ title={
+ !season2627Ready
+ ? "Load fixtures first"
+ : season2627Launched
+ ? "Already launched"
+ : `Launch ${NEW_SEASON_LABEL}`
+ }
+ >
+ {season2627Launched
+ ? "LAUNCHED"
+ : `LAUNCH ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`}
+ </button>
+ </div>
+
+ <button
+ type="button"
+ onClick={() => setShowSeasonsExtra((v) => !v)}
+ className="mt-4 text-sm text-slate-500 underline"
+ >
+ {showSeasonsExtra ? "Hide extra info" : "Extra info"}
+ </button>
+
+ {showSeasonsExtra && (
+ <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 space-y-3">
+ <p>
+ Launch switches <strong>new</strong> app/web onto the season folder only.
+ It does not change the live App Store season (
+ <code className="text-xs">app_meta</code> stays on GW {currentGw ?? "…"}).
+ </p>
+ <div>
+ <div className="font-medium text-slate-800 mb-1">Folder status</div>
+ <ul className="list-disc list-inside space-y-1 text-slate-600">
+ {seasons.map((s) => (
+ <li key={s.id}>
+ {s.label} · {s.status} · {fixtureCounts[s.id] ?? 0} fixtures
+ {seasonRuntime?.current_season_id === s.id
+ ? ` · runtime GW ${seasonRuntime.current_gw}`
+ : ""}
+ </li>
+ ))}
+ {!seasons.length && <li>No seasons loaded</li>}
+ </ul>
+ </div>
+
+ <div className="pt-2 border-t border-slate-200 space-y-2">
+ <div className="font-medium text-slate-800">Advanced (other GWs / seasons)</div>
+ <div className="grid sm:grid-cols-3 gap-2">
+ <input
+ className="px-2 py-1.5 border rounded text-sm"
+ value={loadLabel}
+ onChange={(e) => setLoadLabel(e.target.value)}
+ placeholder="Label"
+ />
+ <input
+ type="number"
+ className="px-2 py-1.5 border rounded text-sm"
+ value={loadFdSeason}
+ onChange={(e) => setLoadFdSeason(Number(e.target.value))}
+ placeholder="FD year"
+ />
+ <input
+ type="number"
+ className="px-2 py-1.5 border rounded text-sm"
+ value={loadGw}
+ onChange={(e) => setLoadGw(Number(e.target.value))}
+ placeholder="GW"
+ />
+ </div>
+ <button
+ type="button"
+ disabled={seasonsBusy}
+ className="px-3 py-1.5 bg-slate-700 text-white rounded text-sm disabled:opacity-50"
  onClick={async () => {
  setSeasonsBusy(true);
  setSeasonsError("");
@@ -783,9 +879,7 @@ export default function ApiAdmin() {
  gw: loadGw,
  replace: true,
  });
- setOk(
- `✅ Loaded ${payload.fixtureCount} fixtures → ${payload.season?.label} GW ${payload.gw} (legacy untouched)`
- );
+ setOk(`✅ Loaded ${payload.fixtureCount} → ${payload.season?.label} GW ${payload.gw}`);
  await refreshSeasons();
  } catch (e: unknown) {
  setSeasonsError(e instanceof Error ? e.message : "Load failed");
@@ -794,77 +888,13 @@ export default function ApiAdmin() {
  }
  }}
  >
- {seasonsBusy ? "Working…" : `Load ${loadLabel} GW ${loadGw}`}
+ Load selected
  </button>
- </div>
-
- <div className="border border-amber-300 rounded p-3 bg-amber-50/40">
- <div className="font-medium text-slate-800 mb-2">Open season (hard switch)</div>
- <p className="text-xs text-amber-900 mb-2">
- Sets Pile B runtime only. Do this after new app + new web understand seasons.
- Does not change App Store legacy GW.
- </p>
- <label className="block text-xs text-slate-500 mb-1">Season</label>
- <select
- className="w-full mb-2 px-2 py-1.5 border rounded text-sm bg-white"
- value={openSeasonId}
- onChange={(e) => setOpenSeasonId(e.target.value)}
- >
- <option value="">Select…</option>
- {seasons.map((s) => (
- <option key={s.id} value={s.id}>
- {s.label} ({s.status})
- </option>
- ))}
- </select>
- <label className="block text-xs text-slate-500 mb-1">Starting GW</label>
- <input
- type="number"
- min={1}
- max={38}
- className="w-full mb-3 px-2 py-1.5 border rounded text-sm"
- value={openGw}
- onChange={(e) => setOpenGw(Number(e.target.value))}
- />
+ {user?.id && season2627 && (
  <button
  type="button"
- disabled={seasonsBusy || !openSeasonId}
- className="w-full px-3 py-2 bg-amber-700 text-white rounded font-medium text-sm disabled:opacity-50"
- onClick={async () => {
- const label = seasons.find((s) => s.id === openSeasonId)?.label || openSeasonId;
- if (
- !window.confirm(
- `Open ${label} at GW ${openGw} for folder-aware clients?\n\nLegacy app_meta stays on GW ${currentGw}.`
- )
- ) {
- return;
- }
- setSeasonsBusy(true);
- setSeasonsError("");
- try {
- const payload = await callSeasonAdmin({
- action: "open",
- seasonId: openSeasonId,
- gw: openGw,
- });
- setOk(
- `✅ Opened ${payload.opened?.label} GW ${payload.opened?.gw} (Pile B only)`
- );
- await refreshSeasons();
- } catch (e: unknown) {
- setSeasonsError(e instanceof Error ? e.message : "Open failed");
- } finally {
- setSeasonsBusy(false);
- }
- }}
- >
- Open season
- </button>
- {user?.id && (
- <button
- type="button"
- disabled={seasonsBusy || !openSeasonId}
- className="w-full mt-2 px-3 py-2 bg-slate-800 text-white rounded text-sm disabled:opacity-50"
+ disabled={seasonsBusy}
+ className="ml-2 px-3 py-1.5 bg-slate-800 text-white rounded text-sm disabled:opacity-50"
  onClick={async () => {
  setSeasonsBusy(true);
  setSeasonsError("");
@@ -872,11 +902,11 @@ export default function ApiAdmin() {
  await callSeasonAdmin({
  action: "setTester",
  userId: user.id,
- seasonId: openSeasonId,
+ seasonId: season2627.id,
  useSeasonStack: true,
- viewingGw: openGw,
+ viewingGw: NEW_SEASON_GW,
  });
- setOk("✅ Your account flagged for Pile B (use_season_stack)");
+ setOk("✅ Tester flag set on your account");
  } catch (e: unknown) {
  setSeasonsError(e instanceof Error ? e.message : "Tester flag failed");
  } finally {
@@ -884,18 +914,16 @@ export default function ApiAdmin() {
  }
  }}
  >
- Put me on selected season (tester)
+ Put me on {NEW_SEASON_LABEL} (tester)
  </button>
  )}
  </div>
  </div>
+ )}
  </div>
 
- {/* Current GW Status — LEGACY unfoldered pile */}
+ {/* Current GW Status — normal mid-season publish flow */}
  <div className="bg-white border-2 border-slate-300 rounded-lg p-4 mb-6">
- <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
- Legacy pile (App Store / old web)
- </div>
  <div className="flex items-center justify-between">
  <div>
  <div className="text-sm text-slate-600 mb-1">Current Gameweek</div>
@@ -1207,6 +1235,53 @@ export default function ApiAdmin() {
  className="flex-1 px-4 py-2 bg-[#1C8376] text-white rounded-lg disabled:opacity-50 font-bold"
  >
  {saving ? "Publishing..." : "YES, PUBLISH GW " + nextGw}
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* Launch new season confirmation */}
+ {showLaunchSeasonConfirm && (
+ <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+ <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+ <h3 className="text-2xl font-bold text-slate-900 mb-4">
+ ⚠️ LAUNCH {NEW_SEASON_LABEL}?
+ </h3>
+ <div className="mb-6 space-y-3 text-sm text-slate-700">
+ <p className="font-semibold">This will:</p>
+ <ul className="list-disc list-inside space-y-2 ml-2">
+ <li>
+ Set the <strong>new</strong> app/web to{" "}
+ <strong>
+ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW}
+ </strong>
+ </li>
+ <li>Start a fresh season OCP (points from zero) for folder-aware clients</li>
+ <li className="text-emerald-800">
+ <strong>Not</strong> change the live App Store season (still GW{" "}
+ {currentGw ?? "…"})
+ </li>
+ </ul>
+ <p className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+ Only launch after the new app and new web know about seasons.
+ </p>
+ </div>
+ <div className="flex gap-3">
+ <button
+ type="button"
+ onClick={() => setShowLaunchSeasonConfirm(false)}
+ className="flex-1 px-4 py-2 bg-slate-200 text-slate-800 rounded-lg font-semibold"
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ onClick={() => void launchNewSeason()}
+ disabled={seasonsBusy}
+ className="flex-1 px-4 py-2 bg-amber-700 text-white rounded-lg disabled:opacity-50 font-bold"
+ >
+ {seasonsBusy ? "Launching…" : `YES, LAUNCH ${NEW_SEASON_LABEL}`}
  </button>
  </div>
  </div>
