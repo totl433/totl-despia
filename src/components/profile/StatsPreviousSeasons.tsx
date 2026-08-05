@@ -2,7 +2,7 @@
  * Previous Seasons — completed seasons only (OCP, overall rank, top %).
  * Mirrors app StatsPreviousSeasonsCard for playtotl.com/profile/stats.
  */
-import React, { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 
 export type SeasonArchiveStat = {
