@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase';
 import ShareSheet from '../ShareSheet';
 import GameweekFixturesCardListForCapture from '../GameweekFixturesCardListForCapture';
 import { formatPercentage } from '../../lib/formatPercentage';
+import { ensureActiveSeasonCtx } from '../../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../../lib/seasonStack';
 
 export interface ScoreIndicatorProps {
  score: number;
@@ -60,19 +62,24 @@ export default function ScoreIndicator({
  setShowCaptureModal(true);
  
  try {
- // Fetch fixtures for the gameweek
- const { data: fixturesData } = await supabase
- .from('app_fixtures')
+ const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+ const tables = getSeasonTables(seasonCtx);
+
+ // Fetch fixtures for the gameweek (season stack or legacy)
+ let fixturesQ = (supabase as any)
+ .from(tables.fixtures)
  .select('*')
  .eq('gw', gameweek)
  .order('fixture_index', { ascending: true });
+ fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+ const { data: fixturesData } = await fixturesQ;
  
  if (!fixturesData || fixturesData.length === 0) {
  throw new Error('No fixtures found for this gameweek');
  }
  
  // Format fixtures exactly like shareableFixtures in GamesSection
- const shareableFixtures = fixturesData.map(f => ({
+ const shareableFixtures = fixturesData.map((f: any) => ({
  id: f.id,
  gw: f.gw,
  fixture_index: f.fixture_index,
@@ -87,12 +94,14 @@ export default function ScoreIndicator({
  }));
  setShareFixtures(shareableFixtures);
  
- // Fetch picks
- const { data: picksData } = await supabase
- .from('app_picks')
+ // Fetch picks from the correct season table
+ let picksQ = (supabase as any)
+ .from(tables.picks)
  .select('fixture_index, pick')
  .eq('gw', gameweek)
  .eq('user_id', user.id);
+ picksQ = withSeasonId(picksQ, seasonCtx);
+ const { data: picksData } = await picksQ;
  
  const picksMap: Record<number, "H" | "D" | "A"> = {};
  (picksData || []).forEach((p: any) => {
@@ -102,8 +111,8 @@ export default function ScoreIndicator({
  
  // Fetch live scores and convert to Record format first (like GamesSection)
  const apiMatchIds = shareableFixtures
- .map(f => f.api_match_id)
- .filter((id): id is number => id !== null && id !== undefined);
+ .map((f: { api_match_id?: number }) => f.api_match_id)
+ .filter((id: number | undefined): id is number => id !== null && id !== undefined);
  
  const liveScoresRecord: Record<number, any> = {};
  if (apiMatchIds.length > 0) {
@@ -113,7 +122,9 @@ export default function ScoreIndicator({
  .in('api_match_id', apiMatchIds);
  
  (liveScoresData || []).forEach((score: any) => {
- const fixture = shareableFixtures.find(f => f.api_match_id === score.api_match_id);
+ const fixture = shareableFixtures.find(
+ (f: { api_match_id?: number }) => f.api_match_id === score.api_match_id
+ );
  if (fixture) {
  liveScoresRecord[fixture.fixture_index] = {
  homeScore: score.home_score ?? 0,
@@ -439,15 +450,18 @@ export default function ScoreIndicator({
  userName={userName}
  globalRank={topPercent ? Math.round((topPercent / 100) * total) : undefined}
  gwRankPercent={(() => {
- const value = topPercent !== null && topPercent !== undefined ? topPercent : undefined;
- console.log('[ScoreIndicator] Passing gwRankPercent to capture component:', value, 'topPercent was:', topPercent);
- return value;
+ // Only show rank % after the GW is finished (no pre-season / pre-results badge)
+ if (state !== 'finished' || topPercent === null || topPercent === undefined) {
+ return undefined;
+ }
+ console.log('[ScoreIndicator] Passing gwRankPercent to capture component:', topPercent);
+ return topPercent;
  })()}
  onCardRefReady={(ref) => {
  // Store the ref element directly
  if (ref?.current) {
  captureRef.current = ref.current;
- console.log('[ScoreIndicator] Capture ref ready, topPercent:', topPercent, 'gwRankPercent:', topPercent !== null && topPercent !== undefined ? topPercent : undefined);
+ console.log('[ScoreIndicator] Capture ref ready, state:', state, 'topPercent:', topPercent);
  // Force Volley image to load before capture
  const volleyImg = ref.current.querySelector('img[src*="Volley"]') as HTMLImageElement;
  if (volleyImg) {
