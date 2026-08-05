@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/profile/StatCard';
@@ -7,6 +7,12 @@ import { StreakStatCard } from '../components/profile/StreakStatCard';
 import { TeamStatCard } from '../components/profile/TeamStatCard';
 import { ParChart } from '../components/profile/ParChart';
 import { TrophyCabinet } from '../components/profile/TrophyCabinet';
+import {
+  StatsPreviousSeasons,
+  buildSeasonArchiveStats,
+  fetchClosed2526Standings,
+  type ClosedSeasonStandings,
+} from '../components/profile/StatsPreviousSeasons';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
 import { useGameweekState } from '../hooks/useGameweekState';
@@ -24,17 +30,35 @@ export default function Stats() {
  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
  const [latestGw, setLatestGw] = useState<number | null>(null);
  const [resultsModalLoading, setResultsModalLoading] = useState(false);
- 
+ const [closed2526, setClosed2526] = useState<ClosedSeasonStandings | null>(null);
+ const [archiveSeasonLabel, setArchiveSeasonLabel] = useState<string | null>(null);
+ const [archiveLoading, setArchiveLoading] = useState(false);
+
+ const seasonArchiveRows = useMemo(
+   () => buildSeasonArchiveStats({ closed2526 }),
+   [closed2526]
+ );
+ const selectedArchiveLabel = archiveSeasonLabel ?? seasonArchiveRows[0]?.seasonLabel ?? '2025/26';
+
  async function loadStats() {
  if (!user) return;
 
  setLoading(true);
+ setArchiveLoading(true);
  try {
- const userStats = await fetchUserStats(user.id);
+ const [userStats, archive] = await Promise.all([
+   fetchUserStats(user.id),
+   fetchClosed2526Standings(user.id).catch((err) => {
+     console.error('[Stats] Previous seasons fetch failed:', err);
+     return null;
+   }),
+ ]);
  setStats(userStats);
+ setClosed2526(archive);
  } catch (error) {
  } finally {
  setLoading(false);
+ setArchiveLoading(false);
  }
  }
  
@@ -546,6 +570,16 @@ export default function Stats() {
  }
  loading={loading}
  />
+ )}
+
+ {/* Previous Seasons — bottom of stats (completed seasons only) */}
+ {(seasonArchiveRows.length > 0 || archiveLoading) && (
+   <StatsPreviousSeasons
+     seasons={seasonArchiveRows}
+     selectedLabel={selectedArchiveLabel}
+     onSelectLabel={setArchiveSeasonLabel}
+     loading={archiveLoading && !closed2526}
+   />
  )}
  </div>
  )}
