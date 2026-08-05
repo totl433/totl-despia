@@ -12,38 +12,33 @@ type Story = StoryObj<typeof TrophyCabinet>;
 
 export const Default: Story = {
   args: {
-    lastGw: 3,
-    form5: 2,
-    form10: 1,
-    overall: 0,
+    gameweek: 4,
+    monthly: 2,
+    season: 1,
   },
 };
 
 export const ManyTrophies: Story = {
   args: {
-    lastGw: 5,
-    form5: 4,
-    form10: 3,
-    overall: 2,
+    gameweek: 12,
+    monthly: 5,
+    season: 3,
   },
 };
 
 export const NoTrophies: Story = {
   args: {
-    lastGw: 0,
-    form5: 0,
-    form10: 0,
-    overall: 0,
+    gameweek: 0,
+    monthly: 0,
+    season: 0,
   },
 };
 
 export const Loading: Story = {
   args: {
-    lastGw: 0,
-    form5: 0,
-    form10: 0,
-    overall: 0,
+    gameweek: 0,
+    monthly: 0,
+    season: 0,
     loading: true,
   },
 };
-

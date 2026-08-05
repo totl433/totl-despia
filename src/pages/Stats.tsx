@@ -330,7 +330,7 @@ export default function Stats() {
  
  return (
  <StatCard
- label="Overall"
+ label="Career overall"
  value={
  isTop
  ? `You're in the top ${topPercent}% of players.`
@@ -378,10 +378,9 @@ export default function Stats() {
  {stats && stats.trophyCabinet !== null && (
  <div className="lg:col-span-2">
  <TrophyCabinet
- lastGw={stats.trophyCabinet.lastGw}
- form5={stats.trophyCabinet.form5}
- form10={stats.trophyCabinet.form10}
- overall={stats.trophyCabinet.overall}
+ gameweek={stats.trophyCabinet.gameweek}
+ monthly={stats.trophyCabinet.monthly}
+ season={stats.trophyCabinet.season}
  loading={loading}
  />
  </div>
@@ -479,7 +478,32 @@ export default function Stats() {
  <StatCard
  label="Total Swing"
  value={swingText}
- subcopy="Your total points difference from the average across all gameweeks"
+ subcopy="Your total points difference from the average across all completed gameweeks"
+ loading={loading}
+ />
+ );
+ })()}
+
+ {/* Best week vs field average */}
+ {stats && stats.weeklyParData && stats.weeklyParData.length > 0 && (() => {
+ let best = stats.weeklyParData[0]!;
+ for (const d of stats.weeklyParData) {
+ const m = d.userPoints - d.averagePoints;
+ const bm = best.userPoints - best.averagePoints;
+ if (m > bm) best = d;
+ }
+ const margin = best.userPoints - best.averagePoints;
+ if (!Number.isFinite(margin)) return null;
+ const marginText = margin >= 0 ? `+${margin.toFixed(1)}` : margin.toFixed(1);
+ return (
+ <StatCard
+ label="Best vs average week"
+ value={
+ <span>
+ <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{marginText}</span>
+ <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">on GW{best.gw}</span>
+ </span>
+ }
  loading={loading}
  />
  );
