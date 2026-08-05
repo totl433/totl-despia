@@ -179,7 +179,7 @@ export default function PredictionsPage() {
  // This subscribes to real-time updates when user clicks "MOVE ON GW" button
  const { displayGw } = useDisplayGameweek();
  // Hydrate active season ctx so getActiveSeasonCtx works in this screen
- useSeasonStack();
+ const seasonStack = useSeasonStack();
 
  const [currentGw, setCurrentGw] = useState<number | null>(null);
  const [currentIndex, setCurrentIndex] = useState(0);
@@ -1532,65 +1532,79 @@ useEffect(() => {
  })();
  }, [currentGw, gameState, fixtures]);
 
-// Calculate top percentage when we have results and picks
-// Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
-// Note: Can calculate even without results if we have picks and fixtures (for live games)
+// Rank % only when this GW has results — and only from the correct stack view.
+// Legacy app_v_gw_points still has old seasons' "GW 1", which incorrectly showed
+// e.g. "Top 17%" during 2026/27 pre-kickoff with Score 0/10 Starting soon.
 useEffect(() => {
   if (!currentGw || !user?.id || fixtures.length === 0) {
     setTopPercent(null);
     return;
   }
-  
-  // If no results yet, we can still calculate rank from picks (for live games)
-  // Only skip if we have no picks AND no results
-  if (results.size === 0 && picks.size === 0) {
+
+  // No results for this GW yet (starting soon / empty) → no rank badge
+  if (results.size === 0) {
     setTopPercent(null);
     return;
   }
 
-  // Calculate top percentage using app_v_gw_points view (same as UserPicksModal)
- (async () => {
- try {
- // Use app_v_gw_points view for consistency - this is the authoritative source
- const { data: gwPointsData, error: gwPointsError } = await supabase
- .from('app_v_gw_points')
- .select('user_id, points')
- .eq('gw', currentGw);
+  let alive = true;
+  (async () => {
+    try {
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: false,
+        seasonId: null,
+        seasonLabel: null,
+        currentGw,
+        viewingGw: currentGw,
+      };
+      const tables = getSeasonTables(seasonCtx);
 
- if (gwPointsError) {
- setTopPercent(null);
- return;
- }
+      let q = (supabase as any)
+        .from(tables.gwPoints)
+        .select('user_id, points')
+        .eq('gw', currentGw);
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        q = q.eq('season_id', seasonCtx.seasonId);
+      }
 
- if (!gwPointsData || gwPointsData.length === 0) {
- setTopPercent(null);
- return;
- }
+      const { data: gwPointsData, error: gwPointsError } = await q;
 
- // Sort by points descending
- const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
- 
- // Find user's rank (handling ties - same rank for same points)
- let userRank = 1;
- for (let i = 0; i < sorted.length; i++) {
- if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
- userRank = i + 1;
- }
- if (sorted[i].user_id === user.id) {
- break;
- }
- }
+      if (!alive) return;
+      if (gwPointsError || !gwPointsData || gwPointsData.length === 0) {
+        setTopPercent(null);
+        return;
+      }
 
- // Calculate rank percentage: (rank / total_users) * 100
- const totalUsers = sorted.length;
- const rankPercent = Math.round((userRank / totalUsers) * 100);
- 
- setTopPercent(rankPercent);
- } catch (error) {
- setTopPercent(null);
- }
- })();
- }, [results, picks, fixtures, currentGw, user?.id]);
+      // User must appear in this GW's points (don't invent a rank from legacy leftovers)
+      if (!gwPointsData.some((r: { user_id: string }) => r.user_id === user.id)) {
+        setTopPercent(null);
+        return;
+      }
+
+      const sorted = [...gwPointsData].sort(
+        (a: { points: number | null }, b: { points: number | null }) =>
+          (b.points || 0) - (a.points || 0)
+      );
+
+      let userRank = 1;
+      for (let i = 0; i < sorted.length; i++) {
+        if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+          userRank = i + 1;
+        }
+        if (sorted[i].user_id === user.id) break;
+      }
+
+      const rankPercent = Math.round((userRank / sorted.length) * 100);
+      setTopPercent(rankPercent);
+    } catch {
+      if (alive) setTopPercent(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [results, fixtures, currentGw, user?.id, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
 
  const currentFixture = fixtures[currentIndex];

@@ -366,7 +366,8 @@ export default function ScoreIndicator({
  </div>
  </div>
  <div className="flex items-center gap-3">
- {topPercent !== null && topPercent !== undefined && (() => {
+ {/* Rank % only after results exist (not starting-soon / empty 0/10) */}
+ {state !== 'starting-soon' && topPercent !== null && topPercent !== undefined && (() => {
  const formatted = formatPercentage(topPercent);
  return (
  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 border border-yellow-300">
