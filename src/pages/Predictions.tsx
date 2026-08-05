@@ -13,14 +13,21 @@ import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { useSeasonStack } from "../hooks/useSeasonStack";
-import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from "../lib/activeSeasonCtx";
 import { getSeasonTables } from "../lib/seasonStack";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
+import { resolveTeamFormsAndPositions } from "../lib/teamFormStandings";
 
 function seasonTablesNow() {
   return getSeasonTables(getActiveSeasonCtx() ?? { useSeasonStack: false });
+}
+
+function predictionsCacheKey(userId: string, gw: number): string {
+  const ctx = getActiveSeasonCtx();
+  const seasonKey = ctx?.useSeasonStack ? (ctx.seasonId ?? 'stack') : 'legacy';
+  return `predictions:v2:${seasonKey}:${userId}:${gw}`;
 }
 
 /** Apply season_id filter when Pile B is active (typed loosely for PostgREST builders). */
@@ -209,31 +216,19 @@ export default function PredictionsPage() {
  const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
  const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
  
- // Fetch team forms from database (fetched once per GW when published)
+ // Fetch team forms / ranks (season-aware: blank form pre-season; ranks from results after games)
  const fetchTeamForms = async (gw: number) => {
  try {
- const { data, error } = await supabase
- .from("app_team_forms")
- .select("team_code, form")
- .eq("gw", gw);
-
- if (error) {
- return;
- }
-
- if (data && data.length > 0) {
+ const { teamForms: forms } = await resolveTeamFormsAndPositions(
+   supabase as any,
+   getActiveSeasonCtx(),
+   gw
+ );
  const formsMap = new Map<string, string>();
- data.forEach((row: { team_code: string; form: string }) => {
- const teamCode = row.team_code.toUpperCase().trim();
- const form = row.form.trim().toUpperCase();
- if (teamCode && form) {
- formsMap.set(teamCode, form);
- }
+ Object.entries(forms).forEach(([code, form]) => {
+   if (code && form) formsMap.set(code, form);
  });
  setTeamForms(formsMap);
- } else {
- setTeamForms(new Map()); // Clear forms if none found
- }
  } catch (error) {
  setTeamForms(new Map()); // Clear on error
  }
@@ -656,6 +651,11 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  let alive = true;
  (async () => {
  try {
+ // Resolve dual-stack BEFORE any fixture/pick queries (avoids app_fixtures GW1 = 25/26).
+ if (user?.id) {
+   await ensureActiveSeasonCtx(supabase as any, user.id);
+ }
+
  // Use displayGw from useDisplayGameweek hook (single source of truth)
  // This automatically subscribes to real-time updates when user clicks "MOVE ON GW" button
  const gwToDisplay = displayGw;
@@ -689,7 +689,7 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  setCurrentGw(gwToDisplay);
 
  // 1. Load from cache immediately (if available)
- const cacheKey = `predictions:${user?.id}:${gwToDisplay}`;
+ const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
  let loadedFromCache = false;
  
  try {
@@ -737,11 +737,13 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  // Check cached.picks, not picks.size (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && cached.fixtures.length > 0) {
-   const { data: pk, error: pkErr } = await supabase
-     .from("app_picks")
-     .select("gw,fixture_index,pick")
-     .eq("gw", gwToDisplay)
-     .eq("user_id", user.id);
+   const { data: pk, error: pkErr } = await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().picks)
+       .select("gw,fixture_index,pick")
+       .eq("gw", gwToDisplay)
+       .eq("user_id", user.id)
+   );
    
    if (!pkErr && pk && pk.length > 0) {
      const currentFixtureIndices = new Set(cached.fixtures.map(f => f.fixture_index));
@@ -799,10 +801,12 @@ setResults(resultsMap);
  // Check cached.results, not results state (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0) {
-   const { data: gwResultsData, error: gwResultsError } = await supabase
-     .from('app_gw_results')
-     .select('fixture_index, result')
-     .eq('gw', gwToDisplay);
+   const { data: gwResultsData, error: gwResultsError } = await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().results)
+       .select('fixture_index, result')
+       .eq('gw', gwToDisplay)
+   );
    
    if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
      const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -959,10 +963,12 @@ setResults(resultsMap);
 if (alive && fixturesData.length > 0) {
   (async () => {
     try {
-      const { data: gwResultsData, error: gwResultsError } = await supabase
-        .from('app_gw_results')
-        .select('fixture_index, result')
-        .eq('gw', gwToDisplay);
+      const { data: gwResultsData, error: gwResultsError } = await withSeasonFilter(
+        (supabase as any)
+          .from(seasonTablesNow().results)
+          .select('fixture_index, result')
+          .eq('gw', gwToDisplay)
+      );
       
       if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
         const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -981,7 +987,7 @@ if (alive && fixturesData.length > 0) {
               resultsArray.push({ fixture_index, result });
             });
             
-            const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
+            const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
             try {
               const existingCache = getCached<{
                 fixtures: Fixture[];
@@ -1148,11 +1154,13 @@ if (alive && fixturesData.length > 0) {
           // Only clear if picks are completely invalid (no matches at all)
           if (pk.length > 0 && picksForCurrentFixtures.length === 0) {
             // No picks match current fixtures - clear invalid picks from database
-            await supabase
-              .from("app_picks")
-              .delete()
-              .eq("gw", gwToDisplay)
-              .eq("user_id", user.id);
+            await withSeasonFilter(
+              (supabase as any)
+                .from(seasonTablesNow().picks)
+                .delete()
+                .eq("gw", gwToDisplay)
+                .eq("user_id", user.id)
+            );
             // Don't clear UI picks aggressively on cold loads; just mark as no picks for now.
             // (A subsequent retry or navigation will reconcile.)
             hasPicks = false;
@@ -1216,7 +1224,7 @@ if (alive && fixturesData.length > 0) {
             // Cache picks for instant load next time (like HomePage does)
             if (user?.id) {
               const picksArray = Array.from(picksMap.values());
-              const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
+              const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
               try {
                 const existingCache = getCached<{
                   fixtures: Fixture[];
@@ -1255,11 +1263,13 @@ if (alive && fixturesData.length > 0) {
  
  if (shouldClearSubmission) {
    setSubmitted(false);
-   await supabase
-     .from("app_gw_submissions")
-     .delete()
-     .eq("gw", gwToDisplay)
-     .eq("user_id", user.id);
+   await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().submissions)
+       .delete()
+       .eq("gw", gwToDisplay)
+       .eq("user_id", user.id)
+   );
  }
  }
  
@@ -1299,20 +1309,24 @@ setLeagueMembers(members);
  
  const memberIds = members.map((m: any) => m.id);
  
- // Fetch all submissions for API Test league members
- const { data: allSubmissions } = await supabase
- .from("app_gw_submissions")
- .select("user_id, submitted_at")
- .eq("gw", gwToDisplay)
- .in("user_id", memberIds)
- .not("submitted_at", "is", null);
+ // Fetch all submissions for league members (season-aware)
+ const { data: allSubmissions } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().submissions)
+     .select("user_id, submitted_at")
+     .eq("gw", gwToDisplay)
+     .in("user_id", memberIds)
+     .not("submitted_at", "is", null)
+ );
  
  // Fetch all picks for validation
- const { data: allPicks } = await supabase
- .from("app_picks")
- .select("user_id, fixture_index")
- .eq("gw", gwToDisplay)
- .in("user_id", memberIds);
+ const { data: allPicks } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().picks)
+     .select("user_id, fixture_index")
+     .eq("gw", gwToDisplay)
+     .in("user_id", memberIds)
+ );
  
  const currentFixtureIndicesSet = new Set(fixturesData.map(f => f.fixture_index));
  const requiredFixtureCount = currentFixtureIndicesSet.size;
@@ -1469,11 +1483,13 @@ useEffect(() => {
 
  (async () => {
  try {
- // Fetch all picks for the current gameweek
- const { data: allPicks, error: picksError } = await supabase
- .from("app_picks")
- .select("fixture_index, pick")
- .eq("gw", currentGw);
+ // Fetch all picks for the current gameweek (season-aware)
+ const { data: allPicks, error: picksError } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().picks)
+     .select("fixture_index, pick")
+     .eq("gw", currentGw)
+ );
 
  if (picksError) {
  return;

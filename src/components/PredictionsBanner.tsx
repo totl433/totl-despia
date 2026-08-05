@@ -7,6 +7,29 @@ import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { getCached, removeCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
 import { hasNextGameweek, SEASON_LAST_GW } from "../lib/season";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
+
+async function fetchUserSubmission(userId: string, gw: number): Promise<boolean> {
+  const seasonCtx = getActiveSeasonCtx() ?? {
+    useSeasonStack: false,
+    seasonId: null,
+    seasonLabel: null,
+    currentGw: gw,
+    viewingGw: null,
+  };
+  const tables = getSeasonTables(seasonCtx);
+  const { data: submission } = await (() => {
+    let q = (supabase as any)
+      .from(tables.submissions)
+      .select("submitted_at")
+      .eq("user_id", userId)
+      .eq("gw", gw);
+    q = withSeasonId(q, seasonCtx);
+    return q.maybeSingle();
+  })();
+  return submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+}
 
 /**
  * Shows different banners based on game state:
@@ -163,33 +186,39 @@ export default function PredictionsBanner() {
           if (cachedSubmissions) {
             hasSubmitted = cachedSubmissions.some(s => s.user_id === user.id);
           } else {
-            // Not in cache, fetch from DB
-            const { data: submission } = await supabase
-              .from("app_gw_submissions")
-              .select("submitted_at")
-              .eq("user_id", user.id)
-              .eq("gw", effectiveGw)
-              .maybeSingle();
-            hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+            // Not in cache, fetch from DB (season-aware)
+            hasSubmitted = await fetchUserSubmission(user.id, effectiveGw);
           }
         } catch (e) {
           // Cache read failed, fetch from DB
-          const { data: submission } = await supabase
-            .from("app_gw_submissions")
-            .select("submitted_at")
-            .eq("user_id", user.id)
-            .eq("gw", effectiveGw)
-            .maybeSingle();
-          hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+          hasSubmitted = await fetchUserSubmission(user.id, effectiveGw);
         }
         
         if (!hasSubmitted) {
           // Calculate deadline (check cache first - fixtures are pre-loaded)
           let deadlineFormatted: string | null = null;
+          const seasonCtx = getActiveSeasonCtx() ?? {
+            useSeasonStack: false,
+            seasonId: null,
+            seasonLabel: null,
+            currentGw: effectiveGw,
+            viewingGw: null,
+          };
+          const seasonKey = seasonCtx.useSeasonStack ? (seasonCtx.seasonId ?? 'stack') : 'legacy';
           try {
-            const cachedFixtures = getCached<Array<{ gw: number; kickoff_time: string }>>(`home:fixtures:${effectiveGw}`);
+            // Prefer season-scoped home cache; never use bare GW keys for Pile B
+            let cachedFixtures: Array<{ gw: number; kickoff_time: string }> | null = null;
+            if (user?.id) {
+              const scoped = getCached<{ fixtures: Array<{ gw: number; kickoff_time: string }> }>(
+                `home:fixtures:v2:${seasonKey}:${user.id}:${effectiveGw}`
+              );
+              if (scoped?.fixtures?.length) cachedFixtures = scoped.fixtures;
+            }
+            if (!cachedFixtures && seasonKey === 'legacy') {
+              cachedFixtures = getCached<Array<{ gw: number; kickoff_time: string }>>(`home:fixtures:${effectiveGw}`);
+            }
             if (cachedFixtures && cachedFixtures.length > 0) {
-              const firstFixture = cachedFixtures.sort((a, b) => 
+              const firstFixture = [...cachedFixtures].sort((a, b) => 
                 new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime()
               )[0];
               if (firstFixture.kickoff_time) {
@@ -208,13 +237,18 @@ export default function PredictionsBanner() {
           }
           
           if (!deadlineFormatted) {
-            // Not in cache, fetch from DB
-            const { data: fixtures } = await supabase
-              .from("app_fixtures")
-              .select("kickoff_time")
-              .eq("gw", effectiveGw)
-              .order("kickoff_time", { ascending: true })
-              .limit(1);
+            // Not in cache, fetch from season-aware table
+            const tables = getSeasonTables(seasonCtx);
+            const { data: fixtures } = await (() => {
+              let q = (supabase as any)
+                .from(tables.fixtures)
+                .select("kickoff_time")
+                .eq("gw", effectiveGw)
+                .order("kickoff_time", { ascending: true })
+                .limit(1);
+              q = withSeasonId(q, seasonCtx);
+              return q;
+            })();
             
             if (fixtures && fixtures.length > 0 && fixtures[0].kickoff_time) {
               const firstKickoff = new Date(fixtures[0].kickoff_time);

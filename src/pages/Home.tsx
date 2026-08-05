@@ -96,15 +96,36 @@ export default function HomePage() {
       // CRITICAL: Check user's viewing GW preference FIRST (pre-loaded by initialDataLoader)
       // This determines which GW the user is actually viewing (may be different from current GW)
       let userViewingGw: number | null = null;
+      // Season-scoped keys only — never paint pile-B users with legacy 25/26 GW1 cache
+      let seasonCacheKey = 'legacy';
       try {
-        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${userId}`);
+        const prefsCache = getCached<{
+          current_viewing_gw: number | null;
+          use_season_stack?: boolean;
+          current_viewing_season_id?: string | null;
+        }>(`user_notification_prefs:${userId}`);
         userViewingGw = prefsCache?.current_viewing_gw ?? null;
+        if (prefsCache?.use_season_stack) {
+          seasonCacheKey = prefsCache.current_viewing_season_id ?? 'stack';
+        }
       } catch (e) {
         // Ignore cache errors
       }
+      try {
+        const seasonCtxCache = getCached<{
+          useSeasonStack?: boolean;
+          seasonId?: string | null;
+        }>(`season:ctx:${userId}`);
+        if (seasonCtxCache?.useSeasonStack) {
+          seasonCacheKey = seasonCtxCache.seasonId ?? 'stack';
+        }
+      } catch {
+        // ignore
+      }
       
-      // Get current GW from cache (pre-loaded by initialDataLoader)
-      const cacheKey = `home:basic:${userId}`;
+      // Prefer season-scoped cache so pile-B never paints 25/26 fixtures from legacy keys
+      const cacheKeyV2 = `home:basic:v2:${seasonCacheKey}:${userId}`;
+      const cacheKeyLegacy = `home:basic:${userId}`;
       const cached = getCached<{
         currentGw: number;
         latestGw: number;
@@ -114,7 +135,7 @@ export default function HomePage() {
         fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
         tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
-      }>(cacheKey);
+      }>(cacheKeyV2) ?? (seasonCacheKey === 'legacy' ? getCached(cacheKeyLegacy) : null);
       
       // Determine which GW to display (user's viewing GW, or current GW if not set)
       const dbCurrentGw = cached?.currentGw ?? 1;
@@ -137,14 +158,16 @@ export default function HomePage() {
           away_team?: string | null;
           result?: "H" | "D" | "A" | null;
         }> = {};
-        const fixturesCacheKey = `home:fixtures:${userId}:${gwToDisplay}`;
+        const fixturesCacheKey = `home:fixtures:v2:${seasonCacheKey}:${userId}:${gwToDisplay}`;
+        const fixturesCacheKeyLegacy = `home:fixtures:${userId}:${gwToDisplay}`;
         
         try {
           const fixturesCached = getCached<{
             fixtures: Fixture[];
             userPicks: Record<number, "H" | "D" | "A">;
             liveScores?: Array<{ api_match_id: number; fixture_index?: number; [key: string]: any }>;
-          }>(fixturesCacheKey);
+          }>(fixturesCacheKey)
+            ?? (seasonCacheKey === 'legacy' ? getCached(fixturesCacheKeyLegacy) : null);
           
           if (fixturesCached?.fixtures?.length) {
             fixtures = fixturesCached.fixtures;
@@ -943,9 +966,24 @@ export default function HomePage() {
     });
     
     if (fixtures.length > 0 && hasLeagueRows) {
-      console.log('[Home] Cache complete, skipping loadHomePageData');
-      setBasicDataLoading(false);
-      return;
+      // Pile B: never trust a paint that only hydrated from legacy 25/26 cache keys
+      const seasonCtxSnap = user?.id
+        ? getCached<{ useSeasonStack?: boolean; seasonId?: string | null }>(`season:ctx:${user.id}`)
+        : null;
+      const seasonKey = seasonCtxSnap?.useSeasonStack
+        ? (seasonCtxSnap.seasonId ?? 'stack')
+        : null;
+      const hasSeasonFixtures =
+        seasonKey && user?.id && gw
+          ? !!getCached(`home:fixtures:v2:${seasonKey}:${user.id}:${gw}`)
+          : true; // legacy path ok
+
+      if (!seasonCtxSnap?.useSeasonStack || hasSeasonFixtures) {
+        console.log('[Home] Cache complete, skipping loadHomePageData');
+        setBasicDataLoading(false);
+        return;
+      }
+      console.log('[Home] Stack user missing season fixtures cache — refetching (avoid 25/26 paint)');
     }
     
     // If we have fixtures but no leagueRows (or empty leagueRows), we need to load data to calculate rows

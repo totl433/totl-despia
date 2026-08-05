@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLeagues } from '../hooks/useLeagues';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
   const navItems = [
     {
@@ -202,13 +204,24 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       }
 
       try {
-        // Check if user has submitted predictions for the viewing GW
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", viewingGw)
-          .maybeSingle();
+        // Check if user has submitted predictions for the viewing GW (season-aware)
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: viewingGw,
+          viewingGw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        const { data: submission } = await (() => {
+          let q = (supabase as any)
+            .from(tables.submissions)
+            .select('submitted_at')
+            .eq('user_id', user.id)
+            .eq('gw', viewingGw);
+          q = withSeasonId(q, seasonCtx);
+          return q.maybeSingle();
+        })();
         
         if (!alive) return;
 

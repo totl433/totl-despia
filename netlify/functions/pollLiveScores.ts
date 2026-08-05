@@ -1,5 +1,6 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { isKickoffTooOldForPolling } from './lib/liveMatchGuards';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -210,6 +211,16 @@ async function pollAllLiveScores() {
     const fixturesToPoll = allFixtures.filter(f => {
       // Skip if already finished (according to our database)
       if (finishedMatchIds.has(f.api_match_id)) {
+        return false;
+      }
+
+      // Hard stop for historical fixtures (e.g. current_gw accidentally reset in off-season).
+      // Never re-poll matches whose kickoff was days ago — Football Data still returns them
+      // as FINISHED with full goal lists, which re-triggers push notifications.
+      if (isKickoffTooOldForPolling(f.kickoff_time, now)) {
+        console.log(
+          `[pollLiveScores] Skipping stale fixture api_match_id=${f.api_match_id} kickoff=${f.kickoff_time}`
+        );
         return false;
       }
       

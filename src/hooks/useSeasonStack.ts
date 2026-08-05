@@ -5,6 +5,7 @@ import {
   resolveSeasonCtx,
   type SeasonCtx,
   getSeasonTables,
+  isNewSeasonFresh,
 } from '../lib/seasonStack';
 import { setActiveSeasonCtx } from '../lib/activeSeasonCtx';
 
@@ -68,6 +69,7 @@ export function useSeasonStack() {
   return {
     ...ctx,
     tables: getSeasonTables(ctx),
+    isNewSeasonFresh: isNewSeasonFresh(ctx),
     loading,
     error,
   };

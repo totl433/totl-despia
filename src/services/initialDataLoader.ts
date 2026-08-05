@@ -15,7 +15,7 @@
  */
 
 import { supabase } from '../lib/supabase';
-import { setCached, CACHE_TTL, getCached } from '../lib/cache';
+import { setCached, CACHE_TTL, getCached, removeCached } from '../lib/cache';
 import { sortLeaguesWithUnreadMap } from '../lib/sortLeagues';
 import { log } from '../lib/logEvent';
 import { prewarmLeaguesCache } from '../api/leagues';
@@ -24,6 +24,13 @@ import { resolveLeagueStartGw } from '../lib/leagueStart';
 import { APP_ONLY_USER_IDS } from '../lib/appOnlyUsers';
 import { filterHiddenLeaderboardRows } from '../lib/leaderboardVisibility';
 import { fetchAllGwPoints } from '../lib/fetchAllGwPoints';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import {
+  getSeasonTables,
+  isNewSeasonFresh,
+  withSeasonId,
+  type SeasonCtx,
+} from '../lib/seasonStack';
 
 /**
  * Return type for initial data loading.
@@ -119,6 +126,32 @@ export interface InitialData {
  */
 export async function loadInitialData(userId: string): Promise<InitialData> {
   // ═══════════════════════════════════════════════════════════════════════
+  // STEP 0: RESOLVE SEASON STACK (before any fixture / GW queries)
+  // Testers with use_season_stack get Pile B app_season_* tables.
+  // Never preload app_fixtures GW1 for those users (that's 25/26 data).
+  // ═══════════════════════════════════════════════════════════════════════
+  const seasonCtx: SeasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  const freshSeason = isNewSeasonFresh(seasonCtx);
+  const seasonCacheKey = seasonCtx.useSeasonStack ? (seasonCtx.seasonId ?? 'stack') : 'legacy';
+  if (seasonCtx.useSeasonStack) {
+    console.log(
+      `[initialDataLoader] Pile B · ${seasonCtx.seasonLabel ?? seasonCtx.seasonId} · GW ${seasonCtx.currentGw}`
+    );
+    // Drop legacy unscoped caches so 25/26 GW1 cannot paint over 26/27
+    removeCached(`home:basic:${userId}`);
+    for (let g = 1; g <= 40; g++) {
+      removeCached(`home:fixtures:${userId}:${g}`);
+      removeCached(`home:fixtures:${g}`);
+      removeCached(`predictions:${userId}:${g}`);
+      removeCached(`home:submissions:${g}`);
+      removeCached(`home:gwResults:${g}`);
+      removeCached(`liveScores:${g}`);
+      removeCached(`gameState:${g}`);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // STEP 1: PRE-WARM LEAGUES CACHE
   // ═══════════════════════════════════════════════════════════════════════
   // This is the ONLY place we fetch leagues during initial load.
@@ -159,7 +192,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     _leagueSubmissionsResult, // Placeholder - populated later
     userNotificationPrefsResult, // User notification preferences for PredictionsBanner
   ] = await Promise.all([
-    // 1. Get current GW from app_meta
+    // 1. Get current GW (legacy meta only; stack overrides below)
     supabase
       .from('app_meta')
       .select('current_gw')
@@ -169,6 +202,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // 2. Get the full GW points history using paging.
     // A single unpaged request is commonly capped at ~1000 rows by PostgREST.
     (async () => {
+      if (freshSeason) return { data: [], error: null };
       try {
         const data = await fetchAllGwPoints('asc');
         return { data, error: null };
@@ -180,12 +214,14 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       }
     })(),
     
-    // 3. Get top 100 overall standings (sufficient for display, user rank fetched separately if needed)
-    supabase
-      .from('app_v_ocp_overall')
-      .select('user_id, name, ocp')
-      .order('ocp', { ascending: false })
-      .limit(100),
+    // 3. Get top 100 overall standings (blank for fresh 26/27)
+    freshSeason
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from('app_v_ocp_overall')
+          .select('user_id, name, ocp')
+          .order('ocp', { ascending: false })
+          .limit(100),
     
     // 4. Get fixtures for current GW (will be updated after we get currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
@@ -199,25 +235,28 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .select('league_id, user_id')
       .limit(10000),
     
-    // 7. Get latest GW from results
-    supabase
-      .from('app_gw_results')
-      .select('gw')
-      .order('gw', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+    // 7. Get latest GW from results (season-aware)
+    (() => {
+      let q = (supabase as any)
+        .from(tables.results)
+        .select('gw')
+        .order('gw', { ascending: false })
+        .limit(1);
+      q = withSeasonId(q, seasonCtx);
+      return q.maybeSingle();
+    })(),
     
     // 8. Get Web picks with timestamps (to determine origin)
-    supabase
-      .from('picks')
-      .select('user_id, gw, created_at')
-      .limit(10000),
+    seasonCtx.useSeasonStack
+      ? Promise.resolve({ data: [], error: null })
+      : supabase.from('picks').select('user_id, gw, created_at').limit(10000),
     
     // 8b. Get App picks with timestamps (to compare with Web picks)
-    supabase
-      .from('app_picks')
-      .select('user_id, gw, created_at')
-      .limit(10000),
+    (() => {
+      let q = (supabase as any).from(tables.picks).select('user_id, gw, created_at').limit(10000);
+      q = withSeasonId(q, seasonCtx);
+      return q;
+    })(),
     
     // 9. Get all leagues (for Tables page)
     Promise.resolve({ data: null, error: null }), // Will be populated after we get league IDs
@@ -226,24 +265,28 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     Promise.resolve({ data: null, error: null }), // Will be populated after we get league IDs
     
     // 11. Get all GW results (for Tables page calculations)
-    supabase
-      .from('app_gw_results')
-      .select('gw, fixture_index, result'),
+    (() => {
+      let q = (supabase as any).from(tables.results).select('gw, fixture_index, result');
+      return withSeasonId(q, seasonCtx);
+    })(),
     
     // 12. Get all fixtures (for Tables page calculations)
-    supabase
-      .from('app_fixtures')
-      .select('gw, kickoff_time')
-      .order('gw', { ascending: true })
-      .order('kickoff_time', { ascending: true }),
+    (() => {
+      let q = (supabase as any)
+        .from(tables.fixtures)
+        .select('gw, kickoff_time')
+        .order('gw', { ascending: true })
+        .order('kickoff_time', { ascending: true });
+      return withSeasonId(q, seasonCtx);
+    })(),
     
     // 13. Get league submissions (will be populated after we get league IDs and currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
     
-    // 14. Get user notification preferences (for PredictionsBanner - current_viewing_gw)
+    // 14. Get user notification preferences (for PredictionsBanner + season stack)
     supabase
       .from('user_notification_preferences')
-      .select('current_viewing_gw')
+      .select('current_viewing_gw, use_season_stack, current_viewing_season_id')
       .eq('user_id', userId)
       .maybeSingle(),
   ]);
@@ -259,11 +302,25 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Note: _allResultsResult, _allFixturesResult errors are non-critical
   // Note: userNotificationPrefsResult error is non-critical (banner will work without it)
   
-  const currentGw = metaResult.data?.current_gw ?? 1;
-  const latestGw = latestGwResult.data?.gw ?? null;
+  // Stack testers: never take published GW from legacy app_meta (that's 25/26).
+  const currentGw = seasonCtx.useSeasonStack
+    ? seasonCtx.currentGw
+    : (metaResult.data?.current_gw ?? 1);
+  const latestGw = latestGwResult.data?.gw ?? (freshSeason ? null : null);
   
-  // Cache app_meta for synchronous access in HomePage (prevents DB queries)
+  // Cache current GW for hooks (stack-resolved for pile B)
   setCached(`app_meta:current_gw`, { current_gw: currentGw }, CACHE_TTL.HOME);
+  setCached(
+    `season:ctx:${userId}`,
+    {
+      useSeasonStack: seasonCtx.useSeasonStack,
+      seasonId: seasonCtx.seasonId,
+      seasonLabel: seasonCtx.seasonLabel,
+      currentGw: seasonCtx.currentGw,
+      viewingGw: seasonCtx.viewingGw,
+    },
+    CACHE_TTL.HOME
+  );
   
   // Cache availableGws (list of all GWs with results) for League page tabs
   // Extract unique GWs from app_gw_results
@@ -280,8 +337,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Cache user notification preferences for PredictionsBanner and HomePage
   // IMPORTANT: If there's no row yet (new user), treat as null (user has "moved on")
   // We still cache the null value so UI can default to currentGw deterministically.
-  const userViewingGw = userNotificationPrefsResult.data?.current_viewing_gw ?? null;
-  setCached(`user_notification_prefs:${userId}`, { current_viewing_gw: userViewingGw }, CACHE_TTL.HOME);
+  const userViewingGw =
+    (typeof userNotificationPrefsResult.data?.current_viewing_gw === 'number'
+      ? userNotificationPrefsResult.data.current_viewing_gw
+      : null) ??
+    seasonCtx.viewingGw ??
+    null;
+  setCached(
+    `user_notification_prefs:${userId}`,
+    {
+      current_viewing_gw: userViewingGw,
+      use_season_stack: seasonCtx.useSeasonStack,
+      current_viewing_season_id: seasonCtx.seasonId,
+    },
+    CACHE_TTL.HOME
+  );
   
   // Cache last completed GW for MiniLeagueGwTableCard (avoids DB query)
   if (latestGw) {
@@ -293,6 +363,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   try {
     gameState = await getGameweekState(currentGw);
     // Cache gameState for immediate access
+    setCached(`gameState:${seasonCacheKey}:${currentGw}`, gameState, CACHE_TTL.HOME);
     setCached(`gameState:${currentGw}`, gameState, CACHE_TTL.HOME);
   } catch (error) {
     console.warn('[Pre-loading] Failed to pre-load gameState:', error);
@@ -308,12 +379,17 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const userInTop100 = (overallResult.data || []).some((r: any) => r.user_id === userId);
   
   // Fetch submissions for both current and viewing GW (for PredictionsBanner)
+  const fetchSubs = async (gw: number) => {
+    let q = (supabase as any)
+      .from(tables.submissions)
+      .select('user_id, gw')
+      .eq('gw', gw);
+    q = withSeasonId(q, seasonCtx);
+    return q;
+  };
   const submissionsForBanner = viewingGw !== currentGw
-    ? await Promise.all([
-        supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', currentGw),
-        supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', viewingGw),
-      ])
-    : [await supabase.from('app_gw_submissions').select('user_id, gw').eq('gw', currentGw)];
+    ? await Promise.all([fetchSubs(currentGw), fetchSubs(viewingGw)])
+    : [await fetchSubs(currentGw)];
   
   // Cache submissions for PredictionsBanner
   if (submissionsForBanner[0]?.data) {
@@ -324,32 +400,44 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }
   
   // Fetch and cache user's own submissions (for Share button visibility)
-  const userSubmissionsResult = await supabase
-    .from('app_gw_submissions')
-    .select('gw')
-    .eq('user_id', userId)
-    .order('gw', { ascending: false });
+  const userSubmissionsResult = await (() => {
+    let q = (supabase as any)
+      .from(tables.submissions)
+      .select('gw')
+      .eq('user_id', userId)
+      .order('gw', { ascending: false });
+    q = withSeasonId(q, seasonCtx);
+    return q;
+  })();
   
   if (userSubmissionsResult.data) {
     const userSubmissionsGws = userSubmissionsResult.data.map((s: any) => s.gw);
     setCached(`home:userSubmissions:${userId}`, userSubmissionsGws, CACHE_TTL.HOME);
   }
-  
-  const [fixturesForGw, picksForGw, userOcpResult, fixturesForViewingGw] = await Promise.all([
-    supabase
-      .from('app_fixtures')
+
+  const fetchFixturesGw = (gw: number) => {
+    let q = (supabase as any)
+      .from(tables.fixtures)
       .select('*')
-      .eq('gw', currentGw)
-      .order('fixture_index', { ascending: true }),
-    
-    supabase
-      .from('app_picks')
+      .eq('gw', gw)
+      .order('fixture_index', { ascending: true });
+    return withSeasonId(q, seasonCtx);
+  };
+  const fetchPicksGw = (gw: number) => {
+    let q = (supabase as any)
+      .from(tables.picks)
       .select('fixture_index, pick')
       .eq('user_id', userId)
-      .eq('gw', currentGw),
+      .eq('gw', gw);
+    return withSeasonId(q, seasonCtx);
+  };
+  
+  const [fixturesForGw, picksForGw, userOcpResult, fixturesForViewingGw] = await Promise.all([
+    fetchFixturesGw(currentGw),
+    fetchPicksGw(currentGw),
     
-    // Fetch user's own OCP if not in top 100
-    userInTop100
+    // Fetch user's own OCP if not in top 100 (skip blank for fresh season)
+    userInTop100 || freshSeason
       ? Promise.resolve({ data: null, error: null })
       : supabase
           .from('app_v_ocp_overall')
@@ -359,19 +447,25 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     
     // Fetch fixtures for viewing GW (for PredictionsBanner deadline calculation)
     viewingGw !== currentGw
-      ? supabase
-          .from('app_fixtures')
-          .select('gw, kickoff_time')
-          .eq('gw', viewingGw)
-          .order('kickoff_time', { ascending: true })
+      ? (() => {
+          let q = (supabase as any)
+            .from(tables.fixtures)
+            .select('gw, kickoff_time')
+            .eq('gw', viewingGw)
+            .order('kickoff_time', { ascending: true });
+          return withSeasonId(q, seasonCtx);
+        })()
       : Promise.resolve({ data: null, error: null }),
   ]);
   
   // Fetch results for currentGw (needed for fixture cards to show outcomes)
-  const gwResultsResult = await supabase
-    .from('app_gw_results')
-    .select('fixture_index, result')
-    .eq('gw', currentGw);
+  const gwResultsResult = await (() => {
+    let q = (supabase as any)
+      .from(tables.results)
+      .select('fixture_index, result')
+      .eq('gw', currentGw);
+    return withSeasonId(q, seasonCtx);
+  })();
   
   // Cache results for currentGw
   if (gwResultsResult.data) {
@@ -401,18 +495,26 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     }
   }
   
-  // Cache fixtures WITH live scores for currentGw
+  // Cache fixtures WITH live scores for currentGw (season-scoped keys — never share with 25/26)
   if (fixturesForGw.data) {
-    setCached(`home:fixtures:${userId}:${currentGw}`, {
+    setCached(`home:fixtures:v2:${seasonCacheKey}:${userId}:${currentGw}`, {
       fixtures: fixturesForGw.data,
       userPicks,
       liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
     }, CACHE_TTL.HOME);
+    // Keep short-lived legacy key only for non-stack
+    if (!seasonCtx.useSeasonStack) {
+      setCached(`home:fixtures:${userId}:${currentGw}`, {
+        fixtures: fixturesForGw.data,
+        userPicks,
+        liveScores: liveScoresArray.length > 0 ? liveScoresArray : undefined,
+      }, CACHE_TTL.HOME);
+    }
   }
   
   // Cache fixtures for viewingGw (PredictionsBanner)
   if (viewingGw !== currentGw && fixturesForViewingGw.data) {
-    setCached(`home:fixtures:${viewingGw}`, fixturesForViewingGw.data, CACHE_TTL.HOME);
+    setCached(`home:fixtures:v2:${seasonCacheKey}:${viewingGw}`, fixturesForViewingGw.data, CACHE_TTL.HOME);
   }
   
   // Merge user's OCP into overall if they weren't in top 100
@@ -445,7 +547,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // NON-BLOCKING - start in background, don't await (app shows immediately)
     (async () => {
       try {
-        const leagueDataCacheKey = `home:leagueData:v6:${userId}:${currentGw}`; // v6: Ensure HP ordering matches /tables
+        const leagueDataCacheKey = `home:leagueData:v7:${seasonCacheKey}:${userId}:${currentGw}`; // v7: season-aware
         
         // Check if already cached
         const existingCache = getCached<any>(leagueDataCacheKey);
@@ -464,7 +566,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         if (hasExistingLeagueData && allLeaguesHaveWebUserIds) {
           // League data is cached, but check if ML live table cache exists
           for (const league of leagues) {
-            const mlTableCacheKey = `ml_live_table:${league.id}:${currentGw}`;
+            const mlTableCacheKey = seasonCtx.useSeasonStack
+              ? `ml_live_table:v2:${seasonCacheKey}:${league.id}:${currentGw}`
+              : `ml_live_table:${league.id}:${currentGw}`;
             const mlCache = getCached<any>(mlTableCacheKey);
             if (!mlCache || !mlCache.fixtures || mlCache.fixtures.length === 0) {
               needsMlLiveTableCache = true;
@@ -525,15 +629,47 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         if (!hasExistingLeagueData || !allLeaguesHaveWebUserIds) {
           log.debug('preload/league_data_start', { userId: userId.slice(0, 8), gw: currentGw, leagueCount: leagueIds.length });
         
-          // Fetch all data in parallel (same as Home.tsx)
+          // Fetch all data in parallel (season-aware for Pile B testers)
+          const fetchSubsCurrent = () => {
+            let q = (supabase as any)
+              .from(tables.submissions)
+              .select('user_id')
+              .eq('gw', currentGw);
+            return withSeasonId(q, seasonCtx);
+          };
+          const fetchResultsAll = () => {
+            let q = (supabase as any)
+              .from(tables.results)
+              .select('gw, fixture_index, result');
+            return withSeasonId(q, seasonCtx);
+          };
+          const fetchFixturesRange = () => {
+            const maxGw = Math.min(20, latestGw || 20);
+            let q = (supabase as any)
+              .from(tables.fixtures)
+              .select('gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time')
+              .in('gw', Array.from({ length: maxGw }, (_, i) => i + 1));
+            return withSeasonId(q, seasonCtx);
+          };
+          const fetchAppPicks = () => {
+            let q = (supabase as any)
+              .from(tables.picks)
+              .select('user_id, gw, created_at')
+              .limit(10000);
+            return withSeasonId(q, seasonCtx);
+          };
+
           const [membersResult, _readsResult, submissionsResult, resultsResult, _fixturesResult, webPicksResult, appPicksResult] = await Promise.all([
             supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
             supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
-            supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw),
-            supabase.from("app_gw_results").select("gw, fixture_index, result"),
-            supabase.from("app_fixtures").select("gw, fixture_index, home_team, away_team, home_name, away_name, kickoff_time").in("gw", Array.from({ length: Math.min(20, latestGw || 20) }, (_, i) => i + 1)),
-            supabase.from("picks").select("user_id, gw, created_at").limit(10000),
-            supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
+            fetchSubsCurrent(),
+            // Fresh 26/27: no results yet — skip legacy app_gw_results which would reintroduce 25/26 scores
+            freshSeason ? Promise.resolve({ data: [], error: null }) : fetchResultsAll(),
+            fetchFixturesRange(),
+            seasonCtx.useSeasonStack
+              ? Promise.resolve({ data: [], error: null })
+              : supabase.from("picks").select("user_id, gw, created_at").limit(10000),
+            fetchAppPicks(),
           ]);
           
           // Process members
@@ -955,30 +1091,38 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         // Pre-cache these so cards load instantly without individual fetches
         // ═══════════════════════════════════════════════════════════════════════
         try {
-          // Fetch fixtures for currentGw (for ML live tables)
-          const { data: mlFixtures, error: mlFixturesError } = await supabase
-            .from('app_fixtures')
+          // Fetch fixtures for currentGw (for ML live tables) — season tables on Pile B
+          let mlFxQ = (supabase as any)
+            .from(tables.fixtures)
             .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
             .eq('gw', currentGw)
             .order('fixture_index', { ascending: true });
+          mlFxQ = withSeasonId(mlFxQ, seasonCtx);
+          const { data: mlFixtures, error: mlFixturesError } = await mlFxQ;
           
           if (!mlFixturesError && mlFixtures) {
-            // Fetch results for currentGw
-            const { data: mlResults } = await supabase
-              .from('app_gw_results')
+            // Fetch results for currentGw (empty for fresh 26/27)
+            let mlResQ = (supabase as any)
+              .from(tables.results)
               .select('gw, fixture_index, result')
               .eq('gw', currentGw);
+            mlResQ = withSeasonId(mlResQ, seasonCtx);
+            const { data: mlResults } = freshSeason
+              ? { data: [] as any[] }
+              : await mlResQ;
             
             // If picksByLeague is empty, we need to fetch picks (happens when league data was cached)
             if (picksByLeague.size === 0) {
               const picksPromises = leagues.map(async (league) => {
                 const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
-                if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
-                const { data } = await supabase
-                  .from("app_picks")
+                if (memberIds.length === 0) return { leagueId: league.id, picks: [] as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+                let pq = (supabase as any)
+                  .from(tables.picks)
                   .select("user_id, gw, fixture_index, pick")
                   .eq("gw", currentGw)
                   .in("user_id", memberIds);
+                pq = withSeasonId(pq, seasonCtx);
+                const { data } = await pq;
                 return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
               });
               const picksResults = await Promise.all(picksPromises);
@@ -989,11 +1133,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             
             // If submittedUserIds is empty, fetch submissions
             if (submittedUserIds.size === 0) {
-              const { data: submissionsData, error: submissionsError } = await supabase
-                .from('app_gw_submissions')
+              let subQ = (supabase as any)
+                .from(tables.submissions)
                 .select('user_id')
                 .eq('gw', currentGw)
                 .not('submitted_at', 'is', null);
+              subQ = withSeasonId(subQ, seasonCtx);
+              const { data: submissionsData, error: submissionsError } = await subQ;
               
               if (submissionsError) {
                 log.warn('preload/ml_live_table_submissions_error', { 
@@ -1016,6 +1162,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             }
             
             // Cache ML live table data per league (fixtures, picks, submissions, results)
+            // Season-scope key so stack never reuses 25/26 ml_live_table rows
             for (const league of leagues) {
               const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
               if (memberIds.length === 0) continue;
@@ -1027,13 +1174,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               const leagueSubmissions = Array.from(submittedUserIds).filter(id => memberIds.includes(id));
               
               // Cache per league so MiniLeagueGwTableCard can load instantly
-              const mlTableCacheKey = `ml_live_table:${league.id}:${currentGw}`;
+              const mlTableCacheKey = `ml_live_table:v2:${seasonCacheKey}:${league.id}:${currentGw}`;
               setCached(mlTableCacheKey, {
                 fixtures: mlFixtures,
                 picks: leaguePicks,
                 submissions: leagueSubmissions,
                 results: mlResults ?? [],
               }, CACHE_TTL.HOME);
+              if (!seasonCtx.useSeasonStack) {
+                setCached(`ml_live_table:${league.id}:${currentGw}`, {
+                  fixtures: mlFixtures,
+                  picks: leaguePicks,
+                  submissions: leagueSubmissions,
+                  results: mlResults ?? [],
+                }, CACHE_TTL.HOME);
+              }
               
               // Log cache creation for debugging
               log.debug('preload/ml_live_table_cache_created', { 
@@ -1058,37 +1213,45 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           }
           
           // Also pre-cache for last completed GW (in case displayGw is different)
-          if (latestGw && latestGw !== currentGw) {
-            const { data: lastGwFixtures } = await supabase
-              .from('app_fixtures')
+          if (latestGw && latestGw !== currentGw && !freshSeason) {
+            let lastFxQ = (supabase as any)
+              .from(tables.fixtures)
               .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
               .eq('gw', latestGw)
               .order('fixture_index', { ascending: true });
+            lastFxQ = withSeasonId(lastFxQ, seasonCtx);
+            const { data: lastGwFixtures } = await lastFxQ;
             
             if (lastGwFixtures) {
-              const { data: lastGwResults } = await supabase
-                .from('app_gw_results')
+              let lastResQ = (supabase as any)
+                .from(tables.results)
                 .select('gw, fixture_index, result')
                 .eq('gw', latestGw);
+              lastResQ = withSeasonId(lastResQ, seasonCtx);
+              const { data: lastGwResults } = await lastResQ;
               
               // Fetch picks for last completed GW
               const lastGwPicksPromises = leagues.map(async (league) => {
                 const memberIds = (membersByLeague[league.id] ?? []).map(m => m.id);
-                if (memberIds.length === 0) return { leagueId: league.id, picks: [] };
-                const { data } = await supabase
-                  .from("app_picks")
+                if (memberIds.length === 0) return { leagueId: league.id, picks: [] as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
+                let pq = (supabase as any)
+                  .from(tables.picks)
                   .select("user_id, gw, fixture_index, pick")
                   .eq("gw", latestGw)
                   .in("user_id", memberIds);
+                pq = withSeasonId(pq, seasonCtx);
+                const { data } = await pq;
                 return { leagueId: league.id, picks: (data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }> };
               });
               const lastGwPicksResults = await Promise.all(lastGwPicksPromises);
               
               // Fetch submissions for last completed GW
-              const { data: lastGwSubmissionsData } = await supabase
-                .from('app_gw_submissions')
+              let lastSubQ = (supabase as any)
+                .from(tables.submissions)
                 .select('user_id')
                 .eq('gw', latestGw);
+              lastSubQ = withSeasonId(lastSubQ, seasonCtx);
+              const { data: lastGwSubmissionsData } = await lastSubQ;
               
               const lastGwSubmittedUserIds = new Set((lastGwSubmissionsData ?? []).map((s: any) => s.user_id));
               
@@ -1100,13 +1263,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
                 const lastGwPicks = lastGwPicksResults.find(r => r.leagueId === league.id)?.picks ?? [];
                 const lastGwSubmissions = Array.from(lastGwSubmittedUserIds).filter(id => memberIds.includes(id));
                 
-                const mlTableCacheKey = `ml_live_table:${league.id}:${latestGw}`;
+                const mlTableCacheKey = `ml_live_table:v2:${seasonCacheKey}:${league.id}:${latestGw}`;
                 setCached(mlTableCacheKey, {
                   fixtures: lastGwFixtures,
                   picks: lastGwPicks,
                   submissions: lastGwSubmissions,
                   results: lastGwResults ?? [],
                 }, CACHE_TTL.HOME);
+                if (!seasonCtx.useSeasonStack) {
+                  setCached(`ml_live_table:${league.id}:${latestGw}`, {
+                    fixtures: lastGwFixtures,
+                    picks: lastGwPicks,
+                    submissions: lastGwSubmissions,
+                    results: lastGwResults ?? [],
+                  }, CACHE_TTL.HOME);
+                }
               }
             }
           }
@@ -1138,6 +1309,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     // Start Tables data loading but don't await it - let it complete in background
     (async () => {
       try {
+      let tablesSubsQ = (supabase as any)
+        .from(tables.submissions)
+        .select('user_id')
+        .eq('gw', currentGw)
+        .limit(10000);
+      tablesSubsQ = withSeasonId(tablesSubsQ, seasonCtx);
+
       const [
         allLeaguesForTables,
         membersWithUsersForTables,
@@ -1153,11 +1331,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           .select('league_id, user_id, users(id, name)')
           .in('league_id', leagueIds)
           .limit(10000),
-        supabase
-          .from('app_gw_submissions')
-          .select('user_id')
-          .eq('gw', currentGw)
-          .limit(10000),
+        tablesSubsQ,
       ]);
       
       if (!allLeaguesForTables.error && !membersWithUsersForTables.error && !submissionsForTables.error) {
@@ -1416,7 +1590,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   const isInApiTestLeague = leagues.some((l: any) => l.name === 'API Test');
 
   // Cache the data for future use (including pre-calculated form ranks)
-  const cacheKey = `home:basic:${userId}`;
+  const cacheKey = `home:basic:v2:${seasonCacheKey}:${userId}`;
   setCached(cacheKey, {
     leagues,
     currentGw,
@@ -1429,11 +1603,25 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     seasonRank,
     isInApiTestLeague,
   }, CACHE_TTL.HOME);
+  if (!seasonCtx.useSeasonStack) {
+    setCached(`home:basic:${userId}`, {
+      leagues,
+      currentGw,
+      latestGw,
+      allGwPoints: allGwPointsFiltered,
+      overall: overallData,
+      lastGwRank,
+      fiveGwRank,
+      tenGwRank,
+      seasonRank,
+      isInApiTestLeague,
+    }, CACHE_TTL.HOME);
+  }
 
   // CRITICAL: Cache fixtures for the GW the user is VIEWING (not necessarily currentGw)
   // This ensures HomePage loads the correct GW immediately
   const gwToCache = viewingGw; // Use viewing GW, not current GW
-  const fixturesCacheKey = `home:fixtures:${userId}:${gwToCache}`;
+  const fixturesCacheKey = `home:fixtures:v2:${seasonCacheKey}:${userId}:${gwToCache}`;
   
   // If viewing GW is different from current GW, we need to fetch fixtures/picks for viewing GW
   let fixturesToCache = fixturesForGw.data || [];
@@ -1441,26 +1629,35 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   let liveScoresToCache: any[] | undefined = liveScoresArray && liveScoresArray.length > 0 ? liveScoresArray : undefined;
   
   if (viewingGw !== currentGw) {
-    // Fetch fixtures, picks, live scores, and results for viewing GW
+    // Fetch fixtures, picks, live scores, and results for viewing GW (season-aware)
     const [viewingGwFixturesResult, viewingGwPicksResult, viewingGwLiveScoresResult, viewingGwResultsResult] = await Promise.all([
-      supabase
-        .from('app_fixtures')
-        .select('*')
-        .eq('gw', viewingGw)
-        .order('fixture_index', { ascending: true }),
-      supabase
-        .from('app_picks')
-        .select('fixture_index, pick')
-        .eq('user_id', userId)
-        .eq('gw', viewingGw),
+      (() => {
+        let q = (supabase as any)
+          .from(tables.fixtures)
+          .select('*')
+          .eq('gw', viewingGw)
+          .order('fixture_index', { ascending: true });
+        return withSeasonId(q, seasonCtx);
+      })(),
+      (() => {
+        let q = (supabase as any)
+          .from(tables.picks)
+          .select('fixture_index, pick')
+          .eq('user_id', userId)
+          .eq('gw', viewingGw);
+        return withSeasonId(q, seasonCtx);
+      })(),
       supabase
         .from('live_scores')
         .select('*')
         .eq('gw', viewingGw),
-      supabase
-        .from('app_gw_results')
-        .select('fixture_index, result')
-        .eq('gw', viewingGw),
+      (() => {
+        let q = (supabase as any)
+          .from(tables.results)
+          .select('fixture_index, result')
+          .eq('gw', viewingGw);
+        return withSeasonId(q, seasonCtx);
+      })(),
     ]);
     
     if (viewingGwFixturesResult.data) {
@@ -1656,33 +1853,36 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   }
 
   // Preload Predictions page data (BLOCKING - ensures zero loading in Predictions page)
+  // MUST use season tables for Pile B — app_fixtures GW1 is always 25/26.
   try {
-    // Load test fixtures for current GW
-    const { data: testFixtures, error: testFixturesError } = await supabase
-      .from('app_fixtures')
+    let predsFxQ = (supabase as any)
+      .from(tables.fixtures)
       .select('*')
       .eq('gw', currentGw)
       .order('fixture_index', { ascending: true });
+    predsFxQ = withSeasonId(predsFxQ, seasonCtx);
+    const { data: predFixtures, error: predFixturesError } = await predsFxQ;
 
-    if (!testFixturesError && testFixtures && testFixtures.length > 0) {
-      // Load user picks for test GW
-      const { data: testPicks, error: testPicksError } = await supabase
-        .from('app_picks')
+    if (!predFixturesError && predFixtures && predFixtures.length > 0) {
+      let predsPicksQ = (supabase as any)
+        .from(tables.picks)
         .select('gw, fixture_index, pick')
         .eq('user_id', userId)
         .eq('gw', currentGw);
+      predsPicksQ = withSeasonId(predsPicksQ, seasonCtx);
 
-      // Check submission status
-      const { data: testSubmission, error: testSubmissionError } = await supabase
-        .from('app_gw_submissions')
+      let predsSubQ = (supabase as any)
+        .from(tables.submissions)
         .select('submitted_at')
         .eq('gw', currentGw)
-        .eq('user_id', userId)
-        .maybeSingle();
+        .eq('user_id', userId);
+      predsSubQ = withSeasonId(predsSubQ, seasonCtx);
 
-      if (!testPicksError && !testSubmissionError) {
-        // Convert fixtures to the format Predictions expects
-        const fixturesData = testFixtures.map((f: any) => ({
+      const [{ data: predPicks, error: predPicksError }, { data: predSubmission, error: predSubmissionError }] =
+        await Promise.all([predsPicksQ, predsSubQ.maybeSingle()]);
+
+      if (!predPicksError && !predSubmissionError) {
+        const fixturesData = predFixtures.map((f: any) => ({
           id: f.id || String(f.api_match_id || f.fixture_index),
           gw: currentGw,
           fixture_index: f.fixture_index,
@@ -1698,26 +1898,35 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           api_match_id: f.api_match_id || null,
         }));
 
-        // Convert picks to array format
-        const picksArray = (testPicks || []).map((p: any) => ({
+        const picksArray = (predPicks || []).map((p: any) => ({
           fixture_index: p.fixture_index,
           pick: p.pick,
           matchday: currentGw,
         }));
 
-        // Cache Predictions data
-        const testPredictionsCacheKey = `predictions:${userId}:${currentGw}`;
-        setCached(testPredictionsCacheKey, {
+        const predictionsCacheKey = `predictions:v2:${seasonCacheKey}:${userId}:${currentGw}`;
+        setCached(predictionsCacheKey, {
           fixtures: fixturesData,
           picks: picksArray,
-          submitted: !!testSubmission?.submitted_at,
-          results: [], // Results loaded separately via useLiveScores
+          submitted: !!predSubmission?.submitted_at,
+          results: [],
         }, CACHE_TTL.PREDICTIONS);
+        // Legacy key only for non-stack (keeps old clients) — never for Pile B
+        if (!seasonCtx.useSeasonStack) {
+          setCached(`predictions:${userId}:${currentGw}`, {
+            fixtures: fixturesData,
+            picks: picksArray,
+            submitted: !!predSubmission?.submitted_at,
+            results: [],
+          }, CACHE_TTL.PREDICTIONS);
+        }
 
-        console.log('[Pre-loading] Predictions page data cached:', { 
-          fixturesCount: fixturesData.length, 
+        console.log('[Pre-loading] Predictions page data cached:', {
+          fixturesCount: fixturesData.length,
           picksCount: picksArray.length,
-          submitted: !!testSubmission?.submitted_at 
+          submitted: !!predSubmission?.submitted_at,
+          season: seasonCacheKey,
+          table: tables.fixtures,
         });
       }
     }

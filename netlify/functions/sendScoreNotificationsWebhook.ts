@@ -1,6 +1,11 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { isSubscribed, shouldSendNotification, loadUserNotificationPreferences } from './utils/notificationHelpers';
+import {
+  isKickoffTooOldForLiveNotifications,
+  isLiveMatchStatus,
+  isTerminalMatchStatus,
+} from './lib/liveMatchGuards';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -351,17 +356,17 @@ export const handler: Handler = async (event, context) => {
     const [regularFixture, testFixture, appFixture] = await Promise.all([
       supabase
         .from('fixtures')
-        .select('fixture_index, gw, home_team, away_team')
+        .select('fixture_index, gw, home_team, away_team, kickoff_time')
         .eq('api_match_id', apiMatchId)
         .maybeSingle(),
       supabase
         .from('test_api_fixtures')
-        .select('fixture_index, test_gw, home_team, away_team')
+        .select('fixture_index, test_gw, home_team, away_team, kickoff_time')
         .eq('api_match_id', apiMatchId)
         .maybeSingle(),
       supabase
         .from('app_fixtures')
-        .select('fixture_index, gw, home_team, away_team')
+        .select('fixture_index, gw, home_team, away_team, kickoff_time')
         .eq('api_match_id', apiMatchId)
         .maybeSingle(),
     ]);
@@ -374,6 +379,35 @@ export const handler: Handler = async (event, context) => {
         statusCode: 200,
         headers,
         body: JSON.stringify({ message: 'No fixture found' }),
+      };
+    }
+
+    const kickoffTime = (fixture as any).kickoff_time ?? null;
+    if (
+      isTerminalMatchStatus(status) &&
+      isTerminalMatchStatus(oldStatus)
+    ) {
+      console.log(
+        `[sendScoreNotificationsWebhook] [${requestId}] Skipping finished→finished update for match ${apiMatchId}`
+      );
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Skipped stale finished match update' }),
+      };
+    }
+    if (
+      isKickoffTooOldForLiveNotifications(kickoffTime) &&
+      !isLiveMatchStatus(status) &&
+      !isLiveMatchStatus(oldStatus)
+    ) {
+      console.log(
+        `[sendScoreNotificationsWebhook] [${requestId}] Skipping stale kickoff match ${apiMatchId} kickoff=${kickoffTime}`
+      );
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Skipped stale kickoff match notifications' }),
       };
     }
     

@@ -15,6 +15,9 @@ import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 import UserAvatar from "../components/UserAvatar";
 import { filterHiddenLeaderboardRows, isHiddenFromLeaderboards } from "../lib/leaderboardVisibility";
 import { fetchAllGwPoints, type GwPointsRow } from "../lib/fetchAllGwPoints";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables, isNewSeasonFresh, withSeasonId } from "../lib/seasonStack";
+import { useSeasonStack } from "../hooks/useSeasonStack";
 
 type OverallRow = {
   user_id: string;
@@ -24,6 +27,8 @@ type OverallRow = {
 
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
+  const seasonStack = useSeasonStack();
+  const freshSeason = isNewSeasonFresh(seasonStack);
   const isNativeApp = isDespiaAvailable();
   const [searchParams, setSearchParams] = useSearchParams();
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -275,7 +280,8 @@ export default function GlobalLeaderboardPage() {
 
   useEffect(() => {
     let alive = true;
-    const cacheKey = `global:leaderboard`;
+    const seasonKey = seasonStack.useSeasonStack ? (seasonStack.seasonId ?? 'stack') : 'legacy';
+    const cacheKey = `global:leaderboard:v2:${seasonKey}`;
     
     // Check cache freshness synchronously
     const cacheTimestamp = getCacheTimestamp(cacheKey);
@@ -297,24 +303,33 @@ export default function GlobalLeaderboardPage() {
         }
         setErr("");
 
-        // 1) latest GW from results - App reads from app_gw_results
-        const { data: latest, error: lErr } = await supabase
-          .from("app_gw_results")
+        // 1) latest GW from results (season-aware)
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: seasonStack.currentGw,
+          viewingGw: seasonStack.viewingGw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        let latestQ = (supabase as any)
+          .from(tables.results)
           .select("gw")
           .order("gw", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        latestQ = withSeasonId(latestQ, seasonCtx);
+        const { data: latest, error: lErr } = await latestQ.maybeSingle();
         if (lErr) throw lErr;
-        const gw = latest?.gw ?? 1;
+        const gw = latest?.gw ?? (freshSeason ? 0 : 1);
         if (alive) setLatestGw(gw);
 
-        // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
-        const gp = await fetchAllGwPoints("asc");
+        // 2) all GW points — blank for fresh 26/27 until season points exist
+        const gp = freshSeason ? [] : await fetchAllGwPoints("asc");
 
-        // 3) overall - App reads from app_v_ocp_overall
-        const { data: ocp, error: oErr } = await supabase
-          .from("app_v_ocp_overall")
-          .select("user_id, name, ocp");
+        // 3) overall — blank for fresh 26/27 (legacy OCP is last season)
+        const { data: ocp, error: oErr } = freshSeason
+          ? { data: [] as OverallRow[], error: null }
+          : await supabase.from("app_v_ocp_overall").select("user_id, name, ocp");
         if (oErr) throw oErr;
 
         if (!alive) return;
@@ -360,23 +375,31 @@ export default function GlobalLeaderboardPage() {
     return () => {
       alive = false;
     };
-  }, [gwResultsVersion, hasCache]);
+  }, [gwResultsVersion, hasCache, seasonStack.useSeasonStack, seasonStack.seasonId, freshSeason]);
 
-  /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
+  /* ---------- Subscribe to results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
-    // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
+    const seasonCtx = getActiveSeasonCtx() ?? {
+      useSeasonStack: seasonStack.useSeasonStack,
+      seasonId: seasonStack.seasonId,
+      seasonLabel: seasonStack.seasonLabel,
+      currentGw: seasonStack.currentGw,
+      viewingGw: seasonStack.viewingGw,
+    };
+    const tables = getSeasonTables(seasonCtx);
     const channel = supabase
-      .channel('global-gw-results-changes')
+      .channel(`global-gw-results-changes-${tables.results}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
+          event: '*',
           schema: 'public',
-          table: 'app_gw_results',
+          table: tables.results,
         },
         () => {
           // Clear cache to force fresh fetch
-          const cacheKey = `global:leaderboard`;
+          const seasonKey = seasonStack.useSeasonStack ? (seasonStack.seasonId ?? 'stack') : 'legacy';
+          const cacheKey = `global:leaderboard:v2:${seasonKey}`;
           try {
             removeCached(cacheKey);
           } catch (e) {
@@ -391,7 +414,7 @@ export default function GlobalLeaderboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   function ranksFromScores(scores: Record<string, number>): Record<string, number> {
     const ids = Object.keys(scores);

@@ -24,6 +24,11 @@ import {
   hasGoalNotificationForMinute,
   getExistingKickoffHalf,
 } from './lib/notifications/scoreHelpers';
+import {
+  isKickoffTooOldForLiveNotifications,
+  isLiveMatchStatus,
+  isTerminalMatchStatus,
+} from './lib/liveMatchGuards';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -37,6 +42,7 @@ interface FixtureInfo {
   gw: number;
   home_team: string;
   away_team: string;
+  kickoff_time: string | null;
   isTestFixture: boolean;
   isAppFixture: boolean;
   testGwForPicks: number | null;
@@ -61,9 +67,21 @@ interface LiveScoreRecord {
  */
 async function fetchFixtureInfo(apiMatchId: number): Promise<FixtureInfo | null> {
   const [regularFixture, testFixture, appFixture] = await Promise.all([
-    supabase.from('fixtures').select('fixture_index, gw, home_team, away_team').eq('api_match_id', apiMatchId).maybeSingle(),
-    supabase.from('test_api_fixtures').select('fixture_index, test_gw, home_team, away_team').eq('api_match_id', apiMatchId).maybeSingle(),
-    supabase.from('app_fixtures').select('fixture_index, gw, home_team, away_team').eq('api_match_id', apiMatchId).maybeSingle(),
+    supabase
+      .from('fixtures')
+      .select('fixture_index, gw, home_team, away_team, kickoff_time')
+      .eq('api_match_id', apiMatchId)
+      .maybeSingle(),
+    supabase
+      .from('test_api_fixtures')
+      .select('fixture_index, test_gw, home_team, away_team, kickoff_time')
+      .eq('api_match_id', apiMatchId)
+      .maybeSingle(),
+    supabase
+      .from('app_fixtures')
+      .select('fixture_index, gw, home_team, away_team, kickoff_time')
+      .eq('api_match_id', apiMatchId)
+      .maybeSingle(),
   ]);
 
   const fixture = regularFixture.data || testFixture.data || appFixture.data;
@@ -79,6 +97,7 @@ async function fetchFixtureInfo(apiMatchId: number): Promise<FixtureInfo | null>
     gw: fixtureGw,
     home_team: fixture.home_team,
     away_team: fixture.away_team,
+    kickoff_time: (fixture as any).kickoff_time ?? null,
     isTestFixture,
     isAppFixture,
     testGwForPicks,
@@ -245,7 +264,7 @@ export const handler: Handler = async (event, context) => {
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'No fixture found' }) };
     }
 
-    const { fixture_index, gw, home_team, away_team, isAppFixture, isTestFixture, testGwForPicks } = fixture;
+    const { fixture_index, gw, home_team, away_team, kickoff_time, isAppFixture, isTestFixture, testGwForPicks } = fixture;
 
     // Use team names from live_scores record if available (more accurate, matches goal data)
     // Fall back to fixture team names if not available
@@ -257,13 +276,42 @@ export const handler: Handler = async (event, context) => {
     // Detect changes
     const scoreWentDown = homeScore < oldHomeScore || awayScore < oldAwayScore;
     const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
-    const isFinished = status === 'FINISHED' || status === 'FT';
+    const isFinished = isTerminalMatchStatus(status);
+    const wasFinished = isTerminalMatchStatus(oldStatus);
+    const isLiveNow = isLiveMatchStatus(status);
+    const wasLive = isLiveMatchStatus(oldStatus);
+    const kickoffTooOld = isKickoffTooOldForLiveNotifications(kickoff_time);
+
+    // Guard: finished→finished re-upserts (historical API re-poll) must never notify.
+    if (isFinished && wasFinished) {
+      console.log(
+        `[scoreWebhookV2] [${requestId}] Skipping stale finished→finished update for match ${apiMatchId}`
+      );
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Skipped stale finished match update' }),
+      };
+    }
+
+    // Guard: never send live pushes for matches whose kickoff was >24h ago,
+    // unless we are still in a genuine live transition (shouldn't happen off-season).
+    if (kickoffTooOld && !isLiveNow && !wasLive) {
+      console.log(
+        `[scoreWebhookV2] [${requestId}] Skipping notifications for stale kickoff match ${apiMatchId} kickoff=${kickoff_time}`
+      );
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ message: 'Skipped stale kickoff match notifications' }),
+      };
+    }
     
     // Kickoff detection: Simplified using idempotency (doesn't rely on oldStatus)
     // If status is IN_PLAY, attempt to send kickoff notification
     // Idempotency will prevent duplicates (event_id includes half number)
     const isInPlay = status === 'IN_PLAY';
-    const shouldCheckKickoff = isInPlay;
+    const shouldCheckKickoff = isInPlay && !kickoffTooOld;
 
     let totalSent = 0;
 
@@ -317,8 +365,8 @@ export const handler: Handler = async (event, context) => {
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Goal disallowed notification sent', sentTo: totalSent }) };
     }
 
-    // 2. Handle new goals
-    if (Array.isArray(goals) && goals.length > 0 && !scoreWentDown) {
+    // 2. Handle new goals (never for stale historical re-polls)
+    if (Array.isArray(goals) && goals.length > 0 && !scoreWentDown && !kickoffTooOld) {
       // Find new goals by comparing to old goals
       const normalizeGoalKey = (g: any): string => {
         if (!g || typeof g !== 'object') return '';

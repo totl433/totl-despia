@@ -141,6 +141,13 @@ export function seasonDisplayGw(ctx: SeasonCtx, queryGw?: number | null): number
   return ctx.currentGw;
 }
 
+/** True for fresh 2026/27 (or later) season folder — leaderboards start empty until results. */
+export function isNewSeasonFresh(ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonLabel'> | null | undefined): boolean {
+  if (!ctx?.useSeasonStack) return false;
+  const label = (ctx.seasonLabel ?? '').trim();
+  return label === '2026/27' || label.startsWith('2026');
+}
+
 /** Attach .eq('season_id', ...) when on stack and we have an id */
 export function withSeasonId<T extends { eq: (col: string, val: unknown) => T }>(
   query: T,

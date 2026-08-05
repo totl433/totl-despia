@@ -9,6 +9,37 @@ import { getCached } from '../lib/cache';
  * This helps coordinate between preload system and component initialization,
  * preventing race conditions where components read cache before it's populated.
  */
+function hasHomeBasicCache(userId: string): boolean {
+  if (getCached(`home:basic:${userId}`) !== null) return true;
+  const seasonCtx = getCached<{ useSeasonStack?: boolean; seasonId?: string | null }>(
+    `season:ctx:${userId}`
+  );
+  if (seasonCtx?.useSeasonStack) {
+    const key = `home:basic:v2:${seasonCtx.seasonId ?? 'stack'}:${userId}`;
+    return getCached(key) !== null;
+  }
+  // Also accept any v2 basic cache for this user
+  if (typeof window !== 'undefined') {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          k.includes(`home:basic:v2:`) &&
+          k.endsWith(`:${userId}`)
+        ) {
+          // localStorage keys are despia:cache:…
+          const logical = k.replace(/^despia:cache:/, '');
+          if (getCached(logical) !== null) return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return false;
+}
+
 export function useCacheReady() {
   const { user } = useAuth();
   const [isReady, setIsReady] = useState(() => {
@@ -18,10 +49,7 @@ export function useCacheReady() {
     const preloadComplete = typeof window !== 'undefined' && 
       sessionStorage.getItem('preload:complete') === 'true';
     
-    // Check if cache exists (even if preload didn't run)
-    const hasCache = getCached(`home:basic:${user.id}`) !== null;
-    
-    return preloadComplete || hasCache;
+    return preloadComplete || hasHomeBasicCache(user.id);
   });
   
   useEffect(() => {
@@ -34,8 +62,7 @@ export function useCacheReady() {
     const checkReady = () => {
       const preloadComplete = typeof window !== 'undefined' && 
         sessionStorage.getItem('preload:complete') === 'true';
-      const hasCache = getCached(`home:basic:${user.id}`) !== null;
-      setIsReady(preloadComplete || hasCache);
+      setIsReady(preloadComplete || hasHomeBasicCache(user.id));
     };
     
     // Check immediately
@@ -56,10 +83,9 @@ export function useCacheReady() {
       checkReady();
       
       // Stop polling if ready or max polls reached
-      // Check current state, not stale closure value
       const nowReady = typeof window !== 'undefined' && 
         (sessionStorage.getItem('preload:complete') === 'true' || 
-         getCached(`home:basic:${user.id}`) !== null);
+         hasHomeBasicCache(user.id));
       
       if (nowReady || pollCount >= maxPolls) {
         clearInterval(interval);
