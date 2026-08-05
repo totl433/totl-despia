@@ -16,8 +16,10 @@ import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import type { GameweekState } from "../lib/gameweekState";
 import GameweekResultsModal from "../components/GameweekResultsModal";
+import NewSeasonBanner from "../components/NewSeasonBanner";
 import { loadHomePageData } from "../lib/loadHomePageData";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
+import { useSeasonStack } from "../hooks/useSeasonStack";
 
 // Types
 type LeagueMember = { id: string; name: string };
@@ -62,6 +64,11 @@ type Fixture = {
  */
 export default function HomePage() {
   const { user } = useAuth();
+  const seasonStack = useSeasonStack();
+  const newSeasonLabel =
+    seasonStack.seasonLabel && seasonStack.seasonLabel.trim()
+      ? seasonStack.seasonLabel.trim()
+      : '2026/27';
   
   // Load initial state from cache synchronously (happens before first render)
   const loadInitialStateFromCache = () => {
@@ -1701,6 +1708,9 @@ export default function HomePage() {
       <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />
       </div>
+
+      {/* New season kickoff promo — dismissible via localStorage */}
+      <NewSeasonBanner seasonLabel={newSeasonLabel} />
       
       {/* Gameweek Results Button - Show when current viewing GW has finished */}
       {shouldShowGwResultsButton && (
