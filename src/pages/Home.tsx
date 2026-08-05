@@ -1709,8 +1709,10 @@ export default function HomePage() {
         <ScrollLogo />
       </div>
 
-      {/* New season kickoff promo — dismissible via localStorage */}
-      <NewSeasonBanner seasonLabel={newSeasonLabel} />
+      {/* New season promo — Pile B (use_season_stack) only; dismissible */}
+      {seasonStack.useSeasonStack && !seasonStack.loading ? (
+        <NewSeasonBanner seasonLabel={newSeasonLabel} />
+      ) : null}
       
       {/* Gameweek Results Button - Show when current viewing GW has finished */}
       {shouldShowGwResultsButton && (

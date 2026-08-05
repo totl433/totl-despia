@@ -13,7 +13,8 @@ export type NewSeasonBannerProps = {
 
 /**
  * Dismissible “new season” promo banner for 2026/27 kickoff.
- * Usage: <NewSeasonBanner /> under the home logo / page header.
+ * Intended for Pile B (use_season_stack) users only — gate at the call site.
+ * Usage: {useSeasonStack && <NewSeasonBanner seasonLabel={label} />}
  */
 export default function NewSeasonBanner({
   seasonLabel = '2026/27',
