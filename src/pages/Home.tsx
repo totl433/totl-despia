@@ -20,7 +20,8 @@ import NewSeasonBanner from "../components/NewSeasonBanner";
 import { loadHomePageData } from "../lib/loadHomePageData";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
 import { useSeasonStack } from "../hooks/useSeasonStack";
-
+import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
 // Types
 type LeagueMember = { id: string; name: string };
 type LeagueDataInternal = {
@@ -1196,10 +1197,15 @@ export default function HomePage() {
   }, [gwResultsVersion, user?.id, latestGw, fixtures.length]);
   
   // Load user submissions from cache immediately, then refresh in background
+  // Season-aware: Pile B users must read app_season_submissions (not legacy app_gw_submissions)
+  const submissionsCacheKey = user?.id
+    ? `home:userSubmissions:${user.id}:${seasonStack.useSeasonStack ? seasonStack.seasonId ?? 'season' : 'legacy'}`
+    : null;
+
   const [userSubmissions, setUserSubmissions] = useState<Set<number>>(() => {
-    if (!user?.id) return new Set();
+    if (!user?.id || !submissionsCacheKey) return new Set();
     try {
-      const cached = getCached<number[]>(`home:userSubmissions:${user.id}`);
+      const cached = getCached<number[]>(submissionsCacheKey);
       return cached ? new Set(cached) : new Set();
     } catch {
       return new Set();
@@ -1207,39 +1213,51 @@ export default function HomePage() {
   });
   
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || !submissionsCacheKey) {
       setUserSubmissions(new Set());
       return;
     }
     
     // Check cache first
-    const cached = getCached<number[]>(`home:userSubmissions:${user.id}`);
+    const cached = getCached<number[]>(submissionsCacheKey);
     if (cached) {
       setUserSubmissions(new Set(cached));
     }
     
     let alive = true;
     const loadSubmissions = async () => {
-      const { data: submissions } = await supabase
-        .from('app_gw_submissions')
-        .select('gw')
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: seasonStack.useSeasonStack,
+        seasonId: seasonStack.seasonId,
+        seasonLabel: seasonStack.seasonLabel,
+        currentGw: seasonStack.currentGw ?? gw,
+        viewingGw: gw,
+      };
+      const tables = getSeasonTables(seasonCtx);
+
+      let q = (supabase as any)
+        .from(tables.submissions)
+        .select('gw, submitted_at')
         .eq('user_id', user.id)
+        .not('submitted_at', 'is', null)
         .order('gw', { ascending: false });
+      q = withSeasonId(q, seasonCtx);
+
+      const { data: submissions } = await q;
       
       if (alive && submissions) {
-        const gws = submissions.map((s: any) => s.gw);
+        const gws = submissions.map((s: { gw: number }) => s.gw);
         setUserSubmissions(new Set(gws));
-        // Update cache
-        setCached(`home:userSubmissions:${user.id}`, gws, CACHE_TTL.HOME);
+        setCached(submissionsCacheKey, gws, CACHE_TTL.HOME);
       }
     };
     
     // Only fetch if cache is missing or stale (background refresh)
     if (!cached) {
-    loadSubmissions();
+      loadSubmissions();
     } else {
       // Background refresh for stale cache
-      const cacheTimestamp = getCacheTimestamp(`home:userSubmissions:${user.id}`);
+      const cacheTimestamp = getCacheTimestamp(submissionsCacheKey);
       const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
       const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes
       if (isCacheStale) {
@@ -1257,7 +1275,15 @@ export default function HomePage() {
       alive = false;
       window.removeEventListener('predictionsSubmitted', handleSubmission);
     };
-  }, [user?.id, gw]);
+  }, [
+    user?.id,
+    gw,
+    submissionsCacheKey,
+    seasonStack.useSeasonStack,
+    seasonStack.seasonId,
+    seasonStack.seasonLabel,
+    seasonStack.currentGw,
+  ]);
 
   const hasSubmittedCurrentGw = useMemo(() => {
     if (!user?.id || !gw) return false;
@@ -1709,9 +1735,12 @@ export default function HomePage() {
         <ScrollLogo />
       </div>
 
-      {/* New season promo — Pile B (use_season_stack) only; dismissible */}
+      {/* New season promo — Pile B only; hide once GW picks submitted */}
       {seasonStack.useSeasonStack && !seasonStack.loading ? (
-        <NewSeasonBanner seasonLabel={newSeasonLabel} />
+        <NewSeasonBanner
+          seasonLabel={newSeasonLabel}
+          hasSubmittedPicks={hasSubmittedCurrentGw}
+        />
       ) : null}
       
       {/* Gameweek Results Button - Show when current viewing GW has finished */}

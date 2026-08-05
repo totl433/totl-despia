@@ -8,17 +8,25 @@ export type NewSeasonBannerProps = {
   seasonLabel?: string;
   /** Force visibility (Storybook) */
   forceVisible?: boolean;
+  /**
+   * Hide when the user has already submitted GW1 (or current viewing GW) picks.
+   * Also persists dismiss so it stays gone after refresh.
+   */
+  hasSubmittedPicks?: boolean;
   className?: string;
 };
 
 /**
  * Dismissible “new season” promo banner for 2026/27 kickoff.
  * Intended for Pile B (use_season_stack) users only — gate at the call site.
- * Usage: {useSeasonStack && <NewSeasonBanner seasonLabel={label} />}
+ * Hidden once picks are submitted. Does not set data-banner-height (that offset
+ * is only for sticky top gameweek strips).
+ * Usage: {useSeasonStack && <NewSeasonBanner hasSubmittedPicks={...} />}
  */
 export default function NewSeasonBanner({
   seasonLabel = '2026/27',
   forceVisible = false,
+  hasSubmittedPicks = false,
   className = '',
 }: NewSeasonBannerProps) {
   const [visible, setVisible] = useState(false);
@@ -28,6 +36,18 @@ export default function NewSeasonBanner({
       setVisible(true);
       return;
     }
+
+    // Picks already in — never show again
+    if (hasSubmittedPicks) {
+      try {
+        localStorage.setItem(STORAGE_KEY, '1');
+      } catch {
+        // ignore
+      }
+      setVisible(false);
+      return;
+    }
+
     try {
       if (localStorage.getItem(STORAGE_KEY) === '1') {
         setVisible(false);
@@ -37,7 +57,7 @@ export default function NewSeasonBanner({
       // ignore storage failures
     }
     setVisible(true);
-  }, [forceVisible]);
+  }, [forceVisible, hasSubmittedPicks]);
 
   const dismiss = () => {
     try {
@@ -54,7 +74,6 @@ export default function NewSeasonBanner({
     <section
       className={`new-season-banner relative mb-4 overflow-hidden rounded-2xl text-white shadow-md ${className}`}
       aria-label={`New season ${seasonLabel}`}
-      data-banner-height
     >
       <style>{`
         @keyframes newSeasonFadeUp {
