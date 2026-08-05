@@ -5,6 +5,8 @@ import GameweekFixturesCardList from './GameweekFixturesCardList';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useGameweekState } from '../hooks/useGameweekState';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 export interface UserPicksModalProps {
  isOpen: boolean;
@@ -57,6 +59,9 @@ export default function UserPicksModal({
  setError(null);
 
  try {
+ const seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+ const tables = getSeasonTables(seasonCtx);
+
  // Use centralized game state (already calculated by useGameweekState hook above)
  // deadlinePassed is derived from gwState
  
@@ -66,13 +71,14 @@ export default function UserPicksModal({
  
  // If deadline hasn't passed and we have a fallback GW, try showing that instead
  if (!deadlinePassed && fallbackGw) {
- // Check if user has picks for fallback GW
- const { data: fallbackSubmission } = await supabase
- .from('app_gw_submissions')
+ // Check if user has picks for fallback GW (season-aware)
+ let fallbackSubQ = (supabase as any)
+ .from(tables.submissions)
  .select('submitted_at')
  .eq('gw', fallbackGw)
- .eq('user_id', userId)
- .maybeSingle();
+ .eq('user_id', userId);
+ fallbackSubQ = withSeasonId(fallbackSubQ, seasonCtx);
+ const { data: fallbackSubmission } = await fallbackSubQ.maybeSingle();
  
  if (fallbackSubmission?.submitted_at) {
  // User submitted for fallback GW, show that instead
@@ -95,11 +101,13 @@ export default function UserPicksModal({
  }
 
  // Fetch fixtures for the gameweek we're displaying
- const { data: fxData, error: fxError } = await supabase
- .from('app_fixtures')
+ let fxQ = (supabase as any)
+ .from(tables.fixtures)
  .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
  .eq('gw', gwToDisplay)
  .order('fixture_index', { ascending: true });
+ fxQ = withSeasonId(fxQ, seasonCtx);
+ const { data: fxData, error: fxError } = await fxQ;
 
  if (fxError) {
  throw new Error(`Failed to load fixtures: ${fxError.message}`);
@@ -111,11 +119,13 @@ export default function UserPicksModal({
  setFixtures(fixturesList);
 
  // Fetch picks for this user and gameweek
- const { data: picksData, error: picksError } = await supabase
- .from('app_picks')
+ let picksQ = (supabase as any)
+ .from(tables.picks)
  .select('fixture_index, pick')
  .eq('gw', gwToDisplay)
  .eq('user_id', userId);
+ picksQ = withSeasonId(picksQ, seasonCtx);
+ const { data: picksData, error: picksError } = await picksQ;
 
  if (picksError) {
  throw new Error(`Failed to load picks: ${picksError.message}`);
@@ -131,12 +141,13 @@ export default function UserPicksModal({
  setPicks(picksMap);
 
  // Check if user has submitted for this gameweek
- const { data: submissionData, error: submissionError } = await supabase
- .from('app_gw_submissions')
+ let submissionQ = (supabase as any)
+ .from(tables.submissions)
  .select('submitted_at')
  .eq('gw', gwToDisplay)
- .eq('user_id', userId)
- .maybeSingle();
+ .eq('user_id', userId);
+ submissionQ = withSeasonId(submissionQ, seasonCtx);
+ const { data: submissionData, error: submissionError } = await submissionQ.maybeSingle();
 
  if (submissionError) {
  console.error('[UserPicksModal] Error checking submission:', submissionError);
@@ -148,49 +159,48 @@ export default function UserPicksModal({
  const submitted = Boolean(submissionData?.submitted_at);
  setHasSubmitted(submitted);
 
- // Calculate gameweek ranking percentage
+ // Rank % only when this stack GW has results (avoid legacy app_v_gw_points for "GW 1")
  if (submitted) {
- const { data: gwPointsData, error: gwPointsError } = await supabase
- .from('app_v_gw_points')
+ let resultsQ = (supabase as any)
+ .from(tables.results)
+ .select('fixture_index')
+ .eq('gw', gwToDisplay)
+ .limit(1);
+ resultsQ = withSeasonId(resultsQ, seasonCtx);
+ const { data: resultRows } = await resultsQ;
+ const hasResults = Array.isArray(resultRows) && resultRows.length > 0;
+
+ if (hasResults) {
+ let pointsQ = (supabase as any)
+ .from(tables.gwPoints)
  .select('user_id, points')
  .eq('gw', gwToDisplay);
+ if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+ pointsQ = pointsQ.eq('season_id', seasonCtx.seasonId);
+ }
+ const { data: gwPointsData, error: gwPointsError } = await pointsQ;
 
  if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
- // Sort by points descending
  const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
  
- // Find user's rank (handling ties - same rank for same points)
  let userRank = 1;
- let userPoints: number | null = null;
  for (let i = 0; i < sorted.length; i++) {
  if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
  userRank = i + 1;
  }
  if (sorted[i].user_id === userId) {
- userPoints = sorted[i].points || 0;
  break;
  }
  }
 
- // Calculate rank percentage: (rank / total_users) * 100
- // This is already the percentile, so we can use it directly
  const totalUsers = sorted.length;
  const rankPercent = Math.round((userRank / totalUsers) * 100);
- 
- // Debug logging to help identify discrepancies
- console.log('[UserPicksModal] Percentage calculation:',
- 'GW:', gwToDisplay,
- 'UserId:', userId,
- 'UserRank:', userRank,
- 'TotalUsers:', totalUsers,
- 'UserPoints:', userPoints,
- 'RankPercent:', rankPercent,
- 'Top5:', sorted.slice(0, 5).map(u => ({ userId: u.user_id, points: u.points }))
- );
- 
- if (alive) {
- setGwRankPercent(rankPercent);
+ if (alive) setGwRankPercent(rankPercent);
+ } else if (alive) {
+ setGwRankPercent(undefined);
  }
+ } else if (alive) {
+ setGwRankPercent(undefined);
  }
  } else {
  if (alive) {

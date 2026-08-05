@@ -342,6 +342,8 @@ import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
 import { supabase } from "./lib/supabase";
+import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
+import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
 
 function maybeLoadGoogleAnalytics() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -689,47 +691,32 @@ function AppContent() {
       }
 
       try {
-        // Get app_meta.current_gw (published GW)
-        const { data: meta, error: metaError } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        if (!alive || metaError) {
-          setHasSubmittedPredictions(null);
-          return;
-        }
-        
-        const dbCurrentGw = meta?.current_gw ?? null;
+        // Season-aware published GW + submissions (avoid app_meta GW38 + legacy GW1 ranks)
+        const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+        const tables = getSeasonTables(seasonCtx);
+        const dbCurrentGw = seasonCtx.currentGw;
         if (!dbCurrentGw) {
           setHasSubmittedPredictions(null);
           return;
         }
 
         // Get user's current_viewing_gw (which GW they're actually viewing)
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (!alive) return;
-        
-        // Use current_viewing_gw only if explicitly set.
-        // New users (null) should default to current published GW.
-        const userViewingGw = prefs?.current_viewing_gw ?? null;
+        const userViewingGw =
+          typeof seasonCtx.viewingGw === 'number' ? seasonCtx.viewingGw : null;
         
         // Determine which GW to check
-        const gwToCheck = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const gwToCheck =
+          userViewingGw !== null && userViewingGw < dbCurrentGw
+            ? userViewingGw
+            : dbCurrentGw;
 
-        // Check game state for the viewing GW - only hide nav if in GW_OPEN state
-        // Import useGameweekState hook result would require restructuring, so we'll check state via query
-        // For now, check if results exist - if results exist, we're in RESULTS state, so show nav
-        const { count: resultsCount } = await supabase
-          .from("app_gw_results")
-          .select("gw", { count: "exact", head: true })
-          .eq("gw", gwToCheck);
+        // Check if results exist for this stack GW
+        let resultsQ = (supabase as any)
+          .from(tables.results)
+          .select('gw', { count: 'exact', head: true })
+          .eq('gw', gwToCheck);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { count: resultsCount } = await resultsQ;
         
         const hasResults = (resultsCount ?? 0) > 0;
         
@@ -740,12 +727,13 @@ function AppContent() {
         }
 
         // No results yet - check if user has submitted predictions for the viewing GW
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", gwToCheck)
-          .maybeSingle();
+        let subQ = (supabase as any)
+          .from(tables.submissions)
+          .select('submitted_at')
+          .eq('user_id', user.id)
+          .eq('gw', gwToCheck);
+        subQ = withSeasonId(subQ, seasonCtx);
+        const { data: submission } = await subQ.maybeSingle();
         
         if (!alive) return;
 

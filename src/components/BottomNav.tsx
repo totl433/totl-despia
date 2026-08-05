@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLeagues } from '../hooks/useLeagues';
-import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
 import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
   const navItems = [
@@ -142,34 +142,19 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       }
 
       try {
-        // Get app_meta.current_gw (published GW)
-        const { data: meta, error: metaError } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        if (!alive || metaError) return;
-        
-        const dbCurrentGw = meta?.current_gw ?? 1;
-
-        // Get user's current_viewing_gw (which GW they're actually viewing)
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (!alive) return;
-        
-        // Use current_viewing_gw only if explicitly set.
-        // New users (null) should default to current published GW.
-        const userViewingGw = prefs?.current_viewing_gw ?? null;
+        // Season stack: published GW from active ctx (not app_meta = 25/26 runtime)
+        const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+        const dbCurrentGw = seasonCtx.currentGw ?? 1;
+        const userViewingGw =
+          typeof seasonCtx.viewingGw === 'number' ? seasonCtx.viewingGw : null;
         
         // Determine which GW to display
         // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
         // Otherwise show the current GW
-        const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const gwToDisplay =
+          userViewingGw !== null && userViewingGw < dbCurrentGw
+            ? userViewingGw
+            : dbCurrentGw;
         
         if (alive) {
           setViewingGw(gwToDisplay);

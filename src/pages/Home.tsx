@@ -800,7 +800,10 @@ export default function HomePage() {
     // If we have fixtures from cache, load gw_results from cache only
     if (fixtures.length > 0) {
       if (!gw) return;
-      const cacheKey = `home:gwResults:${gw}`;
+      const seasonKey = seasonStack.useSeasonStack
+        ? (seasonStack.seasonId ?? 'season')
+        : 'legacy';
+      const cacheKey = `home:gwResults:${seasonKey}:${gw}`;
       const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(cacheKey);
       if (cached) {
         const resultsMap: Record<number, "H" | "D" | "A"> = {};
@@ -825,8 +828,11 @@ export default function HomePage() {
       return;
     }
     
-    // Check cache first
-    const cacheKey = `home:gwResults:${gw}`;
+    // Check cache first (season-scoped key so 25/26 GW N never bleeds into 26/27)
+    const seasonKey = seasonStack.useSeasonStack
+      ? (seasonStack.seasonId ?? 'season')
+      : 'legacy';
+    const cacheKey = `home:gwResults:${seasonKey}:${gw}`;
     const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(cacheKey);
     if (cached) {
       const resultsMap: Record<number, "H" | "D" | "A"> = {};
@@ -848,10 +854,20 @@ export default function HomePage() {
     let alive = true;
     (async () => {
       try {
-        const { data: results, error } = await supabase
-          .from("app_gw_results")
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: gw,
+          viewingGw: gw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        let resultsQ = (supabase as any)
+          .from(tables.results)
           .select("fixture_index, result")
           .eq("gw", gw);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { data: results, error } = await resultsQ;
         
         if (!alive) return;
         
@@ -875,7 +891,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [gw, fixtures]);
+  }, [gw, fixtures, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.seasonLabel]);
 
   // Merge live scores: start with cached data (from initialState), then merge hook updates
   // liveScoresFromCache state already contains data loaded synchronously from cache
@@ -1079,18 +1095,20 @@ export default function HomePage() {
 
   // Fixtures and league data are now loaded by unified loadHomePageData function
   
-  // Subscribe to app_gw_results changes
+  // Subscribe to results changes (legacy or season table)
   useEffect(() => {
     if (!user?.id) return;
+
+    const resultsTable = seasonStack.useSeasonStack ? 'app_season_results' : 'app_gw_results';
     
     const channel = supabase
-      .channel('home-gw-results-changes')
+      .channel(`home-gw-results-changes-${resultsTable}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'app_gw_results',
+          table: resultsTable,
         },
         (_payload) => {
           const cacheKey = `home:basic:${user.id}`;
@@ -1108,12 +1126,21 @@ export default function HomePage() {
     const handleVisibilityChange = async () => {
       if (!document.hidden && user?.id) {
         try {
-          const { data: latestGwResult } = await supabase
-            .from("app_gw_results")
+          const seasonCtx = getActiveSeasonCtx() ?? {
+            useSeasonStack: seasonStack.useSeasonStack,
+            seasonId: seasonStack.seasonId,
+            seasonLabel: seasonStack.seasonLabel,
+            currentGw: gw ?? 1,
+            viewingGw: gw,
+          };
+          const tables = getSeasonTables(seasonCtx);
+          let latestQ = (supabase as any)
+            .from(tables.results)
             .select("gw")
             .order("gw", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+          latestQ = withSeasonId(latestQ, seasonCtx);
+          const { data: latestGwResult } = await latestQ.maybeSingle();
           
           const newLatestGw = latestGwResult?.gw ?? null;
           if (newLatestGw !== null && newLatestGw !== latestGw) {
@@ -1139,7 +1166,7 @@ export default function HomePage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
-  }, [user?.id, gw, latestGw]);
+  }, [user?.id, gw, latestGw, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.seasonLabel]);
 
   // Refetch data when gwResultsVersion changes (only if no cache from pre-loader)
   useEffect(() => {
@@ -1154,9 +1181,33 @@ export default function HomePage() {
     
     (async () => {
       try {
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: gw ?? 1,
+          viewingGw: gw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        let latestResultsQ = (supabase as any)
+          .from(tables.results)
+          .select("gw")
+          .order("gw", { ascending: false })
+          .limit(1);
+        latestResultsQ = withSeasonId(latestResultsQ, seasonCtx);
+
+        let pointsQ = (supabase as any)
+          .from(tables.gwPoints)
+          .select("user_id, gw, points")
+          .order("gw", { ascending: true });
+        if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+          pointsQ = pointsQ.eq("season_id", seasonCtx.seasonId);
+        }
+
         const [latestGwResult, allGwPointsResult] = await Promise.all([
-          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+          latestResultsQ.maybeSingle(),
+          pointsQ,
         ]);
         
         if (!alive) return;
