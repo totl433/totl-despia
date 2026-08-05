@@ -9,7 +9,6 @@ import { ParChart } from '../components/profile/ParChart';
 import { TrophyCabinet } from '../components/profile/TrophyCabinet';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
-import UnicornCollection from '../components/profile/UnicornCollection';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { supabase } from '../lib/supabase';
 import GameweekResultsModal from '../components/GameweekResultsModal';
@@ -383,13 +382,6 @@ export default function Stats() {
  season={stats.trophyCabinet.season}
  loading={loading}
  />
- </div>
- )}
-
- {/* Unicorn Collection */}
- {user && (
- <div className="lg:col-span-2 lg:overflow-hidden lg:rounded-xl">
- <UnicornCollection userId={user.id} loading={loading} />
  </div>
  )}
 

@@ -2,6 +2,26 @@ import { supabase } from '../lib/supabase';
 import { getFullName } from '../lib/teamNames';
 import { computeTrophyCabinetCounts, type GwPointsRow } from '../lib/trophyCabinetStats';
 
+/** PostgREST default page size is 1000 — must page or later GWs vanish from stats charts. */
+async function fetchAllAppGwPoints(): Promise<GwPointsRow[]> {
+  const rows: GwPointsRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from('app_v_gw_points')
+      .select('user_id, gw, points')
+      .order('gw', { ascending: true })
+      .order('user_id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    const page = (data ?? []) as GwPointsRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
 export interface UserStatsData {
   // Last completed GW percentile
   lastCompletedGw: number | null;
@@ -272,11 +292,12 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     }
 
     // 5. Best streak (top 25%) and average points per week
-    const { data: userGwPoints } = await supabase
-      .from('app_v_gw_points')
-      .select('gw, points')
-      .eq('user_id', userId)
-      .order('gw', { ascending: true });
+    // Full materialization — one unpaged select truncates near GW32 with a full player pool.
+    const allUsersGwPoints = await fetchAllAppGwPoints();
+    const userGwPoints = allUsersGwPoints
+      .filter((p) => String(p.user_id) === String(userId))
+      .map((p) => ({ gw: p.gw, points: p.points }))
+      .sort((a, b) => a.gw - b.gw);
 
     if (userGwPoints && userGwPoints.length > 0) {
       // Calculate average points per week
@@ -294,32 +315,27 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         completedGws.add(r.gw);
       });
 
-      // Calculate percentile for each GW (fetch all GW points once)
-      const { data: allGwPoints } = await supabase
-        .from('app_v_gw_points')
-        .select('gw, user_id, points')
-        .in('gw', Array.from(completedGws));
-
       const gwPercentiles = new Map<number, number>();
       const gwPointsMap = new Map<number, Array<{ user_id: string; points: number }>>();
 
-      // Group points by GW
-      if (allGwPoints) {
-        allGwPoints.forEach((p: any) => {
-          const gw = p.gw;
-          if (!gwPointsMap.has(gw)) {
-            gwPointsMap.set(gw, []);
-          }
-          gwPointsMap.get(gw)!.push({ user_id: p.user_id, points: p.points || 0 });
-        });
-      }
+      // Group points by GW (all pages)
+      allUsersGwPoints.forEach((p) => {
+        if (!completedGws.has(p.gw) && typeof lastCompletedGw === 'number' && p.gw > lastCompletedGw) {
+          return;
+        }
+        const gw = p.gw;
+        if (!gwPointsMap.has(gw)) {
+          gwPointsMap.set(gw, []);
+        }
+        gwPointsMap.get(gw)!.push({ user_id: p.user_id, points: p.points || 0 });
+      });
 
-      // Calculate percentile for each GW
+      // Calculate percentile for each completed GW
       for (const gw of Array.from(completedGws).sort((a, b) => a - b)) {
         const gwPoints = gwPointsMap.get(gw);
         if (gwPoints && gwPoints.length > 0) {
-          const allPoints = gwPoints.map(p => p.points);
-          const userPoints = gwPoints.find(p => p.user_id === userId)?.points || 0;
+          const allPoints = gwPoints.map((p) => p.points);
+          const userPoints = gwPoints.find((p) => p.user_id === userId)?.points || 0;
           const percentile = calculatePercentile(userPoints, allPoints);
           gwPercentiles.set(gw, percentile);
         }
@@ -371,6 +387,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       
       userGwPoints.forEach((p: any) => {
         const points = p.points || 0;
+        if (typeof lastCompletedGw === 'number' && p.gw > lastCompletedGw) return;
         if (points > bestGw.points) {
           bestGw = { points, gw: p.gw };
         }
@@ -386,22 +403,23 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         stats.lowestSingleGw = lowestGw;
       }
 
-      // Calculate weekly Par data (user points vs average for each week)
-      // Cap at lastCompletedGw so in-progress / next-season meta cannot orphan history.
+      // Calculate weekly Par data (user points vs field average for each completed week)
       const weeklyParData: Array<{ gw: number; userPoints: number; averagePoints: number }> = [];
       
-      // Calculate average for each GW using the already-fetched allGwPoints
       const gwAverages = new Map<number, number>();
-      
       gwPointsMap.forEach((points, gw) => {
+        if (points.length === 0) return;
         const average = points.reduce((sum, p) => sum + p.points, 0) / points.length;
         gwAverages.set(gw, average);
       });
 
-      // Build weekly Par data for user's GWs (completed only)
       userGwPoints.forEach((p: any) => {
         const gw = p.gw;
         if (typeof lastCompletedGw === 'number' && gw > lastCompletedGw) return;
+        // Prefer GWs with a settled result set; still include if user has points and field avg exists
+        if (completedGws.size > 0 && !completedGws.has(gw) && typeof lastCompletedGw === 'number' && gw > lastCompletedGw) {
+          return;
+        }
         const userPoints = p.points || 0;
         const averagePoints = gwAverages.get(gw);
         
@@ -418,26 +436,15 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       weeklyParData.sort((a, b) => a.gw - b.gw);
       
       stats.weeklyParData = weeklyParData.length > 0 ? weeklyParData : null;
+      console.log(
+        '[userStats] Weekly par GWs:',
+        weeklyParData.length
+          ? `${weeklyParData[0]!.gw}–${weeklyParData[weeklyParData.length - 1]!.gw} (${weeklyParData.length} bars)`
+          : 'none'
+      );
 
       // Trophy cabinet (Gameweek / Monthly / Season — same product rules as mobile app Stats)
       try {
-        // Page entire points materialization (default PostgREST window is 1k rows).
-        const allUsersGwPoints: GwPointsRow[] = [];
-        const pageSize = 1000;
-        for (let from = 0; ; from += pageSize) {
-          const to = from + pageSize - 1;
-          const { data: page, error: pageErr } = await supabase
-            .from('app_v_gw_points')
-            .select('user_id, gw, points')
-            .order('gw', { ascending: true })
-            .order('user_id', { ascending: true })
-            .range(from, to);
-          if (pageErr) throw pageErr;
-          const rows = (page ?? []) as GwPointsRow[];
-          allUsersGwPoints.push(...rows);
-          if (rows.length < pageSize) break;
-        }
-
         const lc = typeof lastCompletedGw === 'number' ? lastCompletedGw : 0;
         stats.trophyCabinet = await computeTrophyCabinetCounts(userId, allUsersGwPoints, lc);
       } catch (trophyErr) {
