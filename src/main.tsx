@@ -974,14 +974,13 @@ function AppContent() {
          location.pathname !== '/support' &&
          location.pathname !== '/predictions/swipe' && 
          location.pathname !== '/swipe-card-preview' &&
-         <div className="lg:hidden">
-           <BottomNav shouldHide={
-             (location.pathname === '/predictions' && isSwipeMode) ||
-             (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
-             location.pathname.startsWith('/league/')
-           } />
-         </div>}
-        {isNativeApp && <div style={{ height: "var(--safe-area-bottom)" }} />}
+         <BottomNav shouldHide={
+           (location.pathname === '/predictions' && isSwipeMode) ||
+           (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
+           location.pathname.startsWith('/league/')
+         } />}
+        {/* Safe-area bottom is handled by fixed BottomNav + body padding; do not
+            add an extra in-flow spacer (created a large empty gap under content). */}
       </div>
     </>
   );

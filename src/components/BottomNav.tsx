@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
@@ -248,43 +249,35 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
     };
   }, [user?.id, viewingGw, viewingGwState]);
 
-  return (
+  const nav = (
     <>
       <style>{`
+        /* Portal to document.body + simple fixed positioning so iOS doesn't detach
+           the bar from the visual viewport when #root scrolls. */
         .bottom-nav-absolute {
-          position: fixed !important;
-          bottom: 0px !important;
-          left: 0px !important;
-          right: 0px !important;
-          width: 100vw !important;
-          max-width: 100vw !important;
-          z-index: 99999 !important;
-          transform: translate3d(0, 0, 0) !important;
-          -webkit-transform: translate3d(0, 0, 0) !important;
-          will-change: transform !important;
-          contain: layout style paint !important;
-          pointer-events: auto !important;
-          transition: transform 0.3s ease-in-out !important;
-          padding-bottom: calc(2rem + var(--safe-area-bottom)) !important;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          max-width: 100%;
+          z-index: 99999;
+          pointer-events: none;
+          padding-left: 1rem;
+          padding-right: 1rem;
+          /* Gap above home indicator only — was 2rem + 1.5rem margin (too high) */
+          padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+          box-sizing: border-box;
+          transition: transform 0.3s ease-in-out;
+        }
+        .bottom-nav-absolute > * {
+          pointer-events: auto;
         }
         .bottom-nav-slide-out {
-          transform: translate3d(0, 100%, 0) !important;
-          -webkit-transform: translate3d(0, 100%, 0) !important;
+          transform: translateY(110%);
         }
         .bottom-nav-slide-in {
-          transform: translate3d(0, 0, 0) !important;
-          -webkit-transform: translate3d(0, 0, 0) !important;
-        }
-        @supports (padding-bottom: env(safe-area-inset-bottom)) {
-          .bottom-nav-absolute {
-            padding-bottom: calc(2rem + env(safe-area-inset-bottom)) !important;
-          }
-        }
-        @media (max-height: 800px) {
-          .bottom-nav-absolute {
-            position: fixed !important;
-            bottom: 0px !important;
-          }
+          transform: translateY(0);
         }
         @keyframes shimmer {
           0% {
@@ -380,8 +373,15 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           z-index: 2;
         }
       `}</style>
-      <div className={`bottom-nav-absolute lg:hidden flex items-center justify-center px-4 pb-8 ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}>
-        <div ref={containerRef} className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', marginBottom: '1.5rem' }}>
+      <div
+        className={`bottom-nav-absolute lg:hidden flex items-center justify-center ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}
+        aria-hidden={shouldHide}
+      >
+        <div
+          ref={containerRef}
+          className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden shadow-lg"
+          style={{ width: 'min(360px, 100%)', height: '70px', borderRadius: '60px' }}
+        >
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
@@ -460,5 +460,10 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       </div>
     </>
   );
+
+  // Render on body so fixed sticks to the visual viewport (nested overflow on #root
+  // breaks position:fixed on iOS Safari and the nav scrolls away with content).
+  if (typeof document === 'undefined') return null;
+  return createPortal(nav, document.body);
 }
 

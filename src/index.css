@@ -56,12 +56,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* optional tiny reset so the demo looks sane */
-/* Removed height constraints to fix scrolling */
+/* Safe areas + clearance for the floating bottom nav (mobile only in practice) */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  /* pill 70px + ~8px gap + home indicator */
+  --bottom-nav-clearance: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+}
 
-/* Force scrolling to work */
+/* Single document scroll container — nested overflow on #root breaks
+   position:fixed bottom nav on iOS Safari (nav scrolls away with content). */
 html {
-  overflow-y: auto !important;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
   background-color: #f5f7f6;
   transition: background-color 0.2s ease;
 }
@@ -69,21 +77,31 @@ html.dark {
   background-color: #0f172a; /* slate-900 */
 }
 body {
-  overflow-y: auto !important;
-  padding-bottom: 80px; /* Space for bottom nav */
+  overflow-x: hidden;
+  overflow-y: visible;
+  /* Room so last content isn't hidden behind the fixed bottom nav */
+  padding-bottom: var(--bottom-nav-clearance);
   background-color: #f5f7f6;
   transition: background-color 0.2s ease;
+  min-height: 100%;
 }
 html.dark body {
   background-color: #0f172a; /* slate-900 */
 }
 #root {
-  overflow-y: auto !important;
+  overflow: visible;
+  min-height: 100%;
   background-color: #f5f7f6;
   transition: background-color 0.2s ease;
 }
 html.dark #root {
   background-color: #0f172a; /* slate-900 */
+}
+/* Desktop: no floating bottom nav */
+@media (min-width: 1024px) {
+  body {
+    padding-bottom: 0;
+  }
 }
 
 /* Prevent mobile zoom on input focus */
