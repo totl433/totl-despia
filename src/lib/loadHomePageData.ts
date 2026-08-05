@@ -10,7 +10,7 @@ import { resolveLeagueStartGw } from './leagueStart';
 import { APP_ONLY_USER_IDS } from './appOnlyUsers';
 import { logDataFetch } from './dataFetchLogger';
 import { filterHiddenLeaderboardRows, filterHiddenMembers } from './leaderboardVisibility';
-import { getActiveSeasonCtx, setActiveSeasonCtx, ensureActiveSeasonCtx } from './activeSeasonCtx';
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from './activeSeasonCtx';
 import {
   getSeasonTables,
   isNewSeasonFresh,

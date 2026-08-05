@@ -449,7 +449,9 @@ export default function TablesPage() {
             : Promise.resolve({ data: [], error: null }),
         ]);
         
-        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
+        const submittedUserIds = new Set<string>(
+          (submissionsResult.data ?? []).map((s: any) => String(s.user_id))
+        );
         setSubmittedUserIdsSet(submittedUserIds);
         
         // Calculate submission status for each league
@@ -591,7 +593,9 @@ export default function TablesPage() {
         // Store league start GW map
         setLeagueStartGwMap(leagueStartGwMap);
 
-        const submittedUserIdsSet = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
+        const submittedUserIdsSet = new Set<string>(
+          (submissionsResult.data ?? []).map((s: any) => String(s.user_id))
+        );
         
         // Process league data
         const leagueDataMap: Record<string, LeagueData> = {};

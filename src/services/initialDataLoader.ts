@@ -325,7 +325,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
   // Cache availableGws (list of all GWs with results) for League page tabs
   // Extract unique GWs from app_gw_results
   if (_allResultsResult.data && Array.isArray(_allResultsResult.data)) {
-    const gwList = [...new Set(_allResultsResult.data.map((r: any) => r.gw))].sort((a, b) => b - a);
+    const gwList = Array.from(
+      new Set<number>(_allResultsResult.data.map((r: any) => Number(r.gw)))
+    ).sort((a, b) => b - a);
     // Include currentGw if it's not already there (for live GWs without results yet)
     if (currentGw && !gwList.includes(currentGw)) {
       gwList.unshift(currentGw); // Add to beginning (highest GW)
@@ -1253,7 +1255,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               lastSubQ = withSeasonId(lastSubQ, seasonCtx);
               const { data: lastGwSubmissionsData } = await lastSubQ;
               
-              const lastGwSubmittedUserIds = new Set((lastGwSubmissionsData ?? []).map((s: any) => s.user_id));
+              const lastGwSubmittedUserIds = new Set<string>(
+                (lastGwSubmissionsData ?? []).map((s: any) => String(s.user_id))
+              );
               
               // Cache per league for last completed GW
               for (const league of leagues) {
@@ -1261,7 +1265,9 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
                 if (memberIds.length === 0) continue;
                 
                 const lastGwPicks = lastGwPicksResults.find(r => r.leagueId === league.id)?.picks ?? [];
-                const lastGwSubmissions = Array.from(lastGwSubmittedUserIds).filter(id => memberIds.includes(id));
+                const lastGwSubmissions = Array.from(lastGwSubmittedUserIds).filter((id) =>
+                  memberIds.includes(id)
+                );
                 
                 const mlTableCacheKey = `ml_live_table:v2:${seasonCacheKey}:${league.id}:${latestGw}`;
                 setCached(mlTableCacheKey, {

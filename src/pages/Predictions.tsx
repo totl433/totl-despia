@@ -1495,7 +1495,8 @@ useEffect(() => {
  return;
  }
 
- if (!allPicks || allPicks.length === 0) {
+ const picksRows = (allPicks ?? []) as Array<{ fixture_index: number; pick: string }>;
+ if (picksRows.length === 0) {
  setPickPercentages(new Map());
  return;
  }
@@ -1504,7 +1505,7 @@ useEffect(() => {
  const percentagesMap = new Map<number, { H: number; D: number; A: number }>();
  
  fixtures.forEach(fixture => {
- const fixturePicks = allPicks.filter(p => p.fixture_index === fixture.fixture_index);
+ const fixturePicks = picksRows.filter((p) => p.fixture_index === fixture.fixture_index);
  const total = fixturePicks.length;
  
  if (total === 0) {
@@ -1512,9 +1513,9 @@ useEffect(() => {
  return;
  }
 
- const hCount = fixturePicks.filter(p => p.pick === 'H').length;
- const dCount = fixturePicks.filter(p => p.pick === 'D').length;
- const aCount = fixturePicks.filter(p => p.pick === 'A').length;
+ const hCount = fixturePicks.filter((p) => p.pick === 'H').length;
+ const dCount = fixturePicks.filter((p) => p.pick === 'D').length;
+ const aCount = fixturePicks.filter((p) => p.pick === 'A').length;
 
  percentagesMap.set(fixture.fixture_index, {
  H: Math.round((hCount / total) * 100),
