@@ -40,24 +40,33 @@ export default function Profile() {
     if (!user) return;
 
     try {
-      // Season stack: OCP / streak for current folder only (running total this season).
-      // Legacy: app_* views (not web-only v_ocp_overall).
       const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
       const tables = getSeasonTables(seasonCtx);
 
+      // All-time OCP: legacy closed seasons (app_v_ocp_overall) + every Pile B season total.
+      // New-season folder alone is 0 until GW points exist — still keep last year's career total.
       let ocp = 0;
-      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
-        const { data: standings, error: standingsError } = await (supabase as any)
-          .from(tables.ocpOverall)
-          .select('user_id, ocp')
-          .eq('season_id', seasonCtx.seasonId)
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (standingsError) {
-          console.error('[Profile] Error fetching season OCP:', standingsError);
+      if (seasonCtx.useSeasonStack) {
+        const [{ data: legacyOcp }, { data: seasonOcps, error: seasonErr }] = await Promise.all([
+          supabase
+            .from('app_v_ocp_overall')
+            .select('ocp')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+          (supabase as any)
+            .from(tables.ocpOverall)
+            .select('season_id, ocp')
+            .eq('user_id', user.id),
+        ]);
+        if (seasonErr) {
+          console.error('[Profile] Error fetching season OCP:', seasonErr);
         }
-        // No results yet this season → 0 (fresh running total)
-        ocp = Math.round(Number(standings?.ocp ?? 0));
+        const legacy = Math.round(Number(legacyOcp?.ocp ?? 0));
+        const seasonSum = (seasonOcps as Array<{ ocp?: number }> | null | undefined)?.reduce(
+          (sum, row) => sum + Math.round(Number(row.ocp ?? 0)),
+          0
+        ) ?? 0;
+        ocp = legacy + seasonSum;
       } else {
         const { data: standings, error: standingsError } = await supabase
           .from('app_v_ocp_overall')
