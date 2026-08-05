@@ -113,8 +113,10 @@ export function buildFinalWhistleEventId(apiMatchId: number): string {
 
 /**
  * Build a gameweek complete notification event_id
+ * Include seasonId for Pile B so dual-stack GWs don't collide on the same number.
  */
-export function buildGameweekCompleteEventId(gw: number): string {
+export function buildGameweekCompleteEventId(gw: number, seasonId?: string | null): string {
+  if (seasonId) return `gw_complete:season:${seasonId}:${gw}`;
   return `gw_complete:${gw}`;
 }
 
@@ -668,9 +670,10 @@ export async function sendFinalWhistleNotification(
  */
 export async function sendGameweekCompleteNotification(
   userIds: string[],
-  gw: number
+  gw: number,
+  seasonId?: string | null
 ): Promise<BatchDispatchResult> {
-  const eventId = buildGameweekCompleteEventId(gw);
+  const eventId = buildGameweekCompleteEventId(gw, seasonId);
 
   // Build deep link URL from catalog
   const baseUrl = getBaseUrl();
@@ -685,6 +688,7 @@ export async function sendGameweekCompleteNotification(
     data: {
       type: 'gameweek_finished',
       gw,
+      ...(seasonId ? { season_id: seasonId } : {}),
     },
     url: deepLinkUrl || undefined,
     grouping_params: { gw },

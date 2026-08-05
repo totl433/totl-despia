@@ -29,6 +29,13 @@ import {
   isLiveMatchStatus,
   isTerminalMatchStatus,
 } from './lib/liveMatchGuards';
+import {
+  fetchDualStackFixturePicks,
+  fetchGwPickerUserIds,
+  fetchWebhookFixtureInfo,
+  finalizeFixtureResultsDualStack,
+  type WebhookFixtureInfo,
+} from './lib/seasonStackPoll';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -36,17 +43,6 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-
-interface FixtureInfo {
-  fixture_index: number;
-  gw: number;
-  home_team: string;
-  away_team: string;
-  kickoff_time: string | null;
-  isTestFixture: boolean;
-  isAppFixture: boolean;
-  testGwForPicks: number | null;
-}
 
 interface LiveScoreRecord {
   api_match_id: number;
@@ -63,74 +59,13 @@ interface LiveScoreRecord {
 }
 
 /**
- * Fetch fixture info for a match
- */
-async function fetchFixtureInfo(apiMatchId: number): Promise<FixtureInfo | null> {
-  const [regularFixture, testFixture, appFixture] = await Promise.all([
-    supabase
-      .from('fixtures')
-      .select('fixture_index, gw, home_team, away_team, kickoff_time')
-      .eq('api_match_id', apiMatchId)
-      .maybeSingle(),
-    supabase
-      .from('test_api_fixtures')
-      .select('fixture_index, test_gw, home_team, away_team, kickoff_time')
-      .eq('api_match_id', apiMatchId)
-      .maybeSingle(),
-    supabase
-      .from('app_fixtures')
-      .select('fixture_index, gw, home_team, away_team, kickoff_time')
-      .eq('api_match_id', apiMatchId)
-      .maybeSingle(),
-  ]);
-
-  const fixture = regularFixture.data || testFixture.data || appFixture.data;
-  if (!fixture) return null;
-
-  const isTestFixture = !!testFixture.data;
-  const isAppFixture = !!appFixture.data;
-  const fixtureGw = (fixture as any).gw || (fixture as any).test_gw || 1;
-  const testGwForPicks = (fixture as any).test_gw || (isTestFixture ? 1 : null);
-
-  return {
-    fixture_index: fixture.fixture_index,
-    gw: fixtureGw,
-    home_team: fixture.home_team,
-    away_team: fixture.away_team,
-    kickoff_time: (fixture as any).kickoff_time ?? null,
-    isTestFixture,
-    isAppFixture,
-    testGwForPicks,
-  };
-}
-
-/**
- * Fetch user IDs who have picks for a fixture
+ * Fetch user IDs who have picks for a fixture (legacy + season stack).
  */
 async function fetchUserIdsWithPicks(
-  gw: number,
-  fixtureIndex: number,
-  isAppFixture: boolean,
-  isTestFixture: boolean,
-  testGwForPicks: number | null,
+  fixture: WebhookFixtureInfo,
   includePick: boolean = false
 ): Promise<{ userId: string; pick?: string }[]> {
-  const selectFields = includePick ? 'user_id, pick' : 'user_id';
-  
-  let data: any[] = [];
-  
-  if (isAppFixture) {
-    const result = await supabase.from('app_picks').select(selectFields).eq('gw', gw).eq('fixture_index', fixtureIndex);
-    data = result.data || [];
-  } else if (isTestFixture && testGwForPicks) {
-    const result = await supabase.from('test_api_picks').select(selectFields).eq('matchday', testGwForPicks).eq('fixture_index', fixtureIndex);
-    data = result.data || [];
-  } else {
-    const result = await supabase.from('picks').select(selectFields).eq('gw', gw).eq('fixture_index', fixtureIndex);
-    data = result.data || [];
-  }
-  
-  return data.map((p: any) => ({ userId: p.user_id, pick: p.pick }));
+  return fetchDualStackFixturePicks(supabase, fixture, includePick);
 }
 
 /**
@@ -257,14 +192,21 @@ export const handler: Handler = async (event, context) => {
 
     console.log(`[scoreWebhookV2] [${requestId}] Processing match ${apiMatchId}: status=${status}, score=${homeScore}-${awayScore}`);
 
-    // Fetch fixture info
-    const fixture = await fetchFixtureInfo(apiMatchId);
+    // Fetch fixture info (legacy + Pile B season fixtures)
+    const fixture = await fetchWebhookFixtureInfo(supabase, apiMatchId);
     if (!fixture) {
       console.log(`[scoreWebhookV2] [${requestId}] No fixture found for api_match_id ${apiMatchId}`);
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'No fixture found' }) };
     }
 
-    const { fixture_index, gw, home_team, away_team, kickoff_time, isAppFixture, isTestFixture, testGwForPicks } = fixture;
+    const { fixture_index, gw, home_team, away_team, kickoff_time } = fixture;
+    console.log(`[scoreWebhookV2] [${requestId}] Fixture stacks:`, {
+      gw,
+      fixture_index,
+      isApp: fixture.isAppFixture,
+      isSeason: fixture.isSeasonFixture,
+      seasonId: fixture.seasonId,
+    });
 
     // Use team names from live_scores record if available (more accurate, matches goal data)
     // Fall back to fixture team names if not available
@@ -317,7 +259,7 @@ export const handler: Handler = async (event, context) => {
 
     // 1. Handle goal disallowed (score went down)
     if (scoreWentDown) {
-      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks);
+      const picksData = await fetchUserIdsWithPicks(fixture);
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
@@ -379,7 +321,7 @@ export const handler: Handler = async (event, context) => {
       const newGoals = goals.filter((g: any) => !oldGoalKeys.has(normalizeGoalKey(g)));
 
       if (newGoals.length > 0) {
-        const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true); // Include picks
+        const picksData = await fetchUserIdsWithPicks(fixture, true); // Include picks
         const userIds = [...new Set(picksData.map(p => p.userId))];
         
         // Build user picks map
@@ -457,7 +399,7 @@ export const handler: Handler = async (event, context) => {
 
     // 3. Handle kickoff (simplified - uses idempotency, doesn't rely on oldStatus)
     if (shouldCheckKickoff) {
-      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks);
+      const picksData = await fetchUserIdsWithPicks(fixture);
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
@@ -489,7 +431,7 @@ export const handler: Handler = async (event, context) => {
 
     // 4. Handle half-time
     if (isHalfTime) {
-      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true); // Include picks
+      const picksData = await fetchUserIdsWithPicks(fixture, true); // Include picks
       const userIds = [...new Set(picksData.map(p => p.userId))];
       
       // Build user picks map
@@ -521,7 +463,7 @@ export const handler: Handler = async (event, context) => {
 
     // 5. Handle game finished
     if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
-      const picksData = await fetchUserIdsWithPicks(gw, fixture_index, isAppFixture, isTestFixture, testGwForPicks, true);
+      const picksData = await fetchUserIdsWithPicks(fixture, true);
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
@@ -549,61 +491,120 @@ export const handler: Handler = async (event, context) => {
         console.log(`[scoreWebhookV2] [${requestId}] Final whistle: ${summary.accepted} sent`);
       }
 
-      // 6. Check if all games in GW are finished
-      const { data: allFixtures } = await supabase
-        .from('app_fixtures')
-        .select('api_match_id')
-        .eq('gw', gw)
-        .not('api_match_id', 'is', null);
-
-      if (allFixtures && allFixtures.length > 0) {
-        const apiMatchIds = allFixtures.map((f: any) => f.api_match_id);
-        const { data: liveScores } = await supabase
-          .from('live_scores')
-          .select('api_match_id, status')
-          .in('api_match_id', apiMatchIds);
-
-        const finishedCount = (liveScores || []).filter((s: any) => s.status === 'FINISHED' || s.status === 'FT').length;
-
-        if (finishedCount === apiMatchIds.length) {
-          console.log(`[scoreWebhookV2] [${requestId}] All ${apiMatchIds.length} games finished for GW ${gw}`);
-
-          // Get all users with picks in this GW
-          let gwPicks: any[] = [];
-          if (isAppFixture) {
-            const { data } = await supabase.from('app_picks').select('user_id').eq('gw', gw);
-            gwPicks = data || [];
-          }
-
-          const gwUserIds = [...new Set(gwPicks.map((p: any) => p.user_id))];
-
-          if (gwUserIds.length > 0) {
-            const result = await sendGameweekCompleteNotification(gwUserIds, gw);
-            console.log(`[scoreWebhookV2] [${requestId}] Gameweek complete: ${result.results.accepted} sent`);
-          }
-
-          // Send Volley congratulations to all leagues
-          try {
-            const baseUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://playtotl.com';
-            const volleyRes = await fetch(`${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameweek: gw })
-            });
-
-            const volleyData = await volleyRes.json().catch(() => ({}));
-            
-            if (volleyRes.ok && volleyData.ok) {
-              console.log(`[scoreWebhookV2] [${requestId}] Volley congratulations sent to ${volleyData.totalLeagues || 0} leagues`);
-            } else {
-              console.warn(`[scoreWebhookV2] [${requestId}] Volley congratulations failed:`, volleyData);
-            }
-          } catch (volleyError) {
-            console.error(`[scoreWebhookV2] [${requestId}] Error sending Volley congratulations:`, volleyError);
-            // Don't throw - gameweek complete notification is sent, Volley message failure is non-critical
-          }
+      // Write results to legacy and/or season tables; check all-GW finished per stack
+      const { allFinishedLegacy, allFinishedSeason } = await finalizeFixtureResultsDualStack(
+        supabase,
+        fixture,
+        {
+          api_match_id: apiMatchId,
+          home_score: homeScore,
+          away_score: awayScore,
+          status,
         }
+      );
+
+      const completeGwTasks: Promise<void>[] = [];
+
+      if (allFinishedLegacy) {
+        completeGwTasks.push(
+          (async () => {
+            const legacyGw =
+              fixture.sources.find((s) => s.stack === 'legacy')?.gw ?? gw;
+            console.log(
+              `[scoreWebhookV2] [${requestId}] All legacy games finished for GW ${legacyGw}`
+            );
+            const gwUserIds = await fetchGwPickerUserIds(supabase, 'legacy', legacyGw);
+            if (gwUserIds.length > 0) {
+              const result = await sendGameweekCompleteNotification(gwUserIds, legacyGw);
+              console.log(
+                `[scoreWebhookV2] [${requestId}] Gameweek complete (legacy): ${result.results.accepted} sent`
+              );
+            }
+            try {
+              const baseUrl =
+                process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://playtotl.com';
+              const volleyRes = await fetch(
+                `${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameweek: legacyGw }),
+                }
+              );
+              const volleyData = await volleyRes.json().catch(() => ({}));
+              if (volleyRes.ok && volleyData.ok) {
+                console.log(
+                  `[scoreWebhookV2] [${requestId}] Volley congratulations sent to ${volleyData.totalLeagues || 0} leagues`
+                );
+              } else {
+                console.warn(
+                  `[scoreWebhookV2] [${requestId}] Volley congratulations failed:`,
+                  volleyData
+                );
+              }
+            } catch (volleyError) {
+              console.error(
+                `[scoreWebhookV2] [${requestId}] Error sending Volley congratulations:`,
+                volleyError
+              );
+            }
+          })()
+        );
       }
+
+      if (allFinishedSeason) {
+        completeGwTasks.push(
+          (async () => {
+            const seasonSrc = fixture.sources.find(
+              (s) => s.stack === 'season' && s.seasonId
+            );
+            const seasonGw = seasonSrc?.gw ?? gw;
+            const seasonId = seasonSrc?.seasonId ?? fixture.seasonId;
+            console.log(
+              `[scoreWebhookV2] [${requestId}] All season games finished for GW ${seasonGw} season=${seasonId}`
+            );
+            const gwUserIds = await fetchGwPickerUserIds(
+              supabase,
+              'season',
+              seasonGw,
+              seasonId
+            );
+            if (gwUserIds.length > 0) {
+              // Same notice type; event_id is season-scoped when seasonId present
+              const result = await sendGameweekCompleteNotification(gwUserIds, seasonGw, seasonId);
+              console.log(
+                `[scoreWebhookV2] [${requestId}] Gameweek complete (season): ${result.results.accepted} sent`
+              );
+            }
+            // Volley for season-stack leagues: same congratulate path with gameweek number
+            try {
+              const baseUrl =
+                process.env.URL || process.env.DEPLOY_PRIME_URL || 'https://playtotl.com';
+              const volleyRes = await fetch(
+                `${baseUrl}/.netlify/functions/sendVolleyGwCongratulations`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameweek: seasonGw, seasonId }),
+                }
+              );
+              const volleyData = await volleyRes.json().catch(() => ({}));
+              if (volleyRes.ok && (volleyData as any).ok) {
+                console.log(
+                  `[scoreWebhookV2] [${requestId}] Season Volley congratulations OK`
+                );
+              }
+            } catch (e) {
+              console.error(
+                `[scoreWebhookV2] [${requestId}] Season Volley error:`,
+                e
+              );
+            }
+          })()
+        );
+      }
+
+      await Promise.all(completeGwTasks);
 
       return { statusCode: 200, headers, body: JSON.stringify({ message: 'Final whistle notification sent', sentTo: totalSent }) };
     }

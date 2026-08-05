@@ -13,7 +13,6 @@ import { filterHiddenLeaderboardRows, filterHiddenMembers } from './leaderboardV
 import { getActiveSeasonCtx, ensureActiveSeasonCtx } from './activeSeasonCtx';
 import {
   getSeasonTables,
-  isNewSeasonFresh,
   withSeasonId,
   type SeasonCtx,
 } from './seasonStack';
@@ -147,7 +146,6 @@ export async function loadHomePageData(
     };
   }
   const tables = getSeasonTables(seasonCtx);
-  const freshSeason = isNewSeasonFresh(seasonCtx);
   const seasonCacheKey = seasonCtx.useSeasonStack ? (seasonCtx.seasonId ?? 'stack') : 'legacy';
 
   // Check cache first
@@ -294,13 +292,29 @@ export async function loadHomePageData(
   ] = await Promise.all([
     supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
     latestResultsQ.maybeSingle(),
-    // Legacy points/OCP views have no Pile B rows yet — blank until season has results.
-    freshSeason
-      ? Promise.resolve({ data: [], error: null })
-      : supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-    freshSeason
-      ? Promise.resolve({ data: [], error: null })
-      : supabase.from("app_v_ocp_overall").select("user_id, name, ocp"),
+    // Season stack uses app_v_season_* views; legacy uses app_v_*.
+    // Empty at season start until results exist (no last-season bleed-through).
+    (async () => {
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        let q = (supabase as any)
+          .from(tables.gwPoints)
+          .select("user_id, gw, points")
+          .eq("season_id", seasonCtx.seasonId)
+          .order("gw", { ascending: true });
+        return q;
+      }
+      return supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true });
+    })(),
+    (async () => {
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        let q = (supabase as any)
+          .from(tables.ocpOverall)
+          .select("user_id, name, ocp")
+          .eq("season_id", seasonCtx.seasonId);
+        return q;
+      }
+      return supabase.from("app_v_ocp_overall").select("user_id, name, ocp");
+    })(),
     fixturesQ,
     picksQ,
     leagueIds.length > 0 ? supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds) : Promise.resolve({ data: [], error: null }),
@@ -335,7 +349,7 @@ export async function loadHomePageData(
   
   // On Pile B, currentGw is already season-resolved by the caller; don't override with app_meta.
   const gw = seasonCtx.useSeasonStack ? currentGw : (metaResult.data?.current_gw ?? currentGw);
-  const latestGw = latestGwResult.data?.gw ?? (freshSeason ? 0 : gw);
+  const latestGw = latestGwResult.data?.gw ?? (seasonCtx.useSeasonStack ? 0 : gw);
   const allGwPointsRaw = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
   const overallRaw = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
   const allGwPoints = filterHiddenLeaderboardRows(allGwPointsRaw);

@@ -36,11 +36,14 @@ export const handler: Handler = async (event) => {
   const admin = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { gameweek } = JSON.parse(event.body || '{}');
+    const body = JSON.parse(event.body || '{}');
+    const { gameweek, seasonId } = body;
     
     if (!gameweek || typeof gameweek !== 'number') {
       return json(400, { error: 'gameweek number required' });
     }
+
+    const useSeasonStack = typeof seasonId === 'string' && seasonId.length > 0;
 
     // Get all active leagues
     const { data: leagues, error: leaguesError } = await admin
@@ -52,7 +55,7 @@ export const handler: Handler = async (event) => {
     const results = [];
     
     for (const league of leagues || []) {
-      console.log(`[sendVolleyGwCongratulations] Processing league: ${league.name} (${league.id})`);
+      console.log(`[sendVolleyGwCongratulations] Processing league: ${league.name} (${league.id}) season=${useSeasonStack ? seasonId : 'legacy'}`);
       
       // Get league members
       const { data: members, error: membersError } = await admin
@@ -87,25 +90,53 @@ export const handler: Handler = async (event) => {
 
       const nameById = new Map(users.map(u => [u.id, u.name]));
 
-      // Get picks for this gameweek (check both app_picks and gw_picks tables)
-      const [appPicksResult, picksResult] = await Promise.all([
-        admin.from('app_picks').select('user_id, fixture_index, pick').eq('gw', gameweek).in('user_id', memberIds),
-        admin.from('gw_picks').select('user_id, fixture_index, pick').eq('gw', gameweek).in('user_id', memberIds),
-      ]);
+      // Picks: Pile B uses app_season_picks; legacy uses app_picks (+ gw_picks)
+      let picks: Array<{ user_id: string; fixture_index: number; pick: string }> = [];
+      if (useSeasonStack) {
+        const { data: seasonPicks } = await admin
+          .from('app_season_picks')
+          .select('user_id, fixture_index, pick')
+          .eq('season_id', seasonId)
+          .eq('gw', gameweek)
+          .in('user_id', memberIds);
+        picks = seasonPicks || [];
+        console.log(
+          `[sendVolleyGwCongratulations] League ${league.name}: Found ${picks.length} season picks`
+        );
+      } else {
+        const [appPicksResult, picksResult] = await Promise.all([
+          admin.from('app_picks').select('user_id, fixture_index, pick').eq('gw', gameweek).in('user_id', memberIds),
+          admin.from('gw_picks').select('user_id, fixture_index, pick').eq('gw', gameweek).in('user_id', memberIds),
+        ]);
+        picks = [...(appPicksResult.data || []), ...(picksResult.data || [])];
+        console.log(`[sendVolleyGwCongratulations] League ${league.name}: Found ${picks.length} picks (${appPicksResult.data?.length || 0} from app_picks, ${picksResult.data?.length || 0} from gw_picks)`);
+      }
 
-      const picks = [...(appPicksResult.data || []), ...(picksResult.data || [])];
-      console.log(`[sendVolleyGwCongratulations] League ${league.name}: Found ${picks.length} picks (${appPicksResult.data?.length || 0} from app_picks, ${picksResult.data?.length || 0} from gw_picks)`);
       if (picks.length === 0) {
         console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - no picks for GW ${gameweek}`);
         results.push({ leagueId: league.id, leagueName: league.name, skipped: true, reason: 'no picks for this gameweek' });
         continue;
       }
 
-      // Get results for this gameweek
-      const { data: resultsData, error: resultsError } = await admin
-        .from('app_gw_results')
-        .select('fixture_index, result')
-        .eq('gw', gameweek);
+      // Results: season or legacy
+      let resultsData: Array<{ fixture_index: number; result: string | null }> | null = null;
+      let resultsError: { message: string } | null = null;
+      if (useSeasonStack) {
+        const res = await admin
+          .from('app_season_results')
+          .select('fixture_index, result')
+          .eq('season_id', seasonId)
+          .eq('gw', gameweek);
+        resultsData = res.data;
+        resultsError = res.error;
+      } else {
+        const res = await admin
+          .from('app_gw_results')
+          .select('fixture_index, result')
+          .eq('gw', gameweek);
+        resultsData = res.data;
+        resultsError = res.error;
+      }
 
       if (resultsError || !resultsData || resultsData.length === 0) {
         console.log(`[sendVolleyGwCongratulations] League ${league.name}: skipped - ${resultsError ? `resultsError: ${resultsError.message}` : 'no results for GW ' + gameweek}`);

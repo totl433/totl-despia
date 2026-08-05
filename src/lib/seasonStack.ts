@@ -27,6 +27,10 @@ export type SeasonTables = {
   submissions: string;
   picksOnConflict: string;
   submissionsOnConflict: string;
+  /** Points view: app_v_gw_points or app_v_season_gw_points */
+  gwPoints: string;
+  /** OCP view: app_v_ocp_overall or app_v_season_ocp_overall */
+  ocpOverall: string;
 };
 
 const LEGACY_TABLES: SeasonTables = {
@@ -36,6 +40,8 @@ const LEGACY_TABLES: SeasonTables = {
   submissions: 'app_gw_submissions',
   picksOnConflict: 'user_id,gw,fixture_index',
   submissionsOnConflict: 'user_id,gw',
+  gwPoints: 'app_v_gw_points',
+  ocpOverall: 'app_v_ocp_overall',
 };
 
 const SEASON_TABLES: SeasonTables = {
@@ -45,6 +51,8 @@ const SEASON_TABLES: SeasonTables = {
   submissions: 'app_season_submissions',
   picksOnConflict: 'season_id,user_id,gw,fixture_index',
   submissionsOnConflict: 'season_id,user_id,gw',
+  gwPoints: 'app_v_season_gw_points',
+  ocpOverall: 'app_v_season_ocp_overall',
 };
 
 export function getSeasonTables(ctx: Pick<SeasonCtx, 'useSeasonStack'>): SeasonTables {

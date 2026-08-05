@@ -199,12 +199,13 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       .eq('id', 1)
       .maybeSingle(),
     
-    // 2. Get the full GW points history using paging.
+    // 2. Get the full GW points history using paging (season-scoped on Pile B).
     // A single unpaged request is commonly capped at ~1000 rows by PostgREST.
     (async () => {
-      if (freshSeason) return { data: [], error: null };
       try {
-        const data = await fetchAllGwPoints('asc');
+        const data = await fetchAllGwPoints('asc', {
+          seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+        });
         return { data, error: null };
       } catch (error) {
         return {
@@ -214,14 +215,22 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       }
     })(),
     
-    // 3. Get top 100 overall standings (blank for fresh 26/27)
-    freshSeason
-      ? Promise.resolve({ data: [], error: null })
-      : supabase
-          .from('app_v_ocp_overall')
+    // 3. Get top 100 overall standings (season views on Pile B)
+    (async () => {
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        return (supabase as any)
+          .from(tables.ocpOverall)
           .select('user_id, name, ocp')
+          .eq('season_id', seasonCtx.seasonId)
           .order('ocp', { ascending: false })
-          .limit(100),
+          .limit(100);
+      }
+      return supabase
+        .from('app_v_ocp_overall')
+        .select('user_id, name, ocp')
+        .order('ocp', { ascending: false })
+        .limit(100);
+    })(),
     
     // 4. Get fixtures for current GW (will be updated after we get currentGw)
     Promise.resolve({ data: null, error: null }), // Placeholder
@@ -438,14 +447,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
     fetchFixturesGw(currentGw),
     fetchPicksGw(currentGw),
     
-    // Fetch user's own OCP if not in top 100 (skip blank for fresh season)
-    userInTop100 || freshSeason
+    // Fetch user's own OCP if not in top 100
+    userInTop100
       ? Promise.resolve({ data: null, error: null })
-      : supabase
-          .from('app_v_ocp_overall')
-          .select('user_id, name, ocp')
-          .eq('user_id', userId)
-          .maybeSingle(),
+      : seasonCtx.useSeasonStack && seasonCtx.seasonId
+        ? (supabase as any)
+            .from(tables.ocpOverall)
+            .select('user_id, name, ocp')
+            .eq('season_id', seasonCtx.seasonId)
+            .eq('user_id', userId)
+            .maybeSingle()
+        : supabase
+            .from('app_v_ocp_overall')
+            .select('user_id, name, ocp')
+            .eq('user_id', userId)
+            .maybeSingle(),
     
     // Fetch fixtures for viewing GW (for PredictionsBanner deadline calculation)
     viewingGw !== currentGw
@@ -665,8 +681,8 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
             supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds),
             supabase.from("league_message_reads").select("league_id, last_read_at").eq("user_id", userId).in("league_id", leagueIds),
             fetchSubsCurrent(),
-            // Fresh 26/27: no results yet — skip legacy app_gw_results which would reintroduce 25/26 scores
-            freshSeason ? Promise.resolve({ data: [], error: null }) : fetchResultsAll(),
+            // Season-aware results (empty naturally on a new folder until games finish)
+            fetchResultsAll(),
             fetchFixturesRange(),
             seasonCtx.useSeasonStack
               ? Promise.resolve({ data: [], error: null })
@@ -757,19 +773,21 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
           let from = 0;
           while (true) {
             const to = from + PAGE_SIZE - 1;
-            const pageResult = await supabase
-              .from("app_picks")
+            let pageQ = (supabase as any)
+              .from(tables.picks)
               .select("user_id, gw, fixture_index, pick")
               .in("user_id", allMemberIds)
-              .gte("gw", boundedStartGw)
+              .gte("gw", seasonCtx.useSeasonStack ? 1 : boundedStartGw)
               .lte("gw", boundedEndGw)
               .order("gw", { ascending: true })
               .order("fixture_index", { ascending: true })
               .order("user_id", { ascending: true })
               .range(from, to);
+            pageQ = withSeasonId(pageQ, seasonCtx);
+            const pageResult = await pageQ;
 
             if (pageResult.error) {
-              console.warn('[initialDataLoader] Failed to page app_picks for ML prewarm', pageResult.error);
+              console.warn('[initialDataLoader] Failed to page picks for ML prewarm', pageResult.error);
               break;
             }
             const page = (pageResult.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" }>;
@@ -1109,9 +1127,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
               .select('gw, fixture_index, result')
               .eq('gw', currentGw);
             mlResQ = withSeasonId(mlResQ, seasonCtx);
-            const { data: mlResults } = freshSeason
-              ? { data: [] as any[] }
-              : await mlResQ;
+            const { data: mlResults } = await mlResQ;
             
             // If picksByLeague is empty, we need to fetch picks (happens when league data was cached)
             if (picksByLeague.size === 0) {
