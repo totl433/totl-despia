@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { BottomSheetBackdrop, BottomSheetFlatList, BottomSheetModal } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
@@ -12,18 +12,28 @@ export default function LeagueGwControlsRow({
   onChangeGw,
   onPressRules,
   onPressMenu,
+  seasonOptions,
+  selectedSeasonKey,
+  onChangeSeason,
 }: {
   availableGws: number[];
   selectedGw: number | null;
   onChangeGw: (gw: number) => void;
   onPressRules: () => void;
   onPressMenu?: () => void;
+  seasonOptions?: Array<{ key: string; label: string }>;
+  selectedSeasonKey?: string;
+  onChangeSeason?: (key: string) => void;
 }) {
   const t = useTokens();
   const [open, setOpen] = React.useState(false);
+  const [seasonOpen, setSeasonOpen] = React.useState(false);
   const ref = React.useRef<BottomSheetModal>(null);
   const sortedGws = React.useMemo(() => [...availableGws].sort((a, b) => b - a), [availableGws]);
-  const snapPoints = React.useMemo(() => [Math.min(400, 120 + sortedGws.length * 48)], [sortedGws.length]);
+  const snapPoints = React.useMemo(() => [Math.min(400, 120 + Math.max(sortedGws.length, 1) * 48)], [sortedGws.length]);
+  const hasSeasonPicker = (seasonOptions?.length ?? 0) > 1 && !!onChangeSeason;
+  const selectedSeasonLabel =
+    seasonOptions?.find((o) => o.key === selectedSeasonKey)?.label ?? seasonOptions?.[0]?.label ?? 'Season';
 
   React.useEffect(() => {
     if (open) {
@@ -52,7 +62,7 @@ export default function LeagueGwControlsRow({
           })}
         >
           <TotlText variant="body" style={{ fontWeight: active ? '900' : '700', color: active ? t.color.brand : undefined }}>
-            Gameweek {gw}
+            GW{gw}
           </TotlText>
         </Pressable>
       );
@@ -64,14 +74,12 @@ export default function LeagueGwControlsRow({
     () => (
       <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.color.border }}>
         <TotlText variant="body" style={{ fontWeight: '900' }}>
-          Select Gameweek
+          Select GW
         </TotlText>
       </View>
     ),
     [t.color.border]
   );
-
-  if (availableGws.length <= 1) return null;
 
   return (
     <>
@@ -83,30 +91,63 @@ export default function LeagueGwControlsRow({
           alignItems: 'center',
           justifyContent: 'center',
           gap: 10,
+          flexWrap: 'wrap',
         }}
       >
-        <Pressable
-          onPress={() => setOpen(true)}
-          style={({ pressed }) => ({
-            flex: 1,
-            minHeight: 40,
-            borderRadius: 999,
-            borderWidth: 2,
-            borderColor: t.color.border,
-            backgroundColor: t.color.surface,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            opacity: pressed ? 0.92 : 1,
-          })}
-        >
-          <TotlText variant="caption" style={{ color: t.color.text, fontWeight: '700' }}>
-            {typeof selectedGw === 'number' ? `Gameweek ${selectedGw}` : 'Select gameweek'}
-          </TotlText>
-          <Ionicons name="chevron-down" size={16} color={t.color.text} />
-        </Pressable>
+        {hasSeasonPicker ? (
+          <Pressable
+            onPress={() => setSeasonOpen(true)}
+            style={({ pressed }) => ({
+              flex: 1,
+              minWidth: 100,
+              minHeight: 40,
+              borderRadius: 999,
+              borderWidth: 2,
+              borderColor: t.color.border,
+              backgroundColor: t.color.surface,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              opacity: pressed ? 0.92 : 1,
+            })}
+          >
+            <TotlText variant="caption" style={{ color: t.color.text, fontWeight: '700' }} numberOfLines={1}>
+              {selectedSeasonLabel}
+            </TotlText>
+            <Ionicons name="chevron-down" size={16} color={t.color.text} />
+          </Pressable>
+        ) : null}
+
+        {availableGws.length > 0 ? (
+          <Pressable
+            onPress={() => {
+              if (availableGws.length > 1) setOpen(true);
+            }}
+            disabled={availableGws.length <= 1}
+            style={({ pressed }) => ({
+              flex: 1,
+              minWidth: 90,
+              minHeight: 40,
+              borderRadius: 999,
+              borderWidth: 2,
+              borderColor: t.color.border,
+              backgroundColor: t.color.surface,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              opacity: pressed && availableGws.length > 1 ? 0.92 : 1,
+            })}
+          >
+            <TotlText variant="caption" style={{ color: t.color.text, fontWeight: '700' }}>
+              {typeof selectedGw === 'number' ? `GW${selectedGw}` : 'GW'}
+            </TotlText>
+            {availableGws.length > 1 ? <Ionicons name="chevron-down" size={16} color={t.color.text} /> : null}
+          </Pressable>
+        ) : null}
 
         <LeaguePillButton label="Rules" onPress={onPressRules} />
         {onPressMenu ? (
@@ -150,7 +191,56 @@ export default function LeagueGwControlsRow({
           contentContainerStyle={{ paddingBottom: 24 }}
         />
       </BottomSheetModal>
+
+      <Modal visible={seasonOpen} transparent animationType="fade" onRequestClose={() => setSeasonOpen(false)}>
+        <View style={{ flex: 1 }}>
+          <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }} onPress={() => setSeasonOpen(false)} />
+          <View
+            style={{
+              position: 'absolute',
+              left: 20,
+              right: 20,
+              bottom: 40,
+              backgroundColor: t.color.surface,
+              borderRadius: 16,
+              overflow: 'hidden',
+              maxHeight: 360,
+            }}
+          >
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: t.color.border }}>
+              <TotlText style={{ fontWeight: '900', fontSize: 16 }}>Seasons</TotlText>
+            </View>
+            <ScrollView>
+              {(seasonOptions ?? []).map((opt, index, arr) => {
+                const active = opt.key === selectedSeasonKey;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => {
+                      onChangeSeason?.(opt.key);
+                      setSeasonOpen(false);
+                    }}
+                    style={({ pressed }) => ({
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      backgroundColor: pressed
+                        ? 'rgba(0,0,0,0.05)'
+                        : active
+                          ? 'rgba(28,131,118,0.08)'
+                          : 'transparent',
+                      ...(index < arr.length - 1 ? { borderBottomWidth: 1, borderBottomColor: t.color.border } : {}),
+                    })}
+                  >
+                    <TotlText style={{ fontWeight: '700', fontSize: 15, color: active ? t.color.brand : t.color.text }}>
+                      {opt.label}
+                    </TotlText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
-

@@ -6,6 +6,9 @@ import { TotlText, useTokens } from '@totl/ui';
 
 import {
   countTrailingGameweekParticipationStreak,
+  formatStreakLadderFooter,
+  shortSeasonLabel,
+  streakRowKey,
   type GameweekStreakRow,
 } from '../../lib/gameweekStreakCount';
 import {
@@ -30,6 +33,12 @@ function gwIsLiveIncompleteLegacy(gw: number, lastCompletedGw: number | null | u
   return typeof lastCompletedGw === 'number' && lastCompletedGw > 0 && gw > lastCompletedGw;
 }
 
+function chipGwLabel(row: GameweekStreakRow, multiSeason: boolean): string {
+  if (!multiSeason) return `GW${row.gw}`;
+  const short = shortSeasonLabel(row.seasonLabel);
+  return short ? `${short} · GW${row.gw}` : `GW${row.gw}`;
+}
+
 /** Horizontal chips: ladder of GWs (played → pts, skipped → —). Big number = trailing consecutive played weeks. */
 export default function StatsGameweekStreakStrip({
   rows,
@@ -37,16 +46,20 @@ export default function StatsGameweekStreakStrip({
   statsGwCompletion,
   nestInsideStatCard,
   onViewScoresheet,
+  /** Live season label e.g. "2026/27". Chips from other seasons always get Round Up when scored. */
+  liveSeasonLabel,
 }: {
   rows: GameweekStreakRow[];
   /** Fallback when `statsGwCompletion` is missing (older callers). */
   lastCompletedGw?: number | null;
-  /** Home snapshot probe — aligns Round Up / live dot with last-fixture-finished (not `app_gw_results` max gw). */
+  /** Home snapshot probe — aligns Round Up / live with last-fixture-finished (not `app_gw_results` max gw). */
   statsGwCompletion?: StatsGwCompletionContext | null;
   /** Flat layout on `StatCard` surface (no inner gradient frame). */
   nestInsideStatCard?: boolean;
-  /** Opens score sheet then Results card for that GW (`openManualResultsScoreSheetThenResults`). Labelled “Round Up” in UI. */
-  onViewScoresheet?: (gw: number) => void;
+  /** Opens score sheet then Results card for that GW. Labelled “Round Up” in UI. */
+  onViewScoresheet?: (gw: number, seasonLabel?: string | null) => void;
+  /** When set, scored chips from a different season are always eligible for Round Up. */
+  liveSeasonLabel?: string | null;
 }) {
   const t = useTokens();
   const scrollRef = React.useRef<ScrollView>(null);
@@ -54,8 +67,17 @@ export default function StatsGameweekStreakStrip({
   const streakCount = countTrailingGameweekParticipationStreak(rows);
   if (!n) return null;
 
-  const scrollSig = rows.map((r) => r.gw).join(',');
+  const multiSeason =
+    new Set(rows.map((r) => r.seasonLabel?.trim()).filter((s): s is string => !!s && s.length > 0)).size > 1;
+  const footer = formatStreakLadderFooter(rows);
+  const scrollSig = rows.map((r) => streakRowKey(r)).join(',');
+  const liveSeason = liveSeasonLabel?.trim() || null;
 
+  const chipIsPriorSeason = (row: GameweekStreakRow) => {
+    const s = row.seasonLabel?.trim();
+    if (!s || !liveSeason) return false;
+    return s !== liveSeason;
+  };
   React.useEffect(() => {
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -74,7 +96,6 @@ export default function StatsGameweekStreakStrip({
   }, [scrollSig]);
 
   const inset = nestInsideStatCard ? 0 : 14;
-  /** Matches `StatCard` horizontal padding on Profile Stats — bleed chips edge-to-edge. */
   const statCardPad = t.space[5];
   const chipBg = nestInsideStatCard ? t.color.surface2 : t.color.surface;
   const chipBorder = nestInsideStatCard ? 0 : 1;
@@ -88,44 +109,51 @@ export default function StatsGameweekStreakStrip({
       contentContainerStyle={{
         gap: 10,
         paddingLeft: nestInsideStatCard ? 0 : inset,
-        /** Leading edge flush; extra trailing pad so last chip clears rounded corner comfortably. */
         paddingRight: nestInsideStatCard ? statCardPad + t.space[4] : 14,
         paddingBottom: 10,
       }}
     >
       {rows.map((row) => {
         const scored = typeof row.points === 'number';
-        const c = statsGwCompletion;
-        const showLiveDot = c
-          ? isGwStatsLiveDot({
-              gw: row.gw,
-              scored,
-              currentGw: c.currentGw,
-              probeHome: c.probeHome,
-              probeGw: c.probeGw,
-              lastCompletedGw: c.lastCompletedGw,
-              probeLoading: c.probeLoading,
-            })
-          : scored && gwIsLiveIncompleteLegacy(row.gw, lastCompletedGw);
+        const priorSeason = chipIsPriorSeason(row);
+        const c = priorSeason ? null : statsGwCompletion;
+        // Prior-season chips (e.g. 25/26 while live meta is 26/27 GW1): always final when scored.
+        // Using live `currentGw` (=1) would hide Round Up on every GW > 1 of the old ladder.
+        const showLiveDot =
+          scored &&
+          !priorSeason &&
+          (c
+            ? isGwStatsLiveDot({
+                gw: row.gw,
+                scored,
+                currentGw: c.currentGw,
+                probeHome: c.probeHome,
+                probeGw: c.probeGw,
+                lastCompletedGw: c.lastCompletedGw,
+                probeLoading: c.probeLoading,
+              })
+            : gwIsLiveIncompleteLegacy(row.gw, lastCompletedGw));
         const showRoundUp = Boolean(
           onViewScoresheet &&
             scored &&
-            (c
-              ? isGwFullyCompleteForStatsRoundUp({
-                  gw: row.gw,
-                  currentGw: c.currentGw,
-                  probeHome: c.probeHome,
-                  probeGw: c.probeGw,
-                  lastCompletedGw: c.lastCompletedGw,
-                  probeLoading: c.probeLoading,
-                })
-              : gwHasFinalResultsLegacy(row.gw, lastCompletedGw))
+            (priorSeason
+              ? true
+              : c
+                ? isGwFullyCompleteForStatsRoundUp({
+                    gw: row.gw,
+                    currentGw: c.currentGw,
+                    probeHome: c.probeHome,
+                    probeGw: c.probeGw,
+                    lastCompletedGw: c.lastCompletedGw,
+                    probeLoading: c.probeLoading,
+                  })
+                : gwHasFinalResultsLegacy(row.gw, lastCompletedGw))
         );
         return (
           <View
-            key={row.gw}
+            key={streakRowKey(row)}
             style={{
-              minWidth: scored ? 96 : 78,
+              minWidth: scored ? (multiSeason ? 108 : 96) : multiSeason ? 92 : 78,
               paddingVertical: 12,
               paddingHorizontal: 14,
               borderRadius: 14,
@@ -134,13 +162,17 @@ export default function StatsGameweekStreakStrip({
               borderColor: t.color.border,
             }}
           >
-            <TotlText variant="muted" style={{ fontSize: 11, fontWeight: '800' }}>
-              {`GW${row.gw}`}
+            <TotlText variant="muted" style={{ fontSize: multiSeason ? 10 : 11, fontWeight: '800' }}>
+              {chipGwLabel(row, multiSeason)}
             </TotlText>
             {scored ? (
               <View
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 }}
-                accessibilityLabel={showLiveDot ? `Gameweek ${row.gw}, ${row.points} points, live` : undefined}
+                accessibilityLabel={
+                  showLiveDot
+                    ? `Gameweek ${row.gw}, ${row.points} points, live`
+                    : `Gameweek ${row.gw}, ${row.points} points`
+                }
               >
                 {showLiveDot ? (
                   <View
@@ -160,7 +192,7 @@ export default function StatsGameweekStreakStrip({
             )}
             {showRoundUp ? (
               <Pressable
-                onPress={() => onViewScoresheet?.(row.gw)}
+                onPress={() => onViewScoresheet?.(row.gw, row.seasonLabel)}
                 accessibilityRole="button"
                 accessibilityLabel={`View Round Up for gameweek ${row.gw}`}
                 hitSlop={{ top: 6, bottom: 4, left: 4, right: 4 }}
@@ -205,6 +237,9 @@ export default function StatsGameweekStreakStrip({
             </TotlText>
           </View>
         </View>
+        <TotlText variant="muted" style={{ fontSize: 12, fontWeight: '600', lineHeight: 16 }}>
+          Streaks run across seasons — keep predicting every week to climb.
+        </TotlText>
       </View>
 
       {nestInsideStatCard ? (
@@ -213,9 +248,12 @@ export default function StatsGameweekStreakStrip({
         scrollRow
       )}
 
-      <View style={{ paddingHorizontal: inset, paddingTop: 4, paddingBottom: nestInsideStatCard ? 0 : 14 }}>
-        <TotlText variant="muted" style={{ fontSize: 12, fontWeight: '600' }}>
-          {`GW${rows[0]!.gw}–GW${rows[n - 1]!.gw}`}
+      <View style={{ paddingHorizontal: inset, paddingTop: 8, paddingBottom: nestInsideStatCard ? 0 : 14 }}>
+        <TotlText
+          variant="muted"
+          style={{ fontSize: 12, fontWeight: '600', lineHeight: 18, paddingTop: 2 }}
+        >
+          {footer}
         </TotlText>
       </View>
     </>

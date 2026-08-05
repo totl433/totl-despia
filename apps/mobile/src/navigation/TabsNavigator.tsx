@@ -11,6 +11,7 @@ import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/Branded
 import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLeaderboardScreen';
 import { api } from '../lib/api';
 import CenteredSpinner from '../components/CenteredSpinner';
+import { useViewerSeason } from '../lib/useViewerSeason';
 
 export type RootTabsParamList = {
   Predictions: undefined;
@@ -61,6 +62,7 @@ function BrandedLeaderboardsTabContent() {
 
 export default function TabsNavigator() {
   const t = useTokens();
+  const { seasonLabel } = useViewerSeason();
 
   return (
     <Tab.Navigator
@@ -116,7 +118,7 @@ export default function TabsNavigator() {
         name="Global"
         component={GlobalScreen}
         options={{
-          title: '2025/26',
+          title: seasonLabel,
           tabBarIcon: ({ color }) => <TabSvgIcon xml={LEADERBOARDS_SVG} size={35} color={color} />,
         }}
       />

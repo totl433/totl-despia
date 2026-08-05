@@ -11,7 +11,18 @@ import { api } from '../lib/api';
 import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
 import { supabase } from '../lib/supabase';
 import LeaderboardsTabs, { type LeaderboardsTab, type FormScope } from '../components/leaderboards/LeaderboardsTabs';
-import { getMonthAllocations, getMonthForGw, getEffectiveCurrentMonthKey, isMonthAvailable, type MonthAllocation } from '../lib/leaderboardMonths';
+import {
+  getMonthAllocations,
+  getMonthForGw,
+  getEffectiveCurrentMonthKey,
+  isMonthAvailable,
+  resolveLeaderboardSeasonKey,
+  SEASON_2025_26_END_GW,
+  SEASON_2025_26_LABEL,
+  SEASON_2025_26_START_GW,
+  type MonthAllocation,
+} from '../lib/leaderboardMonths';
+import { useViewerSeason } from '../lib/useViewerSeason';
 import { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
 import LeaderboardPlayerPicksPopup from '../components/leaderboards/LeaderboardPlayerPicksPopup';
@@ -42,7 +53,12 @@ async function fetchAllSupabaseRows<T>(
 }
 
 function byValueThenName(a: LeaderboardRow, b: LeaderboardRow) {
-  if (b.value !== a.value) return b.value - a.value;
+  const aNull = a.value == null;
+  const bNull = b.value == null;
+  if (aNull && bNull) return a.name.localeCompare(b.name);
+  if (aNull) return 1; // non-submitters last
+  if (bNull) return -1;
+  if (b.value !== a.value) return (b.value as number) - (a.value as number);
   return a.name.localeCompare(b.name);
 }
 
@@ -139,6 +155,12 @@ export default function GlobalScreen() {
   const route = useRoute<any>();
   const listRef = React.useRef<any>(null);
   useScrollToTop(listRef);
+  const { seasonLabel, isNewSeasonFresh, useSeasonStack, seasonId } = useViewerSeason();
+  const seasonKey = resolveLeaderboardSeasonKey({ seasonLabel, isNewSeasonFresh, useSeasonStack });
+  const monthAvailOpts = React.useMemo(
+    () => ({ allowPreKickoffOpeningMonth: isNewSeasonFresh }),
+    [isNewSeasonFresh]
+  );
 
   const initialTabParam = (route.params as any)?.initialTab as string | undefined;
   const initialScopeParam = (route.params as any)?.initialScope as LeaderboardsScope | undefined;
@@ -258,10 +280,37 @@ export default function GlobalScreen() {
   const activeLeaderboardGw = getLeaderboardDisplayGwFromSnapshot({
     viewingGw: homeSnapshot?.viewingGw ?? null,
     currentGw: homeSnapshot?.currentGw ?? null,
-    latestCompletedGw: latestGw,
+    // Don't feed last season's completed GW (38) into 2026/27 display math.
+    latestCompletedGw: isNewSeasonFresh || useSeasonStack ? null : latestGw,
     fixtures: homeSnapshot?.fixtures ?? [],
     liveScores: homeSnapshot?.liveScores ?? [],
   });
+  // Monthly calendar follows season-stack GW (e.g. 1), not pile-A latestGw (still 38).
+  const monthAnchorGw = React.useMemo(() => {
+    if (isNewSeasonFresh || useSeasonStack) {
+      return (
+        (typeof homeSnapshot?.currentGw === 'number' ? homeSnapshot.currentGw : null) ??
+        (typeof homeSnapshot?.viewingGw === 'number' ? homeSnapshot.viewingGw : null) ??
+        (typeof activeLeaderboardGw === 'number' ? activeLeaderboardGw : null) ??
+        1
+      );
+    }
+    return latestGw ?? activeLeaderboardGw ?? null;
+  }, [
+    activeLeaderboardGw,
+    homeSnapshot?.currentGw,
+    homeSnapshot?.viewingGw,
+    isNewSeasonFresh,
+    latestGw,
+    useSeasonStack,
+  ]);
+
+  // Drop a selected month if it doesn't exist on the active season calendar.
+  React.useEffect(() => {
+    if (!selectedMonthKey) return;
+    const exists = getMonthAllocations(seasonKey).some((m) => m.monthKey === selectedMonthKey);
+    if (!exists) setSelectedMonthKey(null);
+  }, [seasonKey, selectedMonthKey]);
   const headerLiveByFixtureIndex = React.useMemo(() => {
     if (!homeSnapshot) return new Map<number, any>();
     if (liveByFixtureIndexRealtime.size > 0) return liveByFixtureIndexRealtime;
@@ -317,6 +366,8 @@ export default function GlobalScreen() {
     },
   });
 
+  // Pile A materialization (`app_v_gw_points`). Used for 25/26 tables + archive scopes.
+  // Never apply these rows as 2026/27 GW scores (handled in rowsBase / live reconstruction).
   const {
     data: gwPoints,
     isLoading: gwPointsLoading,
@@ -337,9 +388,10 @@ export default function GlobalScreen() {
     },
   });
 
+  // Legacy BFF live table is pile-A only (app_picks / app_v_gw_points). Never for season-stack testers.
   const { data: gwLiveTable, refetch: refetchGwLiveTable } = useQuery({
-    enabled: typeof activeLeaderboardGw === 'number',
-    queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw],
+    enabled: typeof activeLeaderboardGw === 'number' && !useSeasonStack,
+    queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw, 'pileA'],
     queryFn: () => api.getGlobalGwLiveTable(activeLeaderboardGw as number),
     refetchInterval: tab === 'gw' || tab === 'overall' ? 10_000 : false,
   });
@@ -351,59 +403,128 @@ export default function GlobalScreen() {
     /** True if any fixture in this GW has kicked off (live / finished / or kickoff time in the past). */
     hasGwKickoffStarted: boolean;
   }>({
-    enabled: typeof activeLeaderboardGw === 'number',
-    queryKey: ['leaderboards', 'gwLiveFallbackScores', activeLeaderboardGw, 'paged-v2'],
+    enabled: typeof activeLeaderboardGw === 'number' && (!useSeasonStack || !!seasonId),
+    queryKey: [
+      'leaderboards',
+      'gwLiveFallbackScores',
+      activeLeaderboardGw,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+      'paged-v3',
+    ],
     queryFn: async () => {
       const gw = activeLeaderboardGw as number;
-      const [submissions, allPicks, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
-        fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
-          supabase.from('app_gw_submissions').select('user_id').eq('gw', gw).order('user_id', { ascending: true }).range(from, to)
-        ),
-        fetchAllSupabaseRows<{ user_id: string; fixture_index: number; pick: string | null }>((from, to) =>
-          supabase
-            .from('app_picks')
-            .select('user_id, fixture_index, pick')
+      const pileB = useSeasonStack && !!seasonId;
+
+      // Pile B: season tables only. Pile A: legacy unfoldered tables.
+      const submissionsP = pileB
+        ? fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
+            (supabase as any)
+              .from('app_season_submissions')
+              .select('user_id')
+              .eq('gw', gw)
+              .eq('season_id', seasonId)
+              .order('user_id', { ascending: true })
+              .range(from, to)
+          )
+        : fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
+            supabase.from('app_gw_submissions').select('user_id').eq('gw', gw).order('user_id', { ascending: true }).range(from, to)
+          );
+      const picksP = pileB
+        ? fetchAllSupabaseRows<{ user_id: string; fixture_index: number; pick: string | null }>((from, to) =>
+            (supabase as any)
+              .from('app_season_picks')
+              .select('user_id, fixture_index, pick')
+              .eq('gw', gw)
+              .eq('season_id', seasonId)
+              .order('fixture_index', { ascending: true })
+              .order('user_id', { ascending: true })
+              .range(from, to)
+          )
+        : fetchAllSupabaseRows<{ user_id: string; fixture_index: number; pick: string | null }>((from, to) =>
+            supabase
+              .from('app_picks')
+              .select('user_id, fixture_index, pick')
+              .eq('gw', gw)
+              .order('fixture_index', { ascending: true })
+              .order('user_id', { ascending: true })
+              .range(from, to)
+          );
+      const fixturesP = pileB
+        ? (supabase as any)
+            .from('app_season_fixtures')
+            .select('fixture_index, api_match_id, kickoff_time')
             .eq('gw', gw)
-            .order('fixture_index', { ascending: true })
-            .order('user_id', { ascending: true })
-            .range(from, to)
-        ),
+            .eq('season_id', seasonId)
+        : supabase.from('app_fixtures').select('fixture_index, api_match_id, kickoff_time').eq('gw', gw);
+      const resultsP = pileB
+        ? (supabase as any)
+            .from('app_season_results')
+            .select('fixture_index, result')
+            .eq('gw', gw)
+            .eq('season_id', seasonId)
+        : supabase.from('app_gw_results').select('fixture_index, result').eq('gw', gw);
+
+      const [submissions, allPicks, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
+        submissionsP,
+        picksP,
+        // live_scores is global by match; for pile B we only apply rows that map to this season's fixtures
         supabase.from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
-        supabase.from('app_gw_results').select('fixture_index, result').eq('gw', gw),
-        supabase.from('app_fixtures').select('fixture_index, api_match_id, kickoff_time').eq('gw', gw),
+        resultsP,
+        fixturesP,
       ]);
       if (liveScoresRes.error) throw liveScoresRes.error;
       if (resultsRes.error) throw resultsRes.error;
       if (fixturesRes.error) throw fixturesRes.error;
 
       const picks = allPicks.filter((p: any) => p.pick === 'H' || p.pick === 'D' || p.pick === 'A');
-      const submittedIds = new Set<string>([
-        ...submissions.map((s: any) => String(s.user_id)),
-        ...picks.map((p: any) => String(p.user_id)),
-      ]);
+      // Pile B: only formal submissions count (do not invent submitters from loose picks alone).
+      const submittedIds = new Set<string>(
+        pileB
+          ? submissions.map((s: any) => String(s.user_id))
+          : [...submissions.map((s: any) => String(s.user_id)), ...picks.map((p: any) => String(p.user_id))]
+      );
       const outcomeByFixtureIndex = new Map<number, 'H' | 'D' | 'A'>();
       (resultsRes.data ?? []).forEach((r: any) => {
         if (r?.result === 'H' || r?.result === 'D' || r?.result === 'A') outcomeByFixtureIndex.set(Number(r.fixture_index), r.result);
       });
       const apiMatchIdToFixture = new Map<number, number>();
+      const seasonFixtureIndexes = new Set<number>();
       (fixturesRes.data ?? []).forEach((f: any) => {
-        if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') apiMatchIdToFixture.set(f.api_match_id, f.fixture_index);
+        if (typeof f?.fixture_index === 'number') seasonFixtureIndexes.add(f.fixture_index);
+        if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') {
+          apiMatchIdToFixture.set(f.api_match_id, f.fixture_index);
+        }
       });
       let hasActiveLiveGames = false;
       let hasGwKickoffStarted = false;
       (liveScoresRes.data ?? []).forEach((ls: any) => {
         const status = ls?.status;
         const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
-        if (started) hasGwKickoffStarted = true;
-        if (status === 'IN_PLAY' || status === 'PAUSED') hasActiveLiveGames = true;
-        if (!started) return;
-        const fixtureIndex =
-          typeof ls?.fixture_index === 'number'
-            ? ls.fixture_index
-            : typeof ls?.api_match_id === 'number'
-              ? apiMatchIdToFixture.get(ls.api_match_id)
-              : undefined;
+        // For pile B: only scores that map to this season's fixtures via api_match_id
+        // (never trust fixture_index alone — GW1 indexes collide across seasons).
+        let fixtureIndex: number | undefined;
+        if (pileB) {
+          if (typeof ls?.api_match_id === 'number') fixtureIndex = apiMatchIdToFixture.get(ls.api_match_id);
+          if (fixtureIndex == null) return;
+        } else {
+          if (started) hasGwKickoffStarted = true;
+          if (status === 'IN_PLAY' || status === 'PAUSED') hasActiveLiveGames = true;
+          if (!started) return;
+          fixtureIndex =
+            typeof ls?.fixture_index === 'number'
+              ? ls.fixture_index
+              : typeof ls?.api_match_id === 'number'
+                ? apiMatchIdToFixture.get(ls.api_match_id)
+                : undefined;
+        }
         if (typeof fixtureIndex !== 'number') return;
+        if (pileB && !seasonFixtureIndexes.has(fixtureIndex)) return;
+        if (pileB) {
+          if (started) hasGwKickoffStarted = true;
+          if (status === 'IN_PLAY' || status === 'PAUSED') hasActiveLiveGames = true;
+          if (!started) return;
+        }
         const hs = Number(ls?.home_score ?? 0);
         const as = Number(ls?.away_score ?? 0);
         outcomeByFixtureIndex.set(fixtureIndex, hs > as ? 'H' : hs < as ? 'A' : 'D');
@@ -440,6 +561,7 @@ export default function GlobalScreen() {
           if (!Number.isNaN(t) && t <= nowMs) hasGwKickoffStarted = true;
         });
       }
+      // Pile B pre-season / no submissions: empty scores (callers show — not pile-A zeros).
       return { scores, hasActiveLiveGames, isCurrentGwComplete, currentGwCompleteFraction, hasGwKickoffStarted };
     },
     refetchInterval: tab === 'gw' || tab === 'overall' || tab === 'monthly' ? 10_000 : false,
@@ -462,6 +584,13 @@ export default function GlobalScreen() {
   const showLiveHeaderScore = currentGwIsLive && !!headerScoreSummary;
   const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, true) : null;
   const liveGwScores = React.useMemo(() => {
+    // Season-stack testers: only client reconstruction from app_season_* (never pile-A BFF table).
+    if (useSeasonStack) {
+      return Object.entries(gwLiveFallbackScores?.scores ?? {}).map(([user_id, score]) => ({
+        user_id,
+        score: Number(score ?? 0),
+      }));
+    }
     const tableScores = (gwLiveTable?.rows ?? []).map((row) => ({
       user_id: String(row.user_id),
       score: Number(row.score ?? 0),
@@ -475,7 +604,7 @@ export default function GlobalScreen() {
     // (e.g. mini-league live cards). Fall back to local reconstruction only if that API
     // returns nothing.
     return tableScores.length > 0 ? tableScores : fallbackScores;
-  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows]);
+  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows, useSeasonStack]);
   const liveGwByUser = React.useMemo(
     () => new Map(liveGwScores.map((row) => [row.user_id, row.score])),
     [liveGwScores]
@@ -512,6 +641,43 @@ export default function GlobalScreen() {
       return ids;
     },
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Who locked picks for the GW tab / secondary column (season-aware for pile B).
+  const { data: gwSubmittedIds } = useQuery<Set<string>>({
+    enabled: typeof activeLeaderboardGw === 'number',
+    queryKey: [
+      'leaderboards',
+      'gwSubmittedIds',
+      activeLeaderboardGw,
+      useSeasonStack,
+      seasonId,
+    ],
+    queryFn: async () => {
+      const gw = activeLeaderboardGw as number;
+      if (useSeasonStack && seasonId) {
+        const rows = await fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
+          (supabase as any)
+            .from('app_season_submissions')
+            .select('user_id')
+            .eq('gw', gw)
+            .eq('season_id', seasonId)
+            .order('user_id', { ascending: true })
+            .range(from, to)
+        );
+        return new Set(rows.map((r) => String(r.user_id)));
+      }
+      const rows = await fetchAllSupabaseRows<{ user_id: string }>((from, to) =>
+        supabase
+          .from('app_gw_submissions')
+          .select('user_id')
+          .eq('gw', gw)
+          .order('user_id', { ascending: true })
+          .range(from, to)
+      );
+      return new Set(rows.map((r) => String(r.user_id)));
+    },
+    staleTime: 30_000,
   });
 
   const { data: firstSubmissionGw } = useQuery<number | null>({
@@ -612,6 +778,68 @@ export default function GlobalScreen() {
     [gwPoints, latestGw, nameByUserId, overall]
   );
 
+  /**
+   * Sum OCP over a GW window. `endGw: null` = unlimited (all-time across seasons once multi-season exists).
+   * Live in-progress GW scores are folded in only when that GW sits inside the window.
+   */
+  const computeOcpWindowRows = React.useCallback(
+    (startGw: number, endGw: number | null, options?: { withGwSecondary?: boolean }): LeaderboardRow[] => {
+      const pts = gwPoints ?? [];
+      const byUser = new Map<string, { name: string; sum: number }>();
+      const activeGw = typeof activeLeaderboardGw === 'number' ? activeLeaderboardGw : null;
+      const liveInWindow =
+        !!activeGw &&
+        liveGwByUser.size > 0 &&
+        activeGw >= startGw &&
+        (endGw == null || activeGw <= endGw);
+
+      (overall ?? []).forEach((o) => {
+        byUser.set(o.user_id, { name: o.name ?? 'User', sum: 0 });
+      });
+
+      const pointsOnSecondaryGw = new Map<string, number>();
+      pts.forEach((p) => {
+        if (p.gw < startGw) return;
+        if (endGw != null && p.gw > endGw) return;
+        if (liveInWindow && p.gw === activeGw) return;
+        const existing = byUser.get(p.user_id) ?? { name: nameByUserId.get(p.user_id) ?? 'User', sum: 0 };
+        existing.sum += Number(p.points ?? 0);
+        byUser.set(p.user_id, existing);
+        if (options?.withGwSecondary && activeGw != null && p.gw === activeGw) {
+          pointsOnSecondaryGw.set(p.user_id, Number(p.points ?? 0));
+        }
+      });
+
+      if (liveInWindow) {
+        liveGwByUser.forEach((score, userId) => {
+          const existing = byUser.get(userId) ?? { name: nameByUserId.get(userId) ?? 'User', sum: 0 };
+          existing.sum += Number(score ?? 0);
+          byUser.set(userId, existing);
+        });
+      }
+
+      const showSecondary =
+        !!options?.withGwSecondary &&
+        activeGw != null &&
+        activeGw >= startGw &&
+        (endGw == null || activeGw <= endGw);
+
+      return Array.from(byUser.entries())
+        .map(([id, v]) => ({
+          user_id: id,
+          name: v.name,
+          value: Math.round(v.sum),
+          secondaryValue: showSecondary
+            ? liveInWindow
+              ? Number(liveGwByUser.get(id) ?? 0)
+              : Number(pointsOnSecondaryGw.get(id) ?? 0)
+            : undefined,
+        }))
+        .sort(byValueThenName);
+    },
+    [activeLeaderboardGw, gwPoints, liveGwByUser, nameByUserId, overall]
+  );
+
   const computeMonthlyRows = React.useCallback(
     (month: MonthAllocation): LeaderboardRow[] => {
       const pts = gwPoints ?? [];
@@ -675,19 +903,71 @@ export default function GlobalScreen() {
 
   const rowsBase: LeaderboardRow[] = React.useMemo(() => {
     const gw = activeLeaderboardGw ?? null;
-    if (!overall || !gwPoints) return [];
+    // gwPoints may be intentionally [] on fresh pile B — still render player rows.
+    if (!overall || gwPoints == null) return [];
     const gwPointsByUser = new Map<string, number>();
+    // Live scores only count when we have *season-correct* reconstructed scores (pile B)
+    // or legacy live scores (pile A). Empty map → no one looks like they scored.
     const hasActiveGwScores = !!gw && liveGwByUser.size > 0;
-    if (gw) {
+    if (gw && !(useSeasonStack && isNewSeasonFresh)) {
       gwPoints
         .filter((p) => p.gw === gw)
         .forEach((p) => {
           gwPointsByUser.set(p.user_id, Number(p.points ?? 0));
         });
     }
+    // Pile B: only formal season submissions. Never treat pile-A live keys as "submitted".
+    const submittedSet = new Set<string>(
+      useSeasonStack
+        ? [...(gwSubmittedIds ? Array.from(gwSubmittedIds) : [])]
+        : [
+            ...(gwSubmittedIds ? Array.from(gwSubmittedIds) : []),
+            ...Array.from(liveGwByUser.keys()),
+          ]
+    );
+    const isSubmitted = (uid: string) => submittedSet.has(String(uid));
+    const gwScoreFor = (uid: string): number | null => {
+      if (!isSubmitted(uid)) return null;
+      if (hasActiveGwScores) return liveGwByUser.get(uid) ?? 0;
+      // Fresh 26/27: submitted but no outcomes yet → 0 not legacy materialization.
+      if (useSeasonStack && isNewSeasonFresh) return 0;
+      return gwPointsByUser.has(uid) ? (gwPointsByUser.get(uid) ?? 0) : 0;
+    };
 
-    // Form scope (from calendar menu) overrides GW and overall when set.
+    // Form / season scope (calendar menu) — checked before 2026/27 zeroing so archive still works.
     const endGw = currentGwIsLive && gw ? Math.max(1, gw - 1) : gw;
+    if (tab === 'overall' && formScope === 'archive_2025_26') {
+      // Final completed 2025/26 table (GWs 1–38) — still available as lookback from 2026/27.
+      return filterScope(
+        computeOcpWindowRows(SEASON_2025_26_START_GW, SEASON_2025_26_END_GW, { withGwSecondary: false })
+      );
+    }
+
+    // Pile B 2026/27: zero OCP; GW scores only for submitters (else dash).
+    if (isNewSeasonFresh) {
+      if (tab === 'gw') {
+        if (!gw) return [];
+        const r = overall
+          .map((o) => ({
+            user_id: o.user_id,
+            name: o.name ?? 'User',
+            value: gwScoreFor(o.user_id),
+          }))
+          .sort(byValueThenName);
+        return filterScope(r);
+      }
+      const zeroRows = overall
+        .map((o) => ({
+          user_id: o.user_id,
+          name: o.name ?? 'User',
+          value: 0,
+          secondaryValue:
+            tab === 'overall' && formScope === 'none' && gw ? gwScoreFor(o.user_id) : undefined,
+        }))
+        .sort(byValueThenName);
+      return filterScope(zeroRows);
+    }
+
     if (tab === 'overall' && formScope === 'last5') {
       return filterScope(computeFormRows(5, endGw));
     }
@@ -696,6 +976,12 @@ export default function GlobalScreen() {
     }
     if (tab === 'overall' && formScope === 'sinceStarted' && firstSubmissionGw != null) {
       return filterScope(computeSinceStartedRows(firstSubmissionGw, endGw));
+    }
+    // Fixed 2025/26 final table (GWs 1–38 only) when still on that season client.
+    if (tab === 'overall' && formScope === 'none') {
+      return filterScope(
+        computeOcpWindowRows(SEASON_2025_26_START_GW, SEASON_2025_26_END_GW, { withGwSecondary: true })
+      );
     }
 
     if (tab === 'overall') {
@@ -715,12 +1001,7 @@ export default function GlobalScreen() {
             hasActiveGwScores
               ? (liveBaseOcpByUser.get(o.user_id) ?? 0) + (liveGwByUser.get(o.user_id) ?? 0)
               : Math.round(Number(o.ocp ?? 0)),
-          secondaryValue:
-            gw
-              ? hasActiveGwScores
-                ? (liveGwByUser.get(o.user_id) ?? 0)
-                : (gwPointsByUser.get(o.user_id) ?? 0)
-              : undefined,
+          secondaryValue: gw ? gwScoreFor(o.user_id) : undefined,
         }))
         .sort(byValueThenName);
       return filterScope(r);
@@ -728,35 +1009,27 @@ export default function GlobalScreen() {
 
     // Monthly tab
     if (tab === 'monthly') {
-      const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(gw, gwLiveFallbackScores);
-      const month = getMonthAllocations().find((m) => m.monthKey === monthKey);
+      const monthKey =
+        selectedMonthKey ??
+        getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+      const month = getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey);
       if (month) return filterScope(computeMonthlyRows(month));
       return [];
     }
 
-    // GW tab: last completed gameweek
+    // GW tab: everyone in scope; score if submitted, otherwise dash
     if (!gw) return [];
-    if (hasActiveGwScores) {
-      const r = Array.from(liveGwByUser.entries())
-        .map(([uid, score]) => ({
-          user_id: uid,
-          name: nameByUserId.get(uid) ?? 'User',
-          value: Number(score ?? 0),
-        }))
-        .sort(byValueThenName);
-      return filterScope(r);
-    }
-    const pts = gwPoints
-      .filter((p) => p.gw === gw)
-      .map((p) => ({
-        user_id: p.user_id,
-        name: nameByUserId.get(p.user_id) ?? 'User',
-        value: Number(p.points ?? 0),
+    const r = overall
+      .map((o) => ({
+        user_id: o.user_id,
+        name: o.name ?? nameByUserId.get(o.user_id) ?? 'User',
+        value: gwScoreFor(o.user_id),
       }))
       .sort(byValueThenName);
-    return filterScope(pts);
+    return filterScope(r);
   }, [
     computeFormRows,
+    computeOcpWindowRows,
     computeSinceStartedRows,
     computeMonthlyRows,
     filterScope,
@@ -765,12 +1038,18 @@ export default function GlobalScreen() {
     formScope,
     currentGwIsLive,
     gwPoints,
+    gwSubmittedIds,
     liveGwByUser,
     latestGw,
     nameByUserId,
     overall,
     selectedMonthKey,
     tab,
+    isNewSeasonFresh,
+    monthAnchorGw,
+    seasonKey,
+    monthAvailOpts,
+    useSeasonStack,
   ]);
 
   const visibleUserIds = React.useMemo(() => {
@@ -815,6 +1094,28 @@ export default function GlobalScreen() {
     const gw = activeLeaderboardGw ?? null;
     if (!overall || !gwPoints) return out;
 
+    if (isNewSeasonFresh) {
+      const ranked = overall
+        .map((o) => ({
+          user_id: String(o.user_id),
+          value: 0,
+          name: o.name ?? 'User',
+        }))
+        .sort((a, b) =>
+          byValueThenName(
+            { user_id: a.user_id, name: a.name, value: a.value },
+            { user_id: b.user_id, name: b.name, value: b.value }
+          )
+        );
+      let currentRank = 1;
+      ranked.forEach((row, index) => {
+        const prev = ranked[index - 1];
+        if (index > 0 && prev && prev.value !== row.value) currentRank = index + 1;
+        out.set(row.user_id, currentRank);
+      });
+      return out;
+    }
+
     const hasActiveGwScores = !!gw && liveGwByUser.size > 0;
     const liveBaseOcpByUser = new Map<string, number>();
     if (hasActiveGwScores && gw) {
@@ -841,23 +1142,51 @@ export default function GlobalScreen() {
     });
 
     return out;
-  }, [activeLeaderboardGw, gwPoints, liveGwByUser, overall]);
+  }, [activeLeaderboardGw, gwPoints, isNewSeasonFresh, liveGwByUser, overall]);
 
   const subtitle = React.useMemo(() => {
     const who = scope === 'friends' ? 'Mini League Friends' : 'All Players';
-    if (tab === 'overall' && formScope === 'none') return `${who} since the start of the season`;
+    if (tab === 'overall' && formScope === 'archive_2025_26') {
+      return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
+    }
+    if (tab === 'overall' && formScope === 'none') {
+      if (isNewSeasonFresh) return `${who} • ${seasonLabel} (season just started)`;
+      return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
+    }
     if (formScope === 'last5') return latestGw && latestGw >= 5 ? `${who} • Last 5 GWs` : `${who} (need 5 GWs)`;
     if (formScope === 'last10') return latestGw && latestGw >= 10 ? `${who} • Last 10 GWs` : `${who} (need 10 GWs)`;
     if (formScope === 'sinceStarted')
       return firstSubmissionGw != null ? `${who} since GW${firstSubmissionGw}` : `${who} (submit to see)`;
     if (tab === 'monthly') {
-      const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores);
-      const month = getMonthAllocations().find((m) => m.monthKey === monthKey);
+      const monthKey =
+        selectedMonthKey ??
+        getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+      const month = getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey);
       if (month) return `GW${month.startGw}–${month.endGw}`;
       return `${who} for this month`;
     }
-    return activeLeaderboardGw ? `${who} who submitted for GW${activeLeaderboardGw}` : `${who} who submitted for the last GW`;
-  }, [activeLeaderboardGw, firstSubmissionGw, formScope, gwLiveFallbackScores, latestGw, scope, selectedMonthKey, tab]);
+    // GW tab
+    const gw = activeLeaderboardGw;
+    if (!gw) return `${who}`;
+    const submittedCount = gwSubmittedIds?.size ?? 0;
+    if (submittedCount === 0) return `No submissions yet for GW${gw}`;
+    return `${who} · GW${gw}`;
+  }, [
+    activeLeaderboardGw,
+    firstSubmissionGw,
+    formScope,
+    gwLiveFallbackScores,
+    gwSubmittedIds,
+    isNewSeasonFresh,
+    monthAnchorGw,
+    monthAvailOpts,
+    seasonKey,
+    seasonLabel,
+    selectedMonthKey,
+    tab,
+    scope,
+    latestGw,
+  ]);
 
   const valueLabel = React.useMemo(() => {
     if (formScope === 'last5' || formScope === 'last10' || formScope === 'sinceStarted') return 'PTS';
@@ -865,69 +1194,154 @@ export default function GlobalScreen() {
     if (tab === 'monthly') return 'PTS';
     return activeLeaderboardGw ? `GW${activeLeaderboardGw}` : '—';
   }, [activeLeaderboardGw, formScope, tab]);
-  const secondaryValueLabel = tab === 'overall' && formScope === 'none' && activeLeaderboardGw ? `GW${activeLeaderboardGw}` : undefined;
+  const secondaryValueLabel =
+    tab === 'overall' &&
+    formScope === 'none' &&
+    activeLeaderboardGw != null &&
+    (isNewSeasonFresh || activeLeaderboardGw <= SEASON_2025_26_END_GW)
+      ? `GW${activeLeaderboardGw}`
+      : undefined;
+
+  const overallCalendarMenuItems = React.useMemo(() => {
+    const items: Array<{ key: FormScope; label: string }> = [
+      { key: 'none', label: `${seasonLabel} Season` },
+    ];
+    // From 2026/27, allow full lookback at last season’s final OCP table.
+    if (isNewSeasonFresh || seasonKey === '2026/27') {
+      items.push({ key: 'archive_2025_26', label: `${SEASON_2025_26_LABEL} Season` });
+    }
+    items.push(
+      { key: 'last5', label: 'Last 5 weeks' },
+      { key: 'last10', label: 'Last 10 weeks' },
+      { key: 'sinceStarted', label: 'Since Joined' }
+    );
+    return items;
+  }, [isNewSeasonFresh, seasonKey, seasonLabel]);
+
   const currentMonthLabel = React.useMemo(() => {
-    const monthKey = tab === 'monthly' && selectedMonthKey
-      ? selectedMonthKey
-      : getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores);
-    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    const monthKey =
+      tab === 'monthly' && selectedMonthKey
+        ? selectedMonthKey
+        : getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+    const month = monthKey ? getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey) : null;
     return month ? month.label.split(' ')[0] : null;
-  }, [tab, selectedMonthKey, latestGw, gwLiveFallbackScores]);
+  }, [tab, selectedMonthKey, monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts]);
   const monthlyCompactValueLabels = React.useMemo(() => {
     if (tab !== 'monthly') return undefined;
-    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(activeLeaderboardGw ?? null, gwLiveFallbackScores);
-    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    const monthKey =
+      selectedMonthKey ??
+      getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+    const month = monthKey ? getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey) : null;
     if (!month) return undefined;
     return Array.from({ length: month.endGw - month.startGw + 1 }, (_, index) => String(month.startGw + index));
-  }, [activeLeaderboardGw, gwLiveFallbackScores, selectedMonthKey, tab]);
+  }, [monthAnchorGw, gwLiveFallbackScores, monthAvailOpts, seasonKey, selectedMonthKey, tab]);
   const monthlyLiveValueLabel = React.useMemo(() => {
     if (tab !== 'monthly' || !currentGwIsLive || typeof activeLeaderboardGw !== 'number') return undefined;
-    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(activeLeaderboardGw ?? null, gwLiveFallbackScores);
-    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    const monthKey =
+      selectedMonthKey ??
+      getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+    const month = monthKey ? getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey) : null;
     if (!month) return undefined;
     if (activeLeaderboardGw < month.startGw || activeLeaderboardGw > month.endGw) return undefined;
     return String(activeLeaderboardGw);
-  }, [activeLeaderboardGw, currentGwIsLive, gwLiveFallbackScores, selectedMonthKey, tab]);
+  }, [activeLeaderboardGw, currentGwIsLive, gwLiveFallbackScores, monthAnchorGw, monthAvailOpts, seasonKey, selectedMonthKey, tab]);
   const { monthlyWinnerUserIds } = React.useMemo(() => {
-    if (tab !== 'monthly' || !rows.length || latestGw == null) return { monthlyWinnerUserIds: [] as string[] };
-    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw, gwLiveFallbackScores);
-    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    if (tab !== 'monthly' || !rows.length || monthAnchorGw == null) return { monthlyWinnerUserIds: [] as string[] };
+    const monthKey =
+      selectedMonthKey ??
+      getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+    const month = monthKey ? getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey) : null;
     if (!month) return { monthlyWinnerUserIds: [] as string[] };
-    const monthComplete = latestGw > month.endGw || (latestGw === month.endGw && gwLiveFallbackScores?.isCurrentGwComplete === true);
-    if (!monthComplete) return { monthlyWinnerUserIds: [] as string[] };
-    const topValue = rows[0]!.value;
+    const monthComplete =
+      monthAnchorGw > month.endGw ||
+      (monthAnchorGw === month.endGw && gwLiveFallbackScores?.isCurrentGwComplete === true);
+    if (!monthComplete || rows[0] == null || rows[0].value == null || rows[0].value <= 0) {
+      return { monthlyWinnerUserIds: [] as string[] };
+    }
+    const topValue = rows[0].value;
     const winnerRows = rows.filter((r) => r.value === topValue);
     const userIds = winnerRows.map((r) => r.user_id);
     return { monthlyWinnerUserIds: userIds };
-  }, [tab, rows, latestGw, selectedMonthKey, gwLiveFallbackScores]);
+  }, [tab, rows, monthAnchorGw, selectedMonthKey, gwLiveFallbackScores, seasonKey, monthAvailOpts]);
 
   const selectableMonths = React.useMemo(() => {
     if (tab !== 'monthly') return [] as MonthAllocation[];
-    const months = getMonthAllocations();
-    const selectable = latestGw != null ? months.filter((m) => isMonthAvailable(m, latestGw, gwLiveFallbackScores)) : months;
+    const months = getMonthAllocations(seasonKey);
+    const selectable =
+      monthAnchorGw != null
+        ? months.filter((m) => isMonthAvailable(m, monthAnchorGw, gwLiveFallbackScores, monthAvailOpts))
+        : months;
     return [...selectable].reverse();
-  }, [tab, latestGw, gwLiveFallbackScores]);
+  }, [tab, monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts]);
 
   const monthProgressDetail = React.useMemo(() => {
-    if (tab !== 'monthly' || latestGw == null) return null;
-    const monthKey = selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw, gwLiveFallbackScores);
-    const month = monthKey ? getMonthAllocations().find((m) => m.monthKey === monthKey) : null;
+    if (tab !== 'monthly' || monthAnchorGw == null) return null;
+    const monthKey =
+      selectedMonthKey ??
+      getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts);
+    const month = monthKey ? getMonthAllocations(seasonKey).find((m) => m.monthKey === monthKey) : null;
     if (!month) return null;
     const total = month.endGw - month.startGw + 1;
-    const isCurrentGwComplete = gwLiveFallbackScores?.isCurrentGwComplete === true;
-    const isViewingCurrentMonth = latestGw >= month.startGw && latestGw <= month.endGw;
-    const currentGwCompleteFraction = gwLiveFallbackScores?.currentGwCompleteFraction ?? 0;
+    const isViewingCurrentMonth = monthAnchorGw >= month.startGw && monthAnchorGw <= month.endGw;
+
+    // Season-stack / fresh 26–27 must not use pile-A “GW1 complete” (legacy results still mark GW1 done).
+    let isCurrentGwComplete = gwLiveFallbackScores?.isCurrentGwComplete === true;
+    let currentGwCompleteFraction = gwLiveFallbackScores?.currentGwCompleteFraction ?? 0;
+    if (isNewSeasonFresh || useSeasonStack) {
+      if (homeSnapshot) {
+        const liveList =
+          headerLiveByFixtureIndex.size > 0
+            ? Array.from(headerLiveByFixtureIndex.values())
+            : homeSnapshot.liveScores ?? [];
+        const gwState = getGameweekStateFromSnapshot({
+          fixtures: homeSnapshot.fixtures ?? [],
+          liveScores: liveList as any,
+          hasSubmittedViewingGw: !!homeSnapshot.hasSubmittedViewingGw,
+        });
+        isCurrentGwComplete = gwState === 'RESULTS_PRE_GW';
+        const fixtures = homeSnapshot.fixtures ?? [];
+        if (fixtures.length > 0) {
+          const finished = liveList.filter((ls: any) => String(ls?.status ?? '') === 'FINISHED').length;
+          currentGwCompleteFraction = finished / fixtures.length;
+        } else {
+          currentGwCompleteFraction = 0;
+        }
+        // Open / pre-kickoff: bar stays empty (do not count the current open GW as a filled segment).
+        if (
+          gwState === 'GW_OPEN' ||
+          gwState === 'GW_PREDICTED' ||
+          gwState === 'DEADLINE_PASSED'
+        ) {
+          return { progress: 0, completed: 0, total, month, lastSegmentFraction: null };
+        }
+      } else {
+        return { progress: 0, completed: 0, total, month, lastSegmentFraction: null };
+      }
+    }
+
     let completed: number;
     let lastSegmentFraction: number | null = null;
-    if (latestGw < month.startGw) completed = 0;
-    else if (latestGw > month.endGw) completed = total;
+    if (monthAnchorGw < month.startGw) completed = 0;
+    else if (monthAnchorGw > month.endGw) completed = total;
     else if (isViewingCurrentMonth && !isCurrentGwComplete) {
-      completed = latestGw - month.startGw;
-      lastSegmentFraction = currentGwCompleteFraction;
-    } else completed = latestGw - month.startGw + 1;
+      completed = monthAnchorGw - month.startGw;
+      lastSegmentFraction = currentGwCompleteFraction > 0 ? currentGwCompleteFraction : null;
+    } else completed = monthAnchorGw - month.startGw + 1;
     const progress = completed / total + (lastSegmentFraction != null ? lastSegmentFraction / total : 0);
     return { progress, completed, total, month, lastSegmentFraction };
-  }, [tab, selectedMonthKey, latestGw, gwLiveFallbackScores?.isCurrentGwComplete, gwLiveFallbackScores?.currentGwCompleteFraction]);
+  }, [
+    tab,
+    selectedMonthKey,
+    monthAnchorGw,
+    gwLiveFallbackScores?.isCurrentGwComplete,
+    gwLiveFallbackScores?.currentGwCompleteFraction,
+    seasonKey,
+    monthAvailOpts,
+    isNewSeasonFresh,
+    useSeasonStack,
+    homeSnapshot,
+    headerLiveByFixtureIndex,
+  ]);
   const loading = overallLoading || gwPointsLoading || friendsLoading;
   const error = (overallError as any) ?? (gwPointsError as any);
   const showInitialSpinner = loading && !error && rows.length === 0;
@@ -959,7 +1373,7 @@ export default function GlobalScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
-          title={showLiveHeaderScore ? undefined : '2025/26'}
+          title={showLiveHeaderScore ? undefined : seasonLabel}
           centerContent={
             showLiveHeaderScore && headerScoreLabel ? (
               <HeaderLiveScore
@@ -1231,7 +1645,7 @@ export default function GlobalScreen() {
                 position: 'absolute',
                 top: calendarMenuPosition.y + calendarMenuPosition.height + 4,
                 right: Dimensions.get('window').width - (calendarMenuPosition.x + calendarMenuPosition.width),
-                width: 200,
+                width: 240,
                 backgroundColor: t.color.surface,
                 borderRadius: 12,
                 shadowColor: '#000',
@@ -1242,72 +1656,37 @@ export default function GlobalScreen() {
                 overflow: 'hidden',
               }}
             >
-              <Pressable
-                onPress={() => {
-                  setFormScope('none');
-                  setCalendarMenuOpen(false);
-                }}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'none' ? 'rgba(28,131,118,0.08)' : 'transparent',
-                  borderBottomWidth: 1,
-                  borderBottomColor: t.color.border,
-                })}
-              >
-                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'none' ? t.color.brand : t.color.text }}>
-                  This season
-                </TotlText>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setFormScope('last5');
-                  setCalendarMenuOpen(false);
-                }}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'last5' ? 'rgba(28,131,118,0.08)' : 'transparent',
-                  borderBottomWidth: 1,
-                  borderBottomColor: t.color.border,
-                })}
-              >
-                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'last5' ? t.color.brand : t.color.text }}>
-                  Last 5 weeks
-                </TotlText>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setFormScope('last10');
-                  setCalendarMenuOpen(false);
-                }}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'last10' ? 'rgba(28,131,118,0.08)' : 'transparent',
-                  borderBottomWidth: 1,
-                  borderBottomColor: t.color.border,
-                })}
-              >
-                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'last10' ? t.color.brand : t.color.text }}>
-                  Last 10 weeks
-                </TotlText>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setFormScope('sinceStarted');
-                  setCalendarMenuOpen(false);
-                }}
-                style={({ pressed }) => ({
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                  backgroundColor: pressed ? 'rgba(0,0,0,0.05)' : formScope === 'sinceStarted' ? 'rgba(28,131,118,0.08)' : 'transparent',
-                })}
-              >
-                <TotlText style={{ fontFamily: t.font.medium, fontSize: 15, color: formScope === 'sinceStarted' ? t.color.brand : t.color.text }}>
-                  Since Joined
-                </TotlText>
-              </Pressable>
+              {overallCalendarMenuItems.map((item, index, array) => (
+                <Pressable
+                  key={item.key}
+                  onPress={() => {
+                    setFormScope(item.key);
+                    setCalendarMenuOpen(false);
+                  }}
+                  style={({ pressed }) => ({
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    backgroundColor: pressed
+                      ? 'rgba(0,0,0,0.05)'
+                      : formScope === item.key
+                        ? 'rgba(28,131,118,0.08)'
+                        : 'transparent',
+                    ...(index < array.length - 1
+                      ? { borderBottomWidth: 1, borderBottomColor: t.color.border }
+                      : {}),
+                  })}
+                >
+                  <TotlText
+                    style={{
+                      fontFamily: t.font.medium,
+                      fontSize: 15,
+                      color: formScope === item.key ? t.color.brand : t.color.text,
+                    }}
+                  >
+                    {item.label}
+                  </TotlText>
+                </Pressable>
+              ))}
             </View>
           ) : null}
         </View>
@@ -1343,7 +1722,10 @@ export default function GlobalScreen() {
             >
               <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
               {selectableMonths.map((month, i) => {
-                const isSelected = (selectedMonthKey ?? getEffectiveCurrentMonthKey(latestGw ?? null, gwLiveFallbackScores)) === month.monthKey;
+                const isSelected =
+                  (selectedMonthKey ??
+                    getEffectiveCurrentMonthKey(monthAnchorGw, gwLiveFallbackScores, seasonKey, monthAvailOpts)) ===
+                  month.monthKey;
                 const isLast = i === selectableMonths.length - 1;
                 return (
                   <Pressable

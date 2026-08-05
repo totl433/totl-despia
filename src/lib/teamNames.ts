@@ -13,7 +13,9 @@ type TeamKey =
   | 'crystal-palace'
   | 'everton'
   | 'fulham'
+  | 'hull'
   | 'ipswich'
+  | 'coventry'
   | 'leeds'
   | 'leicester'
   | 'liverpool'
@@ -97,10 +99,20 @@ const CLUBS: Record<
     slug: 'fulham',
     aliases: ['fulham', 'fulham fc', 'ful'],
   },
+  'hull': {
+    medium: 'Hull',
+    slug: 'hull',
+    aliases: ['hull', 'hull city', 'hull city afc', 'hull city a f c', 'hul', 'the tigers'],
+  },
   'ipswich': {
     medium: 'Ipswich',
     slug: 'ipswich',
-    aliases: ['ipswich', 'ipswich town', 'ips'],
+    aliases: ['ipswich', 'ipswich town', 'ipswich town fc', 'ips'],
+  },
+  'coventry': {
+    medium: 'Coventry',
+    slug: 'coventry',
+    aliases: ['coventry', 'coventry city', 'coventry city fc', 'cov'],
   },
   'leeds': {
     medium: 'Leeds',

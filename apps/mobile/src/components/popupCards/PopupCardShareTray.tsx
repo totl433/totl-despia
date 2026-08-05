@@ -27,6 +27,8 @@ function getPopupShareMessage(card: PopupCardDescriptor): string {
       return "Check out this week's TOTL winners.";
     case 'newGameweek':
       return 'A new TOTL Gameweek is ready to go.';
+    case 'newSeason':
+      return 'Welcome to the new TOTL season.';
     case 'championMiniLeague':
       return 'I won my mini league on TOTL.';
     case 'championOverall':
@@ -57,7 +59,7 @@ function PopupCardSharePreview({
 }) {
   return (
     <View collapsable={false} pointerEvents="none" style={{ width, height, backgroundColor: 'transparent' }}>
-      <PopupInfoCard kind={card.kind} title={card.title} eventKey={card.eventKey} isTopCard={false} isShareAsset />
+      <PopupInfoCard kind={card.kind} title={card.title} eventKey={card.eventKey} payload={card.payload} isTopCard={false} isShareAsset />
     </View>
   );
 }

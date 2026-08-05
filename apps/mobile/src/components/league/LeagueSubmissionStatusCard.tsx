@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import EmojiText from '../icons/EmojiText';
 import { formatLocalDateShort, formatLocalTimeHHmm } from '../../lib/dateTime';
 
 export default function LeagueSubmissionStatusCard({
@@ -84,10 +85,19 @@ export default function LeagueSubmissionStatusCard({
       </View>
 
       {deadlineStr ? (
-        <TotlText variant="caption" style={{ color: deadlinePassed ? '#FB923C' : t.color.muted, fontWeight: deadlinePassed ? '900' : '700' }}>
-          {deadlinePassed ? '⏰ Deadline Passed: ' : '⏰ Deadline: '}
-          {deadlineStr}
-        </TotlText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+          <EmojiText size={12}>⏰</EmojiText>
+          <TotlText
+            variant="caption"
+            style={{
+              color: deadlinePassed ? '#FB923C' : t.color.muted,
+              fontWeight: deadlinePassed ? '900' : '700',
+              marginLeft: 4,
+            }}
+          >
+            {deadlinePassed ? `Deadline Passed: ${deadlineStr}` : `Deadline: ${deadlineStr}`}
+          </TotlText>
+        </View>
       ) : null}
 
       <View style={{ height: 10 }} />

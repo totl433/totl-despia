@@ -16,6 +16,9 @@ export default function StatsHeroVisual({
   statsGwCompletion,
   onPressViewRoundUp,
   onPressViewLeaderboards,
+  overallLabel = 'Overall',
+  leaderboardsLinkLabel = 'View Leaderboards',
+  leaderboardsA11yLabel = 'View leaderboards',
 }: {
   stats: UserStatsData | null;
   statsGwCompletion?: StatsGwCompletionContext | null;
@@ -23,6 +26,10 @@ export default function StatsHeroVisual({
   onPressViewRoundUp?: () => void;
   /** Opens main tab leaderboards (2025/26 / Global) */
   onPressViewLeaderboards?: () => void;
+  /** e.g. “Career overall” for pile-B users spanning seasons */
+  overallLabel?: string;
+  leaderboardsLinkLabel?: string;
+  leaderboardsA11yLabel?: string;
 }) {
   const t = useTokens();
   const heroGw = stats?.highlightGw ?? stats?.lastCompletedGw ?? null;
@@ -89,7 +96,7 @@ export default function StatsHeroVisual({
 
           <View style={{ flex: 1, paddingLeft: 14 }}>
             <TotlText variant="muted" style={{ fontSize: 13, fontWeight: '600' }}>
-              Overall
+              {overallLabel}
             </TotlText>
             <TotlText style={{ marginTop: 8, fontSize: 19, lineHeight: 24, fontWeight: '900', color: t.color.text }}>
               {topPlayersSentence(stats?.overallPercentile ?? null)}
@@ -98,11 +105,11 @@ export default function StatsHeroVisual({
               <Pressable
                 onPress={onPressViewLeaderboards}
                 accessibilityRole="button"
-                accessibilityLabel="View leaderboards, 2025/26 season"
+                accessibilityLabel={leaderboardsA11yLabel}
                 style={({ pressed }) => ({ marginTop: 12, opacity: pressed ? 0.75 : 1 })}
               >
                 <TotlText style={{ fontSize: 14, fontWeight: '800', color: String(t.color.brand) }}>
-                  View Leaderboards
+                  {leaderboardsLinkLabel}
                 </TotlText>
               </Pressable>
             ) : null}

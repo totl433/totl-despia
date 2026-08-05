@@ -5,6 +5,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { TotlText, useTokens } from '@totl/ui';
 
 import WinnerShimmer from '../WinnerShimmer';
+import MedalIcon from '../icons/MedalIcon';
 
 export interface LeagueWinnerBannerProps {
   winnerName: string;
@@ -64,7 +65,9 @@ function WinnerTab({ name, avatarUrl, index }: { name: string; avatarUrl?: strin
           <TotlText variant="caption" style={{ fontFamily: t.font.medium, fontSize: 12 }}>{initial1(name)}</TotlText>
         </View>
       )}
-      <TotlText style={{ marginRight: 6, fontSize: 16 }}>🏅</TotlText>
+      <View style={{ marginRight: 6 }}>
+        <MedalIcon size={16} />
+      </View>
       <TotlText style={{ color: t.color.text, fontFamily: t.font.medium, fontSize: 14 }} numberOfLines={1}>
         {name}
       </TotlText>

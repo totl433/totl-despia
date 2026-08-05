@@ -37,6 +37,7 @@ import {
   resolveSeasonCtx,
   seasonDisplayGw,
 } from './seasonStack.js';
+import { resolveTeamFormsAndPositions } from './teamFormStandings.js';
 
 const env = loadEnv(process.env);
 const supabase = createSupabaseClient(env);
@@ -83,6 +84,11 @@ const GwParamsSchema = z.object({
 
 const HomeQuerySchema = z.object({
   gw: z.coerce.number().int().positive().optional(),
+  /**
+   * Force pile-A (legacy app_*) tables. Use when a season-stack user opens a prior-season
+   * score sheet (e.g. 2025/26) so GW fixtures/picks don't read empty pile B folders.
+   */
+  dataSource: z.enum(['legacy']).optional(),
 });
 
 const RegisterExpoTokenBodySchema = z.object({
@@ -129,7 +135,19 @@ app.get('/v1/home', async (req) => {
   const query = HomeQuerySchema.parse((req as any).query);
 
   // Dual-stack: testers with use_season_stack → Pile B; everyone else → legacy app_*
-  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  // dataSource=legacy forces pile A (score sheets / Round Up for completed 2025/26).
+  let seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  if (query.dataSource === 'legacy') {
+    const { data: meta } = await (supa as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
+    seasonCtx = {
+      useSeasonStack: false,
+      seasonId: null,
+      seasonLabel: null,
+      currentGw: (meta?.current_gw as number | null) ?? seasonCtx.currentGw ?? 1,
+      viewingGw: query.gw ?? seasonCtx.viewingGw,
+    };
+    req.log.info({ gw: query.gw ?? null }, 'home: force legacy pile A (dataSource=legacy)');
+  }
   const tables = getSeasonTables(seasonCtx);
   const currentGw = seasonCtx.currentGw;
   const viewingGw = seasonDisplayGw(seasonCtx, query.gw ?? null);
@@ -747,27 +765,19 @@ app.get('/v1/predictions', async (req) => {
     .eq('gw', gw);
   submissionQ = applySeasonFilter(submissionQ, seasonCtx);
 
-  const [fixturesRes, picksRes, submissionRes, formsRes] = await Promise.all([
+  const [fixturesRes, picksRes, submissionRes] = await Promise.all([
     fixturesQ,
     picksQ,
     submissionQ.maybeSingle(),
-    (supa as any).from('app_team_forms').select('team_code, form, league_position').eq('gw', gw),
   ]);
 
   if (fixturesRes.error) throw fixturesRes.error;
   if (picksRes.error) throw picksRes.error;
   if (submissionRes.error) throw submissionRes.error;
-  if (formsRes.error) throw formsRes.error;
 
-  const teamForms: Record<string, string> = {};
-  const teamPositions: Record<string, number> = {};
-  (formsRes.data ?? []).forEach((row: any) => {
-    const code = typeof row?.team_code === 'string' ? row.team_code.trim().toUpperCase() : '';
-    const form = typeof row?.form === 'string' ? row.form.trim().toUpperCase() : '';
-    const position = Number(row?.league_position);
-    if (code && form) teamForms[code] = form;
-    if (code && Number.isFinite(position) && position > 0) teamPositions[code] = Math.trunc(position);
-  });
+  // Forms: this season only (empty pre-season). Positions: season results once
+  // any games are complete; otherwise last-season table snapshot is fine.
+  const { teamForms, teamPositions } = await resolveTeamFormsAndPositions(supa as any, seasonCtx, gw);
 
   return {
     gw,
@@ -955,7 +965,7 @@ app.put('/v1/email-preferences', async (req) => {
 
 app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   await requireUser(req, supabase);
-  const { supa } = getAuthedSupa(req as any);
+  const { userId, supa } = getAuthedSupa(req as any);
   const params = z
     .object({ leagueId: z.string().uuid(), gw: z.coerce.number().int().positive() })
     .parse((req as any).params);
@@ -963,17 +973,41 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   const leagueId = params.leagueId;
   const gw = params.gw;
 
+  // Dual-stack: season-stack testers must read Pile B picks/submissions for this GW,
+  // or last season’s GW1 rows light every avatar as “submitted” on 2026/27 GW1.
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+
+  let submissionsQ = (supa as any).from(tables.submissions).select('user_id').eq('gw', gw);
+  submissionsQ = applySeasonFilter(submissionsQ, seasonCtx);
+
+  let picksQ = (supa as any)
+    .from(tables.picks)
+    .select('user_id, fixture_index, pick')
+    .eq('gw', gw);
+  picksQ = applySeasonFilter(picksQ, seasonCtx);
+
+  let resultsQ = (supa as any).from(tables.results).select('fixture_index, result').eq('gw', gw);
+  resultsQ = applySeasonFilter(resultsQ, seasonCtx);
+
+  let fixturesQ = (supa as any)
+    .from(tables.fixtures)
+    .select('fixture_index, api_match_id')
+    .eq('gw', gw);
+  fixturesQ = applySeasonFilter(fixturesQ, seasonCtx);
+
   const [membersRes, submissionsRes, picksRes, liveScoresRes, resultsRes, fixturesRes] = await Promise.all([
     (supa as any)
       .from('league_members')
       .select('user_id, users(id, name, avatar_url)')
       .eq('league_id', leagueId)
       .limit(200),
-    (supa as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
-    (supa as any).from('app_picks').select('user_id, fixture_index, pick').eq('gw', gw),
+    submissionsQ,
+    picksQ,
+    // live_scores still legacy-keyed by gw until poll is season-aware
     (supa as any).from('live_scores').select('api_match_id, fixture_index, home_score, away_score, status').eq('gw', gw),
-    (supa as any).from('app_gw_results').select('fixture_index, result').eq('gw', gw),
-    (supa as any).from('app_fixtures').select('fixture_index, api_match_id').eq('gw', gw),
+    resultsQ,
+    fixturesQ,
   ]);
 
   if (membersRes.error) throw membersRes.error;

@@ -3,7 +3,8 @@ import UnderlineTabs, { type UnderlineTabItem } from '../UnderlineTabs';
 
 export type LeaderboardsTab = 'gw' | 'monthly' | 'overall';
 
-export type FormScope = 'none' | 'last5' | 'last10' | 'sinceStarted';
+/** Overall calendar filter: current season table, archived final season, or form windows. */
+export type FormScope = 'none' | 'archive_2025_26' | 'last5' | 'last10' | 'sinceStarted';
 
 export default function LeaderboardsTabs({
   value,

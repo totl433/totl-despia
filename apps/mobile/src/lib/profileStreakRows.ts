@@ -1,6 +1,8 @@
 import type { UserStatsData } from '@totl/domain';
 
 import type { GameweekStreakRow } from './gameweekStreakCount';
+import { withSeasonLabel } from './gameweekStreakCount';
+import { SEASON_2025_26_LABEL } from './leaderboardMonths';
 import { supabase } from './supabase';
 
 export type { GameweekStreakRow };
@@ -91,7 +93,10 @@ export function buildWeeklyParFromLeaderboardGwPoints(args: {
 }
 
 /** Ladder fallback when `gameweekStreak` is absent (aligned with BFF weekly par ladder). */
-export function streakFallbackFromWeeklyPar(stats: UserStatsData): GameweekStreakRow[] | null {
+export function streakFallbackFromWeeklyPar(
+  stats: UserStatsData,
+  seasonLabel: string = SEASON_2025_26_LABEL
+): GameweekStreakRow[] | null {
   const lc =
     typeof stats.lastCompletedGw === 'number' && stats.lastCompletedGw > 0 ? stats.lastCompletedGw : null;
   const par = stats.weeklyParData;
@@ -100,9 +105,21 @@ export function streakFallbackFromWeeklyPar(stats: UserStatsData): GameweekStrea
   const minGw = Math.min(...par.map((r) => r.gw));
   const rows: GameweekStreakRow[] = [];
   for (let gw = minGw; gw <= lc; gw++) {
-    rows.push({ gw, points: byGw.has(gw) ? byGw.get(gw)! : null });
+    rows.push({ gw, points: byGw.has(gw) ? byGw.get(gw)! : null, seasonLabel });
   }
   return rows;
+}
+
+/**
+ * Tag pile-A ladder rows as a season folder. Streaks must not reset on new-season open —
+ * they only grow when new scored chips are appended for later seasons.
+ */
+export function tagStreakRowsWithSeason(
+  rows: GameweekStreakRow[] | null | undefined,
+  seasonLabel: string = SEASON_2025_26_LABEL
+): GameweekStreakRow[] | null {
+  if (!rows?.length) return rows ?? null;
+  return withSeasonLabel(rows, seasonLabel);
 }
 
 /** Drop chips above `lastCompletedGw` so streak reflects finalized gameweeks only (matches BFF streak ladder). */
@@ -135,10 +152,11 @@ export function mergeGameweekStreakWithLeaderboardGwPoints(args: {
       ? args.stats.lastCompletedGw
       : null;
 
+  const seasonLabel = SEASON_2025_26_LABEL;
   const rawBase =
     args.stats.gameweekStreak && args.stats.gameweekStreak.length > 0
-      ? args.stats.gameweekStreak
-      : streakFallbackFromWeeklyPar(args.stats);
+      ? tagStreakRowsWithSeason(args.stats.gameweekStreak, seasonLabel)
+      : streakFallbackFromWeeklyPar(args.stats, seasonLabel);
   const base =
     cap != null && rawBase?.length ? rawBase.filter((row) => row.gw <= cap) : rawBase;
   if (!base?.length) return null;
@@ -169,6 +187,6 @@ export function mergeGameweekStreakWithLeaderboardGwPoints(args: {
     } else if (typeof row.points === 'number') {
       pts = row.points;
     }
-    return { gw: row.gw, points: pts };
+    return { gw: row.gw, points: pts, seasonLabel: row.seasonLabel ?? seasonLabel };
   });
 }

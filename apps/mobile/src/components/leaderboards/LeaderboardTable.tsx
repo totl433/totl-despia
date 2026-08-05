@@ -4,13 +4,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from '../WinnerShimmer';
 import HostBadge from '../brandedLeaderboards/HostBadge';
+import MedalIcon from '../icons/MedalIcon';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
 export type LeaderboardRow = {
   user_id: string;
   name: string;
-  value: number;
-  secondaryValue?: number;
+  /** Score/points; null means did not submit (or missed deadline) — render as "—" */
+  value: number | null;
+  secondaryValue?: number | null;
   compactValues?: Array<number | null | undefined>;
   avatar_url?: string | null;
   isHost?: boolean;
@@ -22,8 +24,13 @@ function initial1(name: string): string {
   return s.slice(0, 1).toUpperCase();
 }
 
-function formatRank(rank: number, tied: boolean): string {
+function formatRank(rank: number | null, tied: boolean): string {
+  if (rank == null) return '—';
   return tied ? `${rank}=` : `${rank}`;
+}
+
+function formatScore(value: number | null | undefined): string {
+  return typeof value === 'number' ? String(value) : '—';
 }
 
 function truncateName(value: string, maxChars: number | null): string {
@@ -73,15 +80,41 @@ export default function LeaderboardTable({
   }, [compactValueLabels?.length]);
 
   const ranked = React.useMemo(() => {
-    const out: Array<{ row: LeaderboardRow; rank: number; tied: boolean }> = [];
+    // Submitters first (sorted by caller); non-submitters (value null) have no rank.
+    const out: Array<{ row: LeaderboardRow; rank: number | null; tied: boolean }> = [];
     let currentRank = 1;
+    let scoredIndex = 0;
+    let prevScoredValue: number | undefined;
     for (let i = 0; i < rows.length; i++) {
-      const prev = rows[i - 1];
       const cur = rows[i]!;
-      if (i > 0 && prev && prev.value !== cur.value) currentRank = i + 1;
-      const next = rows[i + 1];
-      const tied = (prev?.value === cur.value && prev !== undefined) || (next?.value === cur.value && next !== undefined);
+      if (cur.value == null) {
+        out.push({ row: cur, rank: null, tied: false });
+        continue;
+      }
+      if (prevScoredValue !== undefined && prevScoredValue !== cur.value) {
+        currentRank = scoredIndex + 1;
+      }
+      // Tie if an adjacent *scored* row shares this value (skip over nulls)
+      let prevScored: LeaderboardRow | undefined;
+      for (let j = i - 1; j >= 0; j--) {
+        if (rows[j]?.value != null) {
+          prevScored = rows[j];
+          break;
+        }
+      }
+      let nextScored: LeaderboardRow | undefined;
+      for (let j = i + 1; j < rows.length; j++) {
+        if (rows[j]?.value != null) {
+          nextScored = rows[j];
+          break;
+        }
+      }
+      const tied =
+        (prevScored != null && prevScored.value === cur.value) ||
+        (nextScored != null && nextScored.value === cur.value);
       out.push({ row: cur, rank: currentRank, tied });
+      prevScoredValue = cur.value;
+      scoredIndex += 1;
     }
     return out;
   }, [rows]);
@@ -153,7 +186,8 @@ export default function LeaderboardTable({
     (item: (typeof ranked)[number]) => {
       const isMe = !!highlightUserId && item.row.user_id === highlightUserId;
       const isWinner = !!winnerUserIds?.length && winnerUserIds.includes(item.row.user_id);
-      const showTrophy = item.rank === 1;
+      // Rank-1 medal only when someone actually has points (zeroed fresh season ≈ everyone "1=").
+      const showTrophy = item.rank === 1 && typeof item.row.value === 'number' && item.row.value > 0;
       const showHostBadge = !!item.row.isHost;
       const AVATAR_SIZE = 20;
       const displayName = truncateName(item.row.name, hasCompactColumns ? nameCharacterCap : null);
@@ -181,7 +215,11 @@ export default function LeaderboardTable({
                 <TotlText variant="caption" style={{ fontFamily: t.font.medium }}>{initial1(item.row.name)}</TotlText>
               )}
             </View>
-            {showTrophy ? <TotlText style={{ marginRight: 8, fontFamily: t.font.medium }}>🏅</TotlText> : null}
+            {showTrophy ? (
+              <View style={{ marginRight: 6 }}>
+                <MedalIcon size={14} color={isWinner ? '#fff' : t.color.brand} />
+              </View>
+            ) : null}
             <TotlText
               variant="caption"
               numberOfLines={1}
@@ -220,10 +258,10 @@ export default function LeaderboardTable({
             : null}
           {secondaryValueLabel ? (
             <TotlText style={{ width: 62, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>
-              {typeof item.row.secondaryValue === 'number' ? String(item.row.secondaryValue) : '—'}
+              {formatScore(item.row.secondaryValue)}
             </TotlText>
           ) : null}
-          <TotlText style={{ width: valueColumnWidth, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{String(item.row.value)}</TotlText>
+          <TotlText style={{ width: valueColumnWidth, textAlign: 'center', fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{formatScore(item.row.value)}</TotlText>
         </>
       );
       return (

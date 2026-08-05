@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import { useThemePreference } from '../../context/ThemePreferenceContext';
+import UnicornIcon from '../icons/UnicornIcon';
 
 export type LeagueGwTableRow = { user_id: string; name: string; score: number; unicorns: number };
 
@@ -48,9 +49,9 @@ export default function LeagueGwTable({
             Score
           </TotlText>
           {showUnicorns ? (
-            <TotlText variant="caption" style={{ width: 36, textAlign: 'right', color: textColor, fontFamily: t.font.medium }}>
-              🦄
-            </TotlText>
+            <View style={{ width: 36, alignItems: 'flex-end', justifyContent: 'center' }}>
+              <UnicornIcon size={15} color={textColor} />
+            </View>
           ) : null}
         </View>
 
@@ -96,4 +97,3 @@ export default function LeagueGwTable({
     </Card>
   );
 }
-

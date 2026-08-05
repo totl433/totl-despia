@@ -3,6 +3,8 @@ import { Image, Pressable, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+// Expo SDK 54: use legacy async APIs (same as league badge upload).
+import * as FileSystem from 'expo-file-system/legacy';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -13,10 +15,19 @@ import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = globalThis.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export default function EditAvatarScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
+  /** Local preview while upload runs / until cache catches up */
+  const [localPreviewUri, setLocalPreviewUri] = React.useState<string | null>(null);
 
   const { data: user, isLoading: userLoading, error: userError, refetch: refetchUser, isRefetching } = useQuery({
     queryKey: ['authUser'],
@@ -40,7 +51,7 @@ export default function EditAvatarScreen() {
     },
   });
 
-  const currentAvatarUrl = avatarRow?.avatar_url ?? null;
+  const currentAvatarUrl = localPreviewUri ?? avatarRow?.avatar_url ?? null;
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -51,7 +62,8 @@ export default function EditAvatarScreen() {
 
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
+        allowsEditing: true,
+        aspect: [1, 1],
         quality: 1,
       });
 
@@ -59,39 +71,35 @@ export default function EditAvatarScreen() {
       const asset = picked.assets?.[0];
       if (!asset?.uri) throw new Error('No image selected');
 
-      const width = Number(asset.width ?? 0);
-      const height = Number(asset.height ?? 0);
-      const size = Math.max(1, Math.min(width || 1, height || 1));
-      const cropX = width > size ? Math.floor((width - size) / 2) : 0;
-      const cropY = height > size ? Math.floor((height - size) / 2) : 0;
+      // Preview immediately while we upload.
+      setLocalPreviewUri(asset.uri);
 
       const manipulated = await ImageManipulator.manipulateAsync(
         asset.uri,
-        [
-          ...(width > 0 && height > 0
-            ? [
-                {
-                  crop: {
-                    originX: cropX,
-                    originY: cropY,
-                    width: size,
-                    height: size,
-                  },
-                } as const,
-              ]
-            : []),
-          { resize: { width: 400, height: 400 } },
-        ],
+        [{ resize: { width: 400 } }],
         { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
       );
 
-      const resp = await fetch(manipulated.uri);
-      const blob = await resp.blob();
+      // NOTE: On iOS / Expo, `fetch(file://...)` often yields a 0-byte Blob, which
+      // uploads as a grey/broken JPEG to storage. League badge upload already
+      // works around this via FileSystem base64 → bytes.
+      const info = await FileSystem.getInfoAsync(manipulated.uri);
+      const size = typeof (info as any)?.size === 'number' ? ((info as any).size as number) : null;
+      if (!info.exists || !size || size <= 0) {
+        throw new Error('Could not read the edited image. Please try again.');
+      }
+
+      const b64 = await FileSystem.readAsStringAsync(manipulated.uri, { encoding: 'base64' });
+      const bytes = base64ToUint8Array(b64);
+      if (!bytes.byteLength) {
+        throw new Error('The edited image produced 0 bytes. Please try again.');
+      }
 
       const filePath = `${userId}/avatar.jpg`;
-      const { error: uploadError } = await supabase.storage.from('user-avatars').upload(filePath, blob as any, {
+      const { error: uploadError } = await supabase.storage.from('user-avatars').upload(filePath, bytes, {
         upsert: true,
         contentType: 'image/jpeg',
+        cacheControl: '3600',
       });
       if (uploadError) throw uploadError;
 
@@ -105,9 +113,14 @@ export default function EditAvatarScreen() {
     },
     onSuccess: (res) => {
       if (res.cancelled) return;
-      // Refresh profile screens that show the avatar.
+      setLocalPreviewUri(res.avatarUrl);
+      queryClient.setQueryData(['profile-avatar-url', userId], { avatar_url: res.avatarUrl });
       queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
       queryClient.invalidateQueries({ queryKey: ['profile-avatar-url', userId] });
+    },
+    onError: () => {
+      // Keep any remote avatar; drop failed local pick.
+      setLocalPreviewUri(null);
     },
   });
 
@@ -116,9 +129,12 @@ export default function EditAvatarScreen() {
       if (!userId) throw new Error('Not signed in');
       const { error: dbError } = await supabase.from('users').update({ avatar_url: null }).eq('id', userId);
       if (dbError) throw dbError;
+      // Best-effort: leave storage object; web also mainly nulls DB URL.
       return true;
     },
     onSuccess: () => {
+      setLocalPreviewUri(null);
+      queryClient.setQueryData(['profile-avatar-url', userId], { avatar_url: null });
       queryClient.invalidateQueries({ queryKey: ['profile-summary'] });
       queryClient.invalidateQueries({ queryKey: ['profile-avatar-url', userId] });
     },
@@ -293,4 +309,3 @@ export default function EditAvatarScreen() {
     </Screen>
   );
 }
-

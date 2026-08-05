@@ -20,7 +20,14 @@ import { useBrandedLeaderboardBroadcast } from '../../hooks/useBrandedLeaderboar
 import { TotlRefreshControl } from '../../lib/refreshControl';
 import LeagueOverflowMenu from '../../components/league/LeagueOverflowMenu';
 import { getLeaderboardDisplayGwFromSnapshot } from '../../lib/gameweekState';
-import { getEffectiveCurrentMonthKey, getMonthAllocations, type MonthAllocation } from '../../lib/leaderboardMonths';
+import {
+  getEffectiveCurrentMonthKey,
+  getMonthAllocations,
+  SEASON_2025_26_END_GW,
+  SEASON_2025_26_LABEL,
+  SEASON_2025_26_START_GW,
+  type MonthAllocation,
+} from '../../lib/leaderboardMonths';
 
 type ScopeTab = 'gw' | 'month' | 'season';
 type ViewTab = 'leaderboard' | 'broadcast';
@@ -351,6 +358,31 @@ export default function BrandedLeaderboardScreen({
       );
     }
 
+    // Season table: 2025/26 GWs 1–38 (later + "This Season" window for active year).
+    if (scope === 'season' && formScope === 'none') {
+      return filterRows(
+        sortRows(
+          allRows.map((row) => {
+            const userMap = pointsByUser.get(String(row.user_id));
+            let value = 0;
+            if (userMap) {
+              userMap.forEach((pts, gw) => {
+                if (gw < SEASON_2025_26_START_GW || gw > SEASON_2025_26_END_GW) return;
+                value += Number(pts ?? 0);
+              });
+            }
+            const secondaryGw =
+              typeof activeGw === 'number' && activeGw <= SEASON_2025_26_END_GW ? activeGw : null;
+            return {
+              ...row,
+              value,
+              compact_values: secondaryGw != null ? [userMap?.get(secondaryGw) ?? null] : undefined,
+            };
+          })
+        )
+      );
+    }
+
     return filterRows(
       sortRows(
         allRows.map((row) => {
@@ -386,7 +418,7 @@ export default function BrandedLeaderboardScreen({
 
   const standingsSubtitle = useMemo(() => {
     const who = filterMode === 'friends' ? 'Mini League Friends' : 'All Players';
-    if (scope === 'season' && formScope === 'none') return `${who} since the start of the season`;
+    if (scope === 'season' && formScope === 'none') return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
     if (scope === 'season' && formScope === 'last5') return `${who} • Last 5 GWs`;
     if (scope === 'season' && formScope === 'last10') return `${who} • Last 10 GWs`;
     if (scope === 'season' && formScope === 'sinceStarted') {
@@ -925,7 +957,7 @@ export default function BrandedLeaderboardScreen({
                 }}
               >
                 {[
-                  { key: 'none', label: 'This season' },
+                  { key: 'none', label: `${SEASON_2025_26_LABEL} Season` },
                   { key: 'last5', label: 'Last 5 weeks' },
                   { key: 'last10', label: 'Last 10 weeks' },
                   { key: 'sinceStarted', label: 'Since Joined' },

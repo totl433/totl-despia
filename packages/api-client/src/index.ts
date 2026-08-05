@@ -127,8 +127,11 @@ async function requestJson<T>(
 
 export function createApiClient(opts: ApiClientOptions) {
   return {
-    async getHomeSnapshot(params?: { gw?: number }): Promise<HomeSnapshot> {
-      const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
+    async getHomeSnapshot(params?: { gw?: number; dataSource?: 'legacy' }): Promise<HomeSnapshot> {
+      const search = new URLSearchParams();
+      if (params?.gw) search.set('gw', String(params.gw));
+      if (params?.dataSource === 'legacy') search.set('dataSource', 'legacy');
+      const q = search.toString() ? `?${search.toString()}` : '';
       return requestJson<HomeSnapshot>(opts, `/v1/home${q}`, {
         method: 'GET',
         validate: (data) => HomeSnapshotSchema.parse(data),

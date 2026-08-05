@@ -1250,6 +1250,7 @@ export default function AdminHomeSimulatorScreen() {
             { key: 'winners-11-plus', label: 'Winners 11+', onPress: () => openSimulatorWinnersExample('11plus') },
             { key: 'winners-20-20', label: 'Winners 20+20', onPress: () => openSimulatorWinnersExample('20each') },
             { key: 'new-gw', label: 'New Game Week', onPress: () => openSimulatorCard('newGameweek') },
+            { key: 'new-season', label: 'New Season', onPress: () => openSimulatorCard('newSeason') },
             { key: 'do-predictions', label: 'Do Predictions', onPress: () => openSimulatorDoPredictionsCard() },
             { key: 'champion-ml', label: 'Champion ML', onPress: () => openSimulatorCard('championMiniLeague') },
             { key: 'champion-overall', label: 'Champion Overall', onPress: () => openSimulatorCard('championOverall') },

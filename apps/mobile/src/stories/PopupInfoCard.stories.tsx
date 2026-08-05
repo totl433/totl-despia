@@ -54,3 +54,13 @@ export const Welcome: Story = {
     onClose: () => {},
   },
 };
+
+export const NewSeason: Story = {
+  render: (args) => <Preview {...args} />,
+  args: {
+    kind: 'newSeason',
+    title: 'New Season',
+    isTopCard: true,
+    onClose: () => {},
+  },
+};

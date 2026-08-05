@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 
 import LeagueFormDisplay, { type LeagueFormLetter } from './LeagueFormDisplay';
+import UnicornIcon from '../icons/UnicornIcon';
 
 export type LeagueSeasonRow = {
   user_id: string;
@@ -77,9 +78,9 @@ export default function LeagueSeasonTable({
                 {isLateStartingLeague ? 'CP' : 'OCP'}
               </TotlText>
               {showUnicorns ? (
-                <TotlText variant="caption" style={{ width: 32, textAlign: 'center', color: t.color.muted, fontWeight: '700' }}>
-                  🦄
-                </TotlText>
+                <View style={{ width: 32, alignItems: 'center', justifyContent: 'center' }}>
+                  <UnicornIcon size={14} color={t.color.muted} />
+                </View>
               ) : null}
               <TotlText variant="caption" style={{ width: 40, textAlign: 'right', color: t.color.muted, fontWeight: '700' }}>
                 PTS

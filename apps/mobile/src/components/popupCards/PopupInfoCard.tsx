@@ -29,11 +29,11 @@ import {
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
-import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
+import { getMonthForGw, SEASON_2026_27_LABEL, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
-import type { PopupCardKind } from './types';
+import type { PopupCardKind, PopupCardPayload } from './types';
 import { getMediumName } from '../../../../../src/lib/teamNames';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
 import {
@@ -672,10 +672,17 @@ async function fetchAllSupabaseRows<T>(
 
 function parseGwFromEventKey(eventKey: string | undefined): number | null {
   if (!eventKey) return null;
-  const match = eventKey.match(/:gw(\d+)$/i);
+  // Support `…:gw32` and `…:gw32:legacy` (not only end-anchored).
+  const match = eventKey.match(/:gw(\d+)(?::|$)/i);
   if (!match?.[1]) return null;
   const gw = Number(match[1]);
   return Number.isFinite(gw) && gw > 0 ? gw : null;
+}
+
+/** Prior-season Round Up / score sheets on pile-B clients force legacy app_* data. */
+function eventKeyWantsLegacyPile(eventKey: string | undefined): boolean {
+  if (!eventKey) return false;
+  return /:legacy(?::|$)/i.test(eventKey) || eventKey.includes(':pileA') || eventKey.includes(':2025/26');
 }
 
 function parsePersonalWinnerTypeFromEventKey(eventKey: string | undefined): 'gameweek' | 'monthly' {
@@ -1388,13 +1395,16 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
         gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
       }
       if (!gw) return null;
-      const snapshot = await api.getHomeSnapshot({ gw });
+      const legacy = eventKeyWantsLegacyPile(eventKey);
+      const snapshot = await api.getHomeSnapshot({
+        gw,
+        ...(legacy ? { dataSource: 'legacy' as const } : {}),
+      });
       const results = await api.getGwResults(gw).catch(() => buildResultsFromScoreSheetSnapshot(snapshot));
       const liveByFixture = await hydrateScoreSheetLiveByFixture(snapshot, gw);
       return { gw, results, snapshot, liveByFixture: [...liveByFixture.entries()] };
     },
-  });
-  const { data: profileSummary } = useQuery<ProfileSummary>({
+  });  const { data: profileSummary } = useQuery<ProfileSummary>({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
     staleTime: 60_000,
@@ -1458,6 +1468,13 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
         </TotlText>
       </View>
 
+      {fixtures.length === 0 ? (
+        <View style={{ paddingHorizontal: 12, paddingVertical: 24 }}>
+          <TotlText style={{ color: '#475569', textAlign: 'center', fontSize: 13, lineHeight: 18 }}>
+            No fixtures found for this gameweek. Pull to refresh or try again.
+          </TotlText>
+        </View>
+      ) : (
       <View style={{ borderRadius: 18, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>
         {fixtures.slice(0, 10).map((fixture, index) => {
           const fixtureIndex = Number(fixture.fixture_index);
@@ -1473,6 +1490,7 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
           );
         })}
       </View>
+      )}
     </View>
   );
 }
@@ -1703,6 +1721,122 @@ function NewGameweekCardBody({ eventKey, onClose }: { eventKey?: string; onClose
         </TotlText>
         <View style={{ marginTop: 6 }}>
           <SwipeFingerIcon color="rgba(255,255,255,0.78)" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Hard-switch new season welcome (app popup). Copy locked for 2026/27 open.
+ * “I'm ready” dismisses; season has already flipped server-side for everyone.
+ */
+function NewSeasonCardBody({ onClose }: { onClose?: () => void }) {
+  return (
+    <View style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden' }}>
+      <LinearGradient
+        colors={['#22C55E', '#1C8376', '#0F172A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ position: 'absolute', top: -24, right: -24, bottom: -24, left: -24 }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: 196,
+          height: 196,
+          borderRadius: 98,
+          right: -78,
+          top: -58,
+          backgroundColor: 'rgba(255,255,255,0.14)',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: 150,
+          height: 150,
+          borderRadius: 75,
+          left: -62,
+          bottom: 34,
+          backgroundColor: 'rgba(250,204,21,0.16)',
+        }}
+      />
+
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingHorizontal: 2,
+          paddingTop: 40,
+          paddingBottom: 72,
+        }}
+      >
+        <View
+          style={{
+            width: 68,
+            height: 68,
+            borderRadius: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(255,255,255,0.17)',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.24)',
+            transform: [{ rotate: '-4deg' }],
+          }}
+        >
+          <Ionicons name="trophy" size={34} color="#FFFFFF" />
+        </View>
+
+        <TotlText
+          style={{
+            color: 'rgba(255,255,255,0.78)',
+            fontFamily: 'Gramatika-Bold',
+            fontWeight: '900',
+            fontSize: 12,
+            lineHeight: 14,
+            letterSpacing: 1.6,
+            textTransform: 'uppercase',
+            marginTop: 14,
+          }}
+        >
+          New season
+        </TotlText>
+        <TotlText
+          style={{
+            color: '#FFFFFF',
+            fontFamily: 'Gramatika-Bold',
+            textAlign: 'center',
+            fontWeight: '900',
+            fontSize: 26,
+            lineHeight: 30,
+            marginTop: 8,
+            maxWidth: 292,
+          }}
+        >
+          Welcome to {SEASON_2026_27_LABEL}
+        </TotlText>
+        <TotlText
+          style={{
+            color: 'rgba(255,255,255,0.84)',
+            textAlign: 'center',
+            marginTop: 12,
+            fontSize: 15,
+            lineHeight: 21,
+            maxWidth: 292,
+          }}
+        >
+          {'Mini-leagues are still there.\nPoints start at zero.\n\nGood Luck!'}
+        </TotlText>
+      </View>
+
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <TotlText style={{ color: 'rgba(255,255,255,0.74)', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '700' }}>
+          Swipe away when you&apos;re done
+        </TotlText>
+        <View style={{ marginTop: 6 }}>
+          <SwipeFingerIcon color="rgba(255,255,255,0.74)" />
         </View>
       </View>
     </View>
@@ -3067,10 +3201,10 @@ function buildCoolTriangularShardMesh(
   return out;
 }
 
-/** Shard mesh tuned for cool chrome / prism foil (overall only). */
+/** Shard mesh tuned for cool chrome / prism foil (overall only). Kept coarse for JS/GPU cost. */
 function OverallSilverTriangularShardFoil() {
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'ovsil';
-  const shards = React.useMemo(() => buildCoolTriangularShardMesh(uid, 100, 100, 10, 12), [uid]);
+  const shards = React.useMemo(() => buildCoolTriangularShardMesh(uid, 100, 100, 5, 6), [uid]);
 
   return (
     <View
@@ -3134,7 +3268,7 @@ function MiniLeagueGoldBaseGradients() {
 function MiniLeagueGoldTriangularShardFoil() {
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'mlg';
   const shards = React.useMemo(
-    () => buildCoolTriangularShardMesh(uid, 100, 100, 10, 12, WARM_GOLD_HOLO_SHARD_PALETTE),
+    () => buildCoolTriangularShardMesh(uid, 100, 100, 5, 6, WARM_GOLD_HOLO_SHARD_PALETTE),
     [uid]
   );
 
@@ -3318,8 +3452,8 @@ function ChampionOverallSilverHoloBackground({ animated = true }: { animated?: b
   );
 }
 
-/** Triangular prism mesh + animated silver/chrome sweeps, clipped to trophy. */
-function ChampionOverallTrophyWatermark() {
+/** Triangular prism mesh + optional silver/chrome sweeps, clipped to trophy. */
+function ChampionOverallTrophyWatermark({ animated = true }: { animated?: boolean }) {
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'ovTr';
   const maskId = `${uid}m`;
   const gidRb = `${uid}hol_rb`;
@@ -3328,7 +3462,7 @@ function ChampionOverallTrophyWatermark() {
   const sz = TROPHY_WATERMARK_SIZE;
   const half = sz / 2;
   const shards = React.useMemo(
-    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 14, 17, COOL_HOLO_SHARD_PALETTE_INTERIOR),
+    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 5, 6, COOL_HOLO_SHARD_PALETTE_INTERIOR),
     [uid]
   );
   const shardStroke = 0.22 * (512 / 100);
@@ -3336,6 +3470,11 @@ function ChampionOverallTrophyWatermark() {
   const sweepX = React.useRef(new Animated.Value(0)).current;
   const sweepY = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => {
+    if (!animated) {
+      sweepX.setValue(0.35);
+      sweepY.setValue(0.35);
+      return;
+    }
     const lx = Animated.loop(
       Animated.sequence([
         Animated.timing(sweepX, {
@@ -3376,7 +3515,7 @@ function ChampionOverallTrophyWatermark() {
       sweepX.stopAnimation();
       sweepY.stopAnimation();
     };
-  }, [sweepX, sweepY]);
+  }, [animated, sweepX, sweepY]);
 
   const tx = sweepX.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
   const ty = sweepY.interpolate({ inputRange: [0, 1], outputRange: [-110, 110] });
@@ -3441,12 +3580,20 @@ function ChampionOverallTrophyWatermark() {
               />
             ))}
           </G>
-          <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
-            <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
-          </AnimatedTrophyHoloG>
-          <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
-            <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
-          </AnimatedTrophyHoloG>
+          {animated ? (
+            <>
+              <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
+                <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
+              </AnimatedTrophyHoloG>
+              <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
+                <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
+              </AnimatedTrophyHoloG>
+            </>
+          ) : (
+            <G opacity={0.42} transform="translate(0 0)">
+              <Rect x="-120" y="-80" width="800" height="680" fill={`url(#${gidRb})`} />
+            </G>
+          )}
         </G>
       </Svg>
     </View>
@@ -3454,7 +3601,7 @@ function ChampionOverallTrophyWatermark() {
 }
 
 /** Heroicons cup silhouette + warm gold holo — paired with `ChampionMiniLeagueGoldHoloBackground`. */
-function ChampionMiniLeagueTrophyWatermark() {
+function ChampionMiniLeagueTrophyWatermark({ animated = true }: { animated?: boolean }) {
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '') || 'mlTr';
   const maskId = `${uid}m`;
   const gidRb = `${uid}hol_rb`;
@@ -3463,7 +3610,7 @@ function ChampionMiniLeagueTrophyWatermark() {
   const sz = MINI_LEAGUE_TROPHY_WATERMARK_SIZE;
   const half = sz / 2;
   const shards = React.useMemo(
-    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 14, 17, WARM_GOLD_HOLO_SHARD_PALETTE_INTERIOR),
+    () => buildCoolTriangularShardMesh(`${uid}tw`, 512, 512, 5, 6, WARM_GOLD_HOLO_SHARD_PALETTE_INTERIOR),
     [uid]
   );
   const shardStroke = 0.22 * (512 / 100);
@@ -3471,6 +3618,11 @@ function ChampionMiniLeagueTrophyWatermark() {
   const sweepX = React.useRef(new Animated.Value(0)).current;
   const sweepY = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => {
+    if (!animated) {
+      sweepX.setValue(0.35);
+      sweepY.setValue(0.35);
+      return;
+    }
     const lx = Animated.loop(
       Animated.sequence([
         Animated.timing(sweepX, {
@@ -3511,7 +3663,7 @@ function ChampionMiniLeagueTrophyWatermark() {
       sweepX.stopAnimation();
       sweepY.stopAnimation();
     };
-  }, [sweepX, sweepY]);
+  }, [animated, sweepX, sweepY]);
 
   const tx = sweepX.interpolate({ inputRange: [0, 1], outputRange: [-150, 150] });
   const ty = sweepY.interpolate({ inputRange: [0, 1], outputRange: [-110, 110] });
@@ -3578,19 +3730,45 @@ function ChampionMiniLeagueTrophyWatermark() {
               />
             ))}
           </G>
-          <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
-            <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
-          </AnimatedTrophyHoloG>
-          <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
-            <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
-          </AnimatedTrophyHoloG>
+          {animated ? (
+            <>
+              <AnimatedTrophyHoloG style={{ opacity: 0.48, transform: [{ translateX: tx }, { rotate: '19deg' }] }}>
+                <Rect x="-300" y="-120" width="1150" height="780" fill={`url(#${gidRb})`} />
+              </AnimatedTrophyHoloG>
+              <AnimatedTrophyHoloG style={{ opacity: 0.38, transform: [{ translateY: ty }, { rotate: '-13deg' }] }}>
+                <Rect x="-160" y="-320" width="960" height="1180" fill={`url(#${gidPr})`} />
+              </AnimatedTrophyHoloG>
+            </>
+          ) : (
+            <G opacity={0.42}>
+              <Rect x="-120" y="-80" width="800" height="680" fill={`url(#${gidRb})`} />
+            </G>
+          )}
         </G>
       </Svg>
     </View>
   );
 }
 
-function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
+function isMiniLeagueChampionPayload(p: PopupCardPayload | undefined): p is MiniLeagueChampionSummary {
+  return !!p && typeof p === 'object' && 'leagueId' in p && 'leagueName' in p && 'mltPts' in p;
+}
+
+function isOverallChampionPayload(p: PopupCardPayload | undefined): p is OverallChampionSummary {
+  return !!p && typeof p === 'object' && 'ocp' in p && 'jointChampions' in p && !('leagueId' in p);
+}
+
+function ChampionMiniLeagueCardBody({
+  eventKey,
+  payload,
+  watermarkAnimated = true,
+}: {
+  eventKey?: string;
+  payload?: PopupCardPayload;
+  watermarkAnimated?: boolean;
+}) {
+  const seed = isMiniLeagueChampionPayload(payload) ? payload : null;
+
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
     queryFn: async () => {
@@ -3606,13 +3784,14 @@ function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
     staleTime: 60_000,
+    enabled: !seed,
   });
 
   const parsed = parseChampionMiniLeagueEventKey(eventKey);
 
-  const { data, isLoading } = useQuery({
+  const { data: fetched, isLoading } = useQuery({
     queryKey: ['popup-card', 'championMiniLeague', eventKey ?? 'none', userId ?? 'anon', homeSnap?.currentGw ?? null],
-    enabled: !!userId && !!parsed,
+    enabled: !seed && !!userId && !!parsed,
     staleTime: 60_000,
     queryFn: async (): Promise<MiniLeagueChampionSummary | null> => {
       if (!parsed || !userId) return null;
@@ -3630,13 +3809,15 @@ function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
     },
   });
 
+  const data = seed ?? fetched ?? null;
+
   const { data: profileSummary } = useQuery<ProfileSummary>({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
     staleTime: 60_000,
   });
 
-  if (isLoading || !parsed) {
+  if (!seed && (isLoading || !parsed)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
         <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
@@ -3661,7 +3842,7 @@ function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
   return (
     <View style={{ flex: 1, width: '100%' }}>
       <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 0 }]}>
-        <ChampionMiniLeagueTrophyWatermark />
+        <ChampionMiniLeagueTrophyWatermark animated={watermarkAnimated} />
       </View>
       <View
         style={{
@@ -3762,7 +3943,17 @@ function ChampionMiniLeagueCardBody({ eventKey }: { eventKey?: string }) {
   );
 }
 
-function ChampionOverallCardBody({ eventKey }: { eventKey?: string }) {
+function ChampionOverallCardBody({
+  eventKey,
+  payload,
+  watermarkAnimated = true,
+}: {
+  eventKey?: string;
+  payload?: PopupCardPayload;
+  watermarkAnimated?: boolean;
+}) {
+  const seed = isOverallChampionPayload(payload) ? payload : null;
+
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
     queryFn: async () => {
@@ -3775,9 +3966,9 @@ function ChampionOverallCardBody({ eventKey }: { eventKey?: string }) {
   const userId = authUser?.id ? String(authUser.id) : null;
   const looksValid = parseChampionOverallEventKey(eventKey);
 
-  const { data, isLoading } = useQuery({
+  const { data: fetched, isLoading } = useQuery({
     queryKey: ['popup-card', 'championOverall', eventKey ?? 'none', userId ?? 'anon'],
-    enabled: !!userId && looksValid,
+    enabled: !seed && !!userId && looksValid,
     staleTime: 60_000,
     queryFn: async (): Promise<OverallChampionSummary | null> => {
       if (!userId) return null;
@@ -3786,13 +3977,15 @@ function ChampionOverallCardBody({ eventKey }: { eventKey?: string }) {
     },
   });
 
+  const data = seed ?? fetched ?? null;
+
   const { data: profileSummary } = useQuery<ProfileSummary>({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
     staleTime: 60_000,
   });
 
-  if (isLoading || !looksValid) {
+  if (!seed && (isLoading || !looksValid)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
         <TotlText style={{ color: '#FFFFFF', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
@@ -3817,7 +4010,7 @@ function ChampionOverallCardBody({ eventKey }: { eventKey?: string }) {
   return (
     <View style={{ flex: 1, width: '100%' }}>
       <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 0 }]}>
-        <ChampionOverallTrophyWatermark />
+        <ChampionOverallTrophyWatermark animated={watermarkAnimated} />
       </View>
       <View
         style={{
@@ -3897,6 +4090,7 @@ export default function PopupInfoCard({
   kind,
   title,
   eventKey,
+  payload,
   isTopCard,
   isShareAsset = false,
   onClose,
@@ -3906,6 +4100,7 @@ export default function PopupInfoCard({
   kind?: PopupCardKind;
   title: string;
   eventKey?: string;
+  payload?: PopupCardPayload;
   isTopCard: boolean;
   isShareAsset?: boolean;
   onClose?: () => void;
@@ -3919,8 +4114,9 @@ export default function PopupInfoCard({
   const showNewGameweekFrame = kind === 'newGameweek';
   const showDoPredictionsCard = kind === 'doPredictions';
   const showWelcomeCard = kind === 'welcome1' || kind === 'welcome2' || kind === 'welcome3' || kind === 'welcome4';
+  const showNewSeasonCard = kind === 'newSeason';
   const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame || showChampionWinner;
-  const showEmeraldCard = kind === 'newGameweek' || showWelcomeCard;
+  const showEmeraldCard = kind === 'newGameweek' || showWelcomeCard || showNewSeasonCard;
   const runDecorativeAnimations = isTopCard && !isShareAsset;
   const personalWinnerVariant = showPersonalWinnerFrame ? parsePersonalWinnerTypeFromEventKey(eventKey) : 'gameweek';
   const lightCloseButton = showEmeraldCard || showPersonalWinnerFrame || showChampionWinner;
@@ -3930,11 +4126,11 @@ export default function PopupInfoCard({
         flex: 1,
         backgroundColor: showEmeraldCard ? '#1C8376' : showInsetFrame ? 'transparent' : '#FFFFFF',
         borderRadius: 28,
-        paddingHorizontal: showDoPredictionsCard || showWelcomeCard ? 0 : 24,
-        paddingTop: showDoPredictionsCard || showWelcomeCard ? 0 : kind === 'resultsScoreSheet' ? 18 : 24,
-        paddingBottom: showDoPredictionsCard || showWelcomeCard ? 0 : 22,
+        paddingHorizontal: showDoPredictionsCard || showWelcomeCard || showNewSeasonCard ? 0 : 24,
+        paddingTop: showDoPredictionsCard || showWelcomeCard || showNewSeasonCard ? 0 : kind === 'resultsScoreSheet' ? 18 : 24,
+        paddingBottom: showDoPredictionsCard || showWelcomeCard || showNewSeasonCard ? 0 : 22,
         justifyContent: 'space-between',
-        overflow: showInsetFrame || showDoPredictionsCard || showWelcomeCard ? 'hidden' : 'visible',
+        overflow: showInsetFrame || showDoPredictionsCard || showWelcomeCard || showNewSeasonCard ? 'hidden' : 'visible',
       }}
     >
       {showPersonalWinnerFrame ? <PersonalWinnerShinyBackground animated={runDecorativeAnimations} variant={personalWinnerVariant} /> : null}
@@ -3982,12 +4178,14 @@ export default function PopupInfoCard({
           <WinnersCardBody eventKey={eventKey} />
         ) : kind === 'newGameweek' ? (
           <NewGameweekCardBody eventKey={eventKey} onClose={onClose} />
+        ) : kind === 'newSeason' ? (
+          <NewSeasonCardBody onClose={onClose} />
         ) : kind === 'doPredictions' ? (
           <DoPredictionsCardBody eventKey={eventKey} onClose={onClose} />
         ) : kind === 'championMiniLeague' ? (
-          <ChampionMiniLeagueCardBody eventKey={eventKey} />
+          <ChampionMiniLeagueCardBody eventKey={eventKey} payload={payload} watermarkAnimated={runDecorativeAnimations} />
         ) : kind === 'championOverall' ? (
-          <ChampionOverallCardBody eventKey={eventKey} />
+          <ChampionOverallCardBody eventKey={eventKey} payload={payload} watermarkAnimated={runDecorativeAnimations} />
         ) : showWelcomeCard ? (
           <WelcomeCardBody kind={kind} eventKey={eventKey} onClose={onClose} />
         ) : (
@@ -4008,7 +4206,7 @@ export default function PopupInfoCard({
         )}
       </View>
 
-      <View style={{ minHeight: showDoPredictionsCard || showWelcomeCard ? 0 : 26, alignItems: 'center', justifyContent: 'flex-end' }}>
+      <View style={{ minHeight: showDoPredictionsCard || showWelcomeCard || showNewSeasonCard ? 0 : 26, alignItems: 'center', justifyContent: 'flex-end' }}>
         {isTopCard && secondaryActionLabel && onSecondaryAction ? (
           <Pressable
             accessibilityRole="button"

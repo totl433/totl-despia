@@ -201,10 +201,11 @@ export default function ApiAdmin() {
           const leaguePosition =
             Number.isFinite(leaguePositionRaw) && leaguePositionRaw > 0 ? Math.trunc(leaguePositionRaw) : null;
 
-          if (teamCode && form) {
-            formsMap.set(teamCode, { form, leaguePosition });
- }
- });
+          // Persist ranks even when form is still empty (pre-season); form alone used to gate storage.
+          if (teamCode && (form || leaguePosition != null)) {
+            formsMap.set(teamCode, { form: form || '', leaguePosition });
+          }
+});
  }
  }
 
@@ -213,7 +214,7 @@ export default function ApiAdmin() {
       const formsToInsert = Array.from(formsMap.entries()).map(([team_code, payload]) => ({
  gw,
  team_code,
-        form: payload.form,
+        form: payload.form || '',
         league_position: payload.leaguePosition,
  }));
 

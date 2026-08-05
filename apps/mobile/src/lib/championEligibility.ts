@@ -326,18 +326,43 @@ export async function isSeasonFinaleGwFullyComplete(): Promise<boolean> {
   return settled.size >= fixtureCount;
 }
 
+export type SeasonChampionBundle = {
+  miniLeague: MiniLeagueChampionSummary[];
+  overall: OverallChampionSummary | null;
+  count: number;
+};
+
 /**
- * Season champion cards count (mini-league wins + overall champion if applicable).
- * Only non-zero after the season finale gameweek is fully resulted (same product rule as auto champion popups).
+ * Full season champion trophy payload (mini-league + overall).
+ * Used for trophy count *and* popup cards so opening the cabinet does not recompute
+ * every league season table from picks/results a second time.
+ * Only non-empty after the season finale gameweek is fully resulted.
  */
-export async function fetchChampionTrophyCount(userId: string, currentGwMeta: number | null): Promise<number> {
-  if (!(await isSeasonFinaleGwFullyComplete())) return 0;
+export async function fetchSeasonChampionBundle(
+  userId: string,
+  currentGwMeta: number | null
+): Promise<SeasonChampionBundle> {
+  if (!(await isSeasonFinaleGwFullyComplete())) {
+    return { miniLeague: [], overall: null, count: 0 };
+  }
 
   const resolverGw =
     typeof currentGwMeta === 'number' && Number.isFinite(currentGwMeta) ? Math.max(currentGwMeta, SEASON_LAST_GW) : SEASON_LAST_GW;
-  const [ml, overall] = await Promise.all([
+  const [miniLeague, overall] = await Promise.all([
     fetchMiniLeagueChampionSummariesForUser({ userId, currentGwMeta: resolverGw, latestGw: SEASON_LAST_GW }),
     fetchOverallChampionSummaryForUser(userId),
   ]);
-  return ml.length + (overall ? 1 : 0);
+  return {
+    miniLeague,
+    overall,
+    count: miniLeague.length + (overall ? 1 : 0),
+  };
+}
+
+/**
+ * Season champion cards count (mini-league wins + overall champion if applicable).
+ * Prefer `fetchSeasonChampionBundle` when the summary rows are needed.
+ */
+export async function fetchChampionTrophyCount(userId: string, currentGwMeta: number | null): Promise<number> {
+  return (await fetchSeasonChampionBundle(userId, currentGwMeta)).count;
 }

@@ -4,6 +4,7 @@ import type { BottomTabBarProps } from '@bottom-tabs/react-navigation';
 import { TotlText, useTokens } from '@totl/ui';
 import Svg, { G, Path } from 'react-native-svg';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import { useViewerSeason } from '../lib/useViewerSeason';
 
 function getFocusedRouteName(route: any): string | null {
   const state = route?.state;
@@ -47,7 +48,7 @@ function LeaderboardsIcon({ color }: { color: string }) {
 }
 
 const WEB_TABS: Array<{
-  label: 'Predictions' | 'Mini Leagues' | '2025/26';
+  label: string;
   routeName: 'Predictions' | 'Leagues' | 'Global';
   renderIcon: (args: { color: string }) => React.ReactElement;
 }> = [
@@ -60,6 +61,15 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   const t = useTokens();
   const { width: screenWidth } = useWindowDimensions();
   const { unreadByLeagueId } = useLeagueUnreadCounts();
+  const { seasonLabel } = useViewerSeason();
+
+  const tabs = React.useMemo(
+    () =>
+      WEB_TABS.map((tab) =>
+        tab.routeName === 'Global' ? { ...tab, label: seasonLabel } : tab
+      ),
+    [seasonLabel]
+  );
 
   // Match web: hide bottom nav on mini-league detail pages.
   // When the active tab is `Leagues` and the nested stack route is `LeagueDetail`, render nothing.
@@ -72,17 +82,17 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
     hideForPredictionsFlow;
 
   const containerWidth = Math.min(360, Math.max(280, screenWidth - 32));
-  const itemWidth = containerWidth / WEB_TABS.length;
+  const itemWidth = containerWidth / tabs.length;
   const height = 70;
   const radius = 60;
 
   const activeIndex = React.useMemo(() => {
-    const idx = WEB_TABS.findIndex((x) => {
+    const idx = tabs.findIndex((x) => {
       const route = state.routes.find((r) => r.name === x.routeName);
       return route ? state.index === state.routes.indexOf(route) : false;
     });
     return idx >= 0 ? idx : 0;
-  }, [state.index, state.routes]);
+  }, [state.index, state.routes, tabs]);
 
   const x = React.useRef(new Animated.Value(activeIndex * itemWidth)).current;
   React.useEffect(() => {
@@ -94,7 +104,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
   }, [activeIndex, itemWidth, x]);
 
   const isFirst = activeIndex === 0;
-  const isLast = activeIndex === WEB_TABS.length - 1;
+  const isLast = activeIndex === tabs.length - 1;
 
   const indicatorStyle = {
     width: itemWidth,
@@ -146,7 +156,7 @@ export default function FloatingTabBar({ state, navigation }: BottomTabBarProps)
       >
         <Animated.View style={[{ position: 'absolute', left: 0, top: 0 }, indicatorStyle]} />
 
-        {WEB_TABS.map((tab, idx) => {
+        {tabs.map((tab, idx) => {
           const route = state.routes.find((r) => r.name === tab.routeName);
           const isActive = idx === activeIndex;
           const color = isActive ? '#0F172A' : '#94A3B8';

@@ -1,12 +1,15 @@
 import React from 'react';
 import { AppState, Linking, type AppStateStatus } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { HomeSnapshot } from '@totl/domain';
 
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
-import { fetchMiniLeagueChampionSummariesForUser, fetchOverallChampionSummaryForUser, isSeasonFinaleGwFullyComplete } from '../../lib/championEligibility';
+import {
+  fetchSeasonChampionBundle,
+  type SeasonChampionBundle,
+} from '../../lib/championEligibility';
 import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
 import { hasSeenPopupCard, markPopupCardSeen, markPopupCardsSeen } from '../../lib/popupCardsStorage';
 import { createMainPopupStack, createPopupCard, createWelcomePopupStack } from './popupCardsCatalog';
@@ -33,10 +36,10 @@ type PopupCardsContextValue = {
   openPostGwReturnSimulatorStack: () => void;
   openWelcomeSimulatorStack: () => void;
   openManualResultsRecall: (gw: number) => void;
-  openManualResultsScoreSheet: (gw: number) => void;
+  openManualResultsScoreSheet: (gw: number, options?: { dataSource?: 'legacy' }) => void;
   /** Score sheet on top; Results card next after dismiss (same GW). */
-  openManualResultsScoreSheetThenResults: (gw: number) => void;
-  openManualResultsScoreSheetShare: (gw: number) => void;
+  openManualResultsScoreSheetThenResults: (gw: number, options?: { dataSource?: 'legacy' }) => void;
+  openManualResultsScoreSheetShare: (gw: number, options?: { dataSource?: 'legacy' }) => void;
   openManualRoundUpStack: (gw: number, options?: { newGameweekGw?: number | null; includeResults?: boolean }) => void;
   openSimulatorDoPredictionsCard: () => void;
   /** Opens stacked personal winner cards (most recent GW/month first). */
@@ -63,29 +66,27 @@ async function fetchAllSupabaseRows<T>(
   return rows;
 }
 
-async function buildSeasonChampionPopupDescriptors(userId: string, currentGwMeta: number | null): Promise<PopupCardDescriptor[]> {
-  const resolverGw =
-    typeof currentGwMeta === 'number' && Number.isFinite(currentGwMeta) ? Math.max(currentGwMeta, SEASON_LAST_GW) : SEASON_LAST_GW;
+function championCabinetQueryKey(userId: string, currentGwMeta: number | null) {
+  return ['championTrophyCabinet', userId, currentGwMeta] as const;
+}
 
-  const [ml, overall] = await Promise.all([
-    fetchMiniLeagueChampionSummariesForUser({ userId, currentGwMeta: resolverGw, latestGw: SEASON_LAST_GW }),
-    fetchOverallChampionSummaryForUser(userId),
-  ]);
-
+function buildSeasonChampionPopupDescriptorsFromBundle(bundle: SeasonChampionBundle): PopupCardDescriptor[] {
   const cards: PopupCardDescriptor[] = [];
-  for (const s of ml) {
+  for (const s of bundle.miniLeague) {
     cards.push(
       createPopupCard('championMiniLeague', {
         id: `champion-ml-${s.leagueId}-gw${SEASON_LAST_GW}`,
         eventKey: `championMiniLeague:${s.leagueId}:gw${SEASON_LAST_GW}`,
+        payload: s,
       })
     );
   }
-  if (overall) {
+  if (bundle.overall) {
     cards.push(
       createPopupCard('championOverall', {
         id: `champion-overall-gw${SEASON_LAST_GW}`,
         eventKey: `championOverall:gw${SEASON_LAST_GW}`,
+        payload: bundle.overall,
       })
     );
   }
@@ -143,6 +144,7 @@ function isDoPredictionsEventKey(eventKey: string | null | undefined): boolean {
 }
 
 export default function PopupCardsProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [activeStack, setActiveStack] = React.useState<ActivePopupStack | null>(null);
   const [initialUrlChecked, setInitialUrlChecked] = React.useState(false);
   const [foregroundReturnCount, setForegroundReturnCount] = React.useState(0);
@@ -346,12 +348,14 @@ export default function PopupCardsProvider({ children }: { children: React.React
   );
 
   const openManualResultsScoreSheet = React.useCallback(
-    (gw: number) => {
+    (gw: number, options?: { dataSource?: 'legacy' }) => {
+      const legacy = options?.dataSource === 'legacy';
+      const suffix = legacy ? ':legacy' : '';
       openStack(
         [
           createPopupCard('resultsScoreSheet', {
-            id: `manual-results-score-sheet-gw${gw}`,
-            eventKey: `resultsScoreSheet:gw${gw}`,
+            id: `manual-results-score-sheet-gw${gw}${legacy ? '-legacy' : ''}`,
+            eventKey: `resultsScoreSheet:gw${gw}${suffix}`,
           }),
         ],
         false
@@ -361,16 +365,18 @@ export default function PopupCardsProvider({ children }: { children: React.React
   );
 
   const openManualResultsScoreSheetThenResults = React.useCallback(
-    (gw: number) => {
+    (gw: number, options?: { dataSource?: 'legacy' }) => {
+      const legacy = options?.dataSource === 'legacy';
+      const suffix = legacy ? ':legacy' : '';
       openStack(
         [
           createPopupCard('resultsScoreSheet', {
-            id: `manual-score-sheet-then-results-gw${gw}`,
-            eventKey: `resultsScoreSheet:gw${gw}`,
+            id: `manual-score-sheet-then-results-gw${gw}${legacy ? '-legacy' : ''}`,
+            eventKey: `resultsScoreSheet:gw${gw}${suffix}`,
           }),
           createPopupCard('results', {
-            id: `manual-results-under-score-sheet-gw${gw}`,
-            eventKey: `results:gw${gw}`,
+            id: `manual-results-under-score-sheet-gw${gw}${legacy ? '-legacy' : ''}`,
+            eventKey: `results:gw${gw}${suffix}`,
           }),
         ],
         false
@@ -380,10 +386,12 @@ export default function PopupCardsProvider({ children }: { children: React.React
   );
 
   const openManualResultsScoreSheetShare = React.useCallback(
-    (gw: number) => {
+    (gw: number, options?: { dataSource?: 'legacy' }) => {
+      const legacy = options?.dataSource === 'legacy';
+      const suffix = legacy ? ':legacy' : '';
       const card = createPopupCard('resultsScoreSheet', {
-        id: `manual-results-score-sheet-share-gw${gw}`,
-        eventKey: `resultsScoreSheet:gw${gw}`,
+        id: `manual-results-score-sheet-share-gw${gw}${legacy ? '-legacy' : ''}`,
+        eventKey: `resultsScoreSheet:gw${gw}${suffix}`,
       });
       openStack([card], false, card.id, true);
     },
@@ -441,15 +449,20 @@ export default function PopupCardsProvider({ children }: { children: React.React
   const openTrophyCabinetChampionCards = React.useCallback(async () => {
     if (!userId) return;
     try {
-      if (!(await isSeasonFinaleGwFullyComplete())) return;
       const currentGwMeta = typeof home?.currentGw === 'number' ? home.currentGw : null;
-      const cards = await buildSeasonChampionPopupDescriptors(userId, currentGwMeta);
+      // Reuse Stats page cache when present — opening used to re-run full season score recomputation per league.
+      const bundle = await queryClient.ensureQueryData({
+        queryKey: championCabinetQueryKey(userId, currentGwMeta),
+        queryFn: () => fetchSeasonChampionBundle(userId, currentGwMeta),
+        staleTime: 60_000,
+      });
+      const cards = buildSeasonChampionPopupDescriptorsFromBundle(bundle);
       if (!cards.length) return;
       openStack(cards, false);
     } catch (error) {
       console.error('[PopupCardsProvider] Failed to open champion trophy cards:', error);
     }
-  }, [home?.currentGw, openStack, userId]);
+  }, [home?.currentGw, openStack, queryClient, userId]);
 
   const openSimulatorResultsExample = React.useCallback(
     (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => {
@@ -629,7 +642,12 @@ export default function PopupCardsProvider({ children }: { children: React.React
           !!home.hasSubmittedViewingGw;
         if (seasonFinalePopup) {
           try {
-            championCards = await buildSeasonChampionPopupDescriptors(userId, currentGw);
+            const bundle = await queryClient.ensureQueryData({
+              queryKey: championCabinetQueryKey(userId, currentGw),
+              queryFn: () => fetchSeasonChampionBundle(userId, currentGw),
+              staleTime: 60_000,
+            });
+            championCards = buildSeasonChampionPopupDescriptorsFromBundle(bundle);
           } catch (error) {
             console.error('[PopupCardsProvider] Failed to build season champion popup cards:', error);
           }
@@ -657,7 +675,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
     };
 
     void run();
-  }, [activeStack, authUser?.created_at, foregroundReturnCount, home, initialUrlChecked, openStack, userId]);
+  }, [activeStack, authUser?.created_at, foregroundReturnCount, home, initialUrlChecked, openStack, queryClient, userId]);
 
   const contextValue = React.useMemo<PopupCardsContextValue>(
     () => ({

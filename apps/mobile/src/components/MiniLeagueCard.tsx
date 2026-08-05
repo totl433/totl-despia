@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Card, TotlText, useTokens } from '@totl/ui';
+import UnicornIcon from './icons/UnicornIcon';
 
 export type MiniLeagueTableRow = { user_id: string; name: string; score: number; unicorns: number };
 export type MiniLeagueTableRowWithAvatar = MiniLeagueTableRow & { avatar_url?: string | null };
@@ -269,7 +270,9 @@ export default function MiniLeagueCard({
           {showUnicorns ? (
             <>
               <View style={{ width: 8 }} />
-              <TotlText style={{ width: compactUnicornWidth, textAlign: 'right', fontSize: 11, color: t.color.text }}>🦄</TotlText>
+              <View style={{ width: compactUnicornWidth, alignItems: 'flex-end', justifyContent: 'center' }}>
+                <UnicornIcon size={12} color={t.color.text} />
+              </View>
             </>
           ) : null}
         </View>
@@ -395,7 +398,9 @@ export default function MiniLeagueCard({
         {showUnicorns ? (
           <>
             <View style={{ width: 20 }} />
-            <TotlText style={{ width: unicornColWidth, textAlign: 'right', fontSize: 14, color: t.color.text }}>🦄</TotlText>
+            <View style={{ width: unicornColWidth, alignItems: 'flex-end', justifyContent: 'center' }}>
+              <UnicornIcon size={14} color={t.color.text} />
+            </View>
           </>
         ) : null}
           </View>

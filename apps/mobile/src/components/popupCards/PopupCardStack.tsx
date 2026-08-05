@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { InteractionManager, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -34,16 +34,18 @@ const SHAREABLE_CARD_KINDS = new Set([
 const CHAMPION_CARD_KINDS = new Set(['championMiniLeague', 'championOverall']);
 
 /**
- * Totals split across many cannons — more particles + stagger reads fuller than one mega burst.
+ * Confetti on winner/champion popup cards.
+ * Keep particle + cannon counts low — `react-native-confetti-cannon` animates on the JS thread;
+ * 20+ simultaneous cannons with hundreds of pieces will stall the UI.
  */
-const CHAMPION_CONFETTI_COUNT = 840;
-const PERSONAL_WINNER_MONTHLY_CONFETTI_COUNT = 520;
-const PERSONAL_WINNER_GW_CONFETTI_COUNT = 440;
-/** Lower ms = faster burst / fall in react-native-confetti-cannon. */
-const CHAMPION_CONFETTI_EXPLOSION_MS = 340;
-const CHAMPION_CONFETTI_FALL_MS = 4800;
-const PERSONAL_CONFETTI_EXPLOSION_MS = 430;
-const PERSONAL_CONFETTI_FALL_MS = 3900;
+const CHAMPION_CONFETTI_COUNT = 120;
+const PERSONAL_WINNER_MONTHLY_CONFETTI_COUNT = 90;
+const PERSONAL_WINNER_GW_CONFETTI_COUNT = 80;
+/** Burst phase duration (ms). */
+const CHAMPION_CONFETTI_EXPLOSION_MS = 380;
+const CHAMPION_CONFETTI_FALL_MS = 2600;
+const PERSONAL_CONFETTI_EXPLOSION_MS = 420;
+const PERSONAL_CONFETTI_FALL_MS = 2300;
 
 /** Mini-league gold champion card — warm foil + champagne highlights. */
 const CHAMPION_MINI_LEAGUE_CONFETTI_COLORS = ['#B45309', '#CA8A04', '#EAB308', '#FDE047', '#E2E8F0', '#F8FAFC', '#FFFFFF'];
@@ -63,17 +65,11 @@ const CHAMPION_OVERALL_CONFETTI_COLORS = [
   '#ffffff',
 ];
 
-/**
- * Shard across several cannons for coverage; origins differ so arcs don’t stack as one tube.
- * Pieces use `bottom: 0` — never use positive origin Y (bottom-edge glitch row).
- * Stagger is 0 so everything fires as one burst (sequential delay reads as multiple batches).
- */
-const CONFETTI_CANNON_COLS = 8;
-const CONFETTI_CANNON_ROWS = 3;
-const CONFETTI_CANNON_SLOTS = CONFETTI_CANNON_COLS * CONFETTI_CANNON_ROWS;
+/** Two cannons max for width; origins use negative Y (library places pieces from bottom-origin geometry). */
+const CONFETTI_CANNON_SLOTS = 2;
 const CONFETTI_AUTO_START_STAGGER_MS = 0;
-/** Max added to `confettiFallMs` from slot variance (`slot % 11` * 260 at slot 10). */
-const CONFETTI_MAX_FALL_VARIANCE_MS = 10 * 260;
+/** Small fall-time jitter only — large variance left confetti on screen (and animating) for many extra seconds. */
+const CONFETTI_MAX_FALL_VARIANCE_MS = 180;
 
 function splitConfettiCount(total: number, segments: number): number[] {
   if (segments <= 0) return [];
@@ -82,27 +78,19 @@ function splitConfettiCount(total: number, segments: number): number[] {
   return Array.from({ length: segments }, (_, i) => base + (i < remainder ? 1 : 0));
 }
 
-/** Wide X + varied negative Y across three “bands” above the frame (never positive — no bottom glitch row). */
 function confettiOriginForSlot(slot: number, w: number): { x: number; y: number } {
-  const cols = CONFETTI_CANNON_COLS;
-  const col = slot % cols;
-  const row = Math.floor(slot / cols);
-  const jitterX = ((slot % 5) - 2) * 5;
-  const rawX = ((col + 0.5) / cols) * w + jitterX;
-  const x = Math.max(12, Math.min(w - 12, rawX));
-  const lift = 9 + (slot % 15) * 2.9 + row * 14;
-  const y = Math.max(-64, Math.min(-8, -lift));
-  return { x, y };
+  // Left / right tops of the modal area so coverage is wide without a grid of cannons.
+  const x = slot === 0 ? w * 0.22 : w * 0.78;
+  return { x, y: -12 };
 }
 
-function confettiExplosionMs(slot: number, champion: boolean): number {
-  const base = champion ? CHAMPION_CONFETTI_EXPLOSION_MS : PERSONAL_CONFETTI_EXPLOSION_MS;
-  return base + (slot % 5) * 22;
+function confettiExplosionMs(_slot: number, champion: boolean): number {
+  return champion ? CHAMPION_CONFETTI_EXPLOSION_MS : PERSONAL_CONFETTI_EXPLOSION_MS;
 }
 
 function confettiFallMs(slot: number, champion: boolean): number {
   const base = champion ? CHAMPION_CONFETTI_FALL_MS : PERSONAL_CONFETTI_FALL_MS;
-  return base + (slot % 11) * 260;
+  return base + (slot % 2) * (CONFETTI_MAX_FALL_VARIANCE_MS / 2);
 }
 
 function getStackSlotStyle(slot: number): { translateX: number; translateY: number; rotationDeg: number } {
@@ -232,6 +220,31 @@ function StackCard({
     };
   }, [baseRotationDeg, baseTranslateX, baseTranslateY, cardWidth, isClosing, isTopCard]);
 
+  const isChampionKind = CHAMPION_CARD_KINDS.has(card.kind);
+  /** Stacked champion cards only show a tinted shell — full foil/SVG on every slot freezes the device. */
+  const cardFace =
+    isTopCard || !isChampionKind ? (
+      <PopupInfoCard
+        kind={card.kind}
+        title={card.title}
+        eventKey={card.eventKey}
+        payload={card.payload}
+        isTopCard={isTopCard}
+        onClose={isTopCard ? onClose : undefined}
+        secondaryActionLabel={card.secondaryActionLabel}
+        onSecondaryAction={card.onSecondaryAction}
+      />
+    ) : (
+      <View
+        style={{
+          flex: 1,
+          borderRadius: 28,
+          overflow: 'hidden',
+          backgroundColor: card.kind === 'championOverall' ? '#334155' : '#B45309',
+        }}
+      />
+    );
+
   const cardNode = (
     <Animated.View
       style={[
@@ -256,15 +269,7 @@ function StackCard({
           elevation: isTopCard ? 12 : 6,
         }}
       >
-        <PopupInfoCard
-          kind={card.kind}
-          title={card.title}
-          eventKey={card.eventKey}
-          isTopCard={isTopCard}
-          onClose={isTopCard ? onClose : undefined}
-          secondaryActionLabel={card.secondaryActionLabel}
-          onSecondaryAction={card.onSecondaryAction}
-        />
+        {cardFace}
       </View>
     </Animated.View>
   );
@@ -383,29 +388,38 @@ export default function PopupCardStack({
     if (closingCardId === topCard.id || firedConfettiCardIdRef.current === topCard.id) return;
     firedConfettiCardIdRef.current = topCard.id;
     const champion = topCard.kind === 'championMiniLeague' || topCard.kind === 'championOverall';
-    setConfettiShot({
-      key: Date.now(),
-      cardId: topCard.id,
-      monthly: champion ? false : (topCard.eventKey?.includes(':monthly:') ?? false),
-      champion,
-      championKind: champion
-        ? topCard.kind === 'championOverall'
-          ? 'championOverall'
-          : 'championMiniLeague'
-        : undefined,
+    // Let the card layout paint first — co-starting confetti with champion SVG foil freezes the UI.
+    const task = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        setConfettiShot({
+          key: Date.now(),
+          cardId: topCard.id,
+          monthly: champion ? false : (topCard.eventKey?.includes(':monthly:') ?? false),
+          champion,
+          championKind: champion
+            ? topCard.kind === 'championOverall'
+              ? 'championOverall'
+              : 'championMiniLeague'
+            : undefined,
+        });
+      });
     });
+    return () => {
+      task.cancel();
+    };
   }, [closingCardId, topCard, visible]);
 
   React.useEffect(() => {
     if (!confettiShot) return;
     const maxStagger = (CONFETTI_CANNON_SLOTS - 1) * CONFETTI_AUTO_START_STAGGER_MS;
     const champ = confettiShot.champion === true;
+    // Unmount shortly after fall — long hideAfter left 24 Animated trees running and froze the UI.
     const hideAfterMs =
       maxStagger +
       (champ ? CHAMPION_CONFETTI_EXPLOSION_MS : PERSONAL_CONFETTI_EXPLOSION_MS) +
       (champ ? CHAMPION_CONFETTI_FALL_MS : PERSONAL_CONFETTI_FALL_MS) +
       CONFETTI_MAX_FALL_VARIANCE_MS +
-      3200;
+      400;
     const id = setTimeout(() => setConfettiShot(null), hideAfterMs);
     return () => clearTimeout(id);
   }, [confettiShot]);
@@ -448,6 +462,7 @@ export default function PopupCardStack({
   const dismissTop = React.useCallback(() => {
     if (!cards.length || closingCardId) return;
     const topCard = cards[0];
+    setConfettiShot(null);
     setClosingCardId(topCard.id);
     dismissProgress.value = 0;
     dismissProgress.value = withTiming(1, { duration: 220, easing: Easing.in(Easing.cubic) }, (finished) => {
@@ -458,6 +473,7 @@ export default function PopupCardStack({
 
   const dismissTopAfterSwipe = React.useCallback(() => {
     if (!cards.length || closingCardId) return;
+    setConfettiShot(null);
     onDismissTop();
   }, [cards.length, closingCardId, onDismissTop]);
 

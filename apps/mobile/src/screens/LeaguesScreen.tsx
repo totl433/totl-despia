@@ -22,6 +22,7 @@ import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { supabase } from '../lib/supabase';
 import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import { getGameweekStateFromSnapshot, getLeaderboardDisplayGwFromSnapshot } from '../lib/gameweekState';
+import { useViewerSeason } from '../lib/useViewerSeason';
 import MiniLeagueLiveCard from '../components/home/MiniLeagueLiveCard';
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
@@ -83,6 +84,7 @@ function LeagueRow({
 }) {
   const leagueId = String(league.id);
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
+  const { isNewSeasonFresh } = useViewerSeason();
   const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const unread = Number(unreadByLeagueId[leagueId] ?? 0);
 
@@ -163,6 +165,7 @@ function LeagueRow({
     enabled:
       enabled &&
       !isDevFakeLeague &&
+      !isNewSeasonFresh &&
       members.length >= 2 &&
       !isDormantLeague &&
       typeof tableGw === 'number' &&
@@ -389,7 +392,7 @@ function LeagueRow({
           });
       })()}
       memberCount={isDevFakeLeague ? 8 : memberCount}
-      myRank={isDevFakeLeague ? 1 : currentRank}
+      myRank={isDevFakeLeague ? 1 : isNewSeasonFresh ? null : currentRank}
       unreadCount={unread}
       onPress={() => {
         onPress();

@@ -16,13 +16,16 @@ import {
   fetchAppGwPointsPaged,
   mergeGameweekStreakWithLeaderboardGwPoints,
   streakFallbackFromWeeklyPar,
+  tagStreakRowsWithSeason,
 } from '../../lib/profileStreakRows';
+import { useViewerSeason } from '../../lib/useViewerSeason';
+import { SEASON_2025_26_LABEL } from '../../lib/leaderboardMonths';
 import {
   fetchLeaguePickAccuracyPct,
   formatCorrectRateVsLeague,
 } from '../../lib/predictionLeagueAverage';
 import { computeMonthlyWinnerEndGwsDescending } from '../../lib/trophyCabinetBrowse';
-import { fetchChampionTrophyCount } from '../../lib/championEligibility';
+import { fetchSeasonChampionBundle } from '../../lib/championEligibility';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -35,6 +38,9 @@ import {
 import { supabase } from '../../lib/supabase';
 import StatsHeroVisual from '../../components/profileStats/StatsHeroVisual';
 import StatsGameweekStreakStrip from '../../components/profileStats/StatsGameweekStreakStrip';
+import StatsPreviousSeasonsCard, {
+  buildSeasonArchiveStats,
+} from '../../components/profileStats/StatsPreviousSeasonsCard';
 import StatsParChart, { WeeklyParChartToggle } from '../../components/profileStats/StatsParChart';
 import StatsTeamStatCard from '../../components/profileStats/StatsTeamStatCard';
 import StatsTrophyCabinet from '../../components/profileStats/StatsTrophyCabinet';
@@ -108,10 +114,12 @@ export default function ProfileStatsScreen() {
   const t = useTokens();
   const queryClient = useQueryClient();
   const navigation = useNavigation<any>();
+  const { seasonLabel: viewerSeasonLabel, useSeasonStack, isNewSeasonFresh } = useViewerSeason();
   const { openManualResultsScoreSheetThenResults, openTrophyCabinetPersonalWinners, openTrophyCabinetChampionCards } =
     usePopupCards();
   const lastAutoRefreshedGwRef = React.useRef<number | null>(null);
   const [parChartShowComplex, setParChartShowComplex] = React.useState(false);
+  const [archiveSeasonLabel, setArchiveSeasonLabel] = React.useState<string | null>(null);
 
   const backAction = (
     <Pressable
@@ -263,7 +271,7 @@ export default function ProfileStatsScreen() {
 
   const championTrophyQ = useQuery({
     queryKey: ['championTrophyCabinet', userId, homeSnapshotQ.data?.currentGw ?? null],
-    queryFn: () => fetchChampionTrophyCount(userId!, homeSnapshotQ.data?.currentGw ?? null),
+    queryFn: () => fetchSeasonChampionBundle(userId!, homeSnapshotQ.data?.currentGw ?? null),
     enabled: !!userId,
     staleTime: 60_000,
   });
@@ -277,14 +285,18 @@ export default function ProfileStatsScreen() {
   const streakRowsOverride = React.useMemo(() => {
     const st = statsQ.data ?? null;
     if (!st || !userId || gwPointsQ.data === undefined) return undefined;
+    // Pile B fresh season: do not merge pile-A live GW1 scores into the ladder.
+    const liveSafe = isNewSeasonFresh
+      ? { activeLeaderboardGw: null as number | null, myLiveGwScore: null as number | null }
+      : { activeLeaderboardGw, myLiveGwScore };
     return mergeGameweekStreakWithLeaderboardGwPoints({
       stats: st,
       userId,
       gwPointsRows: gwPointsQ.data,
-      activeLeaderboardGw,
-      myLiveGwScore,
+      activeLeaderboardGw: liveSafe.activeLeaderboardGw,
+      myLiveGwScore: liveSafe.myLiveGwScore,
     }) ?? undefined;
-  }, [statsQ.data, userId, gwPointsQ.data, activeLeaderboardGw, myLiveGwScore]);
+  }, [statsQ.data, userId, gwPointsQ.data, activeLeaderboardGw, myLiveGwScore, isNewSeasonFresh]);
 
   const streakRowsForStrip = React.useMemo(() => {
     const st = stats;
@@ -292,21 +304,64 @@ export default function ProfileStatsScreen() {
 
     if (streakRowsOverride !== undefined && streakRowsOverride != null) rows = streakRowsOverride;
     else if (!st) return null;
-    else if (st.gameweekStreak && st.gameweekStreak.length > 0) rows = st.gameweekStreak;
-    else rows = streakFallbackFromWeeklyPar(st);
+    else if (st.gameweekStreak && st.gameweekStreak.length > 0) {
+      rows = tagStreakRowsWithSeason(st.gameweekStreak, SEASON_2025_26_LABEL);
+    } else rows = streakFallbackFromWeeklyPar(st, SEASON_2025_26_LABEL);
 
+    // Cap using last completed *legacy* GW so 25/26 finished weeks stay; streaks do not reset for 26/27 open.
     return capGameweekStreakRowsAtLastCompleted(rows, st?.lastCompletedGw ?? null);
   }, [stats, streakRowsOverride]);
+
+  /** 2025/26 closed-season OCP + rank for the archive card (light queries). */
+  const closedSeasonStandingsQ = useQuery({
+    enabled: !!userId,
+    queryKey: ['profile-stats', 'closedSeasonStandings', userId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      if (!userId) return null;
+      const meRes = await supabase
+        .from('app_v_ocp_overall')
+        .select('user_id, ocp')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (meRes.error) throw meRes.error;
+      if (!meRes.data) return { ocp: null, rank: null, rankedPlayers: null, topPercent: null };
+
+      const ocp = Math.round(Number((meRes.data as any).ocp ?? 0));
+      const [betterRes, totalRes] = await Promise.all([
+        supabase
+          .from('app_v_ocp_overall')
+          .select('user_id', { count: 'exact', head: true })
+          .gt('ocp', ocp),
+        supabase.from('app_v_ocp_overall').select('user_id', { count: 'exact', head: true }),
+      ]);
+      if (betterRes.error) throw betterRes.error;
+      if (totalRes.error) throw totalRes.error;
+      const better = betterRes.count ?? 0;
+      const total = totalRes.count ?? 0;
+      const rank = total > 0 ? better + 1 : null;
+      const topPercent =
+        rank != null && total > 0 ? Math.max(1, Math.min(99, Math.ceil((rank / total) * 100))) : null;
+      return { ocp, rank, rankedPlayers: total || null, topPercent };
+    },
+  });
+
+  const seasonArchiveRows = React.useMemo(
+    () =>
+      buildSeasonArchiveStats({
+        closed2526: closedSeasonStandingsQ.data ?? null,
+      }),
+    [closedSeasonStandingsQ.data]
+  );
+
+  const selectedArchiveLabel = archiveSeasonLabel ?? seasonArchiveRows[0]?.seasonLabel ?? '2025/26';
 
   /** Same pool as monthly/global leaderboard — not BFF `weeklyParData` (can truncate). */
   const weeklyParFromLeaderboard = React.useMemo(() => {
     if (!userId || !gwPointsQ.data?.length) return null;
     const playedSet = new Set(inferUserPlayedGwSequence(gwPointsQ.data, userId));
-    if (
-      typeof activeLeaderboardGw === 'number' &&
-      myLiveGwScore != null &&
-      Number.isFinite(myLiveGwScore)
-    ) {
+    const useLive = !isNewSeasonFresh && typeof activeLeaderboardGw === 'number' && myLiveGwScore != null;
+    if (useLive) {
       playedSet.add(activeLeaderboardGw);
     }
     const gwSequence = [...playedSet].sort((a, b) => a - b);
@@ -315,10 +370,10 @@ export default function ProfileStatsScreen() {
       gwPointsRows: gwPointsQ.data,
       userId,
       gwSequence,
-      activeLeaderboardGw,
-      myLiveGwScore,
+      activeLeaderboardGw: useLive ? activeLeaderboardGw : null,
+      myLiveGwScore: useLive ? myLiveGwScore : null,
     });
-  }, [userId, gwPointsQ.data, activeLeaderboardGw, myLiveGwScore]);
+  }, [userId, gwPointsQ.data, activeLeaderboardGw, myLiveGwScore, isNewSeasonFresh]);
 
   const refreshing =
     homeSnapshotQ.isRefetching ||
@@ -327,7 +382,8 @@ export default function ProfileStatsScreen() {
     gwPointsQ.isRefetching ||
     ranksQ.isRefetching ||
     gwLiveTableQ.isRefetching ||
-    championTrophyQ.isRefetching;
+    championTrophyQ.isRefetching ||
+    closedSeasonStandingsQ.isRefetching;
   const onRefresh = React.useCallback(() => {
     void Promise.all([
       homeSnapshotQ.refetch(),
@@ -337,10 +393,21 @@ export default function ProfileStatsScreen() {
       ranksQ.refetch(),
       gwLiveTableQ.refetch(),
       leaguePickAvgQ.refetch(),
+      closedSeasonStandingsQ.refetch(),
       queryClient.invalidateQueries({ queryKey: ['leaderboards', 'gwLiveTable'] }),
       queryClient.invalidateQueries({ queryKey: ['championTrophyCabinet'] }),
     ]);
-  }, [gwLiveTableQ, gwPointsQ, homeRoundUpProbeQ, homeSnapshotQ, leaguePickAvgQ, queryClient, ranksQ, statsQ]);
+  }, [
+    closedSeasonStandingsQ,
+    gwLiveTableQ,
+    gwPointsQ,
+    homeRoundUpProbeQ,
+    homeSnapshotQ,
+    leaguePickAvgQ,
+    queryClient,
+    ranksQ,
+    statsQ,
+  ]);
 
   React.useEffect(() => {
     const snap = homeSnapshotQ.data ?? null;
@@ -369,14 +436,42 @@ export default function ProfileStatsScreen() {
     const st = statsQ.data as UserStatsData | null;
     const gw = st?.lastCompletedGw;
     if (typeof gw !== 'number') return;
-    openManualResultsScoreSheetThenResults(gw);
+    // lastCompleted comes from pile-A results for career history / 25/26.
+    openManualResultsScoreSheetThenResults(gw, { dataSource: 'legacy' });
   }, [openManualResultsScoreSheetThenResults, statsQ.data]);
 
-  /** Main tab Global screen (shell title “2025/26”) — matches tab bar behaviour */
+  const openStreakRoundUp = React.useCallback(
+    (gw: number, seasonLabel?: string | null) => {
+      const label = (seasonLabel ?? '').trim();
+      // Default prior-season history to stack users → pile A. Live 26/27 seasons use pile B.
+      const isLiveSeason =
+        useSeasonStack &&
+        !!viewerSeasonLabel &&
+        label.length > 0 &&
+        label === viewerSeasonLabel.trim();
+      const forceLegacy =
+        !useSeasonStack ||
+        !label ||
+        label === SEASON_2025_26_LABEL ||
+        label.startsWith('2025') ||
+        !isLiveSeason;
+      openManualResultsScoreSheetThenResults(gw, forceLegacy ? { dataSource: 'legacy' } : undefined);
+    },
+    [openManualResultsScoreSheetThenResults, useSeasonStack, viewerSeasonLabel]
+  );
+
+  /** Main tab Global — pile-B users see 2026/27 chrome; still opens standings. */
   const openLeaderboards2526 = React.useCallback(() => {
     navigation.navigate('Tabs', { screen: 'Global', params: { resetKey: Date.now() } });
   }, [navigation]);
 
+  const heroOverallLabel = useSeasonStack ? 'Career overall' : 'Overall';
+  const heroLeaderboardsLabel = useSeasonStack
+    ? `Leaderboards · ${viewerSeasonLabel || '2026/27'}`
+    : 'View Leaderboards';
+  const heroLeaderboardsA11y = useSeasonStack
+    ? `View leaderboards for ${viewerSeasonLabel || '2026/27'}`
+    : 'View leaderboards, 2025/26 season';
   const weeklyPar = React.useMemo(
     () =>
       weeklyParFromLeaderboard ??
@@ -384,9 +479,25 @@ export default function ProfileStatsScreen() {
     [weeklyParFromLeaderboard, stats]
   );
 
-  /** Weekly chart: omit in-progress meta GW (same “last fixture finished” rule as Round Up / live dot). */
+  /** Weekly chart is career/all-time from pile-A points (`app_v_gw_points` / BFF weeklyParData). */
   const weeklyParChartRows = React.useMemo(() => {
     if (!weeklyPar.length) return weeklyPar;
+
+    const lastCompleted =
+      typeof stats?.lastCompletedGw === 'number' && stats.lastCompletedGw > 0 ? stats.lastCompletedGw : null;
+
+    /**
+     * Pile B (or any year open) uses a *new* season meta line (e.g. currentGw = 1 for 2026/27).
+     * The old filter treated chart GWs against that meta (`gw > currentGw` → drop), so a user with
+     * a full 2025/26 ladder only saw GW1. Cap against legacy last-completed instead — same pool as
+     * correct-rate / streak history.
+     */
+    if (useSeasonStack || isNewSeasonFresh) {
+      if (lastCompleted != null) return weeklyPar.filter((r) => r.gw <= lastCompleted);
+      return weeklyPar;
+    }
+
+    // Same-season (legacy): omit the in-progress meta gameweek until fixtures are finished.
     const c = statsGwCompletion;
     if (c && typeof c.currentGw === 'number' && c.currentGw >= 1) {
       const currentGw = c.currentGw;
@@ -403,12 +514,11 @@ export default function ProfileStatsScreen() {
           })
       );
     }
-    if (typeof stats?.lastCompletedGw === 'number' && stats.lastCompletedGw > 0) {
-      const lastCompletedGw = stats.lastCompletedGw;
-      return weeklyPar.filter((r) => r.gw <= lastCompletedGw);
+    if (lastCompleted != null) {
+      return weeklyPar.filter((r) => r.gw <= lastCompleted);
     }
     return weeklyPar;
-  }, [weeklyPar, statsGwCompletion, stats?.lastCompletedGw]);
+  }, [weeklyPar, statsGwCompletion, stats?.lastCompletedGw, useSeasonStack, isNewSeasonFresh]);
 
   const weeklyParChartLatestGw =
     weeklyParChartRows.length > 0 ? weeklyParChartRows[weeklyParChartRows.length - 1]!.gw : null;
@@ -448,7 +558,7 @@ export default function ProfileStatsScreen() {
     return Math.max(server, liveGwTrophyWins.wins);
   }, [liveGwTrophyWins.pending, liveGwTrophyWins.wins, stats?.trophyCabinet?.gameweekPodiums]);
   const monthlyTrophyCount = stats?.trophyCabinet?.monthlyPodiums ?? 0;
-  const seasonTrophyCount = championTrophyQ.data ?? 0;
+  const seasonTrophyCount = championTrophyQ.data?.count ?? 0;
 
   /** Align month completion cutoff with stats + home ranks (highlightGw can edge ahead of lastCompletedGw). */
   const statsLcResolved = React.useMemo(() => {
@@ -533,8 +643,9 @@ export default function ProfileStatsScreen() {
                 rows={streakRowsForStrip}
                 lastCompletedGw={stats?.lastCompletedGw ?? null}
                 statsGwCompletion={statsGwCompletion}
+                liveSeasonLabel={useSeasonStack ? viewerSeasonLabel || '2026/27' : null}
                 nestInsideStatCard
-                onViewScoresheet={openManualResultsScoreSheetThenResults}
+                onViewScoresheet={openStreakRoundUp}
               />
             </StatCard>
             <View style={{ height: 16 }} />
@@ -546,6 +657,9 @@ export default function ProfileStatsScreen() {
           statsGwCompletion={statsGwCompletion}
           onPressViewRoundUp={stats?.lastCompletedGw ? openHeroRoundUp : undefined}
           onPressViewLeaderboards={openLeaderboards2526}
+          overallLabel={heroOverallLabel}
+          leaderboardsLinkLabel={heroLeaderboardsLabel}
+          leaderboardsA11yLabel={heroLeaderboardsA11y}
         />
 
         <View style={{ height: 16 }} />
@@ -582,7 +696,7 @@ export default function ProfileStatsScreen() {
         {stats?.mostIncorrectTeam ? (
           <StatCard style={{ marginBottom: 16 }}>
             <StatsTeamStatCard
-              eyebrow="Most incorrectly picked team"
+              eyebrow="Most incorrectly predicted team"
               teamCode={stats.mostIncorrectTeam.code}
               teamName={stats.mostIncorrectTeam.name}
               percentage={stats.mostIncorrectTeam.percentage}
@@ -699,7 +813,7 @@ export default function ProfileStatsScreen() {
         </StatCard>
 
         {stats?.bestSingleGw ? (
-          <StatCard style={{ marginBottom: stats?.lowestSingleGw ? 16 : 24, padding: 24 }}>
+          <StatCard style={{ marginBottom: 16, padding: 24 }}>
             <TotlText style={{ fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8, lineHeight: 20 }}>
               Best single Gameweek
             </TotlText>
@@ -724,7 +838,7 @@ export default function ProfileStatsScreen() {
         ) : null}
 
         {stats?.lowestSingleGw ? (
-          <StatCard style={{ marginBottom: 24, padding: 24 }}>
+          <StatCard style={{ marginBottom: 16, padding: 24 }}>
             <TotlText style={{ fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8, lineHeight: 20 }}>
               Lowest single Gameweek
             </TotlText>
@@ -746,6 +860,16 @@ export default function ProfileStatsScreen() {
               </TotlText>
             </View>
           </StatCard>
+        ) : null}
+
+        {seasonArchiveRows.length > 0 ? (
+          <View style={{ marginBottom: 8 }}>
+            <StatsPreviousSeasonsCard
+              seasons={seasonArchiveRows}
+              selectedLabel={selectedArchiveLabel}
+              onSelectLabel={setArchiveSeasonLabel}
+            />
+          </View>
         ) : null}
       </ScrollView>
     </Screen>

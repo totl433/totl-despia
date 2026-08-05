@@ -48,6 +48,10 @@ import { fetchLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStar
 import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
+import LeagueSeasonPicker from '../components/league/LeagueSeasonPicker';
+import { resolveLeaguePileTables } from '../lib/leagueSeasonPile';
+import { SEASON_2025_26_LABEL, SEASON_2026_27_LABEL } from '../lib/leaderboardMonths';
+import { useViewerSeason } from '../lib/useViewerSeason';
 import { Ionicons } from '@expo/vector-icons';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
@@ -185,6 +189,21 @@ export default function LeagueDetailScreen() {
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
   });
+  const { isNewSeasonFresh, useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
+  /** Live 2026/27 vs archived 2025/26 (agreed Seasons control on ML pages). */
+  type MlSeasonKey = 'live' | 'archive_2025_26';
+  const [mlSeasonKey, setMlSeasonKey] = React.useState<MlSeasonKey>('live');
+  const canBrowseArchiveSeasons = isNewSeasonFresh || useSeasonStack;
+  const browsingArchive = canBrowseArchiveSeasons && mlSeasonKey === 'archive_2025_26';
+  /** Live new season (zeros, pile B fixtures) — not archive lookback. */
+  const browsingLiveNewSeason = canBrowseArchiveSeasons && !browsingArchive && isNewSeasonFresh;
+  const mlSeasonOptions = React.useMemo(() => {
+    if (!canBrowseArchiveSeasons) return [] as Array<{ key: string; label: string }>;
+    return [
+      { key: 'live', label: seasonLabel || SEASON_2026_27_LABEL },
+      { key: 'archive_2025_26', label: SEASON_2025_26_LABEL },
+    ];
+  }, [canBrowseArchiveSeasons, seasonLabel]);
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
   const { data: publishedCurrentGw } = useQuery<number | null>({
@@ -196,7 +215,13 @@ export default function LeagueDetailScreen() {
     },
     staleTime: 60_000,
   });
-  const effectiveCurrentGw = typeof publishedCurrentGw === 'number' ? publishedCurrentGw : currentGw;
+  // Season-stack testers must use home/BFF current GW (e.g. 2026/27 GW1), not legacy app_meta (still 38).
+  const effectiveCurrentGw =
+    useSeasonStack && typeof currentGw === 'number'
+      ? currentGw
+      : typeof publishedCurrentGw === 'number'
+        ? publishedCurrentGw
+        : currentGw;
   // Match web behavior: season standings are computed to the latest current GW,
   // not the user's temporary viewing GW.
   const seasonGw = effectiveCurrentGw;
@@ -221,22 +246,77 @@ export default function LeagueDetailScreen() {
   }, [defaultTableGw, selectedGw]);
 
   const { data: completedGwsChronological } = useQuery<number[]>({
-    queryKey: ['completedGwsChronological', 'v1'],
+    queryKey: ['completedGwsChronological', 'v3', useSeasonStack, seasonId, isNewSeasonFresh, browsingArchive],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from('app_gw_results').select('gw');
+      // Archive 2025/26 lookback always uses legacy completed GWs (1–38).
+      if (!useSeasonStack || browsingArchive) {
+        const { data, error } = await (supabase as any).from('app_gw_results').select('gw');
+        if (error) throw error;
+        const gws = [
+          ...new Set(((data ?? []) as Array<{ gw?: number | null }>).map((r) => Number(r.gw)).filter(Number.isFinite)),
+        ] as number[];
+        return orderCompletedGwsByFirstKickoff(supabase as any, gws);
+      }
+      // Live pile B: only this season’s results (empty at open → availableGws falls back to 1..current).
+      if (!seasonId) return [];
+      const { data, error } = await (supabase as any)
+        .from('app_season_results')
+        .select('gw')
+        .eq('season_id', seasonId);
       if (error) throw error;
-      const gws = [...new Set(((data ?? []) as Array<{ gw?: number | null }>).map((r) => Number(r.gw)).filter(Number.isFinite))] as number[];
-      return orderCompletedGwsByFirstKickoff(supabase as any, gws);
+      const gws = [
+        ...new Set(((data ?? []) as Array<{ gw?: number | null }>).map((r) => Number(r.gw)).filter(Number.isFinite)),
+      ] as number[];
+      return gws.sort((a, b) => a - b);
     },
     staleTime: 5 * 60_000,
   });
 
   const availableGws = React.useMemo(() => {
+    // Archived 2025/26: full completed list (or 1–38 if missing).
+    if (browsingArchive) {
+      if (completedGwsChronological?.length) return completedGwsChronological;
+      return Array.from({ length: 38 }, (_, i) => i + 1);
+    }
+    // Live 2026/27: only up to current GW (no 1–38 from last year).
+    if (browsingLiveNewSeason || isNewSeasonFresh) {
+      const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : 1;
+      if (maxGw < 1) return [];
+      if (completedGwsChronological?.length) {
+        const set = new Set(completedGwsChronological);
+        set.add(maxGw);
+        return Array.from(set)
+          .filter((g) => g >= 1 && g <= Math.max(maxGw, ...completedGwsChronological))
+          .sort((a, b) => a - b);
+      }
+      return Array.from({ length: maxGw }, (_, i) => i + 1);
+    }
     if (completedGwsChronological?.length) return completedGwsChronological;
     const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : null;
     if (!maxGw || maxGw < 1) return [];
     return Array.from({ length: maxGw }, (_, i) => i + 1);
-  }, [completedGwsChronological, currentGw, viewingGw]);
+  }, [
+    browsingArchive,
+    browsingLiveNewSeason,
+    completedGwsChronological,
+    currentGw,
+    isNewSeasonFresh,
+    viewingGw,
+  ]);
+
+  // When user flips Seasons control, anchor GW to a sensible default for that year.
+  React.useEffect(() => {
+    if (browsingArchive) {
+      const last = completedGwsChronological?.length
+        ? completedGwsChronological[completedGwsChronological.length - 1]!
+        : 38;
+      setSelectedGw(last);
+      return;
+    }
+    if (browsingLiveNewSeason) {
+      setSelectedGw(typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : 1);
+    }
+  }, [mlSeasonKey]); // eslint-disable-line react-hooks/exhaustive-deps -- only when season folder switches
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
@@ -312,8 +392,17 @@ export default function LeagueDetailScreen() {
     },
     staleTime: 5 * 60_000,
   });
-  const seasonStartGwResolved = isDevFakeLeague || isDormantLeague || typeof resolvedLeagueStartGw === 'number';
-  const seasonStartGw = isDevFakeLeague ? 1 : typeof resolvedLeagueStartGw === 'number' ? resolvedLeagueStartGw : 1;
+  // Fresh live 2026/27: every league restarts at GW1. Archive / normal still use activation start.
+  const seasonStartGwResolved =
+    browsingArchive || isNewSeasonFresh || isDevFakeLeague || isDormantLeague || typeof resolvedLeagueStartGw === 'number';
+  const seasonStartGw =
+    browsingArchive || isNewSeasonFresh
+      ? 1
+      : isDevFakeLeague
+        ? 1
+        : typeof resolvedLeagueStartGw === 'number'
+          ? resolvedLeagueStartGw
+          : 1;
   const seasonIsLateStartingLeague = seasonStartGw > 1;
   const tableAvailableGws = React.useMemo(() => {
     if (!seasonStartGwResolved) return [];
@@ -323,6 +412,7 @@ export default function LeagueDetailScreen() {
     return [];
   }, [availableGws, seasonStartGw, seasonStartGwResolved]);
   const leagueStartsInFuture =
+    !browsingArchive &&
     !isDevFakeLeague &&
     !isDormantLeague &&
     seasonStartGwResolved &&
@@ -350,12 +440,25 @@ export default function LeagueDetailScreen() {
       seasonStartGwResolved &&
       !isDormantLeague &&
       tableAvailableGws.includes(selectedGw) &&
-      !isDevFakeLeague,
-    queryKey: ['leagueGwTable', leagueId, selectedGw],
+      !isDevFakeLeague &&
+      // Live new season: zeroed rows, skip API (pile A would return last year's GW1 scores).
+      !browsingLiveNewSeason,
+    queryKey: ['leagueGwTable', leagueId, selectedGw, browsingArchive, browsingLiveNewSeason],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
   });
 
   const gwTableMergedRows = React.useMemo((): LeagueGwTableRow[] => {
+    // Live 2026/27: zero scores. Archive and legacy use API.
+    if (browsingLiveNewSeason && members.length) {
+      return members
+        .map((m: { id?: string; name?: string }) => ({
+          user_id: String(m.id ?? ''),
+          name: String(m.name ?? 'User'),
+          score: 0,
+          unicorns: 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
     const tbl = table as { rows?: LeagueGwTableRow[]; submittedUserIds?: string[] } | null | undefined;
     if (!tbl?.rows || !members.length) return [];
     const rowsByUserId = new Map(tbl.rows.map((r) => [r.user_id, r]));
@@ -375,7 +478,7 @@ export default function LeagueDetailScreen() {
       return a.name.localeCompare(b.name);
     });
     return result;
-  }, [table, members]);
+  }, [browsingLiveNewSeason, table, members]);
 
   const allFixturesFinished = React.useMemo(() => {
     if (tab !== 'gwTable') return false;
@@ -683,8 +786,23 @@ export default function LeagueDetailScreen() {
     LeagueSeasonRow[]
   >({
     enabled: members.length >= 2 && !isDormantLeague && !isDevFakeLeague && seasonStartGwResolved,
-    queryKey: ['leagueSeasonTable', 'v26', leagueId, seasonStartGw],
+    queryKey: ['leagueSeasonTable', 'v28', leagueId, seasonStartGw, browsingLiveNewSeason, browsingArchive, seasonId],
     queryFn: async () => {
+      // Live 26/27 only: zeroed. Archive uses full 25/26 compute from legacy results.
+      if (browsingLiveNewSeason) {
+        return members
+          .filter((m: any) => m?.id)
+          .map((m: any) => ({
+            user_id: String(m.id),
+            name: String(m.name ?? 'User'),
+            mltPts: 0,
+            ocp: 0,
+            unicorns: 0,
+            wins: 0,
+            draws: 0,
+            form: [] as Array<'W' | 'D' | 'L'>,
+          })) as LeagueSeasonRow[];
+      }
       const preload = {
         members: members
           .filter((m: any) => m?.id)
@@ -726,11 +844,11 @@ export default function LeagueDetailScreen() {
   });
 
   const picksGw = React.useMemo(() => {
-    // Use viewingGw (from user_notification_preferences.current_viewing_gw) so the Predictions tab
-    // stays on the GW the user is viewing until they hit "move on". Fall back to currentGw.
+    // Archive: selected GW in that season folder. Live: viewing / current from home (2026/27 GW1).
+    if (browsingArchive && typeof selectedGw === 'number') return selectedGw;
     const gw = viewingGw ?? currentGw;
     return typeof gw === 'number' ? gw : null;
-  }, [viewingGw, currentGw]);
+  }, [browsingArchive, selectedGw, viewingGw, currentGw]);
 
   type LeaguePredictionsData = {
     picksGw: number;
@@ -744,7 +862,7 @@ export default function LeagueDetailScreen() {
     picksByFixtureIndex: Record<string, Record<string, LeaguePick>>;
   };
 
-  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(picksGw);
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(browsingArchive ? null : picksGw);
 
   const {
     data: predictions,
@@ -757,9 +875,17 @@ export default function LeagueDetailScreen() {
       typeof picksGw === 'number' &&
       seasonStartGwResolved &&
       !isDormantLeague &&
-      picksGw >= seasonStartGw,
-    // NOTE: v2 key to invalidate older persisted cache that contained Map/Set (non-serializable).
-    queryKey: ['leaguePredictionsV2', leagueId, picksGw, seasonStartGw, members.map((m: any) => String(m.id)).join(',')],
+      (browsingArchive || picksGw >= seasonStartGw),
+    queryKey: [
+      'leaguePredictionsV3',
+      leagueId,
+      picksGw,
+      seasonStartGw,
+      mlSeasonKey,
+      seasonId,
+      browsingArchive,
+      members.map((m: any) => String(m.id)).join(','),
+    ],
     queryFn: async () => {
       const gw = picksGw as number;
       if (isDevFakeLeague) {
@@ -810,19 +936,45 @@ export default function LeagueDetailScreen() {
       }
       const memberIds = members.map((m: any) => String(m.id));
 
+      const { tables, seasonIdFilter } = resolveLeaguePileTables({
+        useSeasonStack,
+        seasonId,
+        viewingArchive2025_26: browsingArchive,
+      });
+
+      // Prefer BFF home fixtures for live season GW (already season-stack filtered).
+      let fixtures: Fixture[] = [];
+      if (
+        !browsingArchive &&
+        useSeasonStack &&
+        home?.fixtures?.length &&
+        (home.viewingGw === gw || home.currentGw === gw)
+      ) {
+        fixtures = (home.fixtures as Fixture[]).filter((f) => Number((f as any).gw ?? gw) === gw);
+      }
+
+      const withSeason = (q: any) => (seasonIdFilter ? q.eq('season_id', seasonIdFilter) : q);
+
       const [fixturesRes, subsRes, picksRes, resultsRes] = await Promise.all([
-        (supabase as any).from('app_fixtures').select('*').eq('gw', gw).order('fixture_index', { ascending: true }),
-        (supabase as any).from('app_gw_submissions').select('user_id').eq('gw', gw),
-        (supabase as any).from('app_picks').select('user_id,fixture_index,pick').eq('gw', gw).in('user_id', memberIds),
-        (supabase as any).from('app_gw_results').select('fixture_index,result').eq('gw', gw),
+        fixtures.length
+          ? Promise.resolve({ data: fixtures, error: null })
+          : withSeason(
+              (supabase as any).from(tables.fixtures).select('*').eq('gw', gw).order('fixture_index', { ascending: true })
+            ),
+        withSeason((supabase as any).from(tables.submissions).select('user_id').eq('gw', gw)),
+        withSeason(
+          (supabase as any).from(tables.picks).select('user_id,fixture_index,pick').eq('gw', gw).in('user_id', memberIds)
+        ),
+        withSeason((supabase as any).from(tables.results).select('fixture_index,result').eq('gw', gw)),
       ]);
-      if (fixturesRes.error) throw fixturesRes.error;
+      if ((fixturesRes as any).error) throw (fixturesRes as any).error;
       if (subsRes.error) throw subsRes.error;
       if (picksRes.error) throw picksRes.error;
       if (resultsRes.error) throw resultsRes.error;
 
-      const fixtures: Fixture[] = (fixturesRes.data ?? []) as Fixture[];
-
+      if (!fixtures.length) {
+        fixtures = ((fixturesRes as any).data ?? []) as Fixture[];
+      }
       const kickoffTimes = fixtures
         .map((f) => f.kickoff_time)
         .filter((kt): kt is string => !!kt)
@@ -1156,6 +1308,9 @@ export default function LeagueDetailScreen() {
                       onChangeGw={setSelectedGw}
                       onPressRules={() => setRulesOpen(true)}
                       onPressMenu={() => setMenuOpen(true)}
+                      seasonOptions={mlSeasonOptions}
+                      selectedSeasonKey={mlSeasonKey}
+                      onChangeSeason={(key) => setMlSeasonKey(key as MlSeasonKey)}
                     />
                   </>
                 )}
@@ -1207,7 +1362,16 @@ export default function LeagueDetailScreen() {
                     >
                       <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
                       <View style={{ width: 10 }} />
-                      <View style={{ flex: 1 }} />
+                      {mlSeasonOptions.length > 1 ? (
+                        <LeagueSeasonPicker
+                          options={mlSeasonOptions}
+                          selectedKey={mlSeasonKey}
+                          onChange={(key) => setMlSeasonKey(key as MlSeasonKey)}
+                        />
+                      ) : (
+                        <View style={{ flex: 1 }} />
+                      )}
+                      <View style={{ width: 10 }} />
                       <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
                       <Pressable
                         onPress={() => setMenuOpen(true)}
@@ -1303,6 +1467,27 @@ export default function LeagueDetailScreen() {
                         ) : null}
 
                         <View style={{ marginTop: 6 }}>
+                          {mlSeasonOptions.length > 1 ? (
+                            <View
+                              style={{
+                                marginBottom: 12,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, paddingRight: 12 }}>
+                                {browsingArchive
+                                  ? `${SEASON_2025_26_LABEL} archive`
+                                  : `${seasonLabel || SEASON_2026_27_LABEL} · fixtures out, not predicted yet`}
+                              </TotlText>
+                              <LeagueSeasonPicker
+                                options={mlSeasonOptions}
+                                selectedKey={mlSeasonKey}
+                                onChange={(key) => setMlSeasonKey(key as MlSeasonKey)}
+                              />
+                            </View>
+                          ) : null}
                           <SectionHeaderRow
                             title={`Gameweek ${predictions.picksGw}`}
                             right={

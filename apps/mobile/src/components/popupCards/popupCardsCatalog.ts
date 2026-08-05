@@ -12,6 +12,8 @@ function buildTitle(kind: PopupCardKind): string {
       return 'Winners';
     case 'newGameweek':
       return 'New Game Week';
+    case 'newSeason':
+      return 'New Season';
     case 'doPredictions':
       return 'Do Your Predictions';
     case 'championMiniLeague':
@@ -40,6 +42,7 @@ export function createPopupCard(
     eventKey: overrides.eventKey,
     secondaryActionLabel: overrides.secondaryActionLabel,
     onSecondaryAction: overrides.onSecondaryAction,
+    payload: overrides.payload,
   };
 }
 
