@@ -1,6 +1,9 @@
 /**
- * Active season for the signed-in user (Pile B tester override or legacy).
- * Used by chrome (bottom tab label) and leaderboards for zeroed 26/27 tables.
+ * Active season for the signed-in user (Pile B override or legacy).
+ * Used by chrome (bottom tab label) and leaderboards.
+ *
+ * `isNewSeasonFresh` means the active season folder has **no completed results yet**
+ * (not a permanent "it's 2026" label). Once GW1 lands results, leaderboards unfreeze.
  */
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabase';
@@ -14,7 +17,10 @@ export type ViewerSeason = {
   seasonId: string | null;
   seasonLabel: string;
   currentViewingGw: number | null;
-  /** True when tester (or open) season is the new year — tables start at 0 until results. */
+  /**
+   * True when on season stack and this season has zero completed results.
+   * Empty overall tables / zeroed ranks until first scored fixture.
+   */
   isNewSeasonFresh: boolean;
 };
 
@@ -39,7 +45,18 @@ async function fetchViewerSeason(): Promise<ViewerSeason> {
     .maybeSingle();
 
   const useSeasonStack = !!prefs?.use_season_stack;
-  const seasonId = (prefs?.current_viewing_season_id as string | null) ?? null;
+  let seasonId = (prefs?.current_viewing_season_id as string | null) ?? null;
+
+  // Mirror BFF: fall back to runtime season when prefs leave season_id null.
+  if (useSeasonStack && !seasonId) {
+    const { data: runtime } = await (supabase as any)
+      .from('app_season_runtime')
+      .select('current_season_id')
+      .eq('id', 1)
+      .maybeSingle();
+    seasonId = (runtime?.current_season_id as string | null) ?? null;
+  }
+
   let seasonLabel = SEASON_2025_26_LABEL;
 
   if (useSeasonStack && seasonId) {
@@ -51,11 +68,25 @@ async function fetchViewerSeason(): Promise<ViewerSeason> {
     if (typeof season?.label === 'string' && season.label.trim()) {
       seasonLabel = season.label.trim();
     }
+  } else if (useSeasonStack) {
+    // Stack on but no id yet — still treat as upcoming season chrome.
+    seasonLabel = SEASON_2026_27_LABEL;
   }
 
-  const isNewSeasonFresh =
-    useSeasonStack &&
-    (seasonLabel === SEASON_2026_27_LABEL || seasonLabel.startsWith('2026'));
+  let isNewSeasonFresh = false;
+  if (useSeasonStack) {
+    if (!seasonId) {
+      isNewSeasonFresh = true;
+    } else {
+      const { data: anyResult } = await (supabase as any)
+        .from('app_season_results')
+        .select('gw')
+        .eq('season_id', seasonId)
+        .limit(1)
+        .maybeSingle();
+      isNewSeasonFresh = !anyResult;
+    }
+  }
 
   return {
     useSeasonStack,

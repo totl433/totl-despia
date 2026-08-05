@@ -358,16 +358,31 @@ export default function GlobalScreen() {
     refetch: refetchOverall,
     isRefetching: overallRefetching,
   } = useQuery({
-    queryKey: ['leaderboards', 'overallView', 'paged-v2'],
+    queryKey: [
+      'leaderboards',
+      'overallView',
+      'paged-v3',
+      useSeasonStack && formScope !== 'archive_2025_26' ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: async () => {
+      if (useSeasonStack && seasonId && formScope !== 'archive_2025_26') {
+        return fetchAllSupabaseRows<OverallRow>((from, to) =>
+          (supabase as any)
+            .from('app_v_season_ocp_overall')
+            .select('user_id, name, ocp')
+            .eq('season_id', seasonId)
+            .order('user_id', { ascending: true })
+            .range(from, to)
+        );
+      }
       return fetchAllSupabaseRows<OverallRow>((from, to) =>
         supabase.from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
       );
     },
   });
 
-  // Pile A materialization (`app_v_gw_points`). Used for 25/26 tables + archive scopes.
-  // Never apply these rows as 2026/27 GW scores (handled in rowsBase / live reconstruction).
+  // Points materialization: season or legacy. Archive scopes use pile A.
   const {
     data: gwPoints,
     isLoading: gwPointsLoading,
@@ -375,8 +390,25 @@ export default function GlobalScreen() {
     refetch: refetchGwPoints,
     isRefetching: gwPointsRefetching,
   } = useQuery({
-    queryKey: ['leaderboards', 'gwPointsView', 'paged-v2'],
+    queryKey: [
+      'leaderboards',
+      'gwPointsView',
+      'paged-v3',
+      useSeasonStack && formScope !== 'archive_2025_26' ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: async () => {
+      if (useSeasonStack && seasonId && formScope !== 'archive_2025_26') {
+        return fetchAllSupabaseRows<GwPointsRow>((from, to) =>
+          (supabase as any)
+            .from('app_v_season_gw_points')
+            .select('user_id, gw, points')
+            .eq('season_id', seasonId)
+            .order('gw', { ascending: true })
+            .order('user_id', { ascending: true })
+            .range(from, to)
+        );
+      }
       return fetchAllSupabaseRows<GwPointsRow>((from, to) =>
         supabase
           .from('app_v_gw_points')
@@ -388,10 +420,10 @@ export default function GlobalScreen() {
     },
   });
 
-  // Legacy BFF live table is pile-A only (app_picks / app_v_gw_points). Never for season-stack testers.
+  // BFF live GW table is dual-stack for all users; prefer it, fallback to client reconstruction.
   const { data: gwLiveTable, refetch: refetchGwLiveTable } = useQuery({
-    enabled: typeof activeLeaderboardGw === 'number' && !useSeasonStack,
-    queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw, 'pileA'],
+    enabled: typeof activeLeaderboardGw === 'number',
+    queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw, useSeasonStack ? 'pileB' : 'pileA'],
     queryFn: () => api.getGlobalGwLiveTable(activeLeaderboardGw as number),
     refetchInterval: tab === 'gw' || tab === 'overall' ? 10_000 : false,
   });
@@ -584,13 +616,7 @@ export default function GlobalScreen() {
   const showLiveHeaderScore = currentGwIsLive && !!headerScoreSummary;
   const headerScoreLabel = headerScoreSummary ? formatHeaderScoreLabel(headerScoreSummary, true) : null;
   const liveGwScores = React.useMemo(() => {
-    // Season-stack testers: only client reconstruction from app_season_* (never pile-A BFF table).
-    if (useSeasonStack) {
-      return Object.entries(gwLiveFallbackScores?.scores ?? {}).map(([user_id, score]) => ({
-        user_id,
-        score: Number(score ?? 0),
-      }));
-    }
+    // Prefer BFF dual-stack live table; fall back to client reconstruction (pile B or A).
     const tableScores = (gwLiveTable?.rows ?? []).map((row) => ({
       user_id: String(row.user_id),
       score: Number(row.score ?? 0),
@@ -599,12 +625,8 @@ export default function GlobalScreen() {
       user_id,
       score: Number(score ?? 0),
     }));
-
-    // Keep the global leaderboard aligned with the BFF live-table source used elsewhere
-    // (e.g. mini-league live cards). Fall back to local reconstruction only if that API
-    // returns nothing.
     return tableScores.length > 0 ? tableScores : fallbackScores;
-  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows, useSeasonStack]);
+  }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows]);
   const liveGwByUser = React.useMemo(
     () => new Map(liveGwScores.map((row) => [row.user_id, row.score])),
     [liveGwScores]
@@ -977,11 +999,16 @@ export default function GlobalScreen() {
     if (tab === 'overall' && formScope === 'sinceStarted' && firstSubmissionGw != null) {
       return filterScope(computeSinceStartedRows(firstSubmissionGw, endGw));
     }
-    // Fixed 2025/26 final table (GWs 1–38 only) when still on that season client.
+    // Fixed final table when viewing archive / legacy seasons only.
+    // Pile B live season uses OCP view (+ live merge below).
     if (tab === 'overall' && formScope === 'none') {
-      return filterScope(
-        computeOcpWindowRows(SEASON_2025_26_START_GW, SEASON_2025_26_END_GW, { withGwSecondary: true })
-      );
+      if (useSeasonStack) {
+        // fall through to live overall merge with season OCP
+      } else {
+        return filterScope(
+          computeOcpWindowRows(SEASON_2025_26_START_GW, SEASON_2025_26_END_GW, { withGwSecondary: true })
+        );
+      }
     }
 
     if (tab === 'overall') {
@@ -1151,6 +1178,7 @@ export default function GlobalScreen() {
     }
     if (tab === 'overall' && formScope === 'none') {
       if (isNewSeasonFresh) return `${who} • ${seasonLabel} (season just started)`;
+      if (useSeasonStack) return `${who} • ${seasonLabel}`;
       return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
     }
     if (formScope === 'last5') return latestGw && latestGw >= 5 ? `${who} • Last 5 GWs` : `${who} (need 5 GWs)`;

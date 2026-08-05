@@ -1,6 +1,7 @@
 import { computeLiveGwScoresForGw, computeLiveGwScoresForGwsBatch, rankUserInGwLiveScores } from './liveGwScores.js';
 import { resolveLeagueStartGw } from './leagueStart.js';
 import { upsertSubscriber, unsubscribeSubscriber } from './mailerlite.js';
+import { resolveSeasonCtx } from './seasonStack.js';
 
 const ADMIN_IDS = new Set<string>([
   // Founders
@@ -879,8 +880,12 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     return fieldTotal > 0 ? (fieldCorrect / fieldTotal) * 100 : null;
   })();
 
+  const seasonCtxForLive = await resolveSeasonCtx(supa, userId);
+
   const liveScoresForMetaGwPromise =
-    metaGw != null ? computeLiveGwScoresForGw(supa, metaGw) : Promise.resolve([] as Array<{ user_id: string; score: number }>);
+    metaGw != null
+      ? computeLiveGwScoresForGw(supa, metaGw, seasonCtxForLive)
+      : Promise.resolve([] as Array<{ user_id: string; score: number }>);
 
   const [{ data: submissionRows, error: subErr }, allGwPoints, fieldAveragePct, liveScoresForMetaGw] = await Promise.all([
     (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
@@ -1119,7 +1124,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   if (typeof metaGw === 'number' && metaGw > 0) trophyGwUniverse.add(metaGw);
   const trophyGameweeks = [...trophyGwUniverse].sort((a, b) => a - b);
 
-  const gwScoresForTrophies = await computeLiveGwScoresForGwsBatch(supa, trophyGameweeks);
+  const gwScoresForTrophies = await computeLiveGwScoresForGwsBatch(supa, trophyGameweeks, seasonCtxForLive);
   trophyGameweeks.forEach((gw) => {
     const rows = gwScoresForTrophies.get(gw)?.scores ?? [];
     if (!rows.length) return;

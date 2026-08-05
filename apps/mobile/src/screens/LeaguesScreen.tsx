@@ -84,7 +84,7 @@ function LeagueRow({
 }) {
   const leagueId = String(league.id);
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
-  const { isNewSeasonFresh } = useViewerSeason();
+  const { isNewSeasonFresh, useSeasonStack, seasonId } = useViewerSeason();
   const { unreadByLeagueId, optimisticallyClear } = useLeagueUnreadCounts();
   const unread = Number(unreadByLeagueId[leagueId] ?? 0);
 
@@ -169,14 +169,17 @@ function LeagueRow({
       members.length >= 2 &&
       !isDormantLeague &&
       typeof tableGw === 'number' &&
-      typeof resolvedLeagueStartGw === 'number',
+      typeof resolvedLeagueStartGw === 'number' &&
+      (!useSeasonStack || !!seasonId),
     queryKey: [
-      'leagueSeasonRankV2',
+      'leagueSeasonRankV3',
       leagueId,
       effectiveMeId,
       currentGw,
       tableGw,
       resolvedLeagueStartGw,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
       members.map((m: any) => `${String(m.id ?? '')}:${String(m.created_at ?? '')}`).join(','),
     ],
     queryFn: async () => {
@@ -185,12 +188,18 @@ function LeagueRow({
       const latestGw = tableGw as number;
       const seasonStartGw = resolvedLeagueStartGw as number;
       const showUnicorns = memberIds.length >= 3;
+      const pileB = useSeasonStack && !!seasonId;
+      const resultsTable = pileB ? 'app_season_results' : 'app_gw_results';
+      const fixturesTable = pileB ? 'app_season_fixtures' : 'app_fixtures';
+      const picksTable = pileB ? 'app_season_picks' : 'app_picks';
 
-      const resultsRes = await (supabase as any)
-        .from('app_gw_results')
+      let resultsQ = (supabase as any)
+        .from(resultsTable)
         .select('gw,fixture_index,result')
         .gte('gw', seasonStartGw)
         .lte('gw', latestGw);
+      if (pileB) resultsQ = resultsQ.eq('season_id', seasonId);
+      const resultsRes = await resultsQ;
       if (resultsRes.error) throw resultsRes.error;
 
       const results: Array<{ gw: number; fixture_index: number; result: 'H' | 'D' | 'A' | string }> = resultsRes.data ?? [];
@@ -215,7 +224,9 @@ function LeagueRow({
         // Keep the already-finished previous GW in season rankings while the app
         // waits for the next GW kickoff.
       } else if (relevantGws.includes(latestGw)) {
-        const fixturesForCurrentGwRes = await (supabase as any).from('app_fixtures').select('fixture_index').eq('gw', latestGw);
+        let fxQ = (supabase as any).from(fixturesTable).select('fixture_index').eq('gw', latestGw);
+        if (pileB) fxQ = fxQ.eq('season_id', seasonId);
+        const fixturesForCurrentGwRes = await fxQ;
         if (fixturesForCurrentGwRes.error) throw fixturesForCurrentGwRes.error;
         const fixtureCount = (fixturesForCurrentGwRes.data ?? []).length;
         const resultCountForCurrentGw = Array.from(outcomeByGwFixture.keys()).filter(
@@ -234,8 +245,8 @@ function LeagueRow({
       const PAGE_SIZE = 1000;
       let from = 0;
       while (true) {
-        const pageRes = await (supabase as any)
-          .from('app_picks')
+        let pageQ = (supabase as any)
+          .from(picksTable)
           .select('user_id,gw,fixture_index,pick')
           .in('user_id', memberIds)
           .gte('gw', seasonStartGw)
@@ -244,6 +255,8 @@ function LeagueRow({
           .order('fixture_index', { ascending: true })
           .order('user_id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
+        if (pileB) pageQ = pageQ.eq('season_id', seasonId);
+        const pageRes = await pageQ;
         if (pageRes.error) throw pageRes.error;
         const page = (pageRes.data ?? []) as Array<{ user_id: string; gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' | string }>;
         picks.push(...page.filter((pick) => relevantGws.includes(pick.gw)));
@@ -491,8 +504,10 @@ export default function LeaguesScreen() {
   });
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
+  const { useSeasonStack: stackForGw } = useViewerSeason();
   const { data: publishedCurrentGw } = useQuery<number | null>({
     queryKey: ['appMetaCurrentGw'],
+    enabled: !stackForGw,
     queryFn: async () => {
       const { data, error } = await (supabase as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
       if (error) throw error;
@@ -500,7 +515,13 @@ export default function LeaguesScreen() {
     },
     staleTime: 60_000,
   });
-  const effectiveCurrentGw = typeof publishedCurrentGw === 'number' ? publishedCurrentGw : currentGw;
+  // Pile B: always trust home/BFF current GW. Legacy: prefer published app_meta when set.
+  const effectiveCurrentGw =
+    stackForGw && typeof currentGw === 'number'
+      ? currentGw
+      : typeof publishedCurrentGw === 'number'
+        ? publishedCurrentGw
+        : currentGw;
   const showTopLiveRail = typeof viewingGw === 'number' && listLeagues.length > 0;
   const liveScoresGw = typeof viewingGw === 'number' ? viewingGw : typeof effectiveCurrentGw === 'number' ? effectiveCurrentGw : null;
   const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {

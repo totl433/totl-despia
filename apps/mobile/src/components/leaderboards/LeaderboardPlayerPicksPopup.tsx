@@ -25,6 +25,8 @@ import { getMediumName } from '../../../../../src/lib/teamNames';
 import type { LeaguePick } from '../league/LeaguePickPill';
 import CenteredSpinner from '../CenteredSpinner';
 import WinnerShimmer from '../WinnerShimmer';
+import { useViewerSeason } from '../../lib/useViewerSeason';
+import { SEASON_PILE_TABLES, LEGACY_PILE_TABLES } from '../../lib/leagueSeasonPile';
 
 function toMap<T>(input: unknown): Map<number, T> {
   if (input instanceof Map) {
@@ -307,22 +309,53 @@ export default function LeaderboardPlayerPicksPopup({
   }, [open]);
 
   const gwOk = typeof gw === 'number' && Number.isFinite(gw) && gw > 0;
+  const { useSeasonStack, seasonId } = useViewerSeason();
 
   const { data, isPending, isError, error } = useQuery({
-    enabled: open && gwOk && !!opponentUserId,
-    queryKey: ['leaderboardMeVs', gw, opponentUserId, currentUserId],
+    enabled: open && gwOk && !!opponentUserId && (!useSeasonStack || !!seasonId),
+    queryKey: [
+      'leaderboardMeVs',
+      gw,
+      opponentUserId,
+      currentUserId,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: async () => {
       const targetGw = gw as number;
       const oppId = String(opponentUserId);
       const meId = currentUserId ? String(currentUserId) : null;
 
       const userIds = meId && meId !== oppId ? [meId, oppId] : [oppId];
+      const pileB = useSeasonStack && !!seasonId;
+      const tables = pileB ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
+
+      let fixturesQ = (supabase as any)
+        .from(tables.fixtures)
+        .select('*')
+        .eq('gw', targetGw)
+        .order('fixture_index', { ascending: true });
+      let picksQ = (supabase as any)
+        .from(tables.picks)
+        .select('user_id,fixture_index,pick')
+        .eq('gw', targetGw)
+        .in('user_id', userIds);
+      let resultsQ = (supabase as any).from(tables.results).select('fixture_index,result').eq('gw', targetGw);
+      if (pileB) {
+        fixturesQ = fixturesQ.eq('season_id', seasonId);
+        picksQ = picksQ.eq('season_id', seasonId);
+        resultsQ = resultsQ.eq('season_id', seasonId);
+      }
 
       const [fixturesRes, picksRes, resultsRes, liveRes] = await Promise.all([
-        supabase.from('app_fixtures').select('*').eq('gw', targetGw).order('fixture_index', { ascending: true }),
-        supabase.from('app_picks').select('user_id,fixture_index,pick').eq('gw', targetGw).in('user_id', userIds),
-        supabase.from('app_gw_results').select('fixture_index,result').eq('gw', targetGw),
-        supabase.from('live_scores').select('fixture_index,home_score,away_score,status,minute,updated_at').eq('gw', targetGw),
+        fixturesQ,
+        picksQ,
+        resultsQ,
+        // Live scores: map by api_match_id for pile B when joining fixtures later
+        supabase
+          .from('live_scores')
+          .select('api_match_id,fixture_index,home_score,away_score,status,minute,updated_at')
+          .eq('gw', targetGw),
       ]);
       if (fixturesRes.error) throw fixturesRes.error;
       if (picksRes.error) throw picksRes.error;
@@ -344,18 +377,39 @@ export default function LeaderboardPlayerPicksPopup({
       ((resultsRes.data ?? []) as Array<{ fixture_index: number; result: Pick | string }>).forEach((r) => {
         if (r.result === 'H' || r.result === 'D' || r.result === 'A') resultByFixture.set(Number(r.fixture_index), r.result);
       });
+      const apiMatchToFixture = new Map<number, number>();
+      if (pileB) {
+        fixtures.forEach((f: any) => {
+          if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') {
+            apiMatchToFixture.set(f.api_match_id, f.fixture_index);
+          }
+        });
+      }
       const liveByFixture = new Map<number, { home: number | null; away: number | null; status: string | null; minute: number | null; updated_at: string | null }>();
-      ((liveRes.data ?? []) as Array<{ fixture_index: number; home_score: number | null; away_score: number | null; status: string | null; minute: number | null; updated_at: string | null }>).forEach(
-        (ls) => {
-          liveByFixture.set(Number(ls.fixture_index), {
-            home: typeof ls.home_score === 'number' ? ls.home_score : null,
-            away: typeof ls.away_score === 'number' ? ls.away_score : null,
-            status: typeof ls.status === 'string' ? ls.status : null,
-            minute: typeof ls.minute === 'number' ? ls.minute : null,
-            updated_at: typeof ls.updated_at === 'string' ? ls.updated_at : null,
-          });
+      ((liveRes.data ?? []) as Array<{
+        api_match_id?: number | null;
+        fixture_index: number;
+        home_score: number | null;
+        away_score: number | null;
+        status: string | null;
+        minute: number | null;
+        updated_at: string | null;
+      }>).forEach((ls) => {
+        let fixtureIndex: number | undefined;
+        if (pileB) {
+          if (typeof ls.api_match_id === 'number') fixtureIndex = apiMatchToFixture.get(ls.api_match_id);
+          if (fixtureIndex == null) return;
+        } else {
+          fixtureIndex = Number(ls.fixture_index);
         }
-      );
+        liveByFixture.set(fixtureIndex, {
+          home: typeof ls.home_score === 'number' ? ls.home_score : null,
+          away: typeof ls.away_score === 'number' ? ls.away_score : null,
+          status: typeof ls.status === 'string' ? ls.status : null,
+          minute: typeof ls.minute === 'number' ? ls.minute : null,
+          updated_at: typeof ls.updated_at === 'string' ? ls.updated_at : null,
+        });
+      });
 
       let profiles: ProfileRow[] = [];
       try {

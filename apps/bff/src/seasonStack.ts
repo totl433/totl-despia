@@ -1,5 +1,5 @@
 /**
- * BFF season dual-stack resolver (tester-ready Pile B).
+ * BFF season dual-stack resolver (production-ready Pile B).
  * Same rules as web src/lib/seasonStack.ts
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -19,6 +19,10 @@ export type SeasonTables = {
   submissions: string;
   picksOnConflict: string;
   submissionsOnConflict: string;
+  /** Points view: app_v_gw_points or app_v_season_gw_points */
+  gwPoints: string;
+  /** OCP view: app_v_ocp_overall or app_v_season_ocp_overall */
+  ocpOverall: string;
 };
 
 const LEGACY: SeasonTables = {
@@ -28,6 +32,8 @@ const LEGACY: SeasonTables = {
   submissions: 'app_gw_submissions',
   picksOnConflict: 'user_id,gw,fixture_index',
   submissionsOnConflict: 'user_id,gw',
+  gwPoints: 'app_v_gw_points',
+  ocpOverall: 'app_v_ocp_overall',
 };
 
 const SEASON: SeasonTables = {
@@ -37,12 +43,17 @@ const SEASON: SeasonTables = {
   submissions: 'app_season_submissions',
   picksOnConflict: 'season_id,user_id,gw,fixture_index',
   submissionsOnConflict: 'season_id,user_id,gw',
+  gwPoints: 'app_v_season_gw_points',
+  ocpOverall: 'app_v_season_ocp_overall',
 };
 
 export function getSeasonTables(ctx: Pick<SeasonCtx, 'useSeasonStack'>): SeasonTables {
   return ctx.useSeasonStack ? SEASON : LEGACY;
 }
 
+/**
+ * Resolve season/GW context for a user. Pass service or user-scoped client.
+ */
 export async function resolveSeasonCtx(
   supa: SupabaseClient,
   userId: string
@@ -121,9 +132,43 @@ export function seasonDisplayGw(ctx: SeasonCtx, queryGw?: number | null): number
   return ctx.currentGw;
 }
 
-export function applySeasonFilter(query: any, ctx: SeasonCtx): any {
+/** Attach .eq('season_id', ...) when on stack and we have an id. */
+export function applySeasonFilter(query: any, ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonId'>): any {
   if (ctx.useSeasonStack && ctx.seasonId) {
     return query.eq('season_id', ctx.seasonId);
   }
   return query;
+}
+
+/** Alias for applySeasonFilter — matches web naming. */
+export function withSeasonId(query: any, ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonId'>): any {
+  return applySeasonFilter(query, ctx);
+}
+
+/**
+ * True when the season folder has no completed results yet.
+ * Used to show empty leaderboards before GW1 finishes (not permanent label-based zeroing).
+ */
+export async function seasonHasCompletedResults(
+  supa: SupabaseClient,
+  ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonId'>
+): Promise<boolean> {
+  if (!ctx.useSeasonStack) {
+    const { data, error } = await (supa as any)
+      .from('app_gw_results')
+      .select('gw')
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data != null;
+  }
+  if (!ctx.seasonId) return false;
+  const { data, error } = await (supa as any)
+    .from('app_season_results')
+    .select('gw')
+    .eq('season_id', ctx.seasonId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data != null;
 }

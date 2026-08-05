@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { GwResults } from '@totl/domain';
+import { applySeasonFilter, getSeasonTables, resolveSeasonCtx, type SeasonCtx } from './seasonStack.js';
 
 type GwPointsRow = { user_id: string; gw: number; points: number | null };
 type OverallRow = { user_id: string; name: string | null; ocp: number | null };
@@ -116,8 +117,32 @@ export async function computeGwResults(input: {
   userId: string;
   gw: number;
   supa: SupabaseClient;
+  /** Optional pre-resolved ctx; resolved from user prefs when omitted. */
+  seasonCtx?: SeasonCtx;
 }): Promise<GwResults> {
   const { userId, gw, supa } = input;
+  const seasonCtx = input.seasonCtx ?? (await resolveSeasonCtx(supa, userId));
+  const tables = getSeasonTables(seasonCtx);
+
+  let gwPointsQ = (supa as any).from(tables.gwPoints).select('user_id, points').eq('gw', gw).limit(20000);
+  gwPointsQ = applySeasonFilter(gwPointsQ, seasonCtx);
+
+  let fixturesQ = (supa as any).from(tables.fixtures).select('id').eq('gw', gw);
+  fixturesQ = applySeasonFilter(fixturesQ, seasonCtx);
+
+  let overallQ = (supa as any).from(tables.ocpOverall).select('user_id, name, ocp').limit(50000);
+  overallQ = applySeasonFilter(overallQ, seasonCtx);
+
+  let recentPointsQ = (supa as any)
+    .from(tables.gwPoints)
+    .select('user_id, gw, points')
+    .gte('gw', Math.max(1, gw - 10))
+    .lte('gw', gw)
+    .limit(200000);
+  recentPointsQ = applySeasonFilter(recentPointsQ, seasonCtx);
+
+  let resultsQ = (supa as any).from(tables.results).select('fixture_index, result').eq('gw', gw).limit(50);
+  resultsQ = applySeasonFilter(resultsQ, seasonCtx);
 
   const [
     gwPointsRes,
@@ -127,18 +152,12 @@ export async function computeGwResults(input: {
     recentPointsRes,
     resultsRes,
   ] = await Promise.all([
-    (supa as any).from('app_v_gw_points').select('user_id, points').eq('gw', gw).limit(20000),
-    (supa as any).from('app_fixtures').select('id').eq('gw', gw),
-    (supa as any).from('app_v_ocp_overall').select('user_id, name, ocp').limit(50000),
+    gwPointsQ,
+    fixturesQ,
+    overallQ,
     (supa as any).from('league_members').select('league_id').eq('user_id', userId).limit(500),
-    // Fetch recent points once (enough to compute 5/10 and their befores)
-    (supa as any)
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', Math.max(1, gw - 10))
-      .lte('gw', gw)
-      .limit(200000),
-    (supa as any).from('app_gw_results').select('fixture_index, result').eq('gw', gw).limit(50),
+    recentPointsQ,
+    resultsQ,
   ]);
 
   if (gwPointsRes.error) throw gwPointsRes.error;
@@ -172,7 +191,6 @@ export async function computeGwResults(input: {
     overall: seasonAfter.rank === 1,
   };
 
-  // Overall BEFORE: approximate by subtracting this GW’s points from current OCP (single-source-of-truth views).
   const pointsThisGwByUser = new Map<string, number>();
   gwPointsRows.forEach((r) => {
     if (!r?.user_id) return;
@@ -209,7 +227,6 @@ export async function computeGwResults(input: {
     },
   };
 
-  // Mini-league victories
   const leagueIds = ((membershipsRes.data ?? []) as Array<{ league_id: string }>).map((m) => String(m.league_id)).filter(Boolean);
   const mlMembershipCount = leagueIds.length;
   let mlVictories = 0;
@@ -217,10 +234,13 @@ export async function computeGwResults(input: {
   const mlVictoryData: Array<{ id: string; name: string; avatar: string | null }> = [];
 
   if (leagueIds.length) {
+    let picksQ = (supa as any).from(tables.picks).select('fixture_index, pick, user_id').eq('gw', gw).limit(200000);
+    picksQ = applySeasonFilter(picksQ, seasonCtx);
+
     const [leaguesRes, leagueMembersRes, picksRes] = await Promise.all([
       (supa as any).from('leagues').select('id, name, avatar').in('id', leagueIds).limit(1000),
       (supa as any).from('league_members').select('league_id, user_id').in('league_id', leagueIds).limit(5000),
-      (supa as any).from('app_picks').select('fixture_index, pick, user_id').eq('gw', gw).limit(200000),
+      picksQ,
     ]);
     if (leaguesRes.error) throw leaguesRes.error;
     if (leagueMembersRes.error) throw leagueMembersRes.error;
@@ -246,12 +266,14 @@ export async function computeGwResults(input: {
     membersByLeagueId.forEach((ids) => ids.forEach((id) => memberIdSet.add(id)));
     const memberIds = Array.from(memberIdSet);
 
-    const leagueGwPointsRes = await (supa as any)
-      .from('app_v_gw_points')
+    let leagueGwPointsQ = (supa as any)
+      .from(tables.gwPoints)
       .select('user_id, points')
       .eq('gw', gw)
       .in('user_id', memberIds)
       .limit(20000);
+    leagueGwPointsQ = applySeasonFilter(leagueGwPointsQ, seasonCtx);
+    const leagueGwPointsRes = await leagueGwPointsQ;
     if (leagueGwPointsRes.error) throw leagueGwPointsRes.error;
 
     const pointsByUser = new Map<string, number>();
@@ -273,7 +295,6 @@ export async function computeGwResults(input: {
       if (!meta) return;
       if (leagueMemberIds.length < 2) return;
 
-      // If no-one has points for this GW, ignore.
       const hasAnyPoints = leagueMemberIds.some((uid) => pointsByUser.has(uid));
       if (!hasAnyPoints) return;
 
@@ -319,4 +340,3 @@ export async function computeGwResults(input: {
     leaderboardChanges,
   };
 }
-

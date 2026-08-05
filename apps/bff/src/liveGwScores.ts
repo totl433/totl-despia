@@ -1,7 +1,10 @@
 /**
  * Live GW scoring — same rules as `GET /v1/leaderboards/gw/:gw/live`.
- * Used by profile stats so aggregates match leaderboards through the current GW.
+ * Dual-stack: when seasonCtx.useSeasonStack, reads app_season_* + filters live_scores by api_match_id.
  */
+
+import type { SeasonCtx } from './seasonStack.js';
+import { applySeasonFilter, getSeasonTables } from './seasonStack.js';
 
 async function fetchAllRowsForGwList<T>(
   supa: any,
@@ -10,7 +13,8 @@ async function fetchAllRowsForGwList<T>(
   gwIds: number[],
   orderPrimary: string,
   orderSecondary?: string,
-  orderTertiary?: string
+  orderTertiary?: string,
+  seasonCtx?: Pick<SeasonCtx, 'useSeasonStack' | 'seasonId'> | null
 ): Promise<T[]> {
   if (!gwIds.length) return [];
   const rows: T[] = [];
@@ -19,6 +23,7 @@ async function fetchAllRowsForGwList<T>(
     let q = (supa as any).from(table).select(select).in('gw', gwIds).order(orderPrimary, { ascending: true }).range(from, to);
     if (orderSecondary) q = q.order(orderSecondary, { ascending: true });
     if (orderTertiary) q = q.order(orderTertiary, { ascending: true });
+    if (seasonCtx) q = applySeasonFilter(q, seasonCtx);
     const { data, error } = await q;
     if (error) throw error;
     const page = data ?? [];
@@ -30,7 +35,7 @@ async function fetchAllRowsForGwList<T>(
 
 export type GwLiveScorePack = {
   scores: Array<{ user_id: string; score: number }>;
-  /** Same rule as Global GW leaderboard: every fixture in `app_fixtures` has a merged outcome. */
+  /** Same rule as Global GW leaderboard: every fixture has a merged outcome. */
   leaderboardComplete: boolean;
 };
 
@@ -47,7 +52,9 @@ function buildScoresForSingleGw(
     status?: string | null;
   }>,
   resultsRows: Array<{ gw?: number; fixture_index?: number; result?: string | null }>,
-  fixturesRows: Array<{ gw?: number; fixture_index?: number; api_match_id?: number | null }>
+  fixturesRows: Array<{ gw?: number; fixture_index?: number; api_match_id?: number | null }>,
+  /** When true, only apply live_scores that map via api_match_id (GW indexes collide across seasons). */
+  pileBLiveMatch: boolean
 ): GwLiveScorePack {
   const picks = picksRows
     .filter((p) => Number(p.gw) === gw)
@@ -70,7 +77,9 @@ function buildScoresForSingleGw(
 
   const fixtures = fixturesRows.filter((f) => Number(f.gw) === gw);
   const apiMatchIdToFixtureIndex = new Map<number, number>();
+  const seasonFixtureIndexes = new Set<number>();
   fixtures.forEach((f: any) => {
+    if (typeof f.fixture_index === 'number') seasonFixtureIndexes.add(Number(f.fixture_index));
     if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
   });
 
@@ -80,12 +89,20 @@ function buildScoresForSingleGw(
       const status = ls.status;
       const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
       if (!started) return;
-      const fixtureIndex =
-        typeof ls.fixture_index === 'number'
-          ? ls.fixture_index
-          : typeof ls.api_match_id === 'number'
-            ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
-            : undefined;
+
+      let fixtureIndex: number | undefined;
+      if (pileBLiveMatch) {
+        if (typeof ls.api_match_id === 'number') fixtureIndex = apiMatchIdToFixtureIndex.get(ls.api_match_id);
+        if (fixtureIndex === undefined) return;
+        if (!seasonFixtureIndexes.has(fixtureIndex)) return;
+      } else {
+        fixtureIndex =
+          typeof ls.fixture_index === 'number'
+            ? ls.fixture_index
+            : typeof ls.api_match_id === 'number'
+              ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+              : undefined;
+      }
       if (fixtureIndex === undefined) return;
       const hs = Number(ls.home_score ?? 0);
       const as = Number(ls.away_score ?? 0);
@@ -142,41 +159,67 @@ export function rankUserInGwLiveScores(
 
 /**
  * Same scoring as repeated `computeLiveGwScoresForGw`, but one paginated fetch per table.
- * Use for trophy math so ranks match the Global GW leaderboard (`app_v_gw_points` alone can lag live merges).
+ * Pass seasonCtx for Pile B (app_season_* + api_match_id live matching).
  */
 export async function computeLiveGwScoresForGwsBatch(
   supa: any,
-  gws: number[]
+  gws: number[],
+  seasonCtx?: SeasonCtx | null
 ): Promise<Map<number, GwLiveScorePack>> {
   const uniq = [...new Set(gws.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
   const out = new Map<number, GwLiveScorePack>();
   if (!uniq.length) return out;
 
+  const stack = seasonCtx?.useSeasonStack
+    ? seasonCtx
+    : ({ useSeasonStack: false, seasonId: null } as Pick<SeasonCtx, 'useSeasonStack' | 'seasonId'>);
+  const tables = getSeasonTables(stack);
+  const pileB = !!stack.useSeasonStack;
+
+  // Season stack without seasonId cannot safely read Pile B (would mix seasons).
+  if (pileB && !stack.seasonId) {
+    return out;
+  }
+
   const [submissionsAll, picksAll, liveAll, resultsAll, fixturesAll] = await Promise.all([
     fetchAllRowsForGwList<{ user_id: string; gw: number }>(
       supa,
-      'app_gw_submissions',
+      tables.submissions,
       'user_id, gw',
       uniq,
       'gw',
-      'user_id'
+      'user_id',
+      undefined,
+      stack
     ),
     fetchAllRowsForGwList<{ user_id: string; gw: number; fixture_index: number; pick: string | null }>(
       supa,
-      'app_picks',
+      tables.picks,
       'user_id, gw, fixture_index, pick',
       uniq,
       'gw',
       'fixture_index',
-      'user_id'
+      'user_id',
+      stack
     ),
     fetchAllRowsForGwList(supa, 'live_scores', 'gw, api_match_id, fixture_index, home_score, away_score, status', uniq, 'gw'),
-    fetchAllRowsForGwList(supa, 'app_gw_results', 'gw, fixture_index, result', uniq, 'gw', 'fixture_index'),
-    fetchAllRowsForGwList(supa, 'app_fixtures', 'gw, fixture_index, api_match_id', uniq, 'gw', 'fixture_index'),
+    fetchAllRowsForGwList(supa, tables.results, 'gw, fixture_index, result', uniq, 'gw', 'fixture_index', undefined, stack),
+    fetchAllRowsForGwList(supa, tables.fixtures, 'gw, fixture_index, api_match_id', uniq, 'gw', 'fixture_index', undefined, stack),
   ]);
 
   for (const gw of uniq) {
-    out.set(gw, buildScoresForSingleGw(gw, submissionsAll, picksAll, liveAll as any, resultsAll as any, fixturesAll as any));
+    out.set(
+      gw,
+      buildScoresForSingleGw(
+        gw,
+        submissionsAll,
+        picksAll,
+        liveAll as any,
+        resultsAll as any,
+        fixturesAll as any,
+        pileB
+      )
+    );
   }
 
   return out;
@@ -184,8 +227,9 @@ export async function computeLiveGwScoresForGwsBatch(
 
 export async function computeLiveGwScoresForGw(
   supa: any,
-  gw: number
+  gw: number,
+  seasonCtx?: SeasonCtx | null
 ): Promise<Array<{ user_id: string; score: number }>> {
-  const m = await computeLiveGwScoresForGwsBatch(supa, [gw]);
+  const m = await computeLiveGwScoresForGwsBatch(supa, [gw], seasonCtx);
   return m.get(gw)?.scores ?? [];
 }

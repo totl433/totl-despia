@@ -76,15 +76,18 @@ async function ensureLeagueMeta(supa, league) {
  * `app_gw_results.gw` is not always chronological vs real kickoffs (e.g. id "2" can be later in the season
  * than "8"). Never iterate completed GWs by numeric `gw` when resolving activation → start GW.
  */
-export async function orderCompletedGwsByFirstKickoff(supa, completedGws) {
+export async function orderCompletedGwsByFirstKickoff(supa, completedGws, options) {
     if (completedGws.length === 0)
         return [];
     const unique = [...new Set(completedGws.filter((g) => Number.isFinite(g)))];
-    const { data, error } = await supa
-        .from('app_fixtures')
+    const fixturesTable = options?.fixturesTable ?? 'app_fixtures';
+    let q = supa
+        .from(fixturesTable)
         .select('gw,kickoff_time')
         .in('gw', unique)
         .not('kickoff_time', 'is', null);
+    q = withSeasonIdFilter(q, options?.seasonId ?? null);
+    const { data, error } = await q;
     if (error || !data?.length) {
         return unique.sort((a, b) => a - b);
     }
@@ -115,20 +118,29 @@ export async function resolveLeagueStartGwWeb(supa, league, currentGw, opts) {
     const startFromColumn = parseOptionalGwColumn(withMeta.start_gw);
     if (!opts?.matchLeaguePageEffect && startFromColumn !== null)
         return startFromColumn;
+    const fixturesTable = opts?.fixturesTable ?? 'app_fixtures';
+    const resultsTable = opts?.resultsTable ?? 'app_gw_results';
+    const seasonId = opts?.seasonId ?? null;
     const anchorTs = withMeta.activation_at ?? withMeta.created_at;
     if (anchorTs && currentGw) {
         const anchorTime = new Date(anchorTs);
-        const { data: resultsData } = await supa.from('app_gw_results').select('gw').order('gw', { ascending: true });
+        let resultsQ = supa.from(resultsTable).select('gw').order('gw', { ascending: true });
+        resultsQ = withSeasonIdFilter(resultsQ, seasonId);
+        const { data: resultsData } = await resultsQ;
         const completedGws = resultsData ? [...new Set(resultsData.map((r) => r.gw))] : [];
-        const completedOrdered = await orderCompletedGwsByFirstKickoff(supa, completedGws);
+        const completedOrdered = await orderCompletedGwsByFirstKickoff(supa, completedGws, {
+            fixturesTable,
+            seasonId,
+        });
         for (const gw of completedOrdered) {
-            const { data: firstFixture } = await supa
-                .from('app_fixtures')
+            let fxQ = supa
+                .from(fixturesTable)
                 .select('kickoff_time')
                 .eq('gw', gw)
                 .order('kickoff_time', { ascending: true })
-                .limit(1)
-                .maybeSingle();
+                .limit(1);
+            fxQ = withSeasonIdFilter(fxQ, seasonId);
+            const { data: firstFixture } = await fxQ.maybeSingle();
             if (firstFixture?.kickoff_time) {
                 const firstKickoff = new Date(firstFixture.kickoff_time);
                 const deadlineTime = new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000);
@@ -166,12 +178,33 @@ function emptyRows(memberList) {
         form: [],
     }));
 }
+function resolvePileTables(options) {
+    return {
+        fixtures: options?.tables?.fixtures ?? 'app_fixtures',
+        picks: options?.tables?.picks ?? 'app_picks',
+        results: options?.tables?.results ?? 'app_gw_results',
+    };
+}
+function withSeasonIdFilter(query, seasonId) {
+    if (seasonId)
+        return query.eq('season_id', seasonId);
+    return query;
+}
 export async function computeWebParityMiniLeagueSeasonRows(supa, leagueId, preload, options) {
-    const metaRes = await supa.from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
-    if (metaRes.error)
-        throw metaRes.error;
-    const currentGwRaw = metaRes.data?.current_gw;
-    const currentGw = typeof currentGwRaw === 'number' && Number.isFinite(currentGwRaw) ? Math.trunc(currentGwRaw) : 1;
+    const pile = resolvePileTables(options);
+    const seasonId = options?.seasonId ?? null;
+    let currentGw;
+    if (typeof options?.currentGw === 'number' && Number.isFinite(options.currentGw)) {
+        currentGw = Math.trunc(options.currentGw);
+    }
+    else {
+        const metaRes = await supa.from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
+        if (metaRes.error)
+            throw metaRes.error;
+        const currentGwRaw = metaRes.data?.current_gw;
+        currentGw =
+            typeof currentGwRaw === 'number' && Number.isFinite(currentGwRaw) ? Math.trunc(currentGwRaw) : 1;
+    }
     // Same roster query shape as web `useLeagueMeta` (users join + `created_at`). Always prefer this over
     // preload-only rosters: preload can omit join times; a bare `created_at`-only query can return fewer
     // rows under RLS than this select, which mis-anchors the season and inflates Season stats vs the web.
@@ -204,7 +237,9 @@ export async function computeWebParityMiniLeagueSeasonRows(supa, leagueId, prelo
     if (league.name === 'API Test') {
         return emptyRows(members);
     }
-    const { data: rs, error: rsErr } = await supa.from('app_gw_results').select('gw,fixture_index,result');
+    let resultsQ = supa.from(pile.results).select('gw,fixture_index,result');
+    resultsQ = withSeasonIdFilter(resultsQ, seasonId);
+    const { data: rs, error: rsErr } = await resultsQ;
     if (rsErr)
         throw rsErr;
     const resultList = rs ?? [];
@@ -229,14 +264,19 @@ export async function computeWebParityMiniLeagueSeasonRows(supa, leagueId, prelo
             name: league.name,
             created_at: league.created_at ?? null,
             activation_at: activationAt,
-        }, currentGw, { matchLeaguePageEffect: false });
-    let relevantGws = await computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, currentGw, outcomeByGwIdx);
+        }, currentGw, {
+            matchLeaguePageEffect: false,
+            fixturesTable: pile.fixtures,
+            resultsTable: pile.results,
+            seasonId,
+        });
+    let relevantGws = await computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, currentGw, outcomeByGwIdx, { fixturesTable: pile.fixtures, seasonId });
     if (!specialLeagues.includes(league.name || '') && !gw7StartLeagues.includes(league.name || '') && relevantGws.length === 0) {
         return emptyRows(members);
     }
     let picksAll = [];
     if (relevantGws.length > 0) {
-        picksAll = await fetchAllAppPicksForMiniLeagueSeason(supa, members.map((m) => m.id), relevantGws);
+        picksAll = await fetchAllAppPicksForMiniLeagueSeason(supa, members.map((m) => m.id), relevantGws, { picksTable: pile.picks, seasonId });
     }
     const perGw = new Map();
     relevantGws.forEach((g) => {
@@ -320,8 +360,11 @@ export async function computeWebParityMiniLeagueSeasonRows(supa, leagueId, prelo
     rows.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
     return rows;
 }
-async function computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, currentGw, outcomeByGwIdx) {
-    const orderedGws = await orderCompletedGwsByFirstKickoff(supa, gwsWithResults);
+async function computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, currentGw, outcomeByGwIdx, pile) {
+    const orderedGws = await orderCompletedGwsByFirstKickoff(supa, gwsWithResults, {
+        fixturesTable: pile?.fixturesTable,
+        seasonId: pile?.seasonId,
+    });
     const startIdx = leagueStartGw <= 0
         ? 0
         : orderedGws.findIndex((gw) => gw === leagueStartGw);
@@ -332,7 +375,10 @@ async function computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, cur
     // those lower ids must not re-enter the mini-league window just because their kickoff is later.
     let relevantGws = orderedGws.slice(startIdx).filter((gw) => leagueStartGw <= 0 || gw >= leagueStartGw);
     if (relevantGws.includes(currentGw)) {
-        const { data: fixturesForCurrentGw } = await supa.from('app_fixtures').select('fixture_index').eq('gw', currentGw);
+        const fixturesTable = pile?.fixturesTable ?? 'app_fixtures';
+        let fxQ = supa.from(fixturesTable).select('fixture_index').eq('gw', currentGw);
+        fxQ = withSeasonIdFilter(fxQ, pile?.seasonId ?? null);
+        const { data: fixturesForCurrentGw } = await fxQ;
         const fixtureCount = fixturesForCurrentGw?.length ?? 0;
         const resultCountForCurrentGw = Array.from(outcomeByGwIdx.keys()).filter((k) => parseInt(k.split(':')[0], 10) === currentGw).length;
         if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
@@ -344,22 +390,27 @@ async function computeRelevantGwsWindow(supa, gwsWithResults, leagueStartGw, cur
 /** PostgREST page size for per-member `range()` paging only (not a scoring cap). */
 const APP_PICKS_PAGE_SIZE = 1000;
 /**
- * All `app_picks` for the given members and gameweeks — one **paginated** query per member.
+ * All picks for the given members and gameweeks — one **paginated** query per member.
+ * Dual-stack: pass picksTable + seasonId for Pile B.
  */
-async function fetchAllAppPicksForMiniLeagueSeason(supa, memberIds, relevantGws) {
+async function fetchAllAppPicksForMiniLeagueSeason(supa, memberIds, relevantGws, pile) {
     if (relevantGws.length === 0 || memberIds.length === 0)
         return [];
+    const picksTable = pile?.picksTable ?? 'app_picks';
+    const seasonId = pile?.seasonId ?? null;
     const chunks = await Promise.all(memberIds.map(async (uid) => {
         const out = [];
         for (let offset = 0;; offset += APP_PICKS_PAGE_SIZE) {
-            const { data, error } = await supa
-                .from('app_picks')
+            let q = supa
+                .from(picksTable)
                 .select('user_id,gw,fixture_index,pick,created_at')
                 .eq('user_id', uid)
                 .in('gw', relevantGws)
                 .order('gw', { ascending: true })
                 .order('fixture_index', { ascending: true })
                 .range(offset, offset + APP_PICKS_PAGE_SIZE - 1);
+            q = withSeasonIdFilter(q, seasonId);
+            const { data, error } = await q;
             if (error)
                 throw error;
             const batch = data ?? [];

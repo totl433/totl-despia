@@ -42,13 +42,29 @@ export declare function getLeagueActivationAt(members: Array<{
  * `app_gw_results.gw` is not always chronological vs real kickoffs (e.g. id "2" can be later in the season
  * than "8"). Never iterate completed GWs by numeric `gw` when resolving activation → start GW.
  */
-export declare function orderCompletedGwsByFirstKickoff(supa: any, completedGws: number[]): Promise<number[]>;
+export declare function orderCompletedGwsByFirstKickoff(supa: any, completedGws: number[], options?: {
+    fixturesTable?: string;
+    seasonId?: string | null;
+} | null): Promise<number[]>;
 export declare function resolveLeagueStartGwWeb(supa: any, league: LeagueRecord | null | undefined, currentGw: number, opts?: {
     matchLeaguePageEffect?: boolean;
+    fixturesTable?: string;
+    resultsTable?: string;
+    seasonId?: string | null;
 }): Promise<number>;
 export type MiniLeagueSeasonComputeOptions = {
     /** When set, use this GW as the season window start (same as banner / `resolveLeagueStartGw`). */
     leagueStartGw?: number | null;
+    /** Override current GW (e.g. Pile B runtime) instead of `app_meta.current_gw`. */
+    currentGw?: number | null;
+    /** Dual-stack table names; defaults to legacy `app_*`. */
+    tables?: {
+        fixtures?: string;
+        picks?: string;
+        results?: string;
+    } | null;
+    /** Required for Pile B queries (`app_season_*`). */
+    seasonId?: string | null;
 };
 export declare function computeWebParityMiniLeagueSeasonRows(supa: any, leagueId: string, preload?: MiniLeagueSeasonPreload | null, options?: MiniLeagueSeasonComputeOptions | null): Promise<LeagueSeasonTableRow[]>;
 export {};

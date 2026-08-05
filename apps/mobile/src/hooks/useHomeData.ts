@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useViewerSeason } from '../lib/useViewerSeason';
+import { SEASON_PILE_TABLES, LEGACY_PILE_TABLES } from '../lib/leagueSeasonPile';
 import { useLiveScores } from './useLiveScores';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
@@ -45,6 +47,7 @@ export function useHomeData() {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
   const [pullRefreshing, setPullRefreshing] = React.useState(false);
+  const { useSeasonStack, seasonId } = useViewerSeason();
 
   React.useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -216,13 +219,26 @@ export function useHomeData() {
   const deadlineExpired = deadline?.expired ?? false;
 
   const { data: pickPercentageRows } = useQuery<Array<{ fixture_index: number; pick: Pick }>>({
-    enabled: deadlineExpired && typeof viewingGwForPickPercentages === 'number',
-    queryKey: ['home-pick-percentages', viewingGwForPickPercentages],
+    enabled:
+      deadlineExpired &&
+      typeof viewingGwForPickPercentages === 'number' &&
+      (!useSeasonStack || !!seasonId),
+    queryKey: [
+      'home-pick-percentages',
+      viewingGwForPickPercentages,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_picks')
+      const tables = useSeasonStack && seasonId ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
+      let q = (supabase as any)
+        .from(tables.picks)
         .select('fixture_index, pick')
         .eq('gw', viewingGwForPickPercentages as number);
+      if (useSeasonStack && seasonId) {
+        q = q.eq('season_id', seasonId);
+      }
+      const { data, error } = await q;
       if (error) {
         console.warn('[HomeScreen] Failed to load pick percentages', error.message);
         return [];

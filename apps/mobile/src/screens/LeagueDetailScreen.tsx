@@ -193,9 +193,9 @@ export default function LeagueDetailScreen() {
   /** Live 2026/27 vs archived 2025/26 (agreed Seasons control on ML pages). */
   type MlSeasonKey = 'live' | 'archive_2025_26';
   const [mlSeasonKey, setMlSeasonKey] = React.useState<MlSeasonKey>('live');
-  const canBrowseArchiveSeasons = isNewSeasonFresh || useSeasonStack;
+  const canBrowseArchiveSeasons = useSeasonStack;
   const browsingArchive = canBrowseArchiveSeasons && mlSeasonKey === 'archive_2025_26';
-  /** Live new season (zeros, pile B fixtures) — not archive lookback. */
+  /** Pre-results live season: zeros until first completed result; API still used for live GW table. */
   const browsingLiveNewSeason = canBrowseArchiveSeasons && !browsingArchive && isNewSeasonFresh;
   const mlSeasonOptions = React.useMemo(() => {
     if (!canBrowseArchiveSeasons) return [] as Array<{ key: string; label: string }>;
@@ -440,24 +440,36 @@ export default function LeagueDetailScreen() {
       seasonStartGwResolved &&
       !isDormantLeague &&
       tableAvailableGws.includes(selectedGw) &&
-      !isDevFakeLeague &&
-      // Live new season: zeroed rows, skip API (pile A would return last year's GW1 scores).
-      !browsingLiveNewSeason,
-    queryKey: ['leagueGwTable', leagueId, selectedGw, browsingArchive, browsingLiveNewSeason],
+      !isDevFakeLeague,
+    queryKey: [
+      'leagueGwTable',
+      leagueId,
+      selectedGw,
+      browsingArchive,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
   });
 
   const gwTableMergedRows = React.useMemo((): LeagueGwTableRow[] => {
-    // Live 2026/27: zero scores. Archive and legacy use API.
+    // Pre-results only: show members with 0 until season has completed fixtures (isNewSeasonFresh).
+    // Once live/results exist, BFF season-aware table returns real scores.
     if (browsingLiveNewSeason && members.length) {
-      return members
-        .map((m: { id?: string; name?: string }) => ({
-          user_id: String(m.id ?? ''),
-          name: String(m.name ?? 'User'),
-          score: 0,
-          unicorns: 0,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const tbl = table as { rows?: LeagueGwTableRow[]; submittedUserIds?: string[] } | null | undefined;
+      if (tbl?.rows?.length) {
+        // Prefer live BFF rows even while "fresh" if any exist (e.g. live scoring started)
+        // fall through
+      } else {
+        return members
+          .map((m: { id?: string; name?: string }) => ({
+            user_id: String(m.id ?? ''),
+            name: String(m.name ?? 'User'),
+            score: 0,
+            unicorns: 0,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
     }
     const tbl = table as { rows?: LeagueGwTableRow[]; submittedUserIds?: string[] } | null | undefined;
     if (!tbl?.rows || !members.length) return [];
@@ -786,9 +798,18 @@ export default function LeagueDetailScreen() {
     LeagueSeasonRow[]
   >({
     enabled: members.length >= 2 && !isDormantLeague && !isDevFakeLeague && seasonStartGwResolved,
-    queryKey: ['leagueSeasonTable', 'v28', leagueId, seasonStartGw, browsingLiveNewSeason, browsingArchive, seasonId],
+    queryKey: [
+      'leagueSeasonTable',
+      'v29',
+      leagueId,
+      seasonStartGw,
+      browsingLiveNewSeason,
+      browsingArchive,
+      seasonId,
+      useSeasonStack ? 'pileB' : 'pileA',
+    ],
     queryFn: async () => {
-      // Live 26/27 only: zeroed. Archive uses full 25/26 compute from legacy results.
+      // Pre-results: empty zeros. Once season has results (isNewSeasonFresh=false), compute pile B.
       if (browsingLiveNewSeason) {
         return members
           .filter((m: any) => m?.id)
@@ -803,6 +824,11 @@ export default function LeagueDetailScreen() {
             form: [] as Array<'W' | 'D' | 'L'>,
           })) as LeagueSeasonRow[];
       }
+      const pile = resolveLeaguePileTables({
+        useSeasonStack: useSeasonStack && !browsingArchive,
+        seasonId,
+        viewingArchive2025_26: browsingArchive,
+      });
       const preload = {
         members: members
           .filter((m: any) => m?.id)
@@ -822,6 +848,13 @@ export default function LeagueDetailScreen() {
       try {
         const rows = (await computeWebParityMiniLeagueSeasonRows(supabase as any, leagueId, preload, {
           leagueStartGw: seasonStartGw,
+          currentGw: typeof currentGw === 'number' ? currentGw : undefined,
+          seasonId: pile.seasonIdFilter,
+          tables: {
+            fixtures: pile.tables.fixtures,
+            picks: pile.tables.picks,
+            results: pile.tables.results,
+          },
         })) as LeagueSeasonRow[];
         if (rows.length > 0) return rows;
       } catch {

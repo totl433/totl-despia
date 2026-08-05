@@ -20,23 +20,29 @@ function getLeagueStartOverride(name?: string | null): number | undefined {
 export async function resolveLeagueStartGw(
   supa: any,
   league: LeagueRecord | null | undefined,
-  currentGw: number
+  currentGw: number,
+  options?: { fixturesTable?: string; seasonId?: string | null }
 ): Promise<number> {
   if (!league?.id) return currentGw;
   const override = getLeagueStartOverride(league.name ?? null);
   if (typeof override === 'number') return override;
+
+  const fixturesTable = options?.fixturesTable ?? 'app_fixtures';
+  const seasonId = options?.seasonId ?? null;
 
   const startTimestamp = league.activation_at ?? league.created_at;
   if (startTimestamp && currentGw) {
     const leagueActivatedAt = new Date(startTimestamp);
     if (Number.isNaN(leagueActivatedAt.getTime())) return currentGw;
 
-    const { data: fixturesData } = await (supa as any)
-      .from('app_fixtures')
+    let fxQ = (supa as any)
+      .from(fixturesTable)
       .select('gw,kickoff_time')
       .not('kickoff_time', 'is', null)
       .order('gw', { ascending: true })
       .order('kickoff_time', { ascending: true });
+    if (seasonId) fxQ = fxQ.eq('season_id', seasonId);
+    const { data: fixturesData } = await fxQ;
 
     const firstKickoffByGw = new Map<number, string>();
     (fixturesData ?? []).forEach((fixture: any) => {
@@ -60,4 +66,3 @@ export async function resolveLeagueStartGw(
 
   return currentGw;
 }
-

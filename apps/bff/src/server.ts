@@ -293,29 +293,31 @@ app.get('/v1/home/ranks', async (req) => {
   await requireUser(req, supabase);
   const { userId, supa } = getAuthedSupa(req as any);
 
-  // Latest completed GW (used for “Gameweek X” and form windows)
-  const { data: latestRes, error: latestErr } = await (supa as any)
-    .from('app_gw_results')
-    .select('gw')
-    .order('gw', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+
+  // Latest completed GW in the user's active pile (season or legacy)
+  let latestQ = (supa as any).from(tables.results).select('gw').order('gw', { ascending: false }).limit(1);
+  latestQ = applySeasonFilter(latestQ, seasonCtx);
+  const { data: latestRes, error: latestErr } = await latestQ.maybeSingle();
   if (latestErr) throw latestErr;
   const latestGw: number | null = (latestRes?.gw as number | null) ?? null;
 
-  // Season rank from ocp view (top 200 is fine for now; will expand later if needed)
-  const { data: ocpRows, error: ocpErr } = await (supa as any)
-    .from('app_v_ocp_overall')
+  // Season rank from the correct OCP view (Pile B is season_id scoped)
+  let ocpQ = (supa as any)
+    .from(tables.ocpOverall)
     .select('user_id, ocp')
     .order('ocp', { ascending: false })
     .limit(500);
+  ocpQ = applySeasonFilter(ocpQ, seasonCtx);
+  const { data: ocpRows, error: ocpErr } = await ocpQ;
   if (ocpErr) throw ocpErr;
   const ocpScores = (ocpRows ?? [])
     .map((r: any) => ({ user_id: r.user_id as string, score: Number(r.ocp ?? 0) }))
     .filter((r: any) => r.user_id);
   const season = rankFromSorted(ocpScores, userId);
 
-  // If we don't have a latest GW yet, return what we can.
+  // Pre-results (e.g. GW1 open): empty ranks are correct for this season stack
   if (!latestGw) {
     const out: HomeRanks = {
       latestGw: null,
@@ -327,18 +329,18 @@ app.get('/v1/home/ranks', async (req) => {
     return HomeRanksSchema.parse(out);
   }
 
-  // Pull recent GW points window (last 10) and last GW
   const minGw = Math.max(1, latestGw - 9);
-  const { data: gwPointsRows, error: gwPointsErr } = await (supa as any)
-    .from('app_v_gw_points')
+  let gwPointsQ = (supa as any)
+    .from(tables.gwPoints)
     .select('user_id, gw, points')
     .gte('gw', minGw)
     .lte('gw', latestGw)
     .order('gw', { ascending: true })
     .limit(20000);
+  gwPointsQ = applySeasonFilter(gwPointsQ, seasonCtx);
+  const { data: gwPointsRows, error: gwPointsErr } = await gwPointsQ;
   if (gwPointsErr) throw gwPointsErr;
 
-  // Determine participant set from season leaderboard (fallback to gw points)
   const participantIds = new Set<string>(ocpScores.map((r: { user_id: string; score: number }) => r.user_id));
   (gwPointsRows ?? []).forEach((r: any) => {
     if (typeof r?.user_id === 'string') participantIds.add(r.user_id);
@@ -364,10 +366,12 @@ app.get('/v1/home/ranks', async (req) => {
   const gwRank = rankFromSorted(lastGwScores, userId);
   const myLatestGwScore = pointsByUserByGw.get(userId)?.get(latestGw) ?? 0;
 
-  const { count: latestGwFixtureCount, error: latestGwFxErr } = await (supa as any)
-    .from('app_fixtures')
+  let fixturesCountQ = (supa as any)
+    .from(tables.fixtures)
     .select('id', { count: 'exact', head: true })
     .eq('gw', latestGw);
+  fixturesCountQ = applySeasonFilter(fixturesCountQ, seasonCtx);
+  const { count: latestGwFixtureCount, error: latestGwFxErr } = await fixturesCountQ;
   if (latestGwFxErr) throw latestGwFxErr;
   const myLatestGwTotalFixtures = Number(latestGwFixtureCount ?? 0) || 0;
 
@@ -689,9 +693,17 @@ app.get('/v1/leagues/:leagueId', async (req) => {
 /** Season mini-league table — same numbers as playtotl.com (`League.tsx` season effect). */
 app.get('/v1/leagues/:leagueId/season-table', async (req) => {
   await requireUser(req, supabase);
-  const { supa } = getAuthedSupa(req as any);
+  const { userId, supa } = getAuthedSupa(req as any);
   const params = LeagueParamsSchema.parse((req as any).params);
-  const rows = await computeWebParityMiniLeagueSeasonRows(supa, params.leagueId);
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  const rows = await computeWebParityMiniLeagueSeasonRows(supa, params.leagueId, null, {
+    currentGw: seasonCtx.currentGw,
+    seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+    tables: seasonCtx.useSeasonStack
+      ? { fixtures: tables.fixtures, picks: tables.picks, results: tables.results }
+      : undefined,
+  });
   return { rows };
 });
 
@@ -859,13 +871,17 @@ app.post('/v1/predictions/submit', async (req) => {
 
 app.get('/v1/leaderboards/overall', async (req) => {
   await requireUser(req, supabase);
-  const { supa } = getAuthedSupa(req as any);
+  const { userId, supa } = getAuthedSupa(req as any);
 
-  const { data, error } = await (supa as any)
-    .from('app_v_ocp_overall')
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  let q = (supa as any)
+    .from(tables.ocpOverall)
     .select('user_id, name, ocp')
     .order('ocp', { ascending: false })
     .limit(200);
+  q = applySeasonFilter(q, seasonCtx);
+  const { data, error } = await q;
   if (error) throw error;
   return { rows: data ?? [] };
 });
@@ -916,6 +932,8 @@ app.delete('/v1/profile/account', async (req) => {
     'branded_leaderboard_broadcast_reads',
     'app_picks',
     'app_gw_submissions',
+    'app_season_picks',
+    'app_season_submissions',
     'picks',
     'gw_submissions',
     'test_api_picks',
@@ -1107,11 +1125,12 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
 
 app.get('/v1/leaderboards/gw/:gw/live', async (req) => {
   await requireUser(req, supabase);
-  const { supa } = getAuthedSupa(req as any);
+  const { userId, supa } = getAuthedSupa(req as any);
   const params = z.object({ gw: z.coerce.number().int().positive() }).parse((req as any).params);
   const gw = params.gw;
 
-  const scoreRows = await computeLiveGwScoresForGw(supa, gw);
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const scoreRows = await computeLiveGwScoresForGw(supa, gw, seasonCtx);
 
   if (!scoreRows.length) {
     return { gw, rows: [] as Array<{ user_id: string; name: string; score: number }> };

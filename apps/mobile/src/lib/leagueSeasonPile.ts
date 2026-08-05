@@ -1,12 +1,14 @@
 /**
- * Client dual-stack table map for direct Supabase reads (league ML screens).
- * Mirrors BFF seasonStack table names.
+ * Client dual-stack table map for direct Supabase reads.
+ * Mirrors BFF seasonStack table names (incl. points views).
  */
 export type PileTables = {
   fixtures: string;
   picks: string;
   results: string;
   submissions: string;
+  gwPoints: string;
+  ocpOverall: string;
 };
 
 export const LEGACY_PILE_TABLES: PileTables = {
@@ -14,6 +16,8 @@ export const LEGACY_PILE_TABLES: PileTables = {
   picks: 'app_picks',
   results: 'app_gw_results',
   submissions: 'app_gw_submissions',
+  gwPoints: 'app_v_gw_points',
+  ocpOverall: 'app_v_ocp_overall',
 };
 
 export const SEASON_PILE_TABLES: PileTables = {
@@ -21,6 +25,8 @@ export const SEASON_PILE_TABLES: PileTables = {
   picks: 'app_season_picks',
   results: 'app_season_results',
   submissions: 'app_season_submissions',
+  gwPoints: 'app_v_season_gw_points',
+  ocpOverall: 'app_v_season_ocp_overall',
 };
 
 /** True when reads should hit Pile B (folder-aware) for the selected season year. */
