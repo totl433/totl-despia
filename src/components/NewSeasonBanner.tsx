@@ -126,24 +126,19 @@ export default function NewSeasonBanner({
             {seasonLabel}
           </h2>
           <p className="mt-2 max-w-md text-sm leading-snug text-white/90">
-            Clean slate. Fresh fixtures. Lock in early — the title race starts at GW1.
+            Ready to get started? A clean slate for everyone — make your GW1 predictions and jump
+            into the new season.
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-3">
             <Link
               to="/predictions"
               className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#1C8376] shadow-sm transition active:scale-[0.98]"
             >
-              Make your picks
+              Make your GW1 predictions
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-            </Link>
-            <Link
-              to="/global"
-              className="inline-flex items-center rounded-full border border-white/35 bg-white/10 px-3.5 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.98]"
-            >
-              Leaderboards
             </Link>
           </div>
         </div>
