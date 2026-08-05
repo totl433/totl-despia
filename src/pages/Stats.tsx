@@ -16,6 +16,9 @@ import {
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
 import { useGameweekState } from '../hooks/useGameweekState';
+import { useCurrentGameweek } from '../hooks/useCurrentGameweek';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 import { supabase } from '../lib/supabase';
 import GameweekResultsModal from '../components/GameweekResultsModal';
 
@@ -24,8 +27,8 @@ export default function Stats() {
  const [stats, setStats] = useState<UserStatsData | null>(null);
  const [loading, setLoading] = useState(true);
  const [showParChartInfo, setShowParChartInfo] = useState(false);
- const [currentGw, setCurrentGw] = useState<number | null>(null);
- const lastUpdatedGwRef = useRef<number | null>(null); // Track which GW we last updated stats for
+ const { currentGw } = useCurrentGameweek();
+ const lastUpdatedGwRef = useRef<number | null>(null);
  const [showResultsModal, setShowResultsModal] = useState(false);
  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
  const [latestGw, setLatestGw] = useState<number | null>(null);
@@ -62,74 +65,12 @@ export default function Stats() {
  }
  }
  
- // Get current GW from app_meta
  useEffect(() => {
- let alive = true;
+ if (currentGw) setLatestGw(currentGw);
+ }, [currentGw]);
  
- const fetchCurrentGw = async () => {
- const { data: meta } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .maybeSingle();
- 
- if (alive && meta) {
- const gw: number | null = (meta as any)?.current_gw ?? null;
- setCurrentGw(gw);
- }
- };
- 
- fetchCurrentGw();
- 
- // Subscribe to app_meta changes
- const channel = supabase
- .channel('stats-app-meta')
- .on(
- 'postgres_changes',
- {
- event: '*',
- schema: 'public',
- table: 'app_meta',
- },
- () => {
- fetchCurrentGw();
- }
- )
- .subscribe();
- 
- return () => {
- alive = false;
- supabase.removeChannel(channel);
- };
- }, []);
- 
- // Get game state for current GW
  const { state: currentGwState } = useGameweekState(currentGw, user?.id);
- 
- // Get game state for last completed GW (for results box)
  const { state: lastGwState } = useGameweekState(stats?.lastCompletedGw ?? null, user?.id);
- 
- // Get latest GW for results modal
- useEffect(() => {
- let alive = true;
- 
- const fetchLatestGw = async () => {
- const { data: meta } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .maybeSingle();
- 
- if (alive && meta) {
- const gw: number | null = (meta as any)?.current_gw ?? null;
- setLatestGw(gw);
- }
- };
- 
- fetchLatestGw();
- 
- return () => { alive = false; };
- }, []);
  
  // Initial load
  useEffect(() => {
@@ -140,10 +81,6 @@ export default function Stats() {
  }
  }, [user]);
  
- // Determine which GW to show stats for based on game state (duplicate removed)
- // GW_OPEN/GW_PREDICTED: Show previous GW (lastCompletedGw) - already handled by fetchUserStats
- // LIVE: Show static stats (don't update)
- // RESULTS_PRE_GW: Show updated stats for completed GW (update once when it finishes)
  useEffect(() => {
  if (!user || !currentGw || currentGwState === null) {
  return;
@@ -152,25 +89,29 @@ export default function Stats() {
  let alive = true;
  
  const shouldRefreshStats = async () => {
- // In LIVE state, don't refresh (show static stats)
  if (currentGwState === 'LIVE') {
- // Stats should already be loaded from initial load
  return;
  }
  
- // In RESULTS_PRE_GW, check if we need to update stats for the completed GW
  if (currentGwState === 'RESULTS_PRE_GW') {
- // Get the last completed GW
- const { data: lastGwData } = await supabase
- .from('app_gw_results')
+ const seasonCtx = getActiveSeasonCtx() ?? {
+ useSeasonStack: false,
+ seasonId: null,
+ seasonLabel: null,
+ currentGw: currentGw ?? 1,
+ viewingGw: null,
+ };
+ const tables = getSeasonTables(seasonCtx);
+ let lastGwQ = (supabase as any)
+ .from(tables.results)
  .select('gw')
  .order('gw', { ascending: false })
- .limit(1)
- .maybeSingle();
+ .limit(1);
+ lastGwQ = withSeasonId(lastGwQ, seasonCtx);
+ const { data: lastGwData } = await lastGwQ.maybeSingle();
  
  const lastCompletedGw = lastGwData?.gw || null;
  
- // Only refresh if this is a new completed GW we haven't updated for yet
  if (lastCompletedGw && lastCompletedGw !== lastUpdatedGwRef.current) {
  lastUpdatedGwRef.current = lastCompletedGw;
  if (alive) {
@@ -179,10 +120,6 @@ export default function Stats() {
  }
  return;
  }
- 
- // In GW_OPEN or GW_PREDICTED, show previous GW stats
- // Stats should already be loaded from initial load
- // No need to refresh unless we haven't loaded yet
  };
  
  shouldRefreshStats();

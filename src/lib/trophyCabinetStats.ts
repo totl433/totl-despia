@@ -79,14 +79,24 @@ export function computeMonthlyTrophyWins(
 }
 
 /** True when every fixture in the season-finale GW has a settled H/D/A result. */
-export async function isSeasonFinaleGwFullyComplete(): Promise<boolean> {
+export async function isSeasonFinaleGwFullyComplete(
+  seasonCtx?: { useSeasonStack?: boolean; seasonId?: string | null }
+): Promise<boolean> {
   const gw = SEASON_LAST_GW;
-  const fixturesRes = await supabase.from('app_fixtures').select('fixture_index').eq('gw', gw);
+  const useSeason = !!seasonCtx?.useSeasonStack;
+  const fixturesTable = useSeason ? 'app_season_fixtures' : 'app_fixtures';
+  const resultsTable = useSeason ? 'app_season_results' : 'app_gw_results';
+
+  let fixturesQ = (supabase as any).from(fixturesTable).select('fixture_index').eq('gw', gw);
+  if (useSeason && seasonCtx?.seasonId) fixturesQ = fixturesQ.eq('season_id', seasonCtx.seasonId);
+  const fixturesRes = await fixturesQ;
   if (fixturesRes.error) return false;
   const fixtureCount = (fixturesRes.data ?? []).length;
   if (fixtureCount === 0) return false;
 
-  const resultsRes = await supabase.from('app_gw_results').select('fixture_index,result').eq('gw', gw);
+  let resultsQ = (supabase as any).from(resultsTable).select('fixture_index,result').eq('gw', gw);
+  if (useSeason && seasonCtx?.seasonId) resultsQ = resultsQ.eq('season_id', seasonCtx.seasonId);
+  const resultsRes = await resultsQ;
   if (resultsRes.error) return false;
   const settled = new Set<number>();
   for (const r of (resultsRes.data ?? []) as Array<{ fixture_index?: number; result?: string }>) {
@@ -120,6 +130,8 @@ export async function computeSeasonTrophyWins(
   lastCompletedGw: number
 ): Promise<number> {
   if (lastCompletedGw < SEASON_LAST_GW) return 0;
+  // Note: call sites pass stack rows already; finale completion still checks fixtures/results.
+  // Prefer active season ctx when available in future; for now legacy finale (GW 38).
   if (!(await isSeasonFinaleGwFullyComplete())) return 0;
 
   let count = 0;

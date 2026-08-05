@@ -1,25 +1,13 @@
 import { supabase } from '../lib/supabase';
 import { getFullName } from '../lib/teamNames';
 import { computeTrophyCabinetCounts, type GwPointsRow } from '../lib/trophyCabinetStats';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
+import { fetchAllGwPoints, fetchOverallOcp } from '../lib/fetchAllGwPoints';
 
 /** PostgREST default page size is 1000 — must page or later GWs vanish from stats charts. */
-async function fetchAllAppGwPoints(): Promise<GwPointsRow[]> {
-  const rows: GwPointsRow[] = [];
-  const pageSize = 1000;
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .order('gw', { ascending: true })
-      .order('user_id', { ascending: true })
-      .range(from, to);
-    if (error) throw error;
-    const page = (data ?? []) as GwPointsRow[];
-    rows.push(...page);
-    if (page.length < pageSize) break;
-  }
-  return rows;
+async function fetchAllAppGwPoints(seasonId?: string | null): Promise<GwPointsRow[]> {
+  return fetchAllGwPoints('asc', { seasonId: seasonId ?? null });
 }
 
 export interface UserStatsData {
@@ -170,28 +158,35 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
   };
 
   try {
-    // 1. Get last completed GW
-    const { data: lastGwData } = await supabase
-      .from('app_gw_results')
+    const seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+    const tables = getSeasonTables(seasonCtx);
+    const seasonId = seasonCtx.useSeasonStack ? seasonCtx.seasonId : null;
+
+    // 1. Get last completed GW (stack-scoped results)
+    let lastGwQ = (supabase as any)
+      .from(tables.results)
       .select('gw')
       .order('gw', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    lastGwQ = withSeasonId(lastGwQ, seasonCtx);
+    const { data: lastGwData } = await lastGwQ.maybeSingle();
 
     const lastCompletedGw = lastGwData?.gw || null;
     stats.lastCompletedGw = lastCompletedGw;
 
     if (!lastCompletedGw) {
-      // Not enough data
+      // Not enough data (e.g. 26/27 pre-results — empty stats, not last year's)
       return stats;
     }
 
     // 2. Last completed GW percentile
     if (lastCompletedGw) {
-      const { data: gwPoints } = await supabase
-        .from('app_v_gw_points')
+      let gwPtsQ = (supabase as any)
+        .from(tables.gwPoints)
         .select('user_id, points')
         .eq('gw', lastCompletedGw);
+      if (seasonId) gwPtsQ = gwPtsQ.eq('season_id', seasonId);
+      const { data: gwPoints } = await gwPtsQ;
 
       if (gwPoints && gwPoints.length > 0) {
         const allPoints = gwPoints.map((p: any) => p.points || 0);
@@ -200,67 +195,35 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       }
     }
 
-    // 3. Overall percentile (from OCP)
-    const { data: overallStandings } = await supabase
-      .from('v_ocp_overall')
-      .select('user_id, ocp')
-      .order('ocp', { ascending: false });
+    // 3. Overall percentile (season OCP on Pile B)
+    const overallStandings = await fetchOverallOcp({ seasonId });
 
     if (overallStandings && overallStandings.length > 0) {
-      const allOcp = overallStandings.map((s: any) => s.ocp || 0);
-      const userOcp = overallStandings.find((s: any) => s.user_id === userId)?.ocp || 0;
-      // Invert percentile - higher OCP should mean higher percentile
+      const allOcp = overallStandings.map((s) => s.ocp || 0);
+      const userOcp = overallStandings.find((s) => s.user_id === userId)?.ocp || 0;
       stats.overallPercentile = calculatePercentile(userOcp, allOcp);
     }
 
-    // 4. Correct prediction rate
-    // Get all user picks and results
-    // Try both app_picks and picks tables to ensure we get all predictions
-    const [appPicksResult, picksResult] = await Promise.all([
-      supabase
-        .from('app_picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId),
-      supabase
-        .from('picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId)
-    ]);
+    // 4. Correct prediction rate — stack picks + results only
+    let userPicksQ = (supabase as any)
+      .from(tables.picks)
+      .select('gw, fixture_index, pick')
+      .eq('user_id', userId);
+    userPicksQ = withSeasonId(userPicksQ, seasonCtx);
+    const userPicksResult = await userPicksQ;
 
-    // Combine picks from both tables (app_picks takes precedence if duplicate)
-    const picksMap = new Map<string, { gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>();
-    
-    if (picksResult.data) {
-      picksResult.data.forEach((pick: any) => {
-        const key = `${pick.gw}:${pick.fixture_index}`;
-        picksMap.set(key, pick);
-      });
-    }
-    
-    if (appPicksResult.data) {
-      appPicksResult.data.forEach((pick: any) => {
-        const key = `${pick.gw}:${pick.fixture_index}`;
-        picksMap.set(key, pick); // app_picks overwrites picks if duplicate
-      });
-    }
-    
-    const allPicks = Array.from(picksMap.values());
+    const allPicks = (userPicksResult.data ?? []) as Array<{
+      gw: number;
+      fixture_index: number;
+      pick: 'H' | 'D' | 'A';
+    }>;
 
-    console.log('[userStats] Picks from app_picks:', appPicksResult.data?.length || 0);
-    console.log('[userStats] Picks from picks table:', picksResult.data?.length || 0);
-    console.log('[userStats] Total unique picks (combined):', allPicks.length);
-    if (appPicksResult.error) {
-      console.error('[userStats] Error fetching app_picks:', appPicksResult.error);
-    }
-    if (picksResult.error && picksResult.error.code !== 'PGRST116') {
-      console.error('[userStats] Error fetching picks:', picksResult.error);
-    }
-
-    const { data: allResults, error: resultsError } = await supabase
-      .from('app_gw_results')
+    let resultsQ = (supabase as any)
+      .from(tables.results)
       .select('gw, fixture_index, result');
+    resultsQ = withSeasonId(resultsQ, seasonCtx);
+    const { data: allResults, error: resultsError } = await resultsQ;
 
-    console.log('[userStats] Total results fetched:', allResults?.length || 0);
     if (resultsError) {
       console.error('[userStats] Error fetching results:', resultsError);
     }
@@ -292,8 +255,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     }
 
     // 5. Best streak (top 25%) and average points per week
-    // Full materialization — one unpaged select truncates near GW32 with a full player pool.
-    const allUsersGwPoints = await fetchAllAppGwPoints();
+    const allUsersGwPoints = await fetchAllAppGwPoints(seasonId);
     const userGwPoints = allUsersGwPoints
       .filter((p) => String(p.user_id) === String(userId))
       .map((p) => ({ gw: p.gw, points: p.points }))
@@ -306,14 +268,13 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
 
       // Calculate best streak (top 25%)
       const completedGws = new Set<number>();
-      const { data: completedGwResults } = await supabase
-        .from('app_gw_results')
-        .select('gw')
-        .order('gw', { ascending: true });
-
-      completedGwResults?.forEach((r: any) => {
-        completedGws.add(r.gw);
+      (allResults ?? []).forEach((r: any) => {
+        if (r.gw) completedGws.add(r.gw);
       });
+      // Fallback: any GW with points rows counts as complete for streak
+      if (completedGws.size === 0) {
+        allUsersGwPoints.forEach((p) => completedGws.add(p.gw));
+      }
 
       const gwPercentiles = new Map<number, number>();
       const gwPointsMap = new Map<number, Array<{ user_id: string; points: number }>>();
@@ -473,25 +434,19 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         const uniqueGws = Array.from(userPickGwFixtures).map((key: string) => parseInt(key.split(':')[0]));
         const gwSet = new Set(uniqueGws);
         
-        // Fetch all picks from BOTH tables for those fixtures (same as we do for user picks)
-        const [allUsersPicksApp, allUsersPicksLegacy] = await Promise.all([
-          supabase
-            .from('app_picks')
-            .select('gw, fixture_index, pick')
-            .in('gw', Array.from(gwSet)),
-          supabase
-            .from('picks')
-            .select('gw, fixture_index, pick')
-            .in('gw', Array.from(gwSet))
-        ]);
+        // Stack-scoped community picks for those GWs
+        let allUsersPicksQ = (supabase as any)
+          .from(tables.picks)
+          .select('gw, fixture_index, pick')
+          .in('gw', Array.from(gwSet));
+        allUsersPicksQ = withSeasonId(allUsersPicksQ, seasonCtx);
+        const { data: allUsersPicksApp } = await allUsersPicksQ;
 
         // Group picks by fixture to count popularity
-        // We need to count ALL picks from ALL users, not overwrite duplicates
         const pickCounts = new Map<string, Map<'H' | 'D' | 'A', number>>();
         
-        // Count picks from legacy table first
-        if (allUsersPicksLegacy.data) {
-          allUsersPicksLegacy.data.forEach((pick: any) => {
+        if (allUsersPicksApp) {
+          allUsersPicksApp.forEach((pick: any) => {
             const key = `${pick.gw}:${pick.fixture_index}`;
             if (userPickGwFixtures.has(key)) {
               if (!pickCounts.has(key)) {
@@ -502,24 +457,6 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
             }
           });
         }
-        
-        // Count picks from app_picks table (adds to existing counts)
-        if (allUsersPicksApp.data) {
-          allUsersPicksApp.data.forEach((pick: any) => {
-            const key = `${pick.gw}:${pick.fixture_index}`;
-            if (userPickGwFixtures.has(key)) {
-              if (!pickCounts.has(key)) {
-                pickCounts.set(key, new Map());
-              }
-              const counts = pickCounts.get(key)!;
-              // If this exact user already has a pick counted from legacy, skip to avoid double counting
-              // Actually, we should count all picks regardless - different users might have picks in different tables
-              // But we need to avoid counting the same user's pick twice. Let's just count all for now.
-              counts.set(pick.pick, (counts.get(pick.pick) || 0) + 1);
-            }
-          });
-        }
-
         // Calculate total unique picks counted
         let totalPicksCounted = 0;
         pickCounts.forEach((counts) => {
@@ -606,10 +543,12 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         }
       });
 
-      // Get fixtures to map picks to teams
-      const { data: allFixtures } = await supabase
-        .from('app_fixtures')
+      // Get fixtures to map picks to teams (stack-scoped)
+      let fixturesQ = (supabase as any)
+        .from(tables.fixtures)
         .select('gw, fixture_index, home_code, away_code, home_team, away_team, home_name, away_name');
+      fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+      const { data: allFixtures } = await fixturesQ;
 
       if (allFixtures) {
         const fixturesMap = new Map<string, any>();

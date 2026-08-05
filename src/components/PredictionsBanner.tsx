@@ -81,17 +81,22 @@ export default function PredictionsBanner() {
           setVisible(false);
           return;
         }
-        
-        // Check if GW has finished and next GW fixtures don't exist
-        if (!currentGw) {
-          setVisible(false);
-          return;
-        }
-        
-        const { count: rsCount } = await supabase
-          .from("app_gw_results")
+
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        let resultsQ = (supabase as any)
+          .from(tables.results)
           .select("gw", { count: "exact", head: true })
           .eq("gw", currentGw);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { count: rsCount } = await resultsQ;
         
         if ((rsCount ?? 0) > 0) {
           if (!hasNextGameweek(currentGw)) {
@@ -99,10 +104,12 @@ export default function PredictionsBanner() {
             return;
           }
 
-          const { count: nextGwFxCount } = await supabase
-            .from("app_fixtures")
+          let fxQ = (supabase as any)
+            .from(tables.fixtures)
             .select("id", { count: "exact", head: true })
             .eq("gw", currentGw + 1);
+          fxQ = withSeasonId(fxQ, seasonCtx);
+          const { count: nextGwFxCount } = await fxQ;
           
           if (!nextGwFxCount || nextGwFxCount === 0) {
             setBannerType("watch-space");
@@ -116,15 +123,11 @@ export default function PredictionsBanner() {
         return;
       }
       
-      // Use currentGw from hook (already fetched from app_meta)
+      // Logged-in path uses display/state effect below
       if (!currentGw) {
         setVisible(false);
         return;
       }
-      
-      // No need to manually fetch or set viewingGw - useDisplayGameweek hook handles this
-      // The hook will automatically update when user_notification_preferences changes
-      
     } catch (error) {
       console.error('[PredictionsBanner] Error in refreshBanner:', error);
       setVisible(false);
@@ -326,6 +329,13 @@ export default function PredictionsBanner() {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     
     if (user?.id) {
+      const seasonCtx = getActiveSeasonCtx();
+      const useSeason = !!seasonCtx?.useSeasonStack;
+      const fixturesTable = useSeason ? 'app_season_fixtures' : 'app_fixtures';
+      const resultsTable = useSeason ? 'app_season_results' : 'app_gw_results';
+      // Pile B published state lives on runtime / user prefs (not only app_meta)
+      const metaOrRuntimeTable = useSeason ? 'app_season_runtime' : 'app_meta';
+
       channel = supabase
         .channel('predictions-banner-updates')
         .on(
@@ -333,7 +343,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_meta',
+            table: metaOrRuntimeTable,
           },
           () => {
             if (alive) refreshBanner();
@@ -344,7 +354,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_fixtures',
+            table: fixturesTable,
           },
           () => {
             if (alive) refreshBanner();
@@ -355,7 +365,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_gw_results',
+            table: resultsTable,
           },
           () => {
             if (alive) refreshBanner();
