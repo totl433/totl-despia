@@ -1,6 +1,7 @@
 import { Link } from'react-router-dom';
 import { useEffect, useState } from'react';
 import { isDespiaAvailable } from '../lib/platform';
+import { onAppScroll } from '../lib/appScroll';
 
 export default function FloatingProfile() {
  const [bannerHeight, setBannerHeight] = useState(0);
@@ -45,15 +46,15 @@ export default function FloatingProfile() {
  });
  observer.observe(document.body, { childList: true, subtree: true });
  
- // Also check on resize and scroll
+ // Also check on resize and scroll (mobile uses .app-shell-scroll)
  window.addEventListener('resize', checkBanner);
- window.addEventListener('scroll', checkBanner);
+ const removeScroll = onAppScroll(checkBanner, { passive: true });
  
  return () => {
  clearTimeout(timeoutId);
  observer.disconnect();
  window.removeEventListener('resize', checkBanner);
- window.removeEventListener('scroll', checkBanner);
+ removeScroll();
  };
  }, []);
 

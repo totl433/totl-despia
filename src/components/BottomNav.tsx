@@ -1,6 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
@@ -249,36 +248,13 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
     };
   }, [user?.id, viewingGw, viewingGwState]);
 
-  const nav = (
+  // In-flow flex sibling of the scroll pane (see .app-shell) — never fixed.
+  // Returning null when hidden frees height so full-screen pages (swipe) get the space.
+  if (shouldHide) return null;
+
+  return (
     <>
       <style>{`
-        /* Portal to document.body + simple fixed positioning so iOS doesn't detach
-           the bar from the visual viewport when #root scrolls. */
-        .bottom-nav-absolute {
-          position: fixed;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          width: 100%;
-          max-width: 100%;
-          z-index: 99999;
-          pointer-events: none;
-          padding-left: 1rem;
-          padding-right: 1rem;
-          /* Gap above home indicator only — was 2rem + 1.5rem margin (too high) */
-          padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
-          box-sizing: border-box;
-          transition: transform 0.3s ease-in-out;
-        }
-        .bottom-nav-absolute > * {
-          pointer-events: auto;
-        }
-        .bottom-nav-slide-out {
-          transform: translateY(110%);
-        }
-        .bottom-nav-slide-in {
-          transform: translateY(0);
-        }
         @keyframes shimmer {
           0% {
             transform: translateX(-100%) skewX(-15deg);
@@ -373,10 +349,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           z-index: 2;
         }
       `}</style>
-      <div
-        className={`bottom-nav-absolute lg:hidden flex items-center justify-center ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}
-        aria-hidden={shouldHide}
-      >
+      <nav className="bottom-nav-bar lg:hidden flex items-center justify-center" aria-label="Main">
         <div
           ref={containerRef}
           className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden shadow-lg"
@@ -457,13 +430,8 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           );
         })}
         </div>
-      </div>
+      </nav>
     </>
   );
-
-  // Render on body so fixed sticks to the visual viewport (nested overflow on #root
-  // breaks position:fixed on iOS Safari and the nav scrolls away with content).
-  if (typeof document === 'undefined') return null;
-  return createPortal(nav, document.body);
 }
 
