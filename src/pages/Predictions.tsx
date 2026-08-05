@@ -19,6 +19,7 @@ import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as Fixt
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 import { resolveTeamFormsAndPositions } from "../lib/teamFormStandings";
+import { formatKickoffDateUk, formatKickoffTimeUk } from "../lib/kickoffDisplay";
 
 function seasonTablesNow() {
   return getSeasonTables(getActiveSeasonCtx() ?? { useSeasonStack: false });
@@ -1986,7 +1987,7 @@ return (
  Predictions are no longer available.
  {deadlineTime && (
  <div className="text-xs opacity-80">
- The deadline was {deadlineTime.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at {deadlineTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.
+ The deadline was {formatKickoffDateUk(deadlineTime.toISOString())} at {formatKickoffTimeUk(deadlineTime.toISOString())} UK.
  </div>
  )}
  <div className="text-xs opacity-80">
@@ -2147,7 +2148,7 @@ return null;
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
  let currentDate=''; let currentGroup: typeof fixtures = [];
  filteredFixtures.forEach((fixture)=>{
- const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
+ const fixtureDate = fixture.kickoff_time ? formatKickoffDateUk(fixture.kickoff_time) || 'No date' : 'No date';
  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
  });
  if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
@@ -2320,7 +2321,7 @@ return (
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
  let currentDate=''; let currentGroup: typeof fixtures = [];
  fixtures.forEach((fixture)=>{
- const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
+ const fixtureDate = fixture.kickoff_time ? formatKickoffDateUk(fixture.kickoff_time) || 'No date' : 'No date';
  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
  });
  if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
@@ -2337,7 +2338,7 @@ return (
  <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
  <div className="flex items-center gap-2 flex-shrink-0">
  <TeamBadge code={fixture.home_code} crest={fixture.home_crest} size={28} />
- <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+ <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">{fixture.kickoff_time ? formatKickoffTimeUk(fixture.kickoff_time) : ''}</div>
  <TeamBadge code={fixture.away_code} crest={fixture.away_crest} size={28} />
  </div>
  <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>

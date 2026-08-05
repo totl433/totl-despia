@@ -38,6 +38,7 @@ import {
   isNewSeasonFresh,
   type SeasonCtx,
 } from "../lib/seasonStack";
+import { formatKickoffDateUk } from "../lib/kickoffDisplay";
 
 const MAX_MEMBERS = 8;
 
@@ -2481,9 +2482,8 @@ ${shareUrl}`;
     const sections = useMemo(() => {
       const fmt = (iso?: string | null) => {
         if (!iso) return "Fixtures";
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return "Fixtures";
-        return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+        const label = formatKickoffDateUk(iso);
+        return label || "Fixtures";
       };
       const buckets = new Map<string, { label: string; key: number; items: Fixture[] }>();
       fixtures

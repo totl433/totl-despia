@@ -1,5 +1,6 @@
 import React from "react";
 import { getMediumName, areTeamNamesSimilar } from "../lib/teamNames";
+import { formatKickoffTimeUk } from "../lib/kickoffDisplay";
 
 // Helper function to extract surname from full name
 function getSurname(fullName: string | null | undefined): string {
@@ -83,12 +84,7 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
   const awayName = getMediumName(awayKey);
 
   const kickoff = f.kickoff_time
-    ? (() => {
-        const d = new Date(f.kickoff_time);
-        const hh = String(d.getUTCHours()).padStart(2, '0');
-        const mm = String(d.getUTCMinutes()).padStart(2, '0');
-        return `${hh}:${mm}`;
-      })()
+    ? formatKickoffTimeUk(f.kickoff_time) || "—"
     : "—";
 
   // ============================================

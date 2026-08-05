@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import TeamBadge from '../TeamBadge';
+import { formatKickoffDateUk, formatKickoffTimeUk } from '../../lib/kickoffDisplay';
 
 export interface SwipeCardFixture {
   id: string;
@@ -97,18 +98,11 @@ export default function SwipeCard({
   awayForm = null,
 }: SwipeCardProps) {
   const kickoffDate = fixture.kickoff_time
-    ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      })
+    ? formatKickoffDateUk(fixture.kickoff_time) || null
     : null;
 
   const kickoffTime = fixture.kickoff_time
-    ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+    ? formatKickoffTimeUk(fixture.kickoff_time) || null
     : null;
 
   // Helper function to render form dots
