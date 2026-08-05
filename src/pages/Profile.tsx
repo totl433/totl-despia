@@ -8,6 +8,8 @@ import { AccountMenu } from '../components/profile/AccountMenu';
 import { PageHeader } from '../components/PageHeader';
 import ThemeToggle from '../components/ThemeToggle';
 import { isWebBrowser } from '../lib/platform';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 interface UserStats {
   ocp: number;
@@ -38,54 +40,77 @@ export default function Profile() {
     if (!user) return;
 
     try {
-      // Fetch OCP from v_ocp_overall view
-      const { data: standings, error: standingsError } = await supabase
-        .from('v_ocp_overall')
-        .select('user_id, ocp')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      // Season stack: OCP / streak for current folder only (running total this season).
+      // Legacy: app_* views (not web-only v_ocp_overall).
+      const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+      const tables = getSeasonTables(seasonCtx);
 
-      if (standingsError) {
-        console.error('Error fetching standings:', standingsError);
+      let ocp = 0;
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        const { data: standings, error: standingsError } = await (supabase as any)
+          .from(tables.ocpOverall)
+          .select('user_id, ocp')
+          .eq('season_id', seasonCtx.seasonId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (standingsError) {
+          console.error('[Profile] Error fetching season OCP:', standingsError);
+        }
+        // No results yet this season → 0 (fresh running total)
+        ocp = Math.round(Number(standings?.ocp ?? 0));
+      } else {
+        const { data: standings, error: standingsError } = await supabase
+          .from('app_v_ocp_overall')
+          .select('user_id, ocp')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (standingsError) {
+          console.error('[Profile] Error fetching OCP:', standingsError);
+        }
+        ocp = Math.round(Number(standings?.ocp ?? 0));
       }
-
-      const ocp = standings?.ocp || 0;
 
       // Fetch mini leagues count
       const leagues = await fetchUserLeagues(user.id);
       const miniLeaguesCount = leagues.length;
 
-      // Calculate weeks streak
-      // Get latest completed GW
-      const { data: latestGwData } = await supabase
-        .from('app_gw_results')
+      // Streak: consecutive GWs with points or submission in THIS season folder
+      let latestGwQ = (supabase as any)
+        .from(tables.results)
         .select('gw')
         .order('gw', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      latestGwQ = withSeasonId(latestGwQ, seasonCtx);
+      const { data: latestGwData } = await latestGwQ.maybeSingle();
+      const latestGw = (latestGwData?.gw as number | undefined) || 0;
 
-      const latestGw = latestGwData?.gw || 0;
+      let gwPointsQ = (supabase as any)
+        .from(tables.gwPoints)
+        .select('gw, points')
+        .eq('user_id', user.id)
+        .order('gw', { ascending: false });
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        gwPointsQ = gwPointsQ.eq('season_id', seasonCtx.seasonId);
+      }
 
-      // Get user's GW points and submissions
+      let submissionsQ = (supabase as any)
+        .from(tables.submissions)
+        .select('gw')
+        .eq('user_id', user.id)
+        .order('gw', { ascending: false });
+      submissionsQ = withSeasonId(submissionsQ, seasonCtx);
+
       const [gwPointsResult, submissionsResult] = await Promise.all([
-        supabase
-          .from('app_v_gw_points')
-          .select('gw, points')
-          .eq('user_id', user.id)
-          .order('gw', { ascending: false }),
-        supabase
-          .from('gw_submissions')
-          .select('gw')
-          .eq('user_id', user.id)
-          .order('gw', { ascending: false })
+        gwPointsQ,
+        submissionsQ,
       ]);
 
       const gwPoints = gwPointsResult.data || [];
       const submissions = submissionsResult.data || [];
       
       // Create sets for quick lookup
-      const gwPointsSet = new Set(gwPoints.map((p: any) => p.gw));
-      const submissionsSet = new Set(submissions.map((s: any) => s.gw));
+      const gwPointsSet = new Set(gwPoints.map((p: { gw: number }) => p.gw));
+      const submissionsSet = new Set(submissions.map((s: { gw: number }) => s.gw));
 
       // Calculate streak: count consecutive gameweeks backwards from latestGw
       let weeksStreak = 0;
