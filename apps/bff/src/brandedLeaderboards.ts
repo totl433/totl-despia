@@ -31,6 +31,8 @@ import {
   buildBroadcastReactionSummaries,
   type BroadcastReactionRow,
 } from './brandedLeaderboardBroadcastReactions.js';
+import { computeLiveGwScoresForGw } from './liveGwScores.js';
+import { applySeasonFilter, getSeasonTables, resolveSeasonCtx, seasonDisplayGw } from './seasonStack.js';
 
 function getAuthedSupa(req: FastifyRequest, env: Env) {
   const userId = (req as any).userId as string;
@@ -1650,7 +1652,7 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .is('left_at', null);
     if (memErr) throw memErr;
 
-    const memberIds = (members ?? []).map((m: any) => m.user_id);
+    const memberIds = (members ?? []).map((m: any) => m.user_id as string).filter(Boolean);
     if (memberIds.length === 0) return { rows: [], userRank: null };
 
     const [{ data: userProfiles }, { data: hosts }] = await Promise.all([
@@ -1667,29 +1669,30 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     (userProfiles ?? []).forEach((u: any) => profileMap.set(u.id, u));
     const hostIds = new Set((hosts ?? []).map((h: any) => h.user_id));
 
-    const { data: meta } = await (supa as any)
-      .from('app_meta')
-      .select('current_gw')
-      .eq('id', 1)
-      .maybeSingle();
-    const currentGw = (meta?.current_gw as number | null) ?? 1;
-    const gw = query.gw ?? currentGw;
+    // Dual-stack: season-stack members score from app_v_season_*; legacy from app_v_gw_points.
+    const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+    const tables = getSeasonTables(seasonCtx);
+    const currentGw = seasonDisplayGw(seasonCtx, null);
+    const gw = query.gw && query.gw > 0 ? query.gw : currentGw;
 
     let gwRange: number[] = [];
     if (query.scope === 'gw') {
       gwRange = [gw];
     } else if (query.scope === 'month') {
+      // BFF month scope is a 4-GW window ending at current GW (client recomputes true months from per-GW points).
       const start = Math.max(1, gw - 3);
       gwRange = Array.from({ length: gw - start + 1 }, (_, i) => start + i);
     } else {
       gwRange = Array.from({ length: gw }, (_, i) => i + 1);
     }
 
-    const { data: points, error: ptsErr } = await (supa as any)
-      .from('app_v_gw_points')
+    let pointsQ = (supa as any)
+      .from(tables.gwPoints)
       .select('user_id, gw, points')
       .in('user_id', memberIds)
       .in('gw', gwRange);
+    pointsQ = applySeasonFilter(pointsQ, seasonCtx);
+    const { data: points, error: ptsErr } = await pointsQ;
     if (ptsErr) throw ptsErr;
 
     const scoreMap = new Map<string, number>();
@@ -1703,21 +1706,62 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       scoreByUserByGw.get(uid)!.set(gwNumber, pointsValue);
     });
 
+    // Merge live scores for the active GW when standings include it (matches Global behavior).
+    const needsLiveMerge = gwRange.includes(currentGw);
+    if (needsLiveMerge) {
+      try {
+        const liveScores = await computeLiveGwScoresForGw(supa, currentGw, seasonCtx);
+        const memberSet = new Set(memberIds.map(String));
+        liveScores.forEach((row) => {
+          const uid = String(row.user_id);
+          if (!memberSet.has(uid)) return;
+          const livePts = Number(row.score ?? 0);
+          if (!scoreByUserByGw.has(uid)) scoreByUserByGw.set(uid, new Map<number, number>());
+          const prev = scoreByUserByGw.get(uid)!.get(currentGw) ?? 0;
+          // Prefer live when it has progressed beyond settled points (or when no settled row).
+          if (livePts >= prev) {
+            scoreByUserByGw.get(uid)!.set(currentGw, livePts);
+          }
+        });
+        // Recompute totals from per-GW maps (only GWs in this request window)
+        scoreMap.clear();
+        memberIds.forEach((rawId: string) => {
+          const uid = String(rawId);
+          const byGw = scoreByUserByGw.get(uid);
+          let sum = 0;
+          gwRange.forEach((g) => {
+            sum += byGw?.get(g) ?? 0;
+          });
+          scoreMap.set(uid, sum);
+        });
+      } catch (liveErr) {
+        req.log.warn({ err: liveErr, currentGw }, 'branded standings: live score merge failed');
+      }
+    }
+
     const rows = (members ?? []).map((m: any) => {
+      const uid = String(m.user_id);
       const profile = profileMap.get(m.user_id);
-      const perGw = scoreByUserByGw.get(m.user_id);
+      const perGw = scoreByUserByGw.get(uid);
       const compactValues =
         query.scope === 'month'
           ? gwRange.map((gwNumber) => perGw?.get(gwNumber) ?? null)
           : query.scope === 'season'
             ? [perGw?.get(gw) ?? null]
             : undefined;
+      // Scope totals: gw = this GW only; month/season already summed over range via scoreMap
+      let value = scoreMap.get(uid) ?? 0;
+      if (query.scope === 'gw') {
+        value = perGw?.get(gw) ?? 0;
+      }
+      // Client zod rejects NaN — clamp so standings always parse.
+      const safeValue = Number.isFinite(value) ? value : 0;
       return {
         rank: 0,
         user_id: m.user_id,
         name: profile?.name ?? 'User',
         avatar_url: profile?.avatar_url ?? null,
-        value: scoreMap.get(m.user_id) ?? 0,
+        value: safeValue,
         is_host: hostIds.has(m.user_id),
         compact_values: compactValues,
       };
@@ -1729,7 +1773,16 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
     });
 
     const userRow = rows.find((r: any) => r.user_id === userId);
-    return { rows, userRank: userRow?.rank ?? null };
+    return {
+      rows,
+      userRank: userRow?.rank ?? null,
+      seasonContext: {
+        useSeasonStack: seasonCtx.useSeasonStack,
+        seasonId: seasonCtx.seasonId,
+        seasonLabel: seasonCtx.seasonLabel,
+        currentGw,
+      },
+    };
   });
 
   // ============================================

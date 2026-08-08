@@ -23,11 +23,15 @@ import { getLeaderboardDisplayGwFromSnapshot } from '../../lib/gameweekState';
 import {
   getEffectiveCurrentMonthKey,
   getMonthAllocations,
+  resolveLeaderboardSeasonKey,
   SEASON_2025_26_END_GW,
   SEASON_2025_26_LABEL,
   SEASON_2025_26_START_GW,
+  SEASON_2026_27_LABEL,
   type MonthAllocation,
 } from '../../lib/leaderboardMonths';
+import { useViewerSeason } from '../../lib/useViewerSeason';
+import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../../lib/leagueSeasonPile';
 
 type ScopeTab = 'gw' | 'month' | 'season';
 type ViewTab = 'leaderboard' | 'broadcast';
@@ -89,6 +93,12 @@ export default function BrandedLeaderboardScreen({
   }, [navigation]);
 
   const { detail, accessState, loading: accessLoading, error, refresh } = useLeaderboardAccess(idOrSlug);
+  const { seasonLabel, isNewSeasonFresh, useSeasonStack, seasonId } = useViewerSeason();
+  const seasonKey = resolveLeaderboardSeasonKey({ seasonLabel, isNewSeasonFresh, useSeasonStack });
+  const monthAvailOpts = useMemo(
+    () => ({ allowPreKickoffOpeningMonth: isNewSeasonFresh || useSeasonStack }),
+    [isNewSeasonFresh, useSeasonStack]
+  );
   const [scope, setScope] = useState<ScopeTab>('gw');
   const [viewTab, setViewTab] = useState<ViewTab>(requestedInitialTab === 'broadcast' ? 'broadcast' : 'leaderboard');
   const [userId, setUserId] = useState<string | null>(null);
@@ -153,15 +163,24 @@ export default function BrandedLeaderboardScreen({
     staleTime: 5 * 60 * 1000,
   });
   const { data: firstSubmissionGw } = useQuery<number | null>({
-    enabled: !!userId && scope === 'season',
-    queryKey: ['branded-leaderboard', 'firstSubmissionGw', userId],
+    enabled: !!userId && scope === 'season' && (!useSeasonStack || !!seasonId),
+    queryKey: [
+      'branded-leaderboard',
+      'firstSubmissionGw',
+      userId,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+    ],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_gw_submissions')
+      const tables = useSeasonStack && seasonId ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
+      let q = (supabase as any)
+        .from(tables.submissions)
         .select('gw')
         .eq('user_id', userId)
         .order('gw', { ascending: true })
         .limit(1);
+      if (useSeasonStack && seasonId) q = q.eq('season_id', seasonId);
+      const { data, error } = await q;
       if (error) throw error;
       const first = (data ?? [])[0] as { gw?: number } | undefined;
       return first?.gw != null ? Number(first.gw) : null;
@@ -174,10 +193,22 @@ export default function BrandedLeaderboardScreen({
     isLoading: standingsLoading,
     refetch: refetchStandings,
   } = useQuery({
-    queryKey: ['branded-leaderboard-standings', detail?.leaderboard.id, scope],
-    queryFn: () => api.getBrandedLeaderboardStandings(detail!.leaderboard.id, { scope }),
+    queryKey: [
+      'branded-leaderboard-standings',
+      detail?.leaderboard.id,
+      scope,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+      activeGw,
+    ],
+    queryFn: () =>
+      api.getBrandedLeaderboardStandings(detail!.leaderboard.id, {
+        scope,
+        gw: typeof activeGw === 'number' ? activeGw : undefined,
+      }),
     enabled: !!detail && showStandings,
     staleTime: 30_000,
+    refetchInterval: scope === 'gw' ? 10_000 : false,
   });
 
   const {
@@ -228,18 +259,45 @@ export default function BrandedLeaderboardScreen({
     () => Array.from(new Set(displayRows.map((row) => String(row.user_id)).filter(Boolean))),
     [displayRows]
   );
+  const displaySeasonLabel = useSeasonStack ? seasonLabel || SEASON_2026_27_LABEL : SEASON_2025_26_LABEL;
   const { data: allGwPointsRows } = useQuery({
-    queryKey: ['branded-leaderboard-all-points', detail?.leaderboard.id, activeGw, visibleUserIds.join(',')],
-    enabled: !!detail && showStandings && !isPaywalled && visibleUserIds.length > 0 && activeGw != null,
+    queryKey: [
+      'branded-leaderboard-all-points',
+      'v2',
+      detail?.leaderboard.id,
+      activeGw,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? 'none',
+      visibleUserIds.join(','),
+    ],
+    enabled:
+      !!detail &&
+      showStandings &&
+      !isPaywalled &&
+      visibleUserIds.length > 0 &&
+      activeGw != null &&
+      // Month/Overall recompute needs season points only when on Pile B — never fall back to legacy mid-season.
+      (!useSeasonStack || !!seasonId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_v_gw_points')
+      // Absolute rule: season-stack users must not read app_v_gw_points (last season GW numbers collide).
+      if (useSeasonStack) {
+        if (!seasonId) return [] as Array<{ user_id: string; gw: number; points: number | null }>;
+        const gws = Array.from({ length: activeGw as number }, (_, index) => index + 1);
+        const { data, error } = await (supabase as any)
+          .from(SEASON_PILE_TABLES.gwPoints)
+          .select('user_id, gw, points')
+          .eq('season_id', seasonId)
+          .in('user_id', visibleUserIds)
+          .in('gw', gws);
+        if (error) throw error;
+        return (data ?? []) as Array<{ user_id: string; gw: number; points: number | null }>;
+      }
+      const gws = Array.from({ length: activeGw as number }, (_, index) => index + 1);
+      const { data, error } = await (supabase as any)
+        .from(LEGACY_PILE_TABLES.gwPoints)
         .select('user_id, gw, points')
         .in('user_id', visibleUserIds)
-        .in(
-          'gw',
-          Array.from({ length: activeGw as number }, (_, index) => index + 1)
-        );
+        .in('gw', gws);
       if (error) throw error;
       return (data ?? []) as Array<{ user_id: string; gw: number; points: number | null }>;
     },
@@ -262,14 +320,20 @@ export default function BrandedLeaderboardScreen({
   );
 
   const currentMonthKey = useMemo(
-    () => getEffectiveCurrentMonthKey(activeGw ?? null, { hasActiveLiveGames: currentGwIsLive }) ?? null,
-    [activeGw, currentGwIsLive]
+    () =>
+      getEffectiveCurrentMonthKey(
+        activeGw ?? null,
+        { hasActiveLiveGames: currentGwIsLive },
+        seasonKey,
+        monthAvailOpts
+      ) ?? null,
+    [activeGw, currentGwIsLive, monthAvailOpts, seasonKey]
   );
 
   const selectedMonth = useMemo<MonthAllocation | null>(() => {
     const monthKey = selectedMonthKey ?? currentMonthKey;
-    return monthKey ? getMonthAllocations().find((month) => month.monthKey === monthKey) ?? null : null;
-  }, [currentMonthKey, selectedMonthKey]);
+    return monthKey ? getMonthAllocations(seasonKey).find((month) => month.monthKey === monthKey) ?? null : null;
+  }, [currentMonthKey, seasonKey, selectedMonthKey]);
 
   const computedRows = useMemo(() => {
     if (!activeGw || displayRows.length === 0) return displayRows;
@@ -299,12 +363,18 @@ export default function BrandedLeaderboardScreen({
         .map((row, index) => ({ ...row, rank: index + 1 }));
 
     if (scope === 'gw') {
+      // GW values come from BFF standings only (season/legacy stack + live merge).
+      // Never re-score from client points tables here — app_v_gw_points GW1 is last season
+      // and was overwriting Pile B zeros (Jof 6 / Carl 4 bleed).
       return filterRows(
         sortRows(
-          allRows.map((row) => ({
-            ...row,
-            value: pointsByUser.get(String(row.user_id))?.get(activeGw) ?? 0,
-          }))
+          allRows.map((row) => {
+            const fromStandings = metadataByUserId.get(String(row.user_id))?.value;
+            return {
+              ...row,
+              value: Number(fromStandings ?? 0),
+            };
+          })
         )
       );
     }
@@ -358,7 +428,7 @@ export default function BrandedLeaderboardScreen({
       );
     }
 
-    // Season table: 2025/26 GWs 1–38 (later + "This Season" window for active year).
+    // Season overall: pile B is already season-scoped points; legacy still uses 25/26 window.
     if (scope === 'season' && formScope === 'none') {
       return filterRows(
         sortRows(
@@ -367,12 +437,14 @@ export default function BrandedLeaderboardScreen({
             let value = 0;
             if (userMap) {
               userMap.forEach((pts, gw) => {
-                if (gw < SEASON_2025_26_START_GW || gw > SEASON_2025_26_END_GW) return;
+                if (!useSeasonStack && (gw < SEASON_2025_26_START_GW || gw > SEASON_2025_26_END_GW)) return;
                 value += Number(pts ?? 0);
               });
+            } else if (useSeasonStack) {
+              // Pre-results roster still ranks at 0 from standings membership list.
+              value = 0;
             }
-            const secondaryGw =
-              typeof activeGw === 'number' && activeGw <= SEASON_2025_26_END_GW ? activeGw : null;
+            const secondaryGw = typeof activeGw === 'number' ? activeGw : null;
             return {
               ...row,
               value,
@@ -407,6 +479,7 @@ export default function BrandedLeaderboardScreen({
     metadataByUserId,
     scope,
     selectedMonth,
+    useSeasonStack,
     visibleUserIds,
   ]);
 
@@ -418,7 +491,11 @@ export default function BrandedLeaderboardScreen({
 
   const standingsSubtitle = useMemo(() => {
     const who = filterMode === 'friends' ? 'Mini League Friends' : 'All Players';
-    if (scope === 'season' && formScope === 'none') return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
+    if (scope === 'season' && formScope === 'none') {
+      if (useSeasonStack && isNewSeasonFresh) return `${who} • ${displaySeasonLabel} (season just started)`;
+      if (useSeasonStack) return `${who} • ${displaySeasonLabel}`;
+      return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
+    }
     if (scope === 'season' && formScope === 'last5') return `${who} • Last 5 GWs`;
     if (scope === 'season' && formScope === 'last10') return `${who} • Last 10 GWs`;
     if (scope === 'season' && formScope === 'sinceStarted') {
@@ -430,7 +507,16 @@ export default function BrandedLeaderboardScreen({
         : `${who} in this leaderboard`;
     }
     return '';
-  }, [activeGw, filterMode, firstSubmissionGw, formScope, scope]);
+  }, [
+    activeGw,
+    displaySeasonLabel,
+    filterMode,
+    firstSubmissionGw,
+    formScope,
+    isNewSeasonFresh,
+    scope,
+    useSeasonStack,
+  ]);
 
   const monthRangeLabel = useMemo(() => {
     if (scope !== 'month' || !selectedMonth) return '';
@@ -444,9 +530,11 @@ export default function BrandedLeaderboardScreen({
   }, [activeGw, formScope, scope]);
 
   const currentBrandedMonthLabel = useMemo(() => {
-    const month = selectedMonth ?? (currentMonthKey ? getMonthAllocations().find((item) => item.monthKey === currentMonthKey) : null);
+    const month =
+      selectedMonth ??
+      (currentMonthKey ? getMonthAllocations(seasonKey).find((item) => item.monthKey === currentMonthKey) : null);
     return month ? month.label.split(' ')[0] : currentMonthLabel;
-  }, [currentMonthKey, currentMonthLabel, selectedMonth]);
+  }, [currentMonthKey, currentMonthLabel, seasonKey, selectedMonth]);
   const standingsTabItems = useMemo(
     () => [
       { key: 'gw' as const, label: 'GW' },
@@ -474,8 +562,8 @@ export default function BrandedLeaderboardScreen({
 
   const selectableMonths = useMemo(() => {
     if (activeGw == null) return [] as MonthAllocation[];
-    return getMonthAllocations().filter((month) => month.startGw <= activeGw).reverse();
-  }, [activeGw]);
+    return getMonthAllocations(seasonKey).filter((month) => month.startGw <= activeGw).reverse();
+  }, [activeGw, seasonKey]);
 
   const handleRefresh = useCallback(async () => {
     await refresh();

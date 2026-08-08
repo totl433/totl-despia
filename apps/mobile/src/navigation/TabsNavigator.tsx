@@ -1,6 +1,7 @@
 import React from 'react';
+import { Pressable, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Screen, useTokens } from '@totl/ui';
+import { Screen, TotlText, useTokens } from '@totl/ui';
 import { SvgXml } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 
@@ -41,16 +42,47 @@ function TabSvgIcon({ xml, color, size }: { xml: string; color: string; size: nu
 }
 
 function BrandedLeaderboardsTabContent() {
-  const { data, isLoading } = useQuery({
+  const t = useTokens();
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['branded-leaderboards-mine'],
     queryFn: () => api.getMyBrandedLeaderboards(),
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
+    // Avoid infinite spinner if an earlier attempt hung while the BFF was down.
+    refetchOnMount: 'always',
+    retry: 1,
   });
   const items = data?.leaderboards ?? [];
   if (isLoading && !data) {
     return (
       <Screen>
         <CenteredSpinner loading />
+      </Screen>
+    );
+  }
+  if (isError && !data) {
+    return (
+      <Screen>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <TotlText variant="heading" style={{ marginBottom: 8, textAlign: 'center' }}>
+            Couldn’t load leaderboards
+          </TotlText>
+          <TotlText variant="muted" style={{ textAlign: 'center', marginBottom: 16 }}>
+            {String((error as any)?.message ?? 'Check you’re online and try again.')}
+          </TotlText>
+          <Pressable
+            onPress={() => void refetch()}
+            disabled={isFetching}
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              backgroundColor: t.color.brand,
+              borderRadius: 10,
+              opacity: isFetching ? 0.7 : 1,
+            }}
+          >
+            <TotlText style={{ color: '#fff', fontWeight: '700' }}>{isFetching ? 'Retrying…' : 'Retry'}</TotlText>
+          </Pressable>
+        </View>
       </Screen>
     );
   }

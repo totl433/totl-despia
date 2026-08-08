@@ -361,13 +361,13 @@ export default function GlobalScreen() {
     queryKey: [
       'leaderboards',
       'overallView',
-      'paged-v3',
+      'paged-v4',
       useSeasonStack && formScope !== 'archive_2025_26' ? 'pileB' : 'pileA',
       seasonId ?? 'none',
     ],
     queryFn: async () => {
       if (useSeasonStack && seasonId && formScope !== 'archive_2025_26') {
-        return fetchAllSupabaseRows<OverallRow>((from, to) =>
+        const seasonRows = await fetchAllSupabaseRows<OverallRow>((from, to) =>
           (supabase as any)
             .from('app_v_season_ocp_overall')
             .select('user_id, name, ocp')
@@ -375,6 +375,21 @@ export default function GlobalScreen() {
             .order('user_id', { ascending: true })
             .range(from, to)
         );
+        // Pre-results: season OCP is empty. Seed the full field from last season’s
+        // overall roster so Overall/GW show everyone at 0 (or GW dash), not “no data”.
+        if (seasonRows.length > 0) return seasonRows;
+        const roster = await fetchAllSupabaseRows<OverallRow>((from, to) =>
+          supabase
+            .from('app_v_ocp_overall')
+            .select('user_id, name, ocp')
+            .order('user_id', { ascending: true })
+            .range(from, to)
+        );
+        return roster.map((r) => ({
+          user_id: r.user_id,
+          name: r.name ?? 'User',
+          ocp: 0,
+        }));
       }
       return fetchAllSupabaseRows<OverallRow>((from, to) =>
         supabase.from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
