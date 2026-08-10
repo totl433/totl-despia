@@ -5,7 +5,6 @@ import { useTokens } from '@totl/ui';
 
 import TabsNavigator from './TabsNavigator';
 import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
-import { supabase } from '../lib/supabase';
 import LeagueDetailScreen from '../screens/LeagueDetailScreen';
 import LeagueChatScreen from '../screens/LeagueChatScreen';
 import CreateLeagueScreen from '../screens/CreateLeagueScreen';
@@ -22,6 +21,7 @@ import JoinLeaderboardScreen from '../screens/brandedLeaderboards/JoinLeaderboar
 import JoinMiniLeagueScreen from '../screens/JoinMiniLeagueScreen';
 import { useDeepLink } from '../context/DeepLinkContext';
 import { resolveDeepLinkTarget } from '../lib/deepLinks';
+import { api } from '../lib/api';
 export type RootStackParamList = {
   Tabs: undefined;
   LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
@@ -81,46 +81,23 @@ export default function AppNavigator() {
     }
 
     const openMiniLeagueJoin = () => {
-      navigationRef.navigate(
-        'Tabs' as any,
-        {
-          screen: 'Leagues',
-          params: {
-            screen: 'LeaguesList',
-            params: { openCreateJoin: true, joinCode: target.code },
-          },
-        } as any
-      );
+      navigationRef.navigate('JoinMiniLeague', { code: target.code });
     };
 
     // League URLs carry the public code; native screens are keyed by league ID.
     try {
-      const { data: league } = await (supabase as any)
-        .from('leagues')
-        .select('id, name')
-        .eq('code', target.code)
-        .maybeSingle();
-
+      // The authenticated BFF list is the membership source of truth. Direct
+      // Supabase league lookups can be hidden by RLS and previously sent valid
+      // message links to the join sheet instead of their league chat.
+      const { leagues } = await api.listLeagues();
+      const league = leagues.find(
+        (item) => String(item.code).trim().toUpperCase() === target.code.trim().toUpperCase()
+      );
       const leagueId = league?.id ? String(league.id) : null;
       const name = league?.name ? String(league.name) : target.code;
       if (!leagueId || !navigationRef.isReady()) {
         openMiniLeagueJoin();
         return true;
-      }
-
-      const { data: authData } = await supabase.auth.getUser();
-      const userId = authData.user?.id;
-      if (userId) {
-        const membership = await (supabase as any)
-          .from('league_members')
-          .select('league_id')
-          .eq('league_id', leagueId)
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (!membership.error && !membership.data) {
-          openMiniLeagueJoin();
-          return true;
-        }
       }
 
       if (target.openChat) {

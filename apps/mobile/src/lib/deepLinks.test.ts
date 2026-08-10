@@ -15,6 +15,10 @@ describe('resolveDeepLinkTarget', () => {
       { type: 'league', code: 'ABC12', openChat: true },
     ],
     [
+      'https://playtotl.com/league/prem-predictions?tab=chat',
+      { type: 'league', code: 'PREM-PREDICTIONS', openChat: true },
+    ],
+    [
       'https://playtotl.com/league/ABC12?tab=predictions',
       { type: 'league', code: 'ABC12', openChat: false, initialTab: 'predictions' },
     ],
