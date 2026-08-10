@@ -12,6 +12,10 @@ export default function AuthGate() {
   const navigate = useNavigate();
   const { status, user } = useSupabaseAuth();
   const [signupVerifyLoading, setSignupVerifyLoading] = useState(false);
+  const returnTo = useMemo(() => {
+    const candidate = new URLSearchParams(window.location.search).get('returnTo');
+    return candidate?.startsWith('/') && !candidate.startsWith('//') ? candidate : '/';
+  }, []);
 
   function detectRecoveryFromUrl(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
@@ -63,16 +67,16 @@ export default function AuthGate() {
     if (status === 'authed' && user) {
       // Check if this is a password reset flow - don't redirect
       if (!isRecovery) {
-        console.log('[AuthGate] User is authed, redirecting to home');
-        navigate('/', { replace: true });
+        console.log('[AuthGate] User is authed, redirecting');
+        navigate(returnTo, { replace: true });
       }
     }
-  }, [status, user, navigate, isRecovery]);
+  }, [status, user, navigate, isRecovery, returnTo]);
 
   // Handle successful auth - navigate to home
   const handleAuthSuccess = () => {
-    console.log('[AuthGate] Auth success, redirecting to home');
-    navigate('/', { replace: true });
+    console.log('[AuthGate] Auth success, redirecting');
+    navigate(returnTo, { replace: true });
   };
 
   // While checking session, render nothing (avoids flash of auth UI)

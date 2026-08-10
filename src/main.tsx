@@ -377,20 +377,13 @@ function maybeLoadGoogleAnalytics() {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="p-6">Loading…</div>;
-  return user ? <>{children}</> : <Navigate to="/auth" replace />;
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  return user ? <>{children}</> : <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
 }
 
 function AppShell() {
-  // If a Universal Link on playtotl.com opens the native app, we must avoid
-  // rendering playtotl.com inside the Despia webview (Apple review / cookie prompts).
-  // Instead, immediately bounce to the staging origin while preserving path/query/hash.
-  if (isDespiaAvailable() && window.location.hostname === 'playtotl.com') {
-    const target = `https://totl-staging.netlify.app${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.replace(target);
-    return null;
-  }
-
   // Check for deep link SYNCHRONOUSLY before React Router renders
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);
@@ -937,6 +930,7 @@ function AppContent() {
                 <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
                 <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
                 <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
+                <Route path="/leagues" element={<Navigate to="/tables" replace />} />
                 <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
                 <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
                 <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />

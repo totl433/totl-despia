@@ -9,6 +9,7 @@ import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification, formatEventId } from './lib/notifications';
 import { getSupabase } from './lib/notifications/targeting';
+import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -152,7 +153,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Construct full URL for deep linking (OneSignal requires absolute URL)
-    const fullUrl = `${baseUrl}/league/${leagueCode}`;
+    const fullUrl = buildLeaguePublicUrl(leagueCode);
     console.log(`[notifyLeagueMemberJoin] Constructed URL: ${fullUrl} (baseUrl: ${baseUrl}, leagueCode: ${leagueCode})`);
     
     // Safe URL parsing for debugging
@@ -188,6 +189,8 @@ export const handler: Handler = async (event) => {
         userId,
         userName,
         leagueName,
+        url: fullUrl,
+        navigateTo: fullUrl,
       },
       url: fullUrl, // Deep link to specific league page (must be absolute URL for OneSignal)
       league_id: leagueId, // For mute checking

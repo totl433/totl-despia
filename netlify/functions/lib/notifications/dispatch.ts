@@ -45,6 +45,7 @@ import type {
   BatchDispatchResult,
   NotificationResult,
 } from './types';
+import { canonicalizeNotificationData, canonicalizePublicAppUrl } from './publicLinks';
 
 /**
  * Dispatch a notification to multiple users
@@ -268,9 +269,9 @@ export async function dispatchNotification(
         playerIds: validPlayerIds,
         data: {
           type: notification_key,
-          ...data,
+          ...canonicalizeNotificationData(data),
         },
-        url,
+        url: canonicalizePublicAppUrl(url),
         groupingParams: grouping_params,
         badgeCount: badge_count,
       });
