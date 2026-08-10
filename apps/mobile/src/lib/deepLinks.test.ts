@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLeagueAppLink, getDeepLinkDedupeKey, resolveDeepLinkTarget } from './deepLinks';
+import {
+  buildLeagueAppLink,
+  buildMiniLeagueInviteLink,
+  getDeepLinkDedupeKey,
+  resolveDeepLinkTarget,
+} from './deepLinks';
 
 describe('resolveDeepLinkTarget', () => {
   it.each([
@@ -19,6 +24,7 @@ describe('resolveDeepLinkTarget', () => {
     ],
     ['https://playtotl.com/predictions', { type: 'predictions' }],
     ['https://playtotl.com/leagues', { type: 'leagues' }],
+    ['https://playtotl.com/join-league/ABC12', { type: 'miniLeagueInvite', code: 'ABC12' }],
     ['https://playtotl.com/join/RAMEN', { type: 'join', code: 'RAMEN' }],
     [
       'https://playtotl.com/branded-leaderboards/example-slug',
@@ -71,6 +77,7 @@ describe('resolveDeepLinkTarget', () => {
   it('builds canonical production links for future league shares', () => {
     expect(buildLeagueAppLink('tvyy4')).toBe('https://playtotl.com/league/TVYY4');
     expect(buildLeagueAppLink('tvyy4', 'chat')).toBe('https://playtotl.com/league/TVYY4?tab=chat');
+    expect(buildMiniLeagueInviteLink('tvyy4')).toBe('https://playtotl.com/join-league/TVYY4');
   });
 
   it('deduplicates universal and custom-scheme delivery of the same destination', () => {

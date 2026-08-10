@@ -19,6 +19,7 @@ import { useJoinIntent } from '../context/JoinIntentContext';
 import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLeaderboardScreen';
 import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/BrandedLeaderboardListScreen';
 import JoinLeaderboardScreen from '../screens/brandedLeaderboards/JoinLeaderboardScreen';
+import JoinMiniLeagueScreen from '../screens/JoinMiniLeagueScreen';
 import { useDeepLink } from '../context/DeepLinkContext';
 import { resolveDeepLinkTarget } from '../lib/deepLinks';
 export type RootStackParamList = {
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   BrandedLeaderboard: { idOrSlug: string; joinCode?: string; initialTab?: 'leaderboard' | 'broadcast' };
   BrandedLeaderboardList: undefined;
   JoinLeaderboard: { leaderboardId?: string; leaderboardName?: string; code?: string };
+  JoinMiniLeague: { code: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -56,6 +58,10 @@ export default function AppNavigator() {
 
     if (target.type === 'join') {
       navigationRef.navigate('JoinLeaderboard' as any, { code: target.code });
+      return true;
+    }
+    if (target.type === 'miniLeagueInvite') {
+      navigationRef.navigate('JoinMiniLeague', { code: target.code });
       return true;
     }
     if (target.type === 'leagues') {
@@ -251,6 +257,17 @@ export default function AppNavigator() {
         <Stack.Screen
           name="JoinLeaderboard"
           component={JoinLeaderboardScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+          }}
+        />
+        <Stack.Screen
+          name="JoinMiniLeague"
+          component={JoinMiniLeagueScreen}
           options={{
             headerShown: true,
             headerShadowVisible: false,

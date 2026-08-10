@@ -3,6 +3,7 @@ export const APP_LINK_BASE_URL = 'https://playtotl.com';
 
 export type DeepLinkTarget =
   | { type: 'join'; code: string }
+  | { type: 'miniLeagueInvite'; code: string }
   | { type: 'leagues' }
   | { type: 'predictions' }
   | { type: 'brandedLeaderboard'; idOrSlug: string; initialTab?: 'broadcast' }
@@ -16,6 +17,10 @@ export type DeepLinkTarget =
 export function buildLeagueAppLink(code: string, tab?: 'chat' | 'predictions'): string {
   const path = `${APP_LINK_BASE_URL}/league/${encodeURIComponent(String(code).trim().toUpperCase())}`;
   return tab ? `${path}?tab=${tab}` : path;
+}
+
+export function buildMiniLeagueInviteLink(code: string): string {
+  return `${APP_LINK_BASE_URL}/join-league/${encodeURIComponent(String(code).trim().toUpperCase())}`;
 }
 
 function parseIncomingUrl(rawUrl: string): URL | null {
@@ -45,6 +50,12 @@ export function resolveDeepLinkTarget(rawUrl: string): DeepLinkTarget | null {
   if (!parsed) return null;
 
   const pathname = parsed.pathname;
+
+  const miniLeagueInviteMatch = pathname.match(/^\/join-league\/([^/?#]+)\/?$/i);
+  if (miniLeagueInviteMatch?.[1]) {
+    const code = decodeURIComponent(miniLeagueInviteMatch[1]).trim().toUpperCase();
+    return code ? { type: 'miniLeagueInvite', code } : null;
+  }
 
   const joinMatch = pathname.match(/^\/join\/([^/?#]+)\/?$/i);
   if (joinMatch?.[1]) {
