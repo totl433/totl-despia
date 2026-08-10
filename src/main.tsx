@@ -292,6 +292,7 @@ import PredictionsPage from "./pages/Predictions";
 
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
+const JoinMiniLeaguePage = lazy(() => import("./pages/JoinMiniLeague"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const AdminDataPage = lazy(() => import("./pages/AdminData"));
 import { RequireAdmin } from "./components/RequireAdmin";
@@ -932,6 +933,7 @@ function AppContent() {
                 <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
                 <Route path="/leagues" element={<Navigate to="/tables" replace />} />
                 <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
+                <Route path="/join-league/:code" element={<RequireAuth><JoinMiniLeaguePage /></RequireAuth>} />
                 <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
                 <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
                 <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />

@@ -389,8 +389,8 @@ export default function LeaguePage() {
     if (!league?.code) return;
     if (typeof window === "undefined" || typeof navigator === "undefined") return;
 
-    const shareText = `Join my mini league "${league.name}" on TotL!`;
-    const shareUrl = `${window.location.origin}/league/${league.code}`;
+    const shareText = `You've been invited to join "${league.name}" on TOTL. Tap to open the invite:`;
+    const shareUrl = `https://playtotl.com/join-league/${league.code}`;
     const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
     if (typeof nav.share === "function") {
       nav
@@ -2192,8 +2192,8 @@ ${shareUrl}`;
       if (!league?.code) return;
       if (typeof window === "undefined" || typeof navigator === "undefined") return;
 
-      const shareText = `Join my mini league "${league.name}" on TotL!`;
-      const shareUrl = `${window.location.origin}/league/${league.code}`;
+      const shareText = `You've been invited to join "${league.name}" on TOTL. Tap to open the invite:`;
+      const shareUrl = `https://playtotl.com/join-league/${league.code}`;
       const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
       
       if (typeof nav.share === "function") {

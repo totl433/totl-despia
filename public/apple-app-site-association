@@ -10,6 +10,7 @@
           "/predictions/",
           "/leagues",
           "/leagues/",
+          "/join-league/*",
           "/join/*",
           "/branded-leaderboards/*"
         ]
