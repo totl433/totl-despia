@@ -74,6 +74,19 @@ export default function AppNavigator() {
       return true;
     }
 
+    const openMiniLeagueJoin = () => {
+      navigationRef.navigate(
+        'Tabs' as any,
+        {
+          screen: 'Leagues',
+          params: {
+            screen: 'LeaguesList',
+            params: { openCreateJoin: true, joinCode: target.code },
+          },
+        } as any
+      );
+    };
+
     // League URLs carry the public code; native screens are keyed by league ID.
     try {
       const { data: league } = await (supabase as any)
@@ -84,7 +97,25 @@ export default function AppNavigator() {
 
       const leagueId = league?.id ? String(league.id) : null;
       const name = league?.name ? String(league.name) : target.code;
-      if (!leagueId || !navigationRef.isReady()) return true;
+      if (!leagueId || !navigationRef.isReady()) {
+        openMiniLeagueJoin();
+        return true;
+      }
+
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (userId) {
+        const membership = await (supabase as any)
+          .from('league_members')
+          .select('league_id')
+          .eq('league_id', leagueId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!membership.error && !membership.data) {
+          openMiniLeagueJoin();
+          return true;
+        }
+      }
 
       if (target.openChat) {
         navigationRef.navigate('Chat2Thread', { leagueId, name });
@@ -95,7 +126,8 @@ export default function AppNavigator() {
         );
       }
     } catch {
-      // A stale or inaccessible league link should not block later URLs.
+      // Preserve the destination and let the join UI provide a useful error.
+      if (navigationRef.isReady()) openMiniLeagueJoin();
     }
     return true;
   }, []);

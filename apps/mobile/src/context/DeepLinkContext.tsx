@@ -2,6 +2,7 @@ import React from 'react';
 import { Linking } from 'react-native';
 
 import { getDeepLinkDedupeKey } from '../lib/deepLinks';
+import { subscribeToNotificationUrls } from '../lib/push';
 
 type DeepLinkContextValue = {
   pendingUrl: string | null;
@@ -41,10 +42,12 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
       receivedRuntimeUrl = true;
       if (url) queueUrl(url);
     });
+    const unsubscribeFromNotifications = subscribeToNotificationUrls(queueUrl);
 
     return () => {
       alive = false;
       subscription.remove();
+      unsubscribeFromNotifications();
     };
   }, [queueUrl]);
 

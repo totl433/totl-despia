@@ -674,9 +674,10 @@ export default function LeaguesScreen() {
   React.useEffect(() => {
     if (!route.params?.openCreateJoin) return;
     setJoinError(null);
+    if (route.params.joinCode) setJoinCode(route.params.joinCode.trim().toUpperCase());
     setCreateJoinOpen(true);
-    navigation.setParams({ openCreateJoin: undefined });
-  }, [navigation, route.params?.openCreateJoin]);
+    navigation.setParams({ openCreateJoin: undefined, joinCode: undefined });
+  }, [navigation, route.params?.joinCode, route.params?.openCreateJoin]);
 
   const [visibleLeagueIds, setVisibleLeagueIds] = React.useState<Set<string>>(() => new Set());
   const [initialLoadTimedOut, setInitialLoadTimedOut] = React.useState(false);

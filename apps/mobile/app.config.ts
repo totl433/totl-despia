@@ -134,7 +134,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       EXPO_PUBLIC_SUPABASE_URL: pick('EXPO_PUBLIC_SUPABASE_URL'),
       EXPO_PUBLIC_SUPABASE_ANON_KEY: pick('EXPO_PUBLIC_SUPABASE_ANON_KEY'),
       EXPO_PUBLIC_BFF_URL: pick('EXPO_PUBLIC_BFF_URL'),
-      EXPO_PUBLIC_SITE_URL: pick('EXPO_PUBLIC_SITE_URL'),
+      // Public destinations must never inherit the staging deploy from a local
+      // env file or EAS secret. Staging remains an inbound legacy domain only.
+      EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
       EXPO_PUBLIC_ONESIGNAL_APP_ID: oneSignalAppId,
     },
   };

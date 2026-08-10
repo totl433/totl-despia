@@ -5,7 +5,7 @@ import { useTokens } from '@totl/ui';
 import LeaguesScreen from '../screens/LeaguesScreen';
 
 export type LeaguesStackParamList = {
-  LeaguesList: { openCreateJoin?: boolean } | undefined;
+  LeaguesList: { openCreateJoin?: boolean; joinCode?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<LeaguesStackParamList>();

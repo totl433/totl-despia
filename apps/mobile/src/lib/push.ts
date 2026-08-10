@@ -1,4 +1,4 @@
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
@@ -25,6 +25,27 @@ let hasRegisteredThisSession = false;
 let currentPlayerId: string | null = null;
 let clickHandlerAttached = false;
 let cachedOneSignalSdk: { OneSignal: any; LogLevel: any } | null | undefined;
+type NotificationUrlListener = (url: string) => void;
+const notificationUrlListeners = new Set<NotificationUrlListener>();
+let pendingNotificationUrl: string | null = null;
+
+export function subscribeToNotificationUrls(listener: NotificationUrlListener): () => void {
+  notificationUrlListeners.add(listener);
+  if (pendingNotificationUrl) {
+    const url = pendingNotificationUrl;
+    pendingNotificationUrl = null;
+    listener(url);
+  }
+  return () => notificationUrlListeners.delete(listener);
+}
+
+function emitNotificationUrl(url: string): void {
+  if (notificationUrlListeners.size === 0) {
+    pendingNotificationUrl = url;
+    return;
+  }
+  notificationUrlListeners.forEach((listener) => listener(url));
+}
 
 function getOneSignalSdk(): { OneSignal: any; LogLevel: any } | null {
   if (cachedOneSignalSdk !== undefined) return cachedOneSignalSdk;
@@ -43,7 +64,7 @@ function getOneSignalSdk(): { OneSignal: any; LogLevel: any } | null {
 }
 
 function siteBaseUrl(): string {
-  return String(env.EXPO_PUBLIC_SITE_URL ?? 'https://totl-staging.netlify.app').replace(/\/+$/, '');
+  return String(env.EXPO_PUBLIC_SITE_URL ?? 'https://playtotl.com').replace(/\/+$/, '');
 }
 
 function oneSignalAppId(): string | null {
@@ -82,7 +103,9 @@ function attachClickHandlerOnce() {
     const fromData = typeof event?.notification?.additionalData === 'object' ? (event.notification.additionalData as any)?.url : '';
     const target = fromResult || fromLaunch || (typeof fromData === 'string' ? fromData : '');
     if (!target) return;
-    void Linking.openURL(toAppDeepLink(target)).catch(() => {});
+    // Queue directly into navigation. Opening another URL here races the iOS
+    // universal-link delivery and caused duplicate or web fallback navigation.
+    emitNotificationUrl(toAppDeepLink(target));
   };
 
   OneSignal.Notifications.addEventListener('click', listener);
