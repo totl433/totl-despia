@@ -37,18 +37,20 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
-# iOS Universal Links: AASA must be served as JSON with no redirects
+# iOS Universal Links: AASA must be served as JSON with no redirects.
+# Keep both root + .well-known (main historically used both; iOS probes either).
+# Paths allowlist matches app deep links (league, predictions, join, branded LBs).
 [[headers]]
   for = "/apple-app-site-association"
   [headers.values]
     Content-Type = "application/json"
-    Cache-Control = "public, max-age=300"
+    Cache-Control = "public, max-age=3600"
 
 [[headers]]
   for = "/.well-known/apple-app-site-association"
   [headers.values]
     Content-Type = "application/json"
-    Cache-Control = "public, max-age=300"
+    Cache-Control = "public, max-age=3600"
 
 # Assets: long-term immutable cache (hashed filenames change on rebuild)
 [[headers]]
