@@ -11,7 +11,7 @@ import LeagueChatTab from '../components/chat/LeagueChatTab';
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/league/LeagueOverflowMenu';
 import CenteredSpinner from '../components/CenteredSpinner';
-import { env } from '../env';
+import { buildLeagueAppLink } from '../lib/deepLinks';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
@@ -191,7 +191,7 @@ export default function ChatThreadScreen() {
             shareTextOverride={inviteMode === 'chat' ? `Join the chat for "${leagueName || 'my mini league'}" on TotL!` : undefined}
             urlOverride={
               inviteMode === 'chat'
-                ? `${String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')}/league/${encodeURIComponent(leagueCode)}?tab=chat`
+                ? buildLeagueAppLink(leagueCode, 'chat')
                 : undefined
             }
           />

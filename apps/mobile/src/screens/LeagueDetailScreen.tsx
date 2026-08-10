@@ -43,7 +43,7 @@ import { TotlRefreshControl } from '../lib/refreshControl';
 import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/league/LeagueOverflowMenu';
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueManagementSheet, { type LeagueManagementMember } from '../components/league/LeagueManagementSheet';
-import { env } from '../env';
+import { buildLeagueAppLink } from '../lib/deepLinks';
 import { fetchLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
 import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
@@ -752,7 +752,6 @@ export default function LeagueDetailScreen() {
     },
     [
       currentGw,
-      env.EXPO_PUBLIC_SITE_URL,
       handleEditBadge,
       leagueId,
       leagueMeta?.code,
@@ -1835,7 +1834,7 @@ export default function LeagueDetailScreen() {
           }
           urlOverride={
             inviteMode === 'chat'
-              ? `${String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')}/league/${encodeURIComponent(String(leagueMeta.code))}?tab=chat`
+              ? buildLeagueAppLink(String(leagueMeta.code), 'chat')
               : undefined
           }
         />

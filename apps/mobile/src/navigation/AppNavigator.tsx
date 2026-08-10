@@ -1,7 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { DarkTheme, DefaultTheme, NavigationContainer, createNavigationContainerRef, type Theme } from '@react-navigation/native';
-import { Linking } from 'react-native';
 import { useTokens } from '@totl/ui';
 
 import TabsNavigator from './TabsNavigator';
@@ -20,6 +19,8 @@ import { useJoinIntent } from '../context/JoinIntentContext';
 import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLeaderboardScreen';
 import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/BrandedLeaderboardListScreen';
 import JoinLeaderboardScreen from '../screens/brandedLeaderboards/JoinLeaderboardScreen';
+import { useDeepLink } from '../context/DeepLinkContext';
+import { resolveDeepLinkTarget } from '../lib/deepLinks';
 export type RootStackParamList = {
   Tabs: undefined;
   LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
@@ -39,165 +40,77 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
-type LeagueInitialTab = NonNullable<RootStackParamList['LeagueDetail']['initialTab']>;
-
-function parseIncomingUrl(rawUrl: string): URL | null {
-  try {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rawUrl)) {
-      return new URL(rawUrl);
-    }
-    if (rawUrl.startsWith('/')) {
-      return new URL(`https://totl.local${rawUrl}`);
-    }
-  } catch {
-    // Ignore invalid URLs and fall back to regex matching below.
-  }
-  return null;
-}
-
-function getLeagueTarget(rawUrl: string): { code: string; openChat: boolean; initialTab?: LeagueInitialTab } | null {
-  const parsed = parseIncomingUrl(rawUrl);
-  const pathname = parsed?.pathname ?? rawUrl;
-  const pathLeagueMatch = pathname.match(/\/league\/([^/?#]+)/i);
-  const queryLeagueCode = parsed?.searchParams.get('leagueCode');
-  const rawCode = pathLeagueMatch?.[1] ?? queryLeagueCode ?? '';
-  const code = decodeURIComponent(String(rawCode)).trim().toUpperCase();
-  if (!code) return null;
-
-  const tabParam = (parsed?.searchParams.get('tab') ?? '').trim().toLowerCase();
-  const openChat = tabParam === 'chat' || /\/league\/[^/?#]+\/chat(?:[/?#]|$)/i.test(pathname);
-
-  let initialTab: LeagueInitialTab | undefined;
-  if (!openChat) {
-    if (tabParam === 'predictions') {
-      initialTab = 'predictions';
-    } else if (tabParam === 'season') {
-      initialTab = 'season';
-    } else if (tabParam === 'gw' || tabParam === 'gwtable' || tabParam === 'table') {
-      initialTab = 'gwTable';
-    }
-  }
-
-  return { code, openChat, initialTab };
-}
-
-function getBrandedLeaderboardTarget(
-  rawUrl: string
-): { idOrSlug: string; initialTab?: 'leaderboard' | 'broadcast' } | null {
-  const parsed = parseIncomingUrl(rawUrl);
-  const pathname = parsed?.pathname ?? rawUrl;
-  const match = pathname.match(/\/branded-leaderboards\/([^/?#]+)/i);
-  const rawIdOrSlug = match?.[1] ?? '';
-  const idOrSlug = decodeURIComponent(String(rawIdOrSlug)).trim();
-  if (!idOrSlug) return null;
-
-  const tabParam = (parsed?.searchParams.get('tab') ?? '').trim().toLowerCase();
-  return {
-    idOrSlug,
-    initialTab: tabParam === 'broadcast' ? 'broadcast' : undefined,
-  };
-}
 
 export default function AppNavigator() {
   const t = useTokens();
   const { isDark } = useThemePreference();
   const { pending: joinIntent, clearPending: clearJoinIntent } = useJoinIntent();
-  const pendingUrlRef = React.useRef<string | null>(null);
+  const { pendingUrl, consumePendingUrl } = useDeepLink();
+  const processingUrlRef = React.useRef<string | null>(null);
   const joinIntentConsumedRef = React.useRef(false);
 
-  const handleIncomingUrl = React.useCallback(async (url: string) => {
-    if (!url) return;
-    const parsed = parseIncomingUrl(url);
-    const pathname = parsed?.pathname ?? url;
+  const handleIncomingUrl = React.useCallback(async (url: string): Promise<boolean> => {
+    if (!url || !navigationRef.isReady()) return false;
+    const target = resolveDeepLinkTarget(url);
+    if (!target) return true;
 
-    // Route: /join/{code}
-    const joinMatch = pathname.match(/\/join\/([^/?#]+)/i);
-    if (joinMatch?.[1]) {
-      const joinCode = decodeURIComponent(joinMatch[1]).trim().toUpperCase();
-      if (joinCode) {
-        if (!navigationRef.isReady()) {
-          pendingUrlRef.current = url;
-          return;
-        }
-        navigationRef.navigate('JoinLeaderboard' as any, { code: joinCode });
-        return;
-      }
+    if (target.type === 'join') {
+      navigationRef.navigate('JoinLeaderboard' as any, { code: target.code });
+      return true;
     }
-
-    // Route: /leagues
-    if (/\/leagues(?:[/?#]|$)/i.test(pathname)) {
-      if (!navigationRef.isReady()) {
-        pendingUrlRef.current = url;
-        return;
-      }
+    if (target.type === 'leagues') {
       navigationRef.navigate('Tabs' as any, { screen: 'Leagues' } as any);
-      return;
+      return true;
+    }
+    if (target.type === 'predictions') {
+      navigationRef.navigate('Tabs' as any, { screen: 'Predictions' } as any);
+      return true;
+    }
+    if (target.type === 'brandedLeaderboard') {
+      navigationRef.navigate('BrandedLeaderboard', {
+        idOrSlug: target.idOrSlug,
+        initialTab: target.initialTab,
+      });
+      return true;
     }
 
-    // Route: /predictions
-    if (/\/predictions(?:[/?#]|$)/i.test(pathname)) {
-      if (!navigationRef.isReady()) {
-        pendingUrlRef.current = url;
-        return;
-      }
-      navigationRef.navigate('PredictionsFlow');
-      return;
-    }
-
-    const brandedLeaderboardTarget = getBrandedLeaderboardTarget(url);
-    if (brandedLeaderboardTarget) {
-      if (!navigationRef.isReady()) {
-        pendingUrlRef.current = url;
-        return;
-      }
-      navigationRef.navigate('BrandedLeaderboard', brandedLeaderboardTarget);
-      return;
-    }
-
-    const leagueTarget = getLeagueTarget(url);
-    if (!leagueTarget) return;
-    const { code, openChat, initialTab } = leagueTarget;
-
-    // Resolve league ID from code (native screens are keyed by leagueId).
+    // League URLs carry the public code; native screens are keyed by league ID.
     try {
       const { data: league } = await (supabase as any)
         .from('leagues')
         .select('id, name')
-        .eq('code', code)
+        .eq('code', target.code)
         .maybeSingle();
 
       const leagueId = league?.id ? String(league.id) : null;
-      const name = league?.name ? String(league.name) : code;
-      if (!leagueId) return;
+      const name = league?.name ? String(league.name) : target.code;
+      if (!leagueId || !navigationRef.isReady()) return true;
 
-      if (!navigationRef.isReady()) {
-        pendingUrlRef.current = url;
-        return;
-      }
-
-      if (openChat) {
-        navigationRef.navigate('ChatThread', { leagueId, name });
+      if (target.openChat) {
+        navigationRef.navigate('Chat2Thread', { leagueId, name });
       } else {
-        navigationRef.navigate('LeagueDetail', initialTab ? { leagueId, name, initialTab } : { leagueId, name });
+        navigationRef.navigate(
+          'LeagueDetail',
+          target.initialTab ? { leagueId, name, initialTab: target.initialTab } : { leagueId, name }
+        );
       }
     } catch {
-      // ignore
+      // A stale or inaccessible league link should not block later URLs.
     }
+    return true;
   }, []);
 
-  React.useEffect(() => {
-    // Handle initial URL (cold start) and subsequent incoming URLs.
-    Linking.getInitialURL()
-      .then((u) => {
-        if (u) void handleIncomingUrl(u);
-      })
-      .catch(() => {});
+  const processPendingUrl = React.useCallback(async () => {
+    if (!pendingUrl || !navigationRef.isReady() || processingUrlRef.current === pendingUrl) return;
+    processingUrlRef.current = pendingUrl;
+    const handled = await handleIncomingUrl(pendingUrl);
+    if (handled) consumePendingUrl(pendingUrl);
+    processingUrlRef.current = null;
+  }, [consumePendingUrl, handleIncomingUrl, pendingUrl]);
 
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      void handleIncomingUrl(url);
-    });
-    return () => sub.remove();
-  }, [handleIncomingUrl]);
+  React.useEffect(() => {
+    void processPendingUrl();
+  }, [processPendingUrl]);
 
   const baseTheme = isDark ? DarkTheme : DefaultTheme;
   const navTheme: Theme = {
@@ -219,13 +132,9 @@ export default function AppNavigator() {
       ref={navigationRef}
       theme={navTheme}
       onReady={() => {
-        const pending = pendingUrlRef.current;
-        if (pending) {
-          pendingUrlRef.current = null;
-          void handleIncomingUrl(pending);
-        }
-
-        if (joinIntent && !joinIntentConsumedRef.current) {
+        if (pendingUrl) {
+          void processPendingUrl();
+        } else if (joinIntent && !joinIntentConsumedRef.current) {
           joinIntentConsumedRef.current = true;
           clearJoinIntent();
           navigationRef.navigate('JoinLeaderboard' as any, {

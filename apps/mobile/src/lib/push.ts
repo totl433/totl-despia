@@ -56,13 +56,13 @@ function toAppDeepLink(rawUrl: string): string {
   if (!trimmed) return trimmed;
 
   if (trimmed.startsWith('/')) {
-    return `com.despia.totlnative://${trimmed.replace(/^\/+/, '')}`;
+    return `com.despia.totlnative:///${trimmed.replace(/^\/+/, '')}`;
   }
 
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return `com.despia.totlnative://${`${parsed.pathname}${parsed.search}${parsed.hash}`.replace(/^\/+/, '')}`;
+      return `com.despia.totlnative:///${`${parsed.pathname}${parsed.search}${parsed.hash}`.replace(/^\/+/, '')}`;
     }
   } catch {
     // Leave untouched when URL parsing fails.

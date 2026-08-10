@@ -13,7 +13,7 @@ import LeagueChatTabV2 from '../components/chat/LeagueChatTabV2';
 import LeagueInviteSheet from '../components/league/LeagueInviteSheet';
 import LeagueOverflowMenu, { type LeagueOverflowAction } from '../components/league/LeagueOverflowMenu';
 import LeagueSectionSwitch from '../components/league/LeagueSectionSwitch';
-import { env } from '../env';
+import { buildLeagueAppLink } from '../lib/deepLinks';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
@@ -224,7 +224,7 @@ export default function LeagueChatScreen() {
             }
             urlOverride={
               inviteMode === 'chat'
-                ? `${String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '')}/league/${encodeURIComponent(String(leagueMeta.code))}?tab=chat`
+                ? buildLeagueAppLink(String(leagueMeta.code), 'chat')
                 : undefined
             }
           />

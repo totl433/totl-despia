@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
 import * as Clipboard from 'expo-clipboard';
 
-import { env } from '../../env';
+import { buildLeagueAppLink } from '../../lib/deepLinks';
 
 export default function LeagueInviteSheet({
   open,
@@ -39,8 +39,7 @@ export default function LeagueInviteSheet({
   }, [open]);
 
   const shareText = String(shareTextOverride ?? `Join my mini league "${leagueName}" on TotL!`);
-  const base = String(env.EXPO_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
-  const url = urlOverride ? String(urlOverride) : base ? `${base}/league/${encodeURIComponent(leagueCode)}` : '';
+  const url = urlOverride ? String(urlOverride) : buildLeagueAppLink(leagueCode);
 
   const handleShare = async () => {
     try {

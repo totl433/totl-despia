@@ -46,6 +46,12 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=3600"
+
 # Assets: long-term immutable cache (hashed filenames change on rebuild)
 [[headers]]
   for = "/assets/*"

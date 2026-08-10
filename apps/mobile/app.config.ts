@@ -67,6 +67,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ? (existingIosEntitlements['com.apple.security.application-groups'] as string[])
     : [];
   const nextAppGroups = Array.from(new Set([...existingAppGroups, oneSignalAppGroup]));
+  const existingAssociatedDomains = Array.isArray((config.ios as any)?.associatedDomains)
+    ? ((config.ios as any).associatedDomains as string[])
+    : [];
+  const nextAssociatedDomains = Array.from(
+    new Set([
+      ...existingAssociatedDomains,
+      'applinks:playtotl.com',
+      // Preserve app opening for league links shared by older builds.
+      'applinks:totl-staging.netlify.app',
+    ])
+  );
   const existingQuerySchemes = Array.isArray(existingInfoPlist.LSApplicationQueriesSchemes)
     ? (existingInfoPlist.LSApplicationQueriesSchemes as string[])
     : [];
@@ -86,6 +97,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     newArchEnabled: storybookEnabled ? true : (config as any).newArchEnabled ?? false,
     ios: {
       ...(config.ios ?? {}),
+      associatedDomains: nextAssociatedDomains,
       infoPlist: {
         ...existingInfoPlist,
         LSApplicationQueriesSchemes: nextQuerySchemes,

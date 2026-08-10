@@ -13,7 +13,7 @@
 
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import { dispatchNotification, formatEventId } from './lib/notifications';
+import { dispatchNotification, formatDeepLink, formatEventId } from './lib/notifications';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -110,11 +110,11 @@ async function checkAndNotifyFinalSubmission(
       return { success: false, error: 'Failed to format event ID' };
     }
 
-    // Build deep link URL in the same format as chat deep links:
-    // Use home + leagueCode query params so AppShell can rewrite BEFORE Home renders.
+    // Open the exact mini-league on its current gameweek table.
     const baseUrl = getBaseUrl();
-    const relativeUrl = leagueCode ? `/?leagueCode=${leagueCode}&tab=gw` : undefined;
-    const fullUrl = relativeUrl ? `${baseUrl}${relativeUrl}` : undefined;
+    const fullUrl = leagueCode
+      ? formatDeepLink('final-submission', { leagueCode }, baseUrl) ?? undefined
+      : undefined;
 
     // Dispatch via unified system
     const result = await dispatchNotification({

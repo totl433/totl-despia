@@ -19,6 +19,7 @@ import { configurePurchases, loginPurchases, logoutPurchases } from './lib/purch
 import { ConfettiProvider } from './lib/confetti';
 import { LeagueUnreadCountsProvider } from './context/LeagueUnreadCountsContext';
 import { JoinIntentProvider } from './context/JoinIntentContext';
+import { DeepLinkProvider } from './context/DeepLinkContext';
 import { ThemePreferenceProvider, useThemePreference } from './context/ThemePreferenceContext';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
@@ -166,9 +167,11 @@ export default function AppRoot() {
 
   return (
     <SafeAreaProvider>
-      <ThemePreferenceProvider>
-        <ThemedApp authed={authed} />
-      </ThemePreferenceProvider>
+      <DeepLinkProvider>
+        <ThemePreferenceProvider>
+          <ThemedApp authed={authed} />
+        </ThemePreferenceProvider>
+      </DeepLinkProvider>
     </SafeAreaProvider>
   );
 }

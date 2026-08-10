@@ -20,6 +20,7 @@ head: []
 | Collapse ID | `final_sub:{league_id}:{gw}` |
 | Thread ID | `league:{league_id}` |
 | Android Group | `totl_leagues` |
+| Deep Link | `/league/{leagueCode}?tab=gw` |
 
 ## Trigger
 
