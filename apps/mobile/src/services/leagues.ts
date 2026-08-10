@@ -33,9 +33,15 @@ async function requestInvite(codeRaw: string, method: 'GET' | 'POST'): Promise<I
     },
     body: method === 'POST' ? JSON.stringify({ code }) : undefined,
   });
-  const body = (await response.json().catch(() => ({}))) as Partial<InviteResponse> & { error?: string };
+  const responseText = await response.text();
+  let body: Partial<InviteResponse> & { error?: string } = {};
+  try {
+    body = responseText ? (JSON.parse(responseText) as Partial<InviteResponse> & { error?: string }) : {};
+  } catch {
+    // Preserve the status below when an upstream proxy returns a non-JSON error page.
+  }
   if (!response.ok || !body.ok || !body.league) {
-    throw new Error(body.error || 'Could not open this mini-league invite.');
+    throw new Error(body.error || `Could not open this mini-league invite (${response.status}).`);
   }
   return body as InviteResponse;
 }
