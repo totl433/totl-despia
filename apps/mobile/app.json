@@ -2,7 +2,7 @@
   "expo": {
     "name": "Top of the League",
     "slug": "mobile",
-    "version": "2.0.21",
+    "version": "2.0.22",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.despia.totlnative",
-      "buildNumber": "43",
+      "buildNumber": "44",
       "infoPlist": {
         "CFBundleDisplayName": "Top of the League",
         "CFBundleName": "Top of the League",
