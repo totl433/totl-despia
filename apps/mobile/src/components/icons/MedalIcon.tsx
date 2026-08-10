@@ -1,11 +1,25 @@
 import React from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image, type ImageStyle, type StyleProp } from 'react-native';
 
-type Props = {
+/**
+ * Rank medal — Apple Color Emoji 🏅 rendered as bitmap.
+ * Same reliability path as {@link UnicornIcon} (see there for why not pure Text emoji).
+ */
+export default function MedalIcon({
+  size = 14,
+  style,
+}: {
   size?: number;
+  /** Unused for emoji (color glyph); kept for call-site compatibility. */
   color?: string;
-};
-
-export default function MedalIcon({ size = 16, color = '#1C8376' }: Props) {
-  return <Ionicons name="medal" size={size} color={color} />;
+  style?: StyleProp<ImageStyle>;
+}) {
+  return (
+    <Image
+      source={require('../../../assets/emoji/medal.png')}
+      style={[{ width: size, height: size }, style]}
+      resizeMode="contain"
+      accessibilityLabel="Medal"
+    />
+  );
 }
