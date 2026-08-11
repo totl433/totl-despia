@@ -1874,6 +1874,7 @@ headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
 leagueId: league_id,
 gw: currentGw,
+seasonId: ctx?.useSeasonStack ? ctx.seasonId : null,
 }),
 }).catch(() => {
 // Failed to check final submission (non-critical)
