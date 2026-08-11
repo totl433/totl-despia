@@ -31,6 +31,7 @@ import {
 } from './profile.js';
 import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reporting.js';
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
+import { notifyFinalSubmissionForLeagues } from './finalSubmissionNotifications.js';
 import {
   applySeasonFilter,
   getSeasonTables,
@@ -844,6 +845,7 @@ const SubmitPredictionsBodySchema = z.object({
 app.post('/v1/predictions/submit', async (req) => {
   await requireUser(req, supabase);
   const { userId, supa } = getAuthedSupa(req as any);
+  const accessToken = (req as any).accessToken as string;
   const body = SubmitPredictionsBodySchema.parse((req as any).body);
 
   const seasonCtx = await resolveSeasonCtx(supa as any, userId);
@@ -866,6 +868,32 @@ app.post('/v1/predictions/submit', async (req) => {
     .from(tables.submissions)
     .upsert(row, { onConflict: tables.submissionsOnConflict });
   if (error) throw error;
+
+  // Submission is canonical before notification checks run. A notification
+  // failure must never roll back a user's successful prediction submission.
+  try {
+    const { data: memberships, error: membershipsError } = await (supa as any)
+      .from('league_members')
+      .select('league_id')
+      .eq('user_id', userId);
+    if (membershipsError) throw membershipsError;
+
+    await notifyFinalSubmissionForLeagues({
+      siteUrl: env.SITE_URL,
+      accessToken,
+      leagueIds: (memberships ?? []).map((membership: { league_id: string }) =>
+        String(membership.league_id)
+      ),
+      gw: body.gw,
+      seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+    });
+  } catch (notificationError) {
+    app.log.warn(
+      { err: notificationError, userId, gw: body.gw },
+      'Final submission notification check failed'
+    );
+  }
+
   return { ok: true };
 });
 

@@ -14,8 +14,8 @@ head: []
 
 | Field | Value |
 |-------|-------|
-| Event ID Format | `final_sub:{league_id}:{gw}` |
-| Dedupe Scope | per_league_per_gw |
+| Event ID Format | `final_sub:{league_id}:{season_id}:{gw}` |
+| Dedupe Scope | per_league_per_season_per_gw |
 | TTL | 86400 seconds |
 | Collapse ID | `final_sub:{league_id}:{gw}` |
 | Thread ID | `league:{league_id}` |
