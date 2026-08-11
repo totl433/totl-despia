@@ -123,7 +123,6 @@ export interface OneSignalPayload {
   headings: { en: string };
   contents: { en: string };
   data?: Record<string, any>;
-  url?: string;
   
   // Targeting (one of these)
   include_external_user_ids?: string[];

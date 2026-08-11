@@ -71,17 +71,21 @@ export function buildPayload(
     payload.ios_badgeCount = badgeCount;
   }
   
-  // Add data payload
-  if (data) {
-    payload.data = data;
+  // OneSignal's top-level `url` is a Launch URL: on iOS it calls openURL and
+  // opens Safari. Keep destinations in Additional Data so the app's click
+  // listener owns navigation without a browser bounce.
+  const destinationUrl = typeof url === 'string' ? url.trim() : '';
+  const additionalData = data ? { ...data } : {};
+  if (destinationUrl) {
+    if (typeof additionalData.url !== 'string' || !additionalData.url.trim()) {
+      additionalData.url = destinationUrl;
+    }
+    if (typeof additionalData.navigateTo !== 'string' || !additionalData.navigateTo.trim()) {
+      additionalData.navigateTo = destinationUrl;
+    }
   }
-  
-  // Add deep link URL
-  if (url) {
-    // For Despia (native OneSignal SDK), use the top-level `url` field.
-    // This is what the native SDK uses to open an external URL on notification tap.
-    // (Do not set both `url` and `web_url`.)
-    payload.url = url;
+  if (Object.keys(additionalData).length > 0) {
+    payload.data = additionalData;
   }
   
   return payload;
@@ -235,7 +239,7 @@ export function createPayloadSummary(payload: OneSignalPayload): Record<string, 
     player_ids_count: payload.include_player_ids?.length || 0,
     target_type: payload.include_external_user_ids ? 'external_user_ids' : 'player_ids',
     has_data: !!payload.data,
-    has_url: !!payload.url,
+    has_url: typeof payload.data?.url === 'string' && payload.data.url.length > 0,
     collapse_id: payload.collapse_id,
     thread_id: payload.thread_id,
     android_group: payload.android_group,

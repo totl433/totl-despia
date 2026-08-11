@@ -16,11 +16,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.despia.totlnative",
-      "buildNumber": "46",
+      "buildNumber": "47",
       "infoPlist": {
         "CFBundleDisplayName": "Top of the League",
         "CFBundleName": "Top of the League",
         "ITSAppUsesNonExemptEncryption": false,
+        "OneSignal_suppress_launch_urls": true,
         "NSPhotoLibraryUsageDescription": "Top of the League uses your photo library so you can choose a profile picture and upload images for mini-league badges and chat group icons.",
         "NSLocationWhenInUseUsageDescription": "TOTL does not use your location for core features. This permission may be requested by an included library, but the app does not use your location to track you."
       }

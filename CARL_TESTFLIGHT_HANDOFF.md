@@ -25,7 +25,7 @@ Do not add any Netlify step before or after this command.
 |--------|--------|
 | Branch | `expo-ui-carl` |
 | Version | `2.0.24` |
-| Build | `46` |
+| Build | `47` |
 | Bundle ID | `com.despia.totlnative` |
 | `EXPO_PUBLIC_SITE_URL` | `https://playtotl.com` |
 | `EXPO_PUBLIC_BFF_URL` | `https://totl-despia-production.up.railway.app` |
