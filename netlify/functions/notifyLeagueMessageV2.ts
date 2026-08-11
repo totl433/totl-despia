@@ -284,6 +284,7 @@ export const handler: Handler = async (event) => {
       url: fullDeepLinkUrl, // Use full URL for notification clicks (iOS needs full URL for web_url)
       grouping_params: {
         league_id: leagueId,
+        message_id: messageId,
       },
       league_id: leagueId, // For mute checking
       badge_count: badgeCount,

@@ -25,9 +25,11 @@ describe('mobile notification destinations', () => {
       playerIds: ['player-id'],
       data: { type: 'league_message' },
       url: destination,
+      groupingParams: { league_id: 'league-id', message_id: 'message-id' },
     });
 
     expect(payload).not.toHaveProperty('url');
+    expect(payload.collapse_id).toBe('chat:league-id:message-id');
     expect(payload.include_subscription_ids).toEqual(['player-id']);
     expect(payload).not.toHaveProperty('include_player_ids');
     expect(payload.data).toMatchObject({
@@ -76,9 +78,11 @@ describe('mobile notification destinations', () => {
       body: 'Player joined your league',
       data: { url: 'com.despia.totlnative:///league/TVYY4' },
       url: 'https://playtotl.com/league/TVYY4',
+      groupingParams: { league_id: 'league-id', user_id: 'user-id' },
     });
 
     expect(payload).not.toHaveProperty('url');
+    expect(payload.collapse_id).toBe('member_join:league-id:user-id');
     expect(payload.data?.url).toBe('com.despia.totlnative:///league/TVYY4');
     expect(payload.data?.navigateTo).toBe('https://playtotl.com/league/TVYY4');
   });

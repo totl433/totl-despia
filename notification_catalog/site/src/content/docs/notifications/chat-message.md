@@ -17,10 +17,10 @@ head: []
 | Event ID Format | `chat:{league_id}:{message_id}` |
 | Dedupe Scope | per_user_per_event |
 | TTL | 60 seconds |
-| Cooldown | 30 seconds per user |
+| Cooldown | 0 seconds per user |
 | Quiet Hours | 23:00 - 07:00 |
 | Preference Key | `chat-messages` |
-| Collapse ID | `chat:{league_id}` |
+| Collapse ID | `chat:{league_id}:{message_id}` |
 | Thread ID | `league:{league_id}` |
 | Android Group | `totl_chat` |
 

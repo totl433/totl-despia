@@ -20,7 +20,7 @@ head: []
 | Cooldown | 0 seconds per user |
 | Quiet Hours | null |
 | Preference Key | `member-joins` |
-| Collapse ID | `member_join:{league_id}` |
+| Collapse ID | `member_join:{league_id}:{user_id}` |
 | Thread ID | `league:{league_id}` |
 | Android Group | `totl_leagues` |
 

@@ -206,6 +206,10 @@ export const handler: Handler = async (event) => {
         navigateTo: fullUrl,
       },
       url: fullUrl, // Deep link to specific league page (must be absolute URL for OneSignal)
+      grouping_params: {
+        league_id: leagueId,
+        user_id: userId,
+      },
       league_id: leagueId, // For mute checking
     });
 

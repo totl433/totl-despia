@@ -24,6 +24,7 @@ let hasInitialized = false;
 let hasRegisteredThisSession = false;
 let currentPlayerId: string | null = null;
 let clickHandlerAttached = false;
+let foregroundDisplayHandlerAttached = false;
 let cachedOneSignalSdk: { OneSignal: any; LogLevel: any } | null | undefined;
 type NotificationUrlListener = (url: string) => void;
 const notificationUrlListeners = new Set<NotificationUrlListener>();
@@ -117,6 +118,24 @@ function attachClickHandlerOnce() {
   clickHandlerAttached = true;
 }
 
+function attachForegroundDisplayHandlerOnce(): void {
+  const sdk = getOneSignalSdk();
+  if (!sdk || foregroundDisplayHandlerAttached) return;
+  const { OneSignal } = sdk;
+  const listener = (event: any) => {
+    const notification = event?.getNotification?.();
+    if (!notification?.display) return;
+
+    // iOS does not reliably present a banner while the app is foregrounded.
+    // Take ownership of presentation so joins and chat alerts remain visible.
+    event.preventDefault?.();
+    notification.display();
+  };
+
+  OneSignal.Notifications.addEventListener('foregroundWillDisplay', listener);
+  foregroundDisplayHandlerAttached = true;
+}
+
 export function resetPushSessionState(): void {
   hasRegisteredThisSession = false;
   currentPlayerId = null;
@@ -147,6 +166,7 @@ export function initPushSdk(): boolean {
   OneSignal.Debug.setLogLevel(__DEV__ ? LogLevel.Warn : LogLevel.None);
   OneSignal.initialize(appId);
   attachClickHandlerOnce();
+  attachForegroundDisplayHandlerOnce();
   hasInitialized = true;
   setLastPushOperationTrace({
     at: new Date().toISOString(),
