@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { isSubscribed, setExternalUserId, verifyExternalUserId } from './utils/notificationHelpers';
+import { staleSubscriptionIdsForCurrentDevice } from './lib/notifications/subscriptionDedupe';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -94,8 +95,8 @@ export const handler: Handler = async (event) => {
     console.warn('[registerPlayer] Failed to check/reassign player ownership:', e);
   }
 
-  // 1) Multi-device support: do NOT deactivate other devices for this user.
-  // Users can have both Despia and Expo (TestFlight) registered; both receive notifications.
+  // 1) Preserve multi-device support. Stale IDs for this exact reported device
+  // are retired after registration; different device models remain active.
 
   // 2) Verify subscription status with OneSignal before marking as subscribed
   let subscriptionStatus = { subscribed: false, player: null as any };
@@ -135,6 +136,41 @@ export const handler: Handler = async (event) => {
   if (error) {
     console.error(`[registerPlayer] Failed to upsert for ${userId}:`, error);
     return json(500, { error: 'Failed to register device', details: error.message });
+  }
+
+  // Retire stale OneSignal IDs left by TestFlight updates/reinstalls on the
+  // same reported device. Different models and unknown devices are preserved.
+  const currentDeviceModel = subscriptionStatus.player?.device_model;
+  if (typeof currentDeviceModel === 'string' && currentDeviceModel.trim()) {
+    try {
+      const { data: activeSubscriptions, error: activeSubscriptionsError } = await admin
+        .from('push_subscriptions')
+        .select('id, user_id, player_id, platform, updated_at, os_payload')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+      if (activeSubscriptionsError) throw activeSubscriptionsError;
+
+      const staleIds = staleSubscriptionIdsForCurrentDevice(activeSubscriptions || [], {
+        user_id: userId,
+        player_id: playerId,
+        platform,
+        os_payload: subscriptionStatus.player,
+      });
+      if (staleIds.length > 0) {
+        const { error: deactivateError } = await admin
+          .from('push_subscriptions')
+          .update({ is_active: false })
+          .in('id', staleIds);
+        if (deactivateError) throw deactivateError;
+        console.log(
+          `[registerPlayer] Deactivated ${staleIds.length} stale same-device subscription(s)`
+        );
+      }
+    } catch (cleanupError) {
+      // Registration must still succeed; targeting also performs a defensive
+      // same-device dedupe before every send.
+      console.warn('[registerPlayer] Could not retire stale subscriptions:', cleanupError);
+    }
   }
 
   // 4) Set external_user_id in OneSignal (for user-based targeting)

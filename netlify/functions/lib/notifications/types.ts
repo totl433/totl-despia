@@ -156,5 +156,7 @@ export interface PushSubscription {
   is_active: boolean;
   subscribed: boolean;
   platform?: string;
+  updated_at?: string;
+  os_payload?: Record<string, unknown> | null;
 }
 
