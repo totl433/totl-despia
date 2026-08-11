@@ -126,7 +126,7 @@ export interface OneSignalPayload {
   
   // Targeting (one of these)
   include_external_user_ids?: string[];
-  include_player_ids?: string[];
+  include_subscription_ids?: string[];
   included_segments?: string[];
   filters?: any[];
   

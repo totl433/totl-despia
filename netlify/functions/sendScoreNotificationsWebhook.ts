@@ -48,7 +48,7 @@ async function sendOneSignalNotification(
 
   const payload = {
     app_id: ONESIGNAL_APP_ID,
-    include_player_ids: subscribedPlayerIds,
+    include_subscription_ids: subscribedPlayerIds,
     headings: { en: title },
     contents: { en: message },
     data,

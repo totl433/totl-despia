@@ -258,7 +258,7 @@ export const handler: Handler = async (event) => {
     // Send notification via OneSignal
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,
-      include_player_ids: eligiblePlayerIds,
+      include_subscription_ids: eligiblePlayerIds,
       headings: { en: `Gameweek ${currentGw} Predictions Due Soon!` },
       contents: { en: reminderMessage },
       collapse_id: eventId, // Use same event_id for collapse_id
