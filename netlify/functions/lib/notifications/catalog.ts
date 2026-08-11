@@ -20,10 +20,10 @@ const catalogData = {
     "source": "client_post",
     "trigger": { "name": "league_message_sent", "event_id_format": "chat:{league_id}:{message_id}" },
     "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 60 },
-    "cooldown": { "per_user_seconds": 30 },
+    "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "chat-messages", "default": true },
-    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "onesignal": { "collapse_id_format": "chat:{league_id}:{message_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
@@ -39,7 +39,7 @@ const catalogData = {
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "mini-league-updates", "default": true },
-    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "onesignal": { "collapse_id_format": "member_join:{league_id}:{user_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },

@@ -175,6 +175,10 @@ export const handler: Handler = async (event) => {
         navigateTo: url,
       },
       url,
+      grouping_params: {
+        league_id: league.id,
+        user_id: userId,
+      },
       league_id: league.id,
     }).catch((error) => {
       console.warn('[joinMiniLeagueByCode] Join succeeded but notification failed:', error);
