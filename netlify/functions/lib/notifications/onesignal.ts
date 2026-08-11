@@ -5,12 +5,25 @@
  * Sets grouping fields (collapse_id, thread_id, android_group) on every send.
  */
 
+import { createHash } from 'node:crypto';
+
 import type { NotificationCatalogEntry } from './catalog';
 import { formatCollapseId, formatThreadId } from './catalog';
 import type { OneSignalPayload } from './types';
 import { buildOneSignalAuthorization } from '../onesignalAuth';
 
 const ONESIGNAL_API_URL = 'https://api.onesignal.com/notifications';
+const ONESIGNAL_COLLAPSE_ID_MAX_BYTES = 64;
+
+function normalizeCollapseId(collapseId: string | null): string | null {
+  if (!collapseId || Buffer.byteLength(collapseId, 'utf8') <= ONESIGNAL_COLLAPSE_ID_MAX_BYTES) {
+    return collapseId;
+  }
+
+  // OneSignal rejects the entire notification when collapse_id exceeds 64
+  // bytes. Hash oversized event keys so they remain unique and API-safe.
+  return `totl:${createHash('sha256').update(collapseId).digest('hex').slice(0, 59)}`;
+}
 
 /**
  * Build a OneSignal notification payload
@@ -37,7 +50,9 @@ export function buildPayload(
   const { title, body, externalUserIds, playerIds, data, url, groupingParams = {}, badgeCount } = options;
   
   // Build grouping fields from catalog templates
-  const collapseId = formatCollapseId(catalogEntry.notification_key, groupingParams);
+  const collapseId = normalizeCollapseId(
+    formatCollapseId(catalogEntry.notification_key, groupingParams)
+  );
   const threadId = formatThreadId(catalogEntry.notification_key, groupingParams);
   const androidGroup = catalogEntry.onesignal.android_group_format;
   

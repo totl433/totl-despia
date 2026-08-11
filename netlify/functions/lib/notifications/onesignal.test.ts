@@ -86,4 +86,22 @@ describe('mobile notification destinations', () => {
     expect(payload.data?.url).toBe('com.despia.totlnative:///league/TVYY4');
     expect(payload.data?.navigateTo).toBe('https://playtotl.com/league/TVYY4');
   });
+
+  it('compacts event collapse IDs to OneSignal’s 64-byte limit', () => {
+    process.env.ONESIGNAL_APP_ID = 'test-app-id';
+    const catalogEntry = getCatalogEntry('member-join');
+    if (!catalogEntry) throw new Error('member-join catalog entry missing');
+
+    const payload = buildPayload(catalogEntry, {
+      title: 'Player joined',
+      body: 'Player joined your league',
+      groupingParams: {
+        league_id: 'b4ce007c-21de-41f5-8039-1f4df4752d16',
+        user_id: 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2',
+      },
+    });
+
+    expect(payload.collapse_id).toMatch(/^totl:[a-f0-9]{59}$/);
+    expect(Buffer.byteLength(payload.collapse_id ?? '', 'utf8')).toBeLessThanOrEqual(64);
+  });
 });
