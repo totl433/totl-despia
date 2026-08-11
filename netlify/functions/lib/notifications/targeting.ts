@@ -7,6 +7,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { PushSubscription } from './types';
+import { buildOneSignalAuthorization } from '../onesignalAuth';
 
 let supabaseClient: SupabaseClient | null = null;
 
@@ -164,7 +165,7 @@ export async function verifyAndFilterSubscriptions(
           `https://onesignal.com/api/v1/players/${playerId}?app_id=${ONESIGNAL_APP_ID}`,
           {
             headers: {
-              'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+              'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
             },
           }
         );

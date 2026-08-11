@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -54,7 +55,7 @@ export const handler: Handler = async (event) => {
     const res = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${restKey}`,
+        Authorization: buildOneSignalAuthorization(restKey),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),

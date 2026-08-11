@@ -1,6 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { isSubscribed, shouldSendNotification, loadUserNotificationPreferences } from './utils/notificationHelpers';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -54,7 +55,7 @@ async function sendOneSignalNotification(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+        'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
       },
       body: JSON.stringify(payload),
     });
