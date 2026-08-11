@@ -1,70 +1,41 @@
 # Carl – TestFlight Build Handoff
 
-Instructions for building and submitting the Expo app to TestFlight. Everything is ready in the branch.
+Instructions for building and submitting the Expo app to TestFlight.
 
----
+## Critical: EAS only
 
-## Prerequisites
+**Do not run `netlify deploy`, trigger a Netlify deploy, or upload this repository to Netlify.**
 
-1. **Deploy totl-staging first** (critical for push notifications)
-   - The multi-device push changes are in `netlify/functions/`. These must be live on **totl-staging** before the new TestFlight will work correctly.
-   - Push the branch that triggers totl-staging’s Netlify deploy, or manually trigger a deploy.
-   - Without this, Expo and Despia will still conflict over push tokens.
+`playtotl.com` is deployed separately from the web `main` branch. Publishing this mobile branch to that Netlify site replaces the current website with an old web artifact. The production functions required by the Expo app are already live.
 
-2. **EAS CLI** – `npm install -g eas-cli` and `eas login` if needed.
+## Build and submit
 
----
-
-## Build & Submit
-
-From repo root:
+Use the mobile directory and EAS only:
 
 ```bash
-# 1. Build for iOS (production profile)
-cd apps/mobile && eas build --platform ios --profile production
-
-# 2. After build completes, submit to TestFlight
-eas submit --platform ios --profile production --latest
+cd apps/mobile
+eas build --platform ios --profile production --auto-submit
 ```
 
-Or build and submit in one step:
+Do not add any Netlify step before or after this command.
 
-```bash
-cd apps/mobile && eas build --platform ios --profile production --auto-submit
-```
-
----
-
-## Config (already set)
+## Release target
 
 | Setting | Value |
 |--------|--------|
-| `EXPO_PUBLIC_SITE_URL` | `https://totl-staging.netlify.app` (push registration) |
+| Branch | `expo-ui-carl` |
+| Version | `2.0.24` |
+| Build | `46` |
+| Bundle ID | `com.despia.totlnative` |
+| `EXPO_PUBLIC_SITE_URL` | `https://playtotl.com` |
 | `EXPO_PUBLIC_BFF_URL` | `https://totl-despia-production.up.railway.app` |
-| `EXPO_PUBLIC_ONESIGNAL_APP_ID` | `b4f056ec-6753-4a80-ba72-bdfbe8527f9e` |
-| OneSignal APNs mode | Production (for TestFlight) |
+| OneSignal APNs mode | Production |
 
-All values are in `apps/mobile/app.json` → `extra`. No `env.local` needed for EAS builds.
-
----
-
-## Build number
-
-`eas.json` has `"autoIncrement": false` for production. If Apple rejects for duplicate build number, bump `buildNumber` in `apps/mobile/app.json` (e.g. 10 → 11) and rebuild.
-
----
-
-## After TestFlight
-
-- **Despia** and **Expo** both register with totl-staging.
-- Both stay active in the DB (multi-device).
-- Notifications go to both apps.
-- Users with both installed may see duplicate notifications during overlap.
-
----
+All public configuration is supplied by `apps/mobile/app.json` and `apps/mobile/app.config.ts`. No local environment file or website deployment is required.
 
 ## Troubleshooting
 
 - **Push not working on Expo** – See `EXPO_PUSH_DEBUGGING.md`.
-- **Build fails** – Check EAS build logs; OneSignal plugin needs native rebuild.
-- **Submit fails** – Ensure Apple credentials are configured in EAS (`eas credentials`).
+- **Build fails** – Check EAS build logs.
+- **Submit fails** – Check Apple credentials with `eas credentials`.
+- **Never use Netlify as a TestFlight troubleshooting step.**

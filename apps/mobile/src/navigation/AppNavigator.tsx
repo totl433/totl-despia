@@ -251,6 +251,7 @@ export default function AppNavigator() {
             headerStyle: { backgroundColor: t.color.background },
             headerTintColor: t.color.text,
             headerTitle: '',
+            headerBackButtonDisplayMode: 'minimal',
           }}
         />
         <Stack.Screen

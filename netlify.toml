@@ -1,6 +1,8 @@
 [build]
-  command = "npm run build"
-  publish = "dist"
+  # This branch builds the native Expo app only. Website production belongs to
+  # the web repository's main branch and must never be replaced from here.
+  command = "node scripts/block-mobile-netlify-deploy.mjs"
+  publish = ".netlify-deploy-blocked"
 
 [functions]
   directory = "netlify/functions"
