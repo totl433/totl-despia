@@ -276,7 +276,7 @@ export const handler: Handler = async (event) => {
       ios_badgeCount: 1,
     };
 
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+    const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

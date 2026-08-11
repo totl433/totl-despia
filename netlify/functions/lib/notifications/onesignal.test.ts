@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getCatalogEntry } from './catalog';
-import { buildPayload } from './onesignal';
+import { buildPayload, sendNotification } from './onesignal';
 
 const originalAppId = process.env.ONESIGNAL_APP_ID;
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   if (originalAppId === undefined) delete process.env.ONESIGNAL_APP_ID;
   else process.env.ONESIGNAL_APP_ID = originalAppId;
+  delete process.env.ONESIGNAL_REST_API_KEY;
 });
 
 describe('mobile notification destinations', () => {
@@ -33,6 +35,35 @@ describe('mobile notification destinations', () => {
       url: destination,
       navigateTo: destination,
     });
+  });
+
+  it('uses the current endpoint and counts an ID response as accepted', async () => {
+    process.env.ONESIGNAL_REST_API_KEY = 'os_v2_app_test';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'notification-id' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await sendNotification({
+      app_id: 'test-app-id',
+      headings: { en: 'Title' },
+      contents: { en: 'Body' },
+      include_subscription_ids: ['subscription-id'],
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      notification_id: 'notification-id',
+      recipients: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.onesignal.com/notifications',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Key os_v2_app_test' }),
+      })
+    );
   });
 
   it('preserves an explicitly supplied data destination', () => {
