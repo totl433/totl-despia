@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification } from './lib/notifications';
+import { resolveMemberJoinName } from './lib/notifications/memberJoinName';
 import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 type LeagueRow = {
@@ -143,8 +144,19 @@ export const handler: Handler = async (event) => {
 
   const recipientIds = (members ?? []).map((row) => String(row.user_id)).filter((id) => id && id !== userId);
   if (recipientIds.length > 0) {
-    const { data: profile } = await admin.from('users').select('name,email').eq('id', userId).maybeSingle();
-    const userName = String(profile?.name ?? profile?.email ?? 'Someone');
+    const { data: profile, error: profileError } = await admin
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileError) {
+      console.warn('[joinMiniLeagueByCode] Could not load joiner profile name:', profileError);
+    }
+    const userName = resolveMemberJoinName({
+      profileName: profile?.name,
+      authMetadata: authData.user?.user_metadata as Record<string, unknown> | undefined,
+      email: authData.user?.email,
+    });
     const url = buildLeaguePublicUrl(league.code);
     await dispatchNotification({
       notification_key: 'member-join',
