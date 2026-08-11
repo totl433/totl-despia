@@ -10,7 +10,7 @@ import { formatCollapseId, formatThreadId } from './catalog';
 import type { OneSignalPayload } from './types';
 import { buildOneSignalAuthorization } from '../onesignalAuth';
 
-const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
+const ONESIGNAL_API_URL = 'https://api.onesignal.com/notifications';
 
 /**
  * Build a OneSignal notification payload
@@ -143,20 +143,26 @@ export async function sendNotification(
       };
     }
     
-    // Check for errors in response body
-    if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+    // Current API responses return a notification ID but no recipient count.
+    // A 200 without an ID means no message was created.
+    if (!body.id) {
       return {
         success: false,
         error: {
-          errors: body.errors,
+          errors: body.errors ?? 'OneSignal did not create a notification',
         },
       };
     }
+
+    const targetCount =
+      payload.include_subscription_ids?.length ||
+      payload.include_external_user_ids?.length ||
+      0;
     
     return {
       success: true,
       notification_id: body.id,
-      recipients: body.recipients || 0,
+      recipients: typeof body.recipients === 'number' ? body.recipients : targetCount,
     };
   } catch (err: any) {
     return {

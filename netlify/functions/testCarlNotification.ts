@@ -134,7 +134,7 @@ export const handler: Handler = async (event) => {
 
     // Send notification to user's devices
     // Use same format as OneSignal dashboard for better compatibility
-    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
+    const resp = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

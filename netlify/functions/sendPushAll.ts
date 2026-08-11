@@ -230,7 +230,7 @@ export const handler: Handler = async (event) => {
     console.log(`[sendPushAll] Sending to ${validPlayerIds.length} Player IDs`);
     console.log(`[sendPushAll] Badge settings: ios_badgeType=${notificationPayload.ios_badgeType}, ios_badgeCount=${notificationPayload.ios_badgeCount}`);
     
-    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
+    const resp = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
