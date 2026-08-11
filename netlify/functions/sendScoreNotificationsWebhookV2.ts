@@ -36,6 +36,10 @@ import {
   finalizeFixtureResultsDualStack,
   type WebhookFixtureInfo,
 } from './lib/seasonStackPoll';
+import {
+  resolveKickoffHalf,
+  resolveMatchTransitions,
+} from './lib/notifications/scoreTransitionGuards';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -216,8 +220,16 @@ export const handler: Handler = async (event, context) => {
     const awayTeamId = record.away_team_id;
 
     // Detect changes
-    const scoreWentDown = homeScore < oldHomeScore || awayScore < oldAwayScore;
-    const isHalfTime = oldStatus === 'IN_PLAY' && status === 'PAUSED';
+    const transitions = resolveMatchTransitions({
+      status,
+      oldStatus,
+      homeScore,
+      awayScore,
+      oldHomeScore,
+      oldAwayScore,
+    });
+    const scoreWentDown = transitions.goalDisallowed;
+    const isHalfTime = transitions.halfTime;
     const isFinished = isTerminalMatchStatus(status);
     const wasFinished = isTerminalMatchStatus(oldStatus);
     const isLiveNow = isLiveMatchStatus(status);
@@ -249,9 +261,8 @@ export const handler: Handler = async (event, context) => {
       };
     }
     
-    // Kickoff detection: Simplified using idempotency (doesn't rely on oldStatus)
-    // If status is IN_PLAY, attempt to send kickoff notification
-    // Idempotency will prevent duplicates (event_id includes half number)
+    // Kickoff detection uses the previous status when available. Missing
+    // history may identify first-half kickoff, but must never invent half two.
     const isInPlay = status === 'IN_PLAY';
     const shouldCheckKickoff = isInPlay && !kickoffTooOld;
 
@@ -403,30 +414,28 @@ export const handler: Handler = async (event, context) => {
       const userIds = [...new Set(picksData.map(p => p.userId))];
 
       if (userIds.length > 0) {
-        // Determine which half: check if we've already sent kickoff notifications
-        // If oldStatus available, use it for reliability. Otherwise check database.
-        let isSecondHalf = false;
-        
-        if (oldStatus) {
-          // Use oldStatus if available (most reliable)
-          const wasPaused = oldStatus === 'PAUSED' || oldStatus === 'HALF_TIME';
-          isSecondHalf = wasPaused;
-        } else {
-          // oldStatus missing - check database for existing kickoff notifications
-          const existingHalf = await getExistingKickoffHalf(apiMatchId, userIds);
-          isSecondHalf = existingHalf >= 1; // If we've sent half 1, this must be half 2
-        }
-        
-        const result = await sendKickoffNotification(userIds, {
-          apiMatchId, fixtureIndex: fixture_index, gw,
-          homeTeam: home_team, awayTeam: away_team,
-          isSecondHalf,
+        const existingHalf = oldStatus
+          ? 0
+          : await getExistingKickoffHalf(apiMatchId, userIds);
+        const kickoffHalf = resolveKickoffHalf({
+          status,
+          oldStatus,
+          existingHalf,
+          kickoffTooOld,
         });
-        totalSent += result.results.accepted;
-        console.log(`[scoreWebhookV2] [${requestId}] Kickoff (half ${isSecondHalf ? 2 : 1}): ${result.results.accepted} sent`);
-      }
 
-      return { statusCode: 200, headers, body: JSON.stringify({ message: 'Kickoff notification sent', sentTo: totalSent }) };
+        if (kickoffHalf) {
+          const result = await sendKickoffNotification(userIds, {
+            apiMatchId, fixtureIndex: fixture_index, gw,
+            homeTeam: home_team, awayTeam: away_team,
+            isSecondHalf: kickoffHalf === 2,
+          });
+          totalSent += result.results.accepted;
+          console.log(`[scoreWebhookV2] [${requestId}] Kickoff (half ${kickoffHalf}): ${result.results.accepted} sent`);
+
+          return { statusCode: 200, headers, body: JSON.stringify({ message: 'Kickoff notification sent', sentTo: totalSent }) };
+        }
+      }
     }
 
     // 4. Handle half-time
@@ -462,7 +471,7 @@ export const handler: Handler = async (event, context) => {
     }
 
     // 5. Handle game finished
-    if (isFinished && oldStatus !== 'FINISHED' && oldStatus !== 'FT') {
+    if (transitions.fullTime) {
       const picksData = await fetchUserIdsWithPicks(fixture, true);
       const userIds = [...new Set(picksData.map(p => p.userId))];
 

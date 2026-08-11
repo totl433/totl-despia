@@ -21,8 +21,7 @@ const ADMIN_USER_IDS = new Set([
   '36f31625-6d6c-4aa4-815a-1493a812841b',
 ]);
 
-const FOOTBALL_DATA_API_KEY =
-  process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
+const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY?.trim() || '';
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
 
 function json(statusCode: number, body: unknown) {
@@ -312,6 +311,9 @@ export const handler: Handler = async (event) => {
     if (action === 'load') {
       if (!body.gw || body.gw < 1 || body.gw > 40) {
         return json(400, { error: 'load requires gw (1–40)' });
+      }
+      if (!FOOTBALL_DATA_API_KEY) {
+        return json(500, { error: 'Live-score provider is not configured' });
       }
       const season = await resolveSeason(sb, body);
       const matches = await fetchMatchday(season.football_data_season, body.gw);

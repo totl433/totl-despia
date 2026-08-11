@@ -23,8 +23,12 @@ export const handler: Handler = async (event) => {
     return json(405, { error: 'Method Not Allowed' });
   }
 
-  const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
+  const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY?.trim() || '';
   const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
+
+  if (!FOOTBALL_DATA_API_KEY) {
+    return json(500, { error: 'Live-score provider is not configured' });
+  }
 
   try {
     // Parse query parameters

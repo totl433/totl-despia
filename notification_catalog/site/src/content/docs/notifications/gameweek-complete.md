@@ -14,13 +14,14 @@ head: []
 
 | Field | Value |
 |-------|-------|
-| Event ID Format | `gw_complete:{gw}` |
+| Event ID Format | Legacy: `gw_complete:{gw}`; season: `gw_complete:season:{season_id}:{gw}` |
 | Dedupe Scope | per_user_per_event |
 | TTL | 7200 seconds |
 | Preference Key | `gw-results` |
-| Collapse ID | `gw_complete:{gw}` |
+| Collapse ID | `gw_complete:{season_scope}:{gw}` |
 | Thread ID | `totl_gameweek` |
 | Android Group | `totl_results` |
+| Deep Link | `/predictions` |
 
 ## Trigger
 

@@ -72,7 +72,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "final-whistle", "default": true },
     "onesignal": { "collapse_id_format": "ft:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_results" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "gameweek-complete": {
@@ -87,8 +87,8 @@ const catalogData = {
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "gw-results", "default": true },
-    "onesignal": { "collapse_id_format": "gw_complete:{gw}", "thread_id_format": "totl_gameweek", "android_group_format": "totl_results" },
-    "deep_links": { "url_format": null },
+    "onesignal": { "collapse_id_format": "gw_complete:{season_scope}:{gw}", "thread_id_format": "totl_gameweek", "android_group_format": "totl_results" },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "goal-disallowed": {
@@ -104,7 +104,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "goal_disallowed:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "goal-scored": {
@@ -120,7 +120,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "goal:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "half-time": {
@@ -136,7 +136,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "halftime:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "kickoff": {
@@ -152,7 +152,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "kickoff:{api_match_id}:{half}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "new-gameweek": {

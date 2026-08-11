@@ -1,6 +1,9 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import { isKickoffTooOldForPolling } from './lib/liveMatchGuards';
+import {
+  isKickoffTooOldForPolling,
+  shouldRunScheduledPollForSite,
+} from './lib/liveMatchGuards';
 import {
   loadDualStackFixturesToPoll,
   resolveDualStackRuntime,
@@ -11,7 +14,7 @@ import {
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
+const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY?.trim() || '';
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
 
 /**
@@ -474,6 +477,22 @@ export const handler: Handler = async (event) => {
   const context = process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown';
   const branch = process.env.BRANCH || process.env.HEAD || process.env.COMMIT_REF || 'unknown';
   const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
+
+  if (!shouldRunScheduledPollForSite(siteUrl)) {
+    console.log(`[pollLiveScores] Skipping non-canonical site: ${siteUrl}`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: false, message: 'Polling is owned by playtotl.com' }),
+    };
+  }
+
+  if (!FOOTBALL_DATA_API_KEY) {
+    console.error('[pollLiveScores] FOOTBALL_DATA_API_KEY is not configured');
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Live-score provider is not configured' }),
+    };
+  }
 
   // Log environment info for debugging
   console.log(`[pollLiveScores] Environment check:`, {

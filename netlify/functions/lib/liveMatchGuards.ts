@@ -42,3 +42,14 @@ export function isTerminalMatchStatus(status: string | null | undefined): boolea
 export function isLiveMatchStatus(status: string | null | undefined): boolean {
   return status === 'IN_PLAY' || status === 'PAUSED';
 }
+
+export function shouldRunScheduledPollForSite(siteUrl: string | null | undefined): boolean {
+  if (!siteUrl) return true;
+
+  try {
+    const hostname = new URL(siteUrl).hostname.toLowerCase();
+    return hostname === 'playtotl.com' || hostname === 'www.playtotl.com';
+  } catch {
+    return false;
+  }
+}
