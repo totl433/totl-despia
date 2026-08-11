@@ -8,6 +8,7 @@
 import type { NotificationCatalogEntry } from './catalog';
 import { formatCollapseId, formatThreadId } from './catalog';
 import type { OneSignalPayload } from './types';
+import { buildOneSignalAuthorization } from '../onesignalAuth';
 
 const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
 
@@ -118,7 +119,7 @@ export async function sendNotification(
   console.log(`[onesignal] App ID: ${payload.app_id || 'not set'}`);
   
   try {
-    const authHeader = `Basic ${restKey}`;
+    const authHeader = buildOneSignalAuthorization(restKey);
     console.log(`[onesignal] Authorization header length: ${authHeader.length}`);
     
     const response = await fetch(ONESIGNAL_API_URL, {

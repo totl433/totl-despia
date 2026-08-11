@@ -46,6 +46,7 @@ import type {
   NotificationResult,
 } from './types';
 import { canonicalizeNotificationData, canonicalizePublicAppUrl } from './publicLinks';
+import { buildOneSignalAuthorization } from '../onesignalAuth';
 
 /**
  * Dispatch a notification to multiple users
@@ -200,7 +201,7 @@ export async function dispatchNotification(
                 `https://onesignal.com/api/v1/players/${playerId}?app_id=${ONESIGNAL_APP_ID}`,
                 {
                   headers: {
-                    'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+                    'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
                   },
                 }
               );
