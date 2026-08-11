@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLeagueAppLink,
   buildMiniLeagueInviteLink,
+  buildPredictionsAppLink,
   getDeepLinkDedupeKey,
   resolveDeepLinkTarget,
 } from './deepLinks';
@@ -82,6 +83,7 @@ describe('resolveDeepLinkTarget', () => {
     expect(buildLeagueAppLink('tvyy4')).toBe('https://playtotl.com/league/TVYY4');
     expect(buildLeagueAppLink('tvyy4', 'chat')).toBe('https://playtotl.com/league/TVYY4?tab=chat');
     expect(buildMiniLeagueInviteLink('tvyy4')).toBe('https://playtotl.com/join-league/TVYY4');
+    expect(buildPredictionsAppLink()).toBe('https://playtotl.com/predictions');
   });
 
   it('deduplicates universal and custom-scheme delivery of the same destination', () => {

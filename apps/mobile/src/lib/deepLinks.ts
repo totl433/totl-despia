@@ -23,6 +23,10 @@ export function buildMiniLeagueInviteLink(code: string): string {
   return `${APP_LINK_BASE_URL}/join-league/${encodeURIComponent(String(code).trim().toUpperCase())}`;
 }
 
+export function buildPredictionsAppLink(): string {
+  return `${APP_LINK_BASE_URL}/predictions`;
+}
+
 function parseIncomingUrl(rawUrl: string): URL | null {
   try {
     if (rawUrl.startsWith('/')) {

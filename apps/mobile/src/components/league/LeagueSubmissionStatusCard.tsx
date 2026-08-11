@@ -3,6 +3,7 @@ import { Pressable, Share, View } from 'react-native';
 import { Card, TotlText, useTokens } from '@totl/ui';
 import EmojiText from '../icons/EmojiText';
 import { formatLocalDateShort, formatLocalTimeHHmm } from '../../lib/dateTime';
+import { buildPredictionsAppLink } from '../../lib/deepLinks';
 
 export default function LeagueSubmissionStatusCard({
   members,
@@ -43,7 +44,7 @@ export default function LeagueSubmissionStatusCard({
 
   const shareReminder = async () => {
     const title = `Gameweek ${picksGw} Predictions Reminder!`;
-    const msg = `${title}\n\nDEADLINE: ${deadlineStr ?? '—'}\n\nDon't forget!\nplaytotl.com`;
+    const msg = `${title}\n\nDEADLINE: ${deadlineStr ?? '—'}\n\nDon't forget!\n${buildPredictionsAppLink()}`;
     await Share.share({ message: msg });
   };
 
