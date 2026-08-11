@@ -20,7 +20,7 @@ export function generateShareReminderMessage(picksGw: number, fixtures: Array<{ 
  const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
  const datePart = formatKickoffDateUk(deadlineTime.toISOString()).toUpperCase();
  const timePart = formatKickoffTimeUk(deadlineTime.toISOString());
- return `Gameweek ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${datePart}, ${timePart} UK\n\nDon't forget!\nplaytotl.com`;
+ return `Gameweek ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${datePart}, ${timePart} UK\n\nDon't forget!\nhttps://playtotl.com/predictions`;
 }
 
 // Helper function to handle share reminder click
