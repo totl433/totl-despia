@@ -154,7 +154,7 @@ export const handler: Handler = async (event) => {
   // iOS requires url and web_url at top level for deep linking
   const oneSignalPayload: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
-    include_player_ids: playerIds,
+    include_subscription_ids: playerIds,
     headings: { en: title },
     contents: { en: message },
     data: {

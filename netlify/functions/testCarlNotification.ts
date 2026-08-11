@@ -141,7 +141,7 @@ export const handler: Handler = async (event) => {
       },
       body: JSON.stringify({
         app_id: ONESIGNAL_APP_ID,
-        include_player_ids: validPlayerIds,
+        include_subscription_ids: validPlayerIds,
         headings: { en: title },
         contents: { en: message },
         // Add iOS-specific settings

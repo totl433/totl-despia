@@ -212,7 +212,7 @@ export const handler: Handler = async (event) => {
     // Build notification payload
     const notificationPayload: any = {
       app_id: ONESIGNAL_APP_ID,
-      include_player_ids: validPlayerIds,
+      include_subscription_ids: validPlayerIds,
       headings: { en: title },
       contents: { en: message },
       // Add iOS badge to app icon (shows red number badge)

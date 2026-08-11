@@ -44,7 +44,9 @@ export const handler: Handler = async (event) => {
     } else if (subscriptionIds.length > 0) {
       payload.include_subscription_ids = subscriptionIds; // v5+ SDK
     } else if (playerIds.length > 0) {
-      payload.include_player_ids = playerIds; // legacy fallback
+      // OneSignal now calls these subscription IDs; keep accepting the legacy
+      // request field while using the current API targeting property.
+      payload.include_subscription_ids = playerIds;
     } else {
       return json(400, { error: 'No targets: provide externalUserIds, subscriptionIds, or playerIds' });
     }

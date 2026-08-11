@@ -26,6 +26,8 @@ describe('mobile notification destinations', () => {
     });
 
     expect(payload).not.toHaveProperty('url');
+    expect(payload.include_subscription_ids).toEqual(['player-id']);
+    expect(payload).not.toHaveProperty('include_player_ids');
     expect(payload.data).toMatchObject({
       type: 'league_message',
       url: destination,

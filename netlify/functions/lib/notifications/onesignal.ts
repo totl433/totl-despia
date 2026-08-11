@@ -46,10 +46,10 @@ export function buildPayload(
     contents: { en: body },
   };
   
-  // Use player_ids directly (simpler, more reliable)
+  // Stored player IDs are OneSignal subscription IDs in SDK v5+.
   // This avoids the external_user_id mapping layer that can break
   if (playerIds && playerIds.length > 0) {
-    payload.include_player_ids = playerIds;
+    payload.include_subscription_ids = playerIds;
   } else if (externalUserIds && externalUserIds.length > 0) {
     payload.include_external_user_ids = externalUserIds;
   }
@@ -236,7 +236,7 @@ export function createPayloadSummary(payload: OneSignalPayload): Record<string, 
     title: payload.headings.en,
     body: payload.contents.en.slice(0, 100),
     external_user_ids_count: payload.include_external_user_ids?.length || 0,
-    player_ids_count: payload.include_player_ids?.length || 0,
+    subscription_ids_count: payload.include_subscription_ids?.length || 0,
     target_type: payload.include_external_user_ids ? 'external_user_ids' : 'player_ids',
     has_data: !!payload.data,
     has_url: typeof payload.data?.url === 'string' && payload.data.url.length > 0,
