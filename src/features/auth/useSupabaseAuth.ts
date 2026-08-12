@@ -266,7 +266,7 @@ export async function signUpWithPassword(
     password,
     options: {
       data: { display_name: trimmedName },
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: `${window.location.origin}/auth?type=signup`,
     },
   });
   
@@ -538,7 +538,7 @@ export async function resendConfirmationEmail(email: string) {
     type: 'signup',
     email: normalizedEmail,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: `${window.location.origin}/auth?type=signup`,
     },
   });
   

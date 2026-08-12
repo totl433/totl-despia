@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from './useSupabaseAuth';
 import AuthFlow from './AuthFlow';
 import { verifySignupToken } from './useSupabaseAuth';
+import { extractSignupVerificationParams } from './authUrl';
 
 export default function AuthGate() {
   const navigate = useNavigate();
@@ -31,18 +32,13 @@ export default function AuthGate() {
   const isRecovery = detectRecoveryFromUrl();
 
   const signupParams = useMemo(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const isSignup =
-      urlParams.get('type') === 'signup' ||
-      hashParams.get('type') === 'signup' ||
-      window.location.search.includes('type=signup') ||
-      window.location.hash.includes('type=signup');
-    if (!isSignup) return null;
-    const tokenHash = urlParams.get('token_hash') || '';
-    const email = urlParams.get('email') || '';
-    return { tokenHash, email };
-  }, []);
+    return extractSignupVerificationParams({
+      search: window.location.search,
+      hash: window.location.hash,
+      origin: window.location.origin,
+      returnTo,
+    });
+  }, [returnTo]);
 
   useEffect(() => {
     if (!signupParams?.tokenHash) return;
