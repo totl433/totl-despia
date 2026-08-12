@@ -381,7 +381,11 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   if (loading) return <div className="p-6">Loading…</div>;
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  return user ? <>{children}</> : <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  // Remount route state when accounts change so picks and other in-memory
+  // values from the previous user can never paint the next user's screen.
+  return user
+    ? <React.Fragment key={user.id}>{children}</React.Fragment>
+    : <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
 }
 
 function AppShell() {
