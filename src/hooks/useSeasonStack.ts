@@ -43,7 +43,7 @@ export function useSeasonStack() {
         const resolved = await resolveSeasonCtx(supabase as any, user.id);
         if (!alive) return;
         setCtx(resolved);
-        setActiveSeasonCtx(resolved);
+        setActiveSeasonCtx(resolved, user.id);
         setError(null);
         if (resolved.useSeasonStack) {
           console.log(

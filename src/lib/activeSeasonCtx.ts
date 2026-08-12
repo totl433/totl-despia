@@ -8,9 +8,11 @@ import type { SeasonCtx } from './seasonStack';
 import { resolveSeasonCtx } from './seasonStack';
 
 let active: SeasonCtx | null = null;
+let activeUserId: string | null = null;
 
-export function setActiveSeasonCtx(ctx: SeasonCtx | null): void {
+export function setActiveSeasonCtx(ctx: SeasonCtx | null, userId: string | null = null): void {
   active = ctx;
+  activeUserId = ctx ? userId : null;
 }
 
 export function getActiveSeasonCtx(): SeasonCtx | null {
@@ -30,18 +32,15 @@ export async function ensureActiveSeasonCtx(
   try {
     const resolved = await resolveSeasonCtx(supa, userId);
     active = resolved;
+    activeUserId = userId;
     return resolved;
   } catch (e) {
-    if (active) return active;
-    const fallback: SeasonCtx = {
-      useSeasonStack: false,
-      seasonId: null,
-      seasonLabel: null,
-      currentGw: 1,
-      viewingGw: null,
-    };
-    active = fallback;
-    return fallback;
+    // A transient refresh may reuse this same user's known context. Never leak
+    // the previous account's season or caches into a newly signed-in account.
+    if (active && activeUserId === userId) return active;
+    active = null;
+    activeUserId = null;
+    throw e;
   }
 }
 
