@@ -5,7 +5,11 @@
  */
 
 import { supabase } from './supabase';
-import { getMonthAllocations, SEASON_LAST_GW } from './leaderboardMonths';
+import {
+  getMonthAllocations,
+  SEASON_LAST_GW,
+  type LeaderboardSeasonKey,
+} from './leaderboardMonths';
 import { fetchUserLeaguesFromDb } from '../api/leagues';
 
 export type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -47,13 +51,14 @@ export function computeGameweekTrophyWins(userId: string, rows: GwPointsRow[]): 
 export function computeMonthlyTrophyWins(
   userId: string,
   rows: GwPointsRow[],
-  lastCompletedGw: number
+  lastCompletedGw: number,
+  seasonKey: LeaderboardSeasonKey = '2025/26'
 ): number {
   const uid = String(userId).toLowerCase();
   const lc = lastCompletedGw;
   let wins = 0;
 
-  for (const m of getMonthAllocations()) {
+  for (const m of getMonthAllocations(seasonKey)) {
     if (lc < m.endGw) continue;
     const playedMonth = rows.some(
       (r) => String(r.user_id).toLowerCase() === uid && r.gw >= m.startGw && r.gw <= m.endGw
@@ -187,10 +192,16 @@ export async function computeSeasonTrophyWins(
 export async function computeTrophyCabinetCounts(
   userId: string,
   rows: GwPointsRow[],
-  lastCompletedGw: number
+  lastCompletedGw: number,
+  options?: { seasonKey?: LeaderboardSeasonKey }
 ): Promise<TrophyCabinetCounts> {
   const gameweek = computeGameweekTrophyWins(userId, rows);
-  const monthly = computeMonthlyTrophyWins(userId, rows, lastCompletedGw);
+  const monthly = computeMonthlyTrophyWins(
+    userId,
+    rows,
+    lastCompletedGw,
+    options?.seasonKey
+  );
   const season = await computeSeasonTrophyWins(userId, rows, lastCompletedGw);
   return { gameweek, monthly, season };
 }

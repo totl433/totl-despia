@@ -4,6 +4,7 @@ import { computeTrophyCabinetCounts, type GwPointsRow } from '../lib/trophyCabin
 import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
 import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 import { fetchAllGwPoints, fetchOverallOcp } from '../lib/fetchAllGwPoints';
+import { resolveLeaderboardSeasonKey } from '../lib/leaderboardMonths';
 
 /** PostgREST default page size is 1000 — must page or later GWs vanish from stats charts. */
 async function fetchAllAppGwPoints(seasonId?: string | null): Promise<GwPointsRow[]> {
@@ -407,7 +408,17 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       // Trophy cabinet (Gameweek / Monthly / Season — same product rules as mobile app Stats)
       try {
         const lc = typeof lastCompletedGw === 'number' ? lastCompletedGw : 0;
-        stats.trophyCabinet = await computeTrophyCabinetCounts(userId, allUsersGwPoints, lc);
+        stats.trophyCabinet = await computeTrophyCabinetCounts(
+          userId,
+          allUsersGwPoints,
+          lc,
+          {
+            seasonKey: resolveLeaderboardSeasonKey({
+              seasonLabel: seasonCtx.seasonLabel,
+              useSeasonStack: seasonCtx.useSeasonStack,
+            }),
+          }
+        );
       } catch (trophyErr) {
         console.error('[userStats] Trophy cabinet failed:', trophyErr);
         stats.trophyCabinet = { gameweek: 0, monthly: 0, season: 0 };
