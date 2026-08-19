@@ -31,6 +31,7 @@ const STRIPED_TEAMS: Set<string> = new Set([
   'BRE', // brentford
   'BHA', // brighton
   'CRY', // crystal-palace
+  'HUL', // hull
   'NEW', // newcastle
   'SUN', // sunderland
 ]);
@@ -41,6 +42,7 @@ const STRIPED_TEAM_COLORS: Record<string, string> = {
   'BRE': '#E30613', // brentford - red (not white)
   'BHA': '#0057B8', // brighton - blue (not white)
   'CRY': '#1B458F', // crystal-palace - blue (exception: use blue not red)
+  'HUL': '#F18A01', // hull - amber (not black)
   'NEW': '#241F20', // newcastle - black (fallback when away)
   'SUN': '#E03A3E', // sunderland - red (not white)
 };
@@ -60,6 +62,7 @@ function getTeamPatternPath(code: string | null | undefined): string | null {
     'CRY': 'crystal-palace',
     'EVE': 'everton',
     'FUL': 'fulham',
+    'HUL': 'hull',
     'LEE': 'leeds',
     'LIV': 'liverpool',
     'MCI': 'man-city',

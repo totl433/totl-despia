@@ -7,6 +7,13 @@ const meta: Meta<typeof SwipeCard> = {
   parameters: {
     layout: 'centered',
   },
+  decorators: [
+    Story => (
+      <div style={{ width: 390, height: 640 }}>
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;
@@ -40,6 +47,37 @@ export const NoKickoffTime: Story = {
       kickoff_time: null,
     },
     homeColor: '#EF0107',
+    awayColor: '#034694',
+  },
+};
+
+export const CoventryVsIpswich: Story = {
+  args: {
+    fixture: {
+      ...sampleFixture,
+      id: 'cov-ips',
+      home_team: 'Coventry City',
+      away_team: 'Ipswich Town',
+      home_code: 'COV',
+      away_code: 'IPS',
+      home_name: 'Coventry City',
+      away_name: 'Ipswich Town',
+    },
+    homeColor: '#059DD9',
+    awayColor: '#3A64A3',
+  },
+};
+
+export const HullStripes: Story = {
+  args: {
+    fixture: {
+      ...sampleFixture,
+      id: 'hul-che',
+      home_team: 'Hull City',
+      home_code: 'HUL',
+      home_name: 'Hull City',
+    },
+    homeColor: '#F18A01',
     awayColor: '#034694',
   },
 };
