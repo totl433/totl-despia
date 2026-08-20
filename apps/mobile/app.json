@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.despia.totlnative",
-      "buildNumber": "49",
+      "buildNumber": "50",
       "infoPlist": {
         "CFBundleDisplayName": "Top of the League",
         "CFBundleName": "Top of the League",
