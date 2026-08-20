@@ -12,6 +12,17 @@ import {
   SEASON_2026_27_LABEL,
 } from './leaderboardMonths';
 
+const NEW_USER_SEASON_STACK_CUTOFF_MS = Date.parse('2026-08-12T00:00:00Z');
+
+function shouldDefaultNewUserToSeasonStack(
+  createdAt: string | null | undefined,
+  hasPreferences: boolean
+): boolean {
+  if (hasPreferences || !createdAt) return false;
+  const createdAtMs = Date.parse(createdAt);
+  return Number.isFinite(createdAtMs) && createdAtMs >= NEW_USER_SEASON_STACK_CUTOFF_MS;
+}
+
 export type ViewerSeason = {
   useSeasonStack: boolean;
   seasonId: string | null;
@@ -38,11 +49,43 @@ async function fetchViewerSeason(): Promise<ViewerSeason> {
     };
   }
 
-  const { data: prefs } = await supabase
+  const { data: storedPrefs } = await supabase
     .from('user_notification_preferences')
     .select('use_season_stack, current_viewing_season_id, current_viewing_gw')
     .eq('user_id', user.id)
     .maybeSingle();
+
+  let prefs = storedPrefs;
+
+  // Same rule as BFF/web: post-launch accounts start on the live season,
+  // even when Expo signup never created a public.users profile.
+  if (!prefs && shouldDefaultNewUserToSeasonStack(user.created_at, false)) {
+    const { data: runtime, error: runtimeErr } = await (supabase as any)
+      .from('app_season_runtime')
+      .select('current_season_id, current_gw')
+      .eq('id', 1)
+      .maybeSingle();
+    if (runtimeErr) throw runtimeErr;
+
+    if (runtime?.current_season_id) {
+      const { data: createdPrefs, error: createPrefsErr } = await (supabase as any)
+        .from('user_notification_preferences')
+        .upsert(
+          {
+            user_id: user.id,
+            preferences: {},
+            use_season_stack: true,
+            current_viewing_season_id: runtime.current_season_id,
+            current_viewing_gw: runtime.current_gw ?? 1,
+          },
+          { onConflict: 'user_id' }
+        )
+        .select('use_season_stack, current_viewing_season_id, current_viewing_gw')
+        .single();
+      if (createPrefsErr) throw createPrefsErr;
+      prefs = createdPrefs;
+    }
+  }
 
   const useSeasonStack = !!prefs?.use_season_stack;
   let seasonId = (prefs?.current_viewing_season_id as string | null) ?? null;

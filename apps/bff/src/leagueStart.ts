@@ -12,8 +12,15 @@ export const LEAGUE_START_OVERRIDES: Record<string, number> = {
   'Let Down': 8,
 };
 
-function getLeagueStartOverride(name?: string | null): number | undefined {
+function getLeagueStartOverride(
+  name?: string | null,
+  opts?: { seasonId?: string | null }
+): number | undefined {
   if (!name) return undefined;
+  // API Test is a sandbox, not a real season window.
+  if (name === 'API Test') return LEAGUE_START_OVERRIDES[name];
+  // 2026/27+: last season's "started at GW7/GW8" names must not carry over.
+  if (opts?.seasonId) return undefined;
   return LEAGUE_START_OVERRIDES[name];
 }
 
@@ -24,11 +31,10 @@ export async function resolveLeagueStartGw(
   options?: { fixturesTable?: string; seasonId?: string | null }
 ): Promise<number> {
   if (!league?.id) return currentGw;
-  const override = getLeagueStartOverride(league.name ?? null);
-  if (typeof override === 'number') return override;
-
   const fixturesTable = options?.fixturesTable ?? 'app_fixtures';
   const seasonId = options?.seasonId ?? null;
+  const override = getLeagueStartOverride(league.name ?? null, { seasonId });
+  if (typeof override === 'number') return override;
 
   const startTimestamp = league.activation_at ?? league.created_at;
   if (startTimestamp && currentGw) {

@@ -23,8 +23,16 @@ const LEAGUE_START_OVERRIDES: Record<string, number> = {
   'Let Down': 8,
 };
 
-function getLeagueStartOverride(name?: string | null): number | undefined {
+function getLeagueStartOverride(
+  name?: string | null,
+  opts?: { useSeasonStack?: boolean }
+): number | undefined {
   if (!name) return undefined;
+  // API Test is a sandbox, not a real season window.
+  if (name === 'API Test') return LEAGUE_START_OVERRIDES[name];
+  // 2026/27+ : last season's "started at GW7/GW8" names must not carry over.
+  // Existing leagues are ready from GW1 of the new season.
+  if (opts?.useSeasonStack) return undefined;
   return LEAGUE_START_OVERRIDES[name];
 }
 
@@ -120,17 +128,60 @@ async function getGwDeadlineRows(): Promise<GwDeadlineRow[]> {
   return gwDeadlineRowsPromise;
 }
 
-async function resolveStartGwFromTimestamp(timestamp: string | null | undefined, currentGw: number): Promise<number> {
+export type LeagueStartOptions = {
+  useSeasonStack?: boolean;
+  seasonId?: string | null;
+};
+
+const seasonDeadlineRowsById = new Map<string, Promise<GwDeadlineRow[]>>();
+
+async function getSeasonGwDeadlineRows(seasonId: string): Promise<GwDeadlineRow[]> {
+  const existing = seasonDeadlineRowsById.get(seasonId);
+  if (existing) return existing;
+  const pending = (async () => {
+    const { data, error } = await (supabase as any)
+      .from('app_season_fixtures')
+      .select('gw,kickoff_time')
+      .eq('season_id', seasonId)
+      .not('kickoff_time', 'is', null)
+      .order('gw', { ascending: true })
+      .order('kickoff_time', { ascending: true });
+    if (error) return [];
+
+    const firstKickoffByGw = new Map<number, string>();
+    (data ?? []).forEach((fixture: { gw?: number | null; kickoff_time?: string | null }) => {
+      const gw = Number(fixture.gw);
+      if (!Number.isFinite(gw) || firstKickoffByGw.has(gw)) return;
+      if (fixture.kickoff_time) firstKickoffByGw.set(gw, fixture.kickoff_time);
+    });
+
+    const rows: GwDeadlineRow[] = [];
+    firstKickoffByGw.forEach((kickoff, gw) => {
+      const firstKickoff = new Date(kickoff);
+      if (Number.isNaN(firstKickoff.getTime())) return;
+      rows.push({
+        gw,
+        deadlineTime: new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000),
+      });
+    });
+    return rows.sort((a, b) => a.deadlineTime.getTime() - b.deadlineTime.getTime());
+  })();
+  seasonDeadlineRowsById.set(seasonId, pending);
+  return pending;
+}
+
+async function resolveStartGwFromDeadlineRows(
+  timestamp: string | null | undefined,
+  currentGw: number,
+  rows: GwDeadlineRow[]
+): Promise<number> {
   if (!isParseableInstant(timestamp) || !currentGw) return currentGw;
   const activatedAt = new Date(timestamp);
   if (Number.isNaN(activatedAt.getTime())) return currentGw;
-
-  const gwDeadlineRows = await getGwDeadlineRows();
-  for (const row of gwDeadlineRows) {
+  for (const row of rows) {
     if (activatedAt < row.deadlineTime) return row.gw;
   }
-
-  if (gwDeadlineRows.length > 0) return Math.max(...gwDeadlineRows.map((row) => row.gw)) + 1;
+  if (rows.length > 0) return Math.max(...rows.map((row) => row.gw)) + 1;
   return currentGw;
 }
 
@@ -149,24 +200,34 @@ export async function fetchLeagueActivationAt(leagueId: string): Promise<string 
 }
 
 /**
- * resolveLeagueStartGw (mobile)
- * Computes the first GW this league should participate in.
- * Keep this aligned with web resolver behavior for consistent standings/join locks.
+ * First GW this league plays in the viewer's current season.
+ * Last-season "started at GW7/8" overrides are ignored on 2026/27 (season stack).
  */
-export async function resolveLeagueStartGw(league: LeagueRecord | null | undefined, currentGw: number): Promise<number> {
+export async function resolveLeagueStartGw(
+  league: LeagueRecord | null | undefined,
+  currentGw: number,
+  options?: LeagueStartOptions
+): Promise<number> {
   if (!league?.id) return currentGw;
 
   const withMeta = await ensureLeagueMeta(league);
-  const override = getLeagueStartOverride(withMeta.name ?? null);
+  const useSeasonStack = !!options?.useSeasonStack;
+  const seasonId = typeof options?.seasonId === 'string' && options.seasonId ? options.seasonId : null;
+  const override = getLeagueStartOverride(withMeta.name ?? null, { useSeasonStack });
   if (typeof override === 'number') return override;
 
-  // Web `resolveLeagueStartGw` only uses `start_gw` if already on the league object (not loaded in `useLeagueMeta`).
-  if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) {
+  if (!useSeasonStack && withMeta.start_gw !== null && withMeta.start_gw !== undefined) {
     const fromObject = parseOptionalGw(withMeta.start_gw);
     if (fromObject !== null) return fromObject;
   }
 
   const anchorTs = withMeta.activation_at ?? withMeta.created_at;
+  if (useSeasonStack) {
+    const rows = seasonId ? await getSeasonGwDeadlineRows(seasonId) : [];
+    if (rows.length === 0) return currentGw;
+    return resolveStartGwFromDeadlineRows(anchorTs, currentGw, rows);
+  }
+
   if (anchorTs && currentGw) {
     const anchorTime = new Date(anchorTs);
 
@@ -208,9 +269,17 @@ export async function resolveLeagueStartGw(league: LeagueRecord | null | undefin
   return currentGw;
 }
 
-export async function resolveMemberStartGw(memberCreatedAt: string | null | undefined, fallbackStartGw: number, currentGw: number): Promise<number> {
+export async function resolveMemberStartGw(
+  memberCreatedAt: string | null | undefined,
+  fallbackStartGw: number,
+  currentGw: number,
+  options?: LeagueStartOptions
+): Promise<number> {
   if (!isParseableInstant(memberCreatedAt)) return fallbackStartGw;
-  const resolved = await resolveStartGwFromTimestamp(memberCreatedAt, currentGw);
+  const rows = options?.useSeasonStack && options.seasonId
+    ? await getSeasonGwDeadlineRows(options.seasonId)
+    : await getGwDeadlineRows();
+  const resolved = await resolveStartGwFromDeadlineRows(memberCreatedAt, currentGw, rows);
   return Math.max(fallbackStartGw, resolved);
 }
 

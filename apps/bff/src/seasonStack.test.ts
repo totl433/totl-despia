@@ -14,4 +14,9 @@ describe('new user season stack defaults', () => {
   it('preserves an explicit preference row', () => {
     expect(shouldDefaultNewUserToSeasonStack('2026-08-12T10:29:00Z', true)).toBe(false);
   });
+
+  it('does not treat a missing timestamp as a new-season account', () => {
+    expect(shouldDefaultNewUserToSeasonStack(null, false)).toBe(false);
+    expect(shouldDefaultNewUserToSeasonStack(undefined, false)).toBe(false);
+  });
 });

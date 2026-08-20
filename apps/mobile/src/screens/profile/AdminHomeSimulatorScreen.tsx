@@ -79,6 +79,9 @@ function simFixtureToDomainFixture(f: SimFixture): Fixture {
 const GAME_STATES: SimGameState[] = ['GW_OPEN', 'GW_PREDICTED', 'DEADLINE_PASSED', 'LIVE', 'RESULTS_PRE_GW'];
 const PICKS: Pick[] = ['H', 'D', 'A', 'H', 'A', 'D', 'H', 'D', 'A', 'H'];
 const TEAMS: Array<{ name: string; code: string }> = [
+  { name: 'Coventry', code: 'COV' },
+  { name: 'Hull', code: 'HUL' },
+  { name: 'Ipswich', code: 'IPS' },
   { name: 'Arsenal', code: 'ARS' },
   { name: 'Villa', code: 'AVL' },
   { name: 'Bournemouth', code: 'BOU' },

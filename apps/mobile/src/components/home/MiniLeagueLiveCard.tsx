@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { DEV_FAKE_LEAGUE_MEMBERS, isDevFakeLeagueId } from '../../lib/devFakeLeague';
 import { getLeagueActivationAt, resolveLeagueStartGw } from '../../lib/leagueStart';
+import { useViewerSeason } from '../../lib/useViewerSeason';
 
 type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
 type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
@@ -42,6 +43,7 @@ export default function MiniLeagueLiveCard({
   liveMode?: boolean;
 }) {
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
+  const { useSeasonStack, seasonId } = useViewerSeason();
   const { data: leagueData } = useQuery<LeagueMembersResponse>({
     enabled: enabled && typeof gw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueMembers', leagueId],
@@ -55,7 +57,16 @@ export default function MiniLeagueLiveCard({
   const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: enabled && typeof gw === 'number' && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
-    queryKey: ['leagueStartGwV3', leagueId, gw, String(leagueMeta?.name ?? leagueName ?? ''), String(leagueMeta?.created_at ?? ''), String(leagueActivationAt ?? '')],
+    queryKey: [
+      'leagueStartGwV7',
+      leagueId,
+      gw,
+      String(leagueMeta?.name ?? leagueName ?? ''),
+      String(leagueMeta?.created_at ?? ''),
+      String(leagueActivationAt ?? ''),
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? '',
+    ],
     queryFn: () =>
       resolveLeagueStartGw(
         {
@@ -64,7 +75,8 @@ export default function MiniLeagueLiveCard({
           created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
           activation_at: leagueActivationAt,
         },
-        gw
+        gw,
+        { useSeasonStack, seasonId }
       ),
     staleTime: 5 * 60_000,
   });

@@ -17,6 +17,7 @@ import { buildLeagueAppLink } from '../lib/deepLinks';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { getLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStart';
+import { useViewerSeason } from '../lib/useViewerSeason';
 import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemePreference } from '../context/ThemePreferenceContext';
@@ -69,6 +70,7 @@ export default function LeagueChatScreen() {
   );
 
   const leagueActivationAt = React.useMemo(() => getLeagueActivationAt(members as Array<{ created_at?: string | null }>), [members]);
+  const { useSeasonStack, seasonId } = useViewerSeason();
 
   const headerAvatarUri = React.useMemo(() => {
     const a = resolveLeagueAvatarUri(leagueMeta?.avatar);
@@ -152,7 +154,8 @@ export default function LeagueChatScreen() {
           if (members.length >= 2 && gw !== null) {
             const startGw = await resolveLeagueStartGw(
               { id: leagueId, name: leagueName, created_at: createdAt, activation_at: leagueActivationAt },
-              gw
+              gw,
+              { useSeasonStack, seasonId }
             );
             if (gw - startGw >= 4) {
               Alert.alert(
@@ -181,6 +184,8 @@ export default function LeagueChatScreen() {
       members.length,
       navigation,
       queryClient,
+      seasonId,
+      useSeasonStack,
     ]
   );
 

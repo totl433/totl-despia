@@ -100,12 +100,14 @@ function LeagueRow({
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: enabled && typeof tableGw === 'number' && !!leagueId && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
     queryKey: [
-      'leagueStartGwV3',
+      'leagueStartGwV7',
       leagueId,
       tableGw,
       String((membersData as any)?.league?.name ?? league.name ?? ''),
       String((membersData as any)?.league?.created_at ?? ''),
       String(leagueActivationAt ?? ''),
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? '',
     ],
     queryFn: async () =>
       resolveLeagueStartGw(
@@ -116,7 +118,8 @@ function LeagueRow({
             typeof (membersData as any)?.league?.created_at === 'string' ? String((membersData as any).league.created_at) : undefined,
           activation_at: leagueActivationAt,
         },
-        tableGw as number
+        tableGw as number,
+        { useSeasonStack, seasonId }
       ),
     staleTime: 5 * 60_000,
   });

@@ -78,9 +78,9 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
 function buildFakeFixtures(): Fixture[] {
   const now = Date.now();
   const teams: Array<[string, string, string, string]> = [
-    ['NEW', 'Newcastle', 'BOU', 'Bournemouth'],
-    ['LIV', 'Liverpool', 'TOT', 'Tottenham'],
-    ['MCI', 'Man City', 'MUN', 'Man Utd'],
+    ['COV', 'Coventry', 'ARS', 'Arsenal'],
+    ['HUL', 'Hull', 'MUN', 'Man Utd'],
+    ['IPS', 'Ipswich', 'SUN', 'Sunderland'],
     ['ARS', 'Arsenal', 'CHE', 'Chelsea'],
     ['BHA', 'Brighton', 'WHU', 'West Ham'],
     ['BRE', 'Brentford', 'AVL', 'Aston Villa'],

@@ -40,6 +40,7 @@ const STRIPE_COLORS: Record<string, { primary: string; secondary: string }> = {
   BRE: { primary: '#E30613', secondary: '#F7F7F7' },
   BHA: { primary: '#0057B8', secondary: '#F7F7F7' },
   CRY: { primary: '#1B458F', secondary: '#C4122E' },
+  HUL: { primary: '#F18A01', secondary: '#111111' },
   NEW: { primary: '#101010', secondary: '#F3F4F6' },
   SUN: { primary: '#E03A3E', secondary: '#F7F7F7' },
 };

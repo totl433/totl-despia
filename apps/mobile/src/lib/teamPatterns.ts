@@ -11,6 +11,7 @@ const TEAM_PATTERN_URIS: Record<string, string> = {
   CRY: Asset.fromModule(require('../../../../public/assets/patterns/crystal-palace.svg')).uri,
   EVE: Asset.fromModule(require('../../../../public/assets/patterns/everton.svg')).uri,
   FUL: Asset.fromModule(require('../../../../public/assets/patterns/fulham.svg')).uri,
+  HUL: Asset.fromModule(require('../../../../public/assets/patterns/hull.svg')).uri,
   LEE: Asset.fromModule(require('../../../../public/assets/patterns/leeds.svg')).uri,
   LIV: Asset.fromModule(require('../../../../public/assets/patterns/liverpool.svg')).uri,
   MCI: Asset.fromModule(require('../../../../public/assets/patterns/man-city.svg')).uri,
@@ -32,6 +33,7 @@ const STRIPED_TEAMS: Set<string> = new Set([
   'BRE',
   'BHA',
   'CRY',
+  'HUL',
   'NEW',
   'SUN',
 ]);
@@ -41,6 +43,7 @@ const STRIPED_TEAM_COLORS: Record<string, string> = {
   BRE: '#E30613',
   BHA: '#0057B8',
   CRY: '#1B458F',
+  HUL: '#F18A01',
   NEW: '#241F20',
   SUN: '#E03A3E',
 };

@@ -70,8 +70,14 @@ const LEAGUE_START_OVERRIDES: Record<string, number> = {
   'Let Down': 8,
 };
 
-function getLeagueStartOverride(name?: string | null): number | undefined {
+function getLeagueStartOverride(
+  name?: string | null,
+  opts?: { seasonId?: string | null }
+): number | undefined {
   if (!name) return undefined;
+  if (name === 'API Test') return LEAGUE_START_OVERRIDES[name];
+  // 2026/27+: last season's "started at GW7/GW8" names must not carry over.
+  if (opts?.seasonId) return undefined;
   return LEAGUE_START_OVERRIDES[name];
 }
 
@@ -172,15 +178,15 @@ export async function resolveLeagueStartGwWeb(
   if (!league?.id) return currentGw;
 
   const withMeta = await ensureLeagueMeta(supa, league);
-  const override = getLeagueStartOverride(withMeta.name ?? null);
+  const seasonId = opts?.seasonId ?? null;
+  const override = getLeagueStartOverride(withMeta.name ?? null, { seasonId });
   if (typeof override === 'number') return override;
 
   const startFromColumn = parseOptionalGwColumn(withMeta.start_gw);
-  if (!opts?.matchLeaguePageEffect && startFromColumn !== null) return startFromColumn;
+  if (!seasonId && !opts?.matchLeaguePageEffect && startFromColumn !== null) return startFromColumn;
 
   const fixturesTable = opts?.fixturesTable ?? 'app_fixtures';
   const resultsTable = opts?.resultsTable ?? 'app_gw_results';
-  const seasonId = opts?.seasonId ?? null;
 
   const anchorTs = withMeta.activation_at ?? withMeta.created_at;
   if (anchorTs && currentGw) {

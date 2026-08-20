@@ -23,7 +23,9 @@ import { DeepLinkProvider } from './context/DeepLinkContext';
 import { ThemePreferenceProvider, useThemePreference } from './context/ThemePreferenceContext';
 import { envStatus } from './env';
 import AuthScreen from './screens/AuthScreen';
+import ChooseUsernameScreen from './screens/ChooseUsernameScreen';
 import AppNavigator from './navigation/AppNavigator';
+import { resolveProfileStatus } from './lib/userProfile';
 import PopupCardsProvider from './components/popupCards/PopupCardsProvider';
 import { lightThemeTokens } from './lib/lightThemeTokens';
 
@@ -178,6 +180,44 @@ export default function AppRoot() {
 
 function ThemedApp({ authed }: { authed: boolean }) {
   const { isDark } = useThemePreference();
+  const [profileReady, setProfileReady] = useState(!authed);
+  const [needsUsername, setNeedsUsername] = useState(false);
+
+  useEffect(() => {
+    if (!authed) {
+      setNeedsUsername(false);
+      setProfileReady(true);
+      return;
+    }
+
+    let alive = true;
+    setProfileReady(false);
+    supabase.auth
+      .getUser()
+      .then(async ({ data }) => {
+        const userId = data.user?.id;
+        if (!userId) {
+          if (alive) {
+            setNeedsUsername(false);
+            setProfileReady(true);
+          }
+          return;
+        }
+        const status = await resolveProfileStatus(userId);
+        if (!alive) return;
+        setNeedsUsername(status === 'needs-username');
+        setProfileReady(true);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setNeedsUsername(true);
+        setProfileReady(true);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [authed]);
 
   return (
     <ThemeProvider tokens={isDark ? undefined : lightThemeTokens}>
@@ -199,6 +239,8 @@ function ThemedApp({ authed }: { authed: boolean }) {
             </TotlText>
             <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
           </Screen>
+        ) : authed && !profileReady ? null : authed && needsUsername ? (
+          <ChooseUsernameScreen onComplete={() => setNeedsUsername(false)} />
         ) : authed ? (
           <JoinIntentProvider>
             <ConfettiProvider>

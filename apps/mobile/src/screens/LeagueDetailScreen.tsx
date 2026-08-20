@@ -371,11 +371,13 @@ export default function LeagueDetailScreen() {
   const { data: resolvedLeagueStartGw } = useQuery<number>({
     enabled: typeof seasonGw === 'number' && !!leagueId && !isDevFakeLeague && !isDormantLeague && members.length >= 2,
     queryKey: [
-      'leagueStartGwV6',
+      'leagueStartGwV7',
       leagueId,
       seasonGw,
       String(leagueMeta?.name ?? params.name ?? ''),
       String(leagueMeta?.created_at ?? ''),
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? '',
     ],
     queryFn: async () => {
       const activationAt = await fetchLeagueActivationAt(leagueId);
@@ -387,7 +389,8 @@ export default function LeagueDetailScreen() {
           created_at: typeof leagueMeta?.created_at === 'string' ? leagueMeta.created_at : undefined,
           activation_at: activationAt,
         },
-        seasonGw as number
+        seasonGw as number,
+        { useSeasonStack, seasonId }
       );
     },
     staleTime: 5 * 60_000,
@@ -687,7 +690,8 @@ export default function LeagueDetailScreen() {
             const activationAt = await fetchLeagueActivationAt(leagueId);
             const startGw = await resolveLeagueStartGw(
               { id: leagueId, name: leagueName, created_at: createdAt, activation_at: activationAt },
-              gw
+              gw,
+              { useSeasonStack, seasonId }
             );
             if (gw - startGw >= 4) {
               Alert.alert(
@@ -762,6 +766,8 @@ export default function LeagueDetailScreen() {
       navigation,
       queryClient,
       params.name,
+      seasonId,
+      useSeasonStack,
     ]
   );
 

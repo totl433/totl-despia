@@ -21,8 +21,14 @@ export const LEAGUE_START_OVERRIDES: Record<string, number> = {
   "Let Down": 8,
 };
 
-function getLeagueStartOverride(name?: string | null): number | undefined {
+function getLeagueStartOverride(
+  name?: string | null,
+  opts?: { useSeasonStack?: boolean }
+): number | undefined {
   if (!name) return undefined;
+  if (name === "API Test") return LEAGUE_START_OVERRIDES[name];
+  // 2026/27+: last season's "started at GW7/GW8" names must not carry over.
+  if (opts?.useSeasonStack) return undefined;
   return LEAGUE_START_OVERRIDES[name];
 }
 
@@ -68,16 +74,82 @@ export function getLeagueActivationAt(members: Array<{ created_at?: string | nul
   return joinedAt[1] ?? null;
 }
 
+export type LeagueStartOptions = {
+  useSeasonStack?: boolean;
+  seasonId?: string | null;
+};
+
+const seasonDeadlineRowsById = new Map<string, Promise<Array<{ gw: number; deadlineTime: Date }>>>();
+
+async function getSeasonGwDeadlineRows(seasonId: string): Promise<Array<{ gw: number; deadlineTime: Date }>> {
+  const existing = seasonDeadlineRowsById.get(seasonId);
+  if (existing) return existing;
+  const pending = (async () => {
+    const { data, error } = await (supabase as any)
+      .from("app_season_fixtures")
+      .select("gw,kickoff_time")
+      .eq("season_id", seasonId)
+      .not("kickoff_time", "is", null)
+      .order("gw", { ascending: true })
+      .order("kickoff_time", { ascending: true });
+    if (error) return [];
+
+    const firstKickoffByGw = new Map<number, string>();
+    (data ?? []).forEach((fixture: { gw?: number | null; kickoff_time?: string | null }) => {
+      const gw = Number(fixture.gw);
+      if (!Number.isFinite(gw) || firstKickoffByGw.has(gw)) return;
+      if (fixture.kickoff_time) firstKickoffByGw.set(gw, fixture.kickoff_time);
+    });
+
+    const rows: Array<{ gw: number; deadlineTime: Date }> = [];
+    firstKickoffByGw.forEach((kickoff, gw) => {
+      const firstKickoff = new Date(kickoff);
+      if (Number.isNaN(firstKickoff.getTime())) return;
+      rows.push({
+        gw,
+        deadlineTime: new Date(firstKickoff.getTime() - DEADLINE_BUFFER_MINUTES * 60 * 1000),
+      });
+    });
+    return rows.sort((a, b) => a.deadlineTime.getTime() - b.deadlineTime.getTime());
+  })();
+  seasonDeadlineRowsById.set(seasonId, pending);
+  return pending;
+}
+
+function resolveStartGwFromDeadlineRows(
+  timestamp: string | null | undefined,
+  currentGw: number,
+  rows: Array<{ gw: number; deadlineTime: Date }>
+): number {
+  if (!timestamp || !currentGw) return currentGw;
+  const activatedAt = new Date(timestamp);
+  if (Number.isNaN(activatedAt.getTime())) return currentGw;
+  for (const row of rows) {
+    if (activatedAt < row.deadlineTime) return row.gw;
+  }
+  if (rows.length > 0) return Math.max(...rows.map((row) => row.gw)) + 1;
+  return currentGw;
+}
+
 export async function resolveLeagueStartGw(
   league: LeagueRecord | null | undefined,
-  currentGw: number
+  currentGw: number,
+  options?: LeagueStartOptions
 ): Promise<number> {
   if (!league?.id) return currentGw;
 
   const withMeta = await ensureLeagueMeta(league);
-  const override = getLeagueStartOverride(withMeta.name ?? undefined);
+  const useSeasonStack = !!options?.useSeasonStack;
+  const seasonId = typeof options?.seasonId === "string" && options.seasonId ? options.seasonId : null;
+  const override = getLeagueStartOverride(withMeta.name ?? undefined, { useSeasonStack });
   if (typeof override === "number") {
     return override;
+  }
+
+  if (useSeasonStack) {
+    const rows = seasonId ? await getSeasonGwDeadlineRows(seasonId) : [];
+    if (rows.length === 0) return currentGw;
+    return resolveStartGwFromDeadlineRows(withMeta.activation_at ?? withMeta.created_at, currentGw, rows);
   }
 
   if (withMeta.start_gw !== null && withMeta.start_gw !== undefined) {
@@ -130,7 +202,8 @@ export async function resolveLeagueStartGw(
 export function shouldIncludeGwForLeague(
   league: LeagueRecord | null | undefined,
   gw: number,
-  gwDeadlines: Map<number, Date>
+  gwDeadlines: Map<number, Date>,
+  options?: LeagueStartOptions
 ): boolean {
   // Special handling for API Test league - always include any test GW (1, 2, 3, etc.)
   // Test GWs are independent of regular GWs, so we don't filter them
@@ -138,7 +211,7 @@ export function shouldIncludeGwForLeague(
     return true;
   }
   
-  const override = getLeagueStartOverride(league?.name);
+  const override = getLeagueStartOverride(league?.name, { useSeasonStack: options?.useSeasonStack });
   if (typeof override === "number") {
     // For API Test with override 999, always include (handled above)
     if (override === 999) {
@@ -147,7 +220,7 @@ export function shouldIncludeGwForLeague(
     return gw >= override;
   }
 
-  if (league?.start_gw !== null && league?.start_gw !== undefined) {
+  if (!options?.useSeasonStack && league?.start_gw !== null && league?.start_gw !== undefined) {
     return gw >= league.start_gw;
   }
 

@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
+import HeaderTotlLogo from '../components/HeaderTotlLogo';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { supabase } from '../lib/supabase';
+import { hasSqlLikeWildcards, normalizeDisplayName } from '../lib/displayName';
+import { checkDisplayNameAvailable, saveUsername } from '../lib/userProfile';
 
 export default function AuthScreen() {
   const t = useTokens();
   const { isDark } = useThemePreference();
-  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [mode, setMode] = useState<'signIn' | 'signUp'>('signUp');
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const inputStyle = {
     borderWidth: 1,
@@ -27,11 +32,33 @@ export default function AuthScreen() {
       if (mode === 'signIn') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        Alert.alert('Check your email', 'Confirm your email address to finish sign up.');
+        return;
       }
+
+      const trimmedName = normalizeDisplayName(displayName);
+      if (!trimmedName) throw new Error('Display name is required.');
+      if (hasSqlLikeWildcards(trimmedName)) {
+        throw new Error('Display name contains invalid characters. Please remove % or _.');
+      }
+      if (password !== confirmPassword) throw new Error('Passwords do not match.');
+      if (password.length < 6) throw new Error('Password must be at least 6 characters.');
+
+      const available = await checkDisplayNameAvailable(trimmedName);
+      if (!available) throw new Error('Username already taken. Please choose a different name.');
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: trimmedName } },
+      });
+      if (error) throw error;
+
+      const userId = data.user?.id;
+      if (userId && data.session) {
+        await saveUsername(userId, trimmedName);
+      }
+
+      Alert.alert('Check your email', 'Confirm your email address to finish sign up.');
     } catch (e: any) {
       Alert.alert('Auth failed', e?.message ?? 'Unknown error');
     } finally {
@@ -41,14 +68,35 @@ export default function AuthScreen() {
 
   return (
     <Screen>
-      <TotlText variant="heading" style={{ marginBottom: 12 }}>
-        TOTL
-      </TotlText>
+      <View style={{ marginBottom: 32, alignItems: 'center' }}>
+        <HeaderTotlLogo width={207} height={65} />
+      </View>
       <TotlText variant="muted" style={{ marginBottom: 16, color: t.color.text }}>
         {mode === 'signIn' ? 'Sign in to continue' : 'Create your account'}
       </TotlText>
 
       <Card>
+        {mode === 'signUp' ? (
+          <>
+            <TotlText style={{ marginBottom: 8 }}>Username</TotlText>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={t.color.brand}
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="e.g. Thomas"
+              placeholderTextColor={t.color.muted}
+              style={{
+                ...inputStyle,
+                marginBottom: 12,
+              }}
+            />
+          </>
+        ) : null}
+
         <TotlText style={{ marginBottom: 8 }}>Email</TotlText>
         <TextInput
           autoCapitalize="none"
@@ -77,9 +125,28 @@ export default function AuthScreen() {
           placeholderTextColor={t.color.muted}
           style={{
             ...inputStyle,
-            marginBottom: 16,
+            marginBottom: mode === 'signUp' ? 12 : 16,
           }}
         />
+
+        {mode === 'signUp' ? (
+          <>
+            <TotlText style={{ marginBottom: 8 }}>Confirm password</TotlText>
+            <TextInput
+              secureTextEntry
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selectionColor={t.color.brand}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="••••••••"
+              placeholderTextColor={t.color.muted}
+              style={{
+                ...inputStyle,
+                marginBottom: 16,
+              }}
+            />
+          </>
+        ) : null}
 
         <Button title={busy ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Sign up'} onPress={submit} disabled={busy} />
 
@@ -95,4 +162,3 @@ export default function AuthScreen() {
     </Screen>
   );
 }
-
