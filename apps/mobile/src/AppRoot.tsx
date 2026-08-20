@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Button, Card, Screen, ThemeProvider, TotlText } from '@totl/ui';
-import { AppState, LogBox } from 'react-native';
+import { AppState, Linking, LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 
@@ -14,6 +14,7 @@ LogBox.ignoreLogs([
 import { queryClient, queryPersister } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
+import { consumeAuthCallbackUrl } from './lib/authCallback';
 import { initPushSdk, registerForPushNotifications, resetPushSessionState, updateHeartbeat } from './lib/push';
 import { configurePurchases, loginPurchases, logoutPurchases } from './lib/purchases';
 import { ConfettiProvider } from './lib/confetti';
@@ -69,6 +70,15 @@ export default function AppRoot() {
     }
 
     let alive = true;
+    const handleAuthUrl = (url: string | null) => {
+      if (!alive || !url) return;
+      void consumeAuthCallbackUrl(url).catch((error) => {
+        console.error('[AppRoot] Auth callback failed:', error);
+      });
+    };
+    void Linking.getInitialURL().then(handleAuthUrl);
+    const linkSub = Linking.addEventListener('url', ({ url }) => handleAuthUrl(url));
+
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
       setAuthed(!!data.session);
@@ -81,6 +91,7 @@ export default function AppRoot() {
     });
     return () => {
       alive = false;
+      linkSub.remove();
       sub.subscription.unsubscribe();
     };
   }, []);

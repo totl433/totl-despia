@@ -1,21 +1,32 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Alert, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import HeaderTotlLogo from '../components/HeaderTotlLogo';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { supabase } from '../lib/supabase';
 import { hasSqlLikeWildcards, normalizeDisplayName } from '../lib/displayName';
 import { checkDisplayNameAvailable, saveUsername } from '../lib/userProfile';
+import { AUTH_CALLBACK_URL } from '../lib/authCallbackUrl';
 
 export default function AuthScreen() {
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const { isDark } = useThemePreference();
+  const keyboardVisible = useKeyboardState((s) => s.isVisible);
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signUp');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const usernameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
+
   const inputStyle = {
     borderWidth: 1,
     borderColor: t.color.border,
@@ -49,7 +60,10 @@ export default function AuthScreen() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { display_name: trimmedName } },
+        options: {
+          data: { display_name: trimmedName },
+          emailRedirectTo: AUTH_CALLBACK_URL,
+        },
       });
       if (error) throw error;
 
@@ -68,97 +82,147 @@ export default function AuthScreen() {
 
   return (
     <Screen>
-      <View style={{ marginBottom: 32, alignItems: 'center' }}>
-        <HeaderTotlLogo width={207} height={65} />
-      </View>
-      <TotlText variant="muted" style={{ marginBottom: 16, color: t.color.text }}>
-        {mode === 'signIn' ? 'Sign in to continue' : 'Create your account'}
-      </TotlText>
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={24}
+        extraKeyboardSpace={132}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ marginBottom: keyboardVisible ? 12 : 32, alignItems: 'center' }}>
+          <HeaderTotlLogo
+            width={keyboardVisible ? 132 : 207}
+            height={keyboardVisible ? 42 : 65}
+          />
+        </View>
+        <TotlText variant="muted" style={{ marginBottom: 16, color: t.color.text }}>
+          {mode === 'signIn' ? 'Sign in to continue' : 'Create your account'}
+        </TotlText>
 
-      <Card>
-        {mode === 'signUp' ? (
-          <>
-            <TotlText style={{ marginBottom: 8 }}>Username</TotlText>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="username"
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={t.color.brand}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="e.g. Thomas"
-              placeholderTextColor={t.color.muted}
-              style={{
-                ...inputStyle,
-                marginBottom: 12,
-              }}
-            />
-          </>
-        ) : null}
+        <Card>
+          {mode === 'signUp' ? (
+            <>
+              <TotlText style={{ marginBottom: 8 }}>Username</TotlText>
+              <TextInput
+                ref={usernameRef}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="username-new"
+                textContentType="username"
+                autoFocus
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => emailRef.current?.focus()}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={t.color.brand}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="e.g. Thomas"
+                placeholderTextColor={t.color.muted}
+                style={{
+                  ...inputStyle,
+                  marginBottom: 12,
+                }}
+              />
+            </>
+          ) : null}
 
-        <TotlText style={{ marginBottom: 8 }}>Email</TotlText>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={t.color.brand}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={t.color.muted}
+          <TotlText style={{ marginBottom: 8 }}>Email</TotlText>
+          <TextInput
+            ref={emailRef}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            keyboardType="email-address"
+            autoFocus={mode === 'signIn'}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={t.color.brand}
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            placeholderTextColor={t.color.muted}
+            style={{
+              ...inputStyle,
+              marginBottom: 12,
+            }}
+          />
+
+          <TotlText style={{ marginBottom: 8 }}>Password</TotlText>
+          <TextInput
+            ref={passwordRef}
+            secureTextEntry
+            autoComplete={mode === 'signUp' ? 'new-password' : 'password'}
+            textContentType={mode === 'signUp' ? 'newPassword' : 'password'}
+            passwordRules={mode === 'signUp' ? 'minlength: 6;' : undefined}
+            returnKeyType={mode === 'signUp' ? 'next' : 'go'}
+            blurOnSubmit={mode !== 'signUp'}
+            onSubmitEditing={() => {
+              if (mode === 'signUp') {
+                confirmRef.current?.focus();
+                return;
+              }
+              void submit();
+            }}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
+            selectionColor={t.color.brand}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            placeholderTextColor={t.color.muted}
+            style={{
+              ...inputStyle,
+              marginBottom: mode === 'signUp' ? 12 : 0,
+            }}
+          />
+
+          {mode === 'signUp' ? (
+            <>
+              <TotlText style={{ marginBottom: 8 }}>Confirm password</TotlText>
+              <TextInput
+                ref={confirmRef}
+                secureTextEntry
+                autoComplete="new-password"
+                textContentType="newPassword"
+                passwordRules="minlength: 6;"
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                selectionColor={t.color.brand}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="••••••••"
+                placeholderTextColor={t.color.muted}
+                style={inputStyle}
+              />
+            </>
+          ) : null}
+        </Card>
+      </KeyboardAwareScrollView>
+
+      <KeyboardStickyView offset={{ closed: 0, opened: 8 }}>
+        <View
           style={{
-            ...inputStyle,
-            marginBottom: 12,
+            paddingTop: 8,
+            paddingBottom: keyboardVisible ? 8 : Math.max(insets.bottom, 12),
+            backgroundColor: t.color.background,
           }}
-        />
-
-        <TotlText style={{ marginBottom: 8 }}>Password</TotlText>
-        <TextInput
-          secureTextEntry
-          keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={t.color.brand}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="••••••••"
-          placeholderTextColor={t.color.muted}
-          style={{
-            ...inputStyle,
-            marginBottom: mode === 'signUp' ? 12 : 16,
-          }}
-        />
-
-        {mode === 'signUp' ? (
-          <>
-            <TotlText style={{ marginBottom: 8 }}>Confirm password</TotlText>
-            <TextInput
-              secureTextEntry
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              selectionColor={t.color.brand}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="••••••••"
-              placeholderTextColor={t.color.muted}
-              style={{
-                ...inputStyle,
-                marginBottom: 16,
-              }}
-            />
-          </>
-        ) : null}
-
-        <Button title={busy ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Sign up'} onPress={submit} disabled={busy} />
-
-        <View style={{ height: 12 }} />
-
-        <Button
-          title={mode === 'signIn' ? 'Need an account? Sign up' : 'Have an account? Sign in'}
-          variant="secondary"
-          onPress={() => setMode((m) => (m === 'signIn' ? 'signUp' : 'signIn'))}
-          disabled={busy}
-        />
-      </Card>
+        >
+          <Button title={busy ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Sign up'} onPress={submit} disabled={busy} />
+          <View style={{ height: 12 }} />
+          <Button
+            title={mode === 'signIn' ? 'Need an account? Sign up' : 'Have an account? Sign in'}
+            variant="secondary"
+            onPress={() => setMode((m) => (m === 'signIn' ? 'signUp' : 'signIn'))}
+            disabled={busy}
+          />
+        </View>
+      </KeyboardStickyView>
     </Screen>
   );
 }

@@ -14,9 +14,18 @@ Do **not** deploy this branch to Netlify.
 
 - Signup now requires a username (plus confirm password).
 - Anyone already signed in with no username is asked to choose one before they can play.
+- Signup keyboard no longer covers Sign up.
+- Confirm-email links open TotL instead of the website.
 - New accounts land on 2026/27 GW1, not last season.
 - Mini-leagues play from GW1 this season (old “started at GW7/8” names no longer apply).
 - Coventry, Hull and Ipswich colours/patterns on swipe cards.
+
+## Before this TestFlight works for email confirm
+
+In Supabase → Authentication → URL Configuration → Redirect URLs, add:
+
+`com.despia.totlnative://auth/callback`
+
 
 ## App Store “What’s New” (paste)
 
