@@ -1612,6 +1612,10 @@ useEffect(() => {
 
  const currentFixture = fixtures[currentIndex];
 
+ const SWIPE_THRESHOLD = 110;
+ const DRAW_SWIPE_THRESHOLD = 140;
+ const DIRECTION_RATIO = 1.2;
+
  const myScore = useMemo(() => {
  let score = 0;
  fixtures.forEach(f => {
@@ -1636,9 +1640,9 @@ useEffect(() => {
   lastDeltaRef.current = { x: deltaX, y: deltaY };
  const rotation = deltaX * 0.1;
  setCardState({ x: deltaX, y: deltaY, rotation, opacity: 1, scale: 1 });
- if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+ if (Math.abs(deltaX) > SWIPE_THRESHOLD && Math.abs(deltaX) > Math.abs(deltaY) * DIRECTION_RATIO) {
  setShowFeedback(deltaX > 0 ? "away" : "home");
- } else if (deltaY > 50 && deltaY > Math.abs(deltaX)) {
+ } else if (deltaY > DRAW_SWIPE_THRESHOLD && deltaY > Math.abs(deltaX) * DIRECTION_RATIO) {
  setShowFeedback("draw");
  } else {
  setShowFeedback(null);
@@ -1648,10 +1652,9 @@ useEffect(() => {
  if (!isDragging || isAnimating || submitted) return;
  setIsDragging(false);
   const { x, y } = lastDeltaRef.current;
- const threshold = 100;
  let pick: "H" | "D" | "A" | null = null;
- if (Math.abs(x) > threshold && Math.abs(x) > Math.abs(y)) pick = x > 0 ? "A" : "H";
- else if (y > threshold && y > Math.abs(x)) pick = "D";
+ if (Math.abs(x) > SWIPE_THRESHOLD && Math.abs(x) > Math.abs(y) * DIRECTION_RATIO) pick = x > 0 ? "A" : "H";
+ else if (y > DRAW_SWIPE_THRESHOLD && y > Math.abs(x) * DIRECTION_RATIO) pick = "D";
  if (pick) animateCardOut(pick);
  else { setCardState({ x: 0, y: 0, rotation: 0, opacity: 1, scale: 1 }); setShowFeedback(null); }
  };
