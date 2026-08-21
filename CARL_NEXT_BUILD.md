@@ -1,6 +1,6 @@
 # Next App Store / TestFlight push
 
-Live store binary is **2.0.25 (build 49)**. Add anything below that is not already in that binary.
+Already in the live store: **2.0.25**, including signup keyboard + confirm-email in the app.
 
 ## To include in the next build
 
@@ -9,10 +9,10 @@ Live store binary is **2.0.25 (build 49)**. Add anything below that is not alrea
    - Draw now needs a clearer downward swipe: 140px (was 110) and the same 1.2 direction lock as home/away.
    - File: `apps/mobile/src/components/predictions/PredictionsSwipeDeck.tsx`
 
-2. **Signup keyboard + confirm-email in the app** (commit `e366a5e`, after build 49)
-   - Keyboard-aware signup so Sign up sits above the keyboard.
-   - Confirm-email deep link opens in the app (`com.despia.totlnative://auth/callback`).
-   - Confirm with Carl whether this already shipped in a later TestFlight; if not, include it.
+2. **Mini-league Predictions — current GW only**
+   - Removed the leftover “2026/27 · fixtures out…” bar and season switcher.
+   - Predictions always show this gameweek; you cannot jump season or GW from that tab.
+   - File: `apps/mobile/src/screens/LeagueDetailScreen.tsx`
 
 ## Not an app change (already live on the server)
 

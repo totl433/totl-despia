@@ -48,9 +48,7 @@ import { fetchLeagueActivationAt, resolveLeagueStartGw } from '../lib/leagueStar
 import { getLeaderboardDisplayGwFromSnapshot, type GameweekState } from '../lib/gameweekState';
 import CenteredSpinner from '../components/CenteredSpinner';
 import SectionHeaderRow from '../components/home/SectionHeaderRow';
-import LeagueSeasonPicker from '../components/league/LeagueSeasonPicker';
 import { resolveLeaguePileTables } from '../lib/leagueSeasonPile';
-import { SEASON_2025_26_LABEL, SEASON_2026_27_LABEL } from '../lib/leaderboardMonths';
 import { useViewerSeason } from '../lib/useViewerSeason';
 import { Ionicons } from '@expo/vector-icons';
 import { useLiveScores } from '../hooks/useLiveScores';
@@ -189,21 +187,14 @@ export default function LeagueDetailScreen() {
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
   });
-  const { isNewSeasonFresh, useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
-  /** Live 2026/27 vs archived 2025/26 (agreed Seasons control on ML pages). */
+  const { isNewSeasonFresh, useSeasonStack, seasonId } = useViewerSeason();
+  /** Live 2026/27 only — mini-league pages do not switch season folders. */
   type MlSeasonKey = 'live' | 'archive_2025_26';
-  const [mlSeasonKey, setMlSeasonKey] = React.useState<MlSeasonKey>('live');
+  const mlSeasonKey: MlSeasonKey = 'live';
   const canBrowseArchiveSeasons = useSeasonStack;
   const browsingArchive = canBrowseArchiveSeasons && mlSeasonKey === 'archive_2025_26';
   /** Pre-results live season: zeros until first completed result; API still used for live GW table. */
   const browsingLiveNewSeason = canBrowseArchiveSeasons && !browsingArchive && isNewSeasonFresh;
-  const mlSeasonOptions = React.useMemo(() => {
-    if (!canBrowseArchiveSeasons) return [] as Array<{ key: string; label: string }>;
-    return [
-      { key: 'live', label: seasonLabel || SEASON_2026_27_LABEL },
-      { key: 'archive_2025_26', label: SEASON_2025_26_LABEL },
-    ];
-  }, [canBrowseArchiveSeasons, seasonLabel]);
   const viewingGw = home?.viewingGw ?? null;
   const currentGw = home?.currentGw ?? viewingGw ?? null;
   const { data: publishedCurrentGw } = useQuery<number | null>({
@@ -303,20 +294,6 @@ export default function LeagueDetailScreen() {
     isNewSeasonFresh,
     viewingGw,
   ]);
-
-  // When user flips Seasons control, anchor GW to a sensible default for that year.
-  React.useEffect(() => {
-    if (browsingArchive) {
-      const last = completedGwsChronological?.length
-        ? completedGwsChronological[completedGwsChronological.length - 1]!
-        : 38;
-      setSelectedGw(last);
-      return;
-    }
-    if (browsingLiveNewSeason) {
-      setSelectedGw(typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : 1);
-    }
-  }, [mlSeasonKey]); // eslint-disable-line react-hooks/exhaustive-deps -- only when season folder switches
 
   type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
   const leagueId = String(params.leagueId);
@@ -882,11 +859,9 @@ export default function LeagueDetailScreen() {
   });
 
   const picksGw = React.useMemo(() => {
-    // Archive: selected GW in that season folder. Live: viewing / current from home (2026/27 GW1).
-    if (browsingArchive && typeof selectedGw === 'number') return selectedGw;
     const gw = viewingGw ?? currentGw;
     return typeof gw === 'number' ? gw : null;
-  }, [browsingArchive, selectedGw, viewingGw, currentGw]);
+  }, [viewingGw, currentGw]);
 
   type LeaguePredictionsData = {
     picksGw: number;
@@ -1248,6 +1223,8 @@ export default function LeagueDetailScreen() {
     ? 'Invite players'
     : leagueStartsInFuture
       ? `Starts Gameweek ${seasonStartGw}`
+      : tab === 'predictions' && typeof picksGw === 'number'
+        ? `Gameweek ${picksGw}`
       : typeof selectedGw === 'number'
         ? `Gameweek ${selectedGw}`
         : viewingGw
@@ -1346,9 +1323,6 @@ export default function LeagueDetailScreen() {
                       onChangeGw={setSelectedGw}
                       onPressRules={() => setRulesOpen(true)}
                       onPressMenu={() => setMenuOpen(true)}
-                      seasonOptions={mlSeasonOptions}
-                      selectedSeasonKey={mlSeasonKey}
-                      onChangeSeason={(key) => setMlSeasonKey(key as MlSeasonKey)}
                     />
                   </>
                 )}
@@ -1400,15 +1374,7 @@ export default function LeagueDetailScreen() {
                     >
                       <LeaguePointsFormToggle showForm={seasonShowForm} onToggle={setSeasonShowForm} />
                       <View style={{ width: 10 }} />
-                      {mlSeasonOptions.length > 1 ? (
-                        <LeagueSeasonPicker
-                          options={mlSeasonOptions}
-                          selectedKey={mlSeasonKey}
-                          onChange={(key) => setMlSeasonKey(key as MlSeasonKey)}
-                        />
-                      ) : (
-                        <View style={{ flex: 1 }} />
-                      )}
+                      <View style={{ flex: 1 }} />
                       <View style={{ width: 10 }} />
                       <LeaguePillButton label="Rules" onPress={() => setSeasonRulesOpen(true)} />
                       <Pressable
@@ -1505,27 +1471,6 @@ export default function LeagueDetailScreen() {
                         ) : null}
 
                         <View style={{ marginTop: 6 }}>
-                          {mlSeasonOptions.length > 1 ? (
-                            <View
-                              style={{
-                                marginBottom: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                              }}
-                            >
-                              <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, paddingRight: 12 }}>
-                                {browsingArchive
-                                  ? `${SEASON_2025_26_LABEL} archive`
-                                  : `${seasonLabel || SEASON_2026_27_LABEL} · fixtures out, not predicted yet`}
-                              </TotlText>
-                              <LeagueSeasonPicker
-                                options={mlSeasonOptions}
-                                selectedKey={mlSeasonKey}
-                                onChange={(key) => setMlSeasonKey(key as MlSeasonKey)}
-                              />
-                            </View>
-                          ) : null}
                           <SectionHeaderRow
                             title={`Gameweek ${predictions.picksGw}`}
                             right={
