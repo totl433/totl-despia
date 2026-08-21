@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification } from './lib/notifications';
 import { resolveMemberJoinName } from './lib/notifications/memberJoinName';
 import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
+import { resolveDualStackRuntime } from './lib/seasonStackPoll';
 
 type LeagueRow = {
   id: string;
@@ -98,43 +99,55 @@ export const handler: Handler = async (event) => {
   if (membersError) return json(500, { error: 'Could not check this mini league' });
   if ((members?.length ?? 0) >= 8) return json(409, { error: 'This mini league is full.' });
 
-  const { data: meta } = await admin.from('app_meta').select('current_gw').eq('id', 1).maybeSingle();
-  const currentGw = typeof meta?.current_gw === 'number' ? meta.current_gw : null;
-  if (currentGw !== null && (members?.length ?? 0) >= 2) {
-    const activationAt =
-      (members ?? [])
-        .map((row) => row.created_at)
-        .filter((value): value is string => typeof value === 'string' && value.length > 10)
-        .sort((a, b) => Date.parse(a) - Date.parse(b))[1] ?? league.created_at;
+  // Count the 4-GW join window against the live season, not last season's GW38.
+  // Existing mini-leagues therefore reopen for the first 4 gameweeks of 26/27 (and each season after).
+  // If season lookup fails, skip the lock rather than 500 or using GW38.
+  try {
+    const runtime = await resolveDualStackRuntime(admin);
+    const useSeasonStack = typeof runtime.seasonGw === 'number' && !!runtime.seasonId;
+    const currentGw = useSeasonStack ? runtime.seasonGw : runtime.legacyGw;
+    if (currentGw !== null && (members?.length ?? 0) >= 2) {
+      const activationAt =
+        (members ?? [])
+          .map((row) => row.created_at)
+          .filter((value): value is string => typeof value === 'string' && value.length > 10)
+          .sort((a, b) => Date.parse(a) - Date.parse(b))[1] ?? league.created_at;
 
-    if (activationAt) {
-      const { data: fixtures } = await admin
-        .from('app_fixtures')
-        .select('gw,kickoff_time')
-        .not('kickoff_time', 'is', null)
-        .order('gw', { ascending: true })
-        .order('kickoff_time', { ascending: true });
-      const firstKickoffByGw = new Map<number, string>();
-      (fixtures ?? []).forEach((fixture) => {
-        const gw = Number(fixture.gw);
-        if (Number.isFinite(gw) && fixture.kickoff_time && !firstKickoffByGw.has(gw)) {
-          firstKickoffByGw.set(gw, String(fixture.kickoff_time));
+      if (activationAt) {
+        let fixturesQuery = admin
+          .from(useSeasonStack ? 'app_season_fixtures' : 'app_fixtures')
+          .select('gw,kickoff_time')
+          .not('kickoff_time', 'is', null)
+          .order('gw', { ascending: true })
+          .order('kickoff_time', { ascending: true });
+        if (useSeasonStack && runtime.seasonId) {
+          fixturesQuery = fixturesQuery.eq('season_id', runtime.seasonId);
         }
-      });
-      let startGw = currentGw;
-      for (const [gw, kickoff] of firstKickoffByGw) {
-        const deadline = Date.parse(kickoff) - 75 * 60 * 1000;
-        if (Date.parse(activationAt) < deadline) {
-          startGw = gw;
-          break;
-        }
-      }
-      if (currentGw - startGw >= 4) {
-        return json(409, {
-          error: 'This mini league has been running for more than four gameweeks and is closed to new members.',
+        const { data: fixtures } = await fixturesQuery;
+        const firstKickoffByGw = new Map<number, string>();
+        (fixtures ?? []).forEach((fixture) => {
+          const gw = Number(fixture.gw);
+          if (Number.isFinite(gw) && fixture.kickoff_time && !firstKickoffByGw.has(gw)) {
+            firstKickoffByGw.set(gw, String(fixture.kickoff_time));
+          }
         });
+        let startGw = currentGw;
+        for (const [gw, kickoff] of firstKickoffByGw) {
+          const deadline = Date.parse(kickoff) - 75 * 60 * 1000;
+          if (Date.parse(activationAt) < deadline) {
+            startGw = gw;
+            break;
+          }
+        }
+        if (currentGw - startGw >= 4) {
+          return json(409, {
+            error: 'This mini league has been running for more than four gameweeks and is closed to new members.',
+          });
+        }
       }
     }
+  } catch (windowError) {
+    console.warn('[joinMiniLeagueByCode] Join window check failed; allowing join:', windowError);
   }
 
   const { error: joinError } = await admin
