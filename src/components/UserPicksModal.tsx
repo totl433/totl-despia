@@ -5,7 +5,7 @@ import GameweekFixturesCardList from './GameweekFixturesCardList';
 import type { Fixture, LiveScore } from './FixtureCard';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useGameweekState } from '../hooks/useGameweekState';
-import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { ensureActiveSeasonCtx, getActiveSeasonCtx } from '../lib/activeSeasonCtx';
 import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 export interface UserPicksModalProps {
@@ -59,7 +59,22 @@ export default function UserPicksModal({
  setError(null);
 
  try {
- const seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+ // Season tables follow the *viewer*, not the clicked player.
+ // Resolving ctx as the opponent hits RLS on their prefs and falls back to
+ // last season's GW1 submissions — which is why live 26/27 picks looked "unsubmitted".
+ const { data: sessionData } = await supabase.auth.getUser();
+ const viewerId = sessionData.user?.id ?? null;
+ const seasonCtx =
+   getActiveSeasonCtx() ??
+   (viewerId
+     ? await ensureActiveSeasonCtx(supabase as any, viewerId)
+     : {
+         useSeasonStack: false,
+         seasonId: null,
+         seasonLabel: null,
+         currentGw: gw,
+         viewingGw: null,
+       });
  const tables = getSeasonTables(seasonCtx);
 
  // Use centralized game state (already calculated by useGameweekState hook above)
@@ -91,6 +106,12 @@ export default function UserPicksModal({
  
  setDisplayGw(gwToDisplay);
  
+ // Wait until game state is known so we don't flash "hasn't submitted" while loading.
+ if (gwState === null && !shouldShowFallback) {
+ setLoading(true);
+ return;
+ }
+
  // If deadline hasn't passed and no fallback to show, don't fetch picks
  if (!deadlinePassed && !shouldShowFallback) {
  setLoading(false);
@@ -155,8 +176,11 @@ export default function UserPicksModal({
 
  if (!alive) return;
 
- // User has submitted if there's a submission record with a non-null submitted_at
- const submitted = Boolean(submissionData?.submitted_at);
+ // Submitted if a season/legacy lock row exists, or they have picks (live GW).
+ const submitted =
+   Boolean(submissionData?.submitted_at) ||
+   Boolean(submissionData) ||
+   Object.keys(picksMap).length > 0;
  setHasSubmitted(submitted);
 
  // Rank % only when this stack GW has results (avoid legacy app_v_gw_points for "GW 1")
@@ -223,7 +247,7 @@ export default function UserPicksModal({
  return () => {
  alive = false;
  };
- }, [isOpen, userId, gw, fallbackGw]);
+ }, [isOpen, userId, gw, fallbackGw, deadlinePassed, gwState]);
 
  // Update live scores map when fixtures or live scores change
  useEffect(() => {
