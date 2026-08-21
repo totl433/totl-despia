@@ -295,10 +295,12 @@ const LeaguePage = lazy(() => import("./pages/League"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const AdminDataPage = lazy(() => import("./pages/AdminData"));
 import { RequireAdmin } from "./components/RequireAdmin";
+import { RequireHostOrAdmin } from "./components/RequireHostOrAdmin";
 const AdminLeaderboards = lazy(() => import("./pages/admin/AdminLeaderboards"));
 const AdminLeaderboardForm = lazy(() => import("./pages/admin/AdminLeaderboardForm"));
 const AdminLeaderboardDetail = lazy(() => import("./pages/admin/AdminLeaderboardDetail"));
 const AdminLeaderboardRevenue = lazy(() => import("./pages/admin/AdminLeaderboardRevenue"));
+const HostLeaderboardReview = lazy(() => import("./pages/HostLeaderboardReview"));
 const TempGlobalPage = lazy(() => import("./pages/TempGlobal"));
 const CreateLeaguePage = lazy(() => import("./pages/CreateLeague"));
 const HowToPlayPage = lazy(() => import("./pages/HowToPlay"));
@@ -368,8 +370,11 @@ function maybeLoadGoogleAnalytics() {
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <div className="p-6">Loading…</div>;
-  return user ? <>{children}</> : <Navigate to="/auth" replace />;
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  const authState = location.pathname.startsWith('/host/leaderboards/') ? { returnTo } : undefined;
+  return user ? <>{children}</> : <Navigate to="/auth" replace state={authState} />;
 }
 
 function AppShell() {
@@ -955,6 +960,7 @@ function AppContent() {
               <Route path="/admin/leaderboards/:id" element={<RequireAuth><RequireAdmin><AdminLeaderboardDetail /></RequireAdmin></RequireAuth>} />
               <Route path="/admin/leaderboards/:id/edit" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
               <Route path="/admin/leaderboards/:id/revenue" element={<RequireAuth><RequireAdmin><AdminLeaderboardRevenue /></RequireAdmin></RequireAuth>} />
+              <Route path="/host/leaderboards/:id" element={<RequireAuth><RequireHostOrAdmin><HostLeaderboardReview /></RequireHostOrAdmin></RequireAuth>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

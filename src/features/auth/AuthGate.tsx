@@ -3,15 +3,25 @@
  * Renders nothing while checking, redirects authed users, shows AuthFlow for guests
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from './useSupabaseAuth';
 import AuthFlow from './AuthFlow';
 import { verifySignupToken } from './useSupabaseAuth';
 
+function getSafeReturnTo(state: unknown): string {
+  if (!state || typeof state !== 'object' || !('returnTo' in state)) return '/';
+  const returnTo = (state as { returnTo?: unknown }).returnTo;
+  if (typeof returnTo !== 'string' || !returnTo.startsWith('/') || returnTo.startsWith('//')) return '/';
+  if (returnTo === '/auth' || returnTo.startsWith('/auth?') || returnTo.startsWith('/auth#')) return '/';
+  return returnTo;
+}
+
 export default function AuthGate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { status, user } = useSupabaseAuth();
   const [signupVerifyLoading, setSignupVerifyLoading] = useState(false);
+  const returnTo = getSafeReturnTo(location.state);
 
   function detectRecoveryFromUrl(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
@@ -63,16 +73,16 @@ export default function AuthGate() {
     if (status === 'authed' && user) {
       // Check if this is a password reset flow - don't redirect
       if (!isRecovery) {
-        console.log('[AuthGate] User is authed, redirecting to home');
-        navigate('/', { replace: true });
+        console.log('[AuthGate] User is authed, redirecting after authentication');
+        navigate(returnTo, { replace: true });
       }
     }
-  }, [status, user, navigate, isRecovery]);
+  }, [status, user, navigate, isRecovery, returnTo]);
 
-  // Handle successful auth - navigate to home
+  // Handle successful auth - return to the protected page when one was requested.
   const handleAuthSuccess = () => {
-    console.log('[AuthGate] Auth success, redirecting to home');
-    navigate('/', { replace: true });
+    console.log('[AuthGate] Auth success, redirecting after authentication');
+    navigate(returnTo, { replace: true });
   };
 
   // While checking session, render nothing (avoids flash of auth UI)
