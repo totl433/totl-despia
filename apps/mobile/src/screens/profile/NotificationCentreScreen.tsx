@@ -206,7 +206,7 @@ export default function NotificationCentreScreen() {
             {
               id: 'new-gameweek',
               label: 'New Gameweek Published',
-              description: 'Get notified when a new gameweek is published and ready for predictions',
+              description: 'Gameweek announcements and all-user updates, including when a new gameweek is ready',
             },
             {
               id: 'prediction-reminder',

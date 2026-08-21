@@ -14,6 +14,11 @@ Already in the live store: **2.0.25**, including signup keyboard + confirm-email
    - Predictions always show this gameweek; you cannot jump season or GW from that tab.
    - File: `apps/mobile/src/screens/LeagueDetailScreen.tsx`
 
+3. **Notification Centre copy — New Gameweek**
+   - Description now says this toggle also covers all-user announcements (the send itself is already gated on the server).
+   - File: `apps/mobile/src/screens/profile/NotificationCentreScreen.tsx`
+
 ## Not an app change (already live on the server)
 
 - Mini-league join window resets at the start of each season (existing leagues open through GW4 of 26/27). Invite join uses the Netlify function; no binary needed.
+- All-user OneSignal blasts honour **New Gameweek Published** (on by default). Opt-outs are skipped.
