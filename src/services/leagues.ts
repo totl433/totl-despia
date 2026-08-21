@@ -3,7 +3,6 @@ import { getDeterministicLeagueAvatar } from "../lib/leagueAvatars";
 import { VOLLEY_USER_ID } from "../lib/volley";
 import { resolveLeagueStartGw } from "../lib/leagueStart";
 import { fetchUserLeagues } from "./userLeagues";
-import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
 
 export type League = {
   id: string;
@@ -64,26 +63,21 @@ export async function joinLeague(code: string, userId: string): Promise<{ succes
       };
     }
 
-    // Count the 4-GW join window against the live season, not last season's GW38.
-    const seasonCtx = getActiveSeasonCtx();
-    let currentGw = seasonCtx?.currentGw ?? null;
-    if (currentGw === null) {
-      const { data: metaData } = await supabase
-        .from("app_meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
-      currentGw = metaData?.current_gw ?? null;
-    }
+    // Check if league has been running for more than 4 gameweeks
+    // Get current gameweek
+    const { data: metaData } = await supabase
+      .from("app_meta")
+      .select("current_gw")
+      .eq("id", 1)
+      .maybeSingle();
 
+    const currentGw = metaData?.current_gw ?? null;
+    
     if (currentGw !== null) {
+      // Calculate league start GW
       const leagueStartGw = await resolveLeagueStartGw(
         { id: league.id, name: league.name, created_at: league.created_at },
-        currentGw,
-        {
-          useSeasonStack: !!seasonCtx?.useSeasonStack,
-          seasonId: seasonCtx?.useSeasonStack ? seasonCtx.seasonId : null,
-        }
+        currentGw
       );
 
       // Check if league has been running for 4+ gameweeks
