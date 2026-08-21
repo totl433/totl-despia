@@ -69,7 +69,7 @@ export default function AuthGate() {
     }
   }, [status, user, navigate, isRecovery, returnTo]);
 
-  // Handle successful auth - return to the protected page when one was requested.
+  // Handle successful auth - navigate to home
   const handleAuthSuccess = () => {
     console.log('[AuthGate] Auth success, redirecting');
     navigate(returnTo, { replace: true });
