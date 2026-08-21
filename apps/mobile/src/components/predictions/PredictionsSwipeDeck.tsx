@@ -50,6 +50,7 @@ const INACTIVE_BG = '#E6F3F0';
 const ACTIVE_TEXT = '#FFFFFF';
 const INACTIVE_TEXT = '#0F172A';
 const SWIPE_THRESHOLD = 110;
+const DRAW_SWIPE_THRESHOLD = 140;
 const DIRECTION_RATIO = 1.2;
 const RESET_SPRING = {
   damping: 18,
@@ -342,7 +343,10 @@ export default function PredictionsSwipeDeck({
         if (disabled || transition || isAnimatingSV.value) return;
         tx.value = e.translationX;
         ty.value = e.translationY;
-        revealProgress.value = Math.min(1, Math.max(Math.abs(e.translationX), Math.abs(e.translationY)) / SWIPE_THRESHOLD);
+        const absX = Math.abs(e.translationX);
+        const absY = Math.abs(e.translationY);
+        const progressThreshold = absY > absX ? DRAW_SWIPE_THRESHOLD : SWIPE_THRESHOLD;
+        revealProgress.value = Math.min(1, Math.max(absX, absY) / progressThreshold);
       })
       .onEnd((e) => {
         if (disabled || transition || isAnimatingSV.value) return;
@@ -353,7 +357,7 @@ export default function PredictionsSwipeDeck({
 
         let pick: Pick | null = null;
         if (absX >= SWIPE_THRESHOLD && absX > absY * DIRECTION_RATIO) pick = dx > 0 ? 'A' : 'H';
-        else if (dy >= SWIPE_THRESHOLD && dy > absX) pick = 'D';
+        else if (dy >= DRAW_SWIPE_THRESHOLD && dy > absX * DIRECTION_RATIO) pick = 'D';
 
         if (pick) {
           runOnJS(startPickTransition)(pick);
