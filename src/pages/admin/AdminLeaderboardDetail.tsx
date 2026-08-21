@@ -97,7 +97,7 @@ export default function AdminLeaderboardDetail() {
   useEffect(() => {
     if (!hostSearch || hostSearch.length < 2) { setHostResults([]); return; }
     const timer = setTimeout(async () => {
-      const { data } = await supabase.from('users').select('id, name').ilike('name', `%${hostSearch}%`).limit(10);
+      const { data } = await supabase.from('users').select('id, name').ilike('name', `%${hostSearch}%`).limit(50);
       setHostResults(data ?? []);
     }, 300);
     return () => clearTimeout(timer);
