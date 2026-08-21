@@ -9,6 +9,8 @@ import type { Fixture, LiveScore } from './FixtureCard';
 import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 interface GamesSectionProps {
   isInApiTestLeague: boolean;
@@ -166,14 +168,26 @@ export function GamesSection({
     let calculatedGwRankPercent: number | undefined = undefined;
     
     try {
-      // Fetch picks for current user and gameweek
-      if (userId) {
-        const { data: picksData, error: picksError } = await supabase
-          .from('app_picks')
+      // Season stack: app_season_picks / app_v_season_gw_points (not legacy app_picks for same GW #)
+      const seasonCtx = userId
+        ? await ensureActiveSeasonCtx(supabase as any, userId)
+        : { useSeasonStack: false, seasonId: null, seasonLabel: null, currentGw: currentGwValue, viewingGw: null };
+      const tables = getSeasonTables(seasonCtx);
+
+      // Prefer picks already loaded for this HP (season-scoped). Fall back to DB.
+      const propPicks = latestUserPicks || {};
+      if (Object.keys(propPicks).length > 0) {
+        fetchedPicks = { ...propPicks };
+        console.log('[Share] Using in-memory season picks:', fetchedPicks);
+      } else if (userId) {
+        let picksQ = (supabase as any)
+          .from(tables.picks)
           .select('fixture_index, pick')
           .eq('gw', currentGwValue)
           .eq('user_id', userId);
-        
+        picksQ = withSeasonId(picksQ, seasonCtx);
+        const { data: picksData, error: picksError } = await picksQ;
+
         if (picksError) {
           console.error('[Share] Error fetching picks:', picksError);
         } else {
@@ -183,38 +197,60 @@ export function GamesSection({
           console.log('[Share] Fetched picks:', fetchedPicks);
         }
       }
-      
-      // Calculate GW rank percentage using app_v_gw_points view (same as UserPicksModal and ScoreIndicator)
+
+      // Rank % only after this season+GW has official results — never last-year GW1.
       if (userId) {
-        const { data: gwPointsData, error: gwPointsError } = await supabase
-          .from('app_v_gw_points')
-          .select('user_id, points')
-          .eq('gw', currentGwValue);
+        let resultsQ = (supabase as any)
+          .from(tables.results)
+          .select('fixture_index')
+          .eq('gw', currentGwValue)
+          .limit(1);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { data: resultRows } = await resultsQ;
+        const hasResults = Array.isArray(resultRows) && resultRows.length > 0;
 
-        if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
-          // Sort by points descending
-          const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
-          
-          // Find user's rank (handling ties - same rank for same points)
-          let userRank = 1;
-          for (let i = 0; i < sorted.length; i++) {
-            if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
-              userRank = i + 1;
-            }
-            if (sorted[i].user_id === userId) {
-              break;
-            }
+        if (hasResults) {
+          let pointsQ = (supabase as any)
+            .from(tables.gwPoints)
+            .select('user_id, points')
+            .eq('gw', currentGwValue);
+          if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+            pointsQ = pointsQ.eq('season_id', seasonCtx.seasonId);
           }
+          const { data: gwPointsData, error: gwPointsError } = await pointsQ;
 
-          // Calculate rank percentage: (rank / total_users) * 100
-          const totalUsers = sorted.length;
-          const rankPercent = Math.round((userRank / totalUsers) * 100);
-          calculatedGwRankPercent = rankPercent;
-          
-          console.log('[Share] Calculated GW rank percent:', rankPercent, 'userRank:', userRank, 'totalUsers:', totalUsers);
+          if (!gwPointsError && gwPointsData && gwPointsData.length > 0) {
+            const sorted = [...gwPointsData].sort(
+              (a, b) => (b.points || 0) - (a.points || 0)
+            );
+
+            let userRank = 1;
+            for (let i = 0; i < sorted.length; i++) {
+              if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+                userRank = i + 1;
+              }
+              if (sorted[i].user_id === userId) {
+                break;
+              }
+            }
+
+            const totalUsers = sorted.length;
+            calculatedGwRankPercent = Math.round((userRank / totalUsers) * 100);
+            console.log(
+              '[Share] Calculated GW rank percent:',
+              calculatedGwRankPercent,
+              'userRank:',
+              userRank,
+              'totalUsers:',
+              totalUsers
+            );
+          }
+        } else {
+          console.log('[Share] No results yet for this season GW — omit rank %');
+          calculatedGwRankPercent = undefined;
         }
       }
-      
+
       // Fetch live scores - use the existing liveScores prop if available, otherwise fetch
       if (Object.keys(liveScores || {}).length === 0) {
         // Get api_match_ids from fixtures

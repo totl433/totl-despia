@@ -1,9 +1,20 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import {
+  isKickoffTooOldForPolling,
+  shouldRunScheduledPollForSite,
+} from './lib/liveMatchGuards';
+import {
+  loadDualStackFixturesToPoll,
+  resolveDualStackRuntime,
+  upsertDualStackResults,
+  type FinishedResultRow,
+  type PollFixture,
+} from './lib/seasonStackPoll';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || 'ed3153d132b847db836289243894706e';
+const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY?.trim() || '';
 const FOOTBALL_DATA_BASE_URL = 'https://api.football-data.org/v4';
 
 /**
@@ -82,112 +93,37 @@ async function fetchMatchScore(apiMatchId: number): Promise<any> {
 
 async function pollAllLiveScores() {
   try {
-    // Get current GW from app_meta table (used by the app)
-    const { data: metaData, error: metaError } = await supabase
-      .from('app_meta')
-      .select('current_gw')
-      .eq('id', 1)
-      .maybeSingle();
+    // Dual-stack: poll both legacy (app_meta + app_fixtures) and Pile B
+    // (app_season_runtime + app_season_fixtures). Results write to the right table(s).
+    const runtime = await resolveDualStackRuntime(supabase);
+    console.log('[pollLiveScores] Dual-stack runtime:', {
+      legacyGw: runtime.legacyGw,
+      seasonId: runtime.seasonId,
+      seasonGw: runtime.seasonGw,
+    });
 
-    if (metaError || !metaData) {
-      console.error('[pollLiveScores] Failed to get current GW from app_meta:', metaError);
+    if (runtime.legacyGw == null && !(runtime.seasonId && runtime.seasonGw != null)) {
+      console.error('[pollLiveScores] No current GW on either stack — aborting poll');
       return;
     }
 
-    const currentGw = (metaData as any)?.current_gw ?? 1;
-    console.log(`[pollLiveScores] Current GW from app_meta: ${currentGw}`);
+    const { fixtures: dualFixtures, debug: dualDebug } = await loadDualStackFixturesToPoll(
+      supabase,
+      runtime
+    );
+    dualDebug.forEach((line) => console.log(`[pollLiveScores] ${line}`));
 
-    // Get all fixtures for current GW and future GWs from app_fixtures table
-    // Focus on app_fixtures (used by TestApiPredictions and the main app)
-    // Also check regular fixtures table for backward compatibility
-    // Skip test_api_fixtures - those are old test data
-    
-    // First, check what fixtures exist (even without api_match_id) for debugging
-    const { data: allAppFixtures, error: allAppFixturesError } = await supabase
-      .from('app_fixtures')
-      .select('gw, fixture_index, api_match_id, home_team, away_team')
-      .gte('gw', currentGw)
-      .lte('gw', currentGw + 5)
-      .order('gw', { ascending: true })
-      .order('fixture_index', { ascending: true });
-    
-    if (allAppFixturesError) {
-      console.error('[pollLiveScores] Error checking all app_fixtures:', allAppFixturesError);
-    } else {
-      const fixturesByGw = new Map<number, { total: number; withApiId: number; withoutApiId: number }>();
-      (allAppFixtures || []).forEach((f: any) => {
-        const gw = f.gw;
-        if (!fixturesByGw.has(gw)) {
-          fixturesByGw.set(gw, { total: 0, withApiId: 0, withoutApiId: 0 });
-        }
-        const counts = fixturesByGw.get(gw)!;
-        counts.total++;
-        if (f.api_match_id) {
-          counts.withApiId++;
-        } else {
-          counts.withoutApiId++;
-        }
-      });
-      console.log('[pollLiveScores] All app_fixtures by GW:');
-      Array.from(fixturesByGw.entries()).forEach(([gw, counts]) => {
-        console.log(`[pollLiveScores]   GW ${gw}: ${counts.total} total (${counts.withApiId} with api_match_id, ${counts.withoutApiId} without api_match_id)`);
-      });
-    }
-    
-    const [regularFixtures, appFixtures] = await Promise.all([
-      supabase
-        .from('fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
-        .eq('gw', currentGw)
-        .not('api_match_id', 'is', null),
-      // Get fixtures for current GW and future GWs (up to current + 5 for upcoming games)
-      supabase
-        .from('app_fixtures')
-        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time, gw')
-        .gte('gw', currentGw)
-        .lte('gw', currentGw + 5) // Include up to 5 GWs ahead
-        .not('api_match_id', 'is', null)
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true }),
-    ]);
-
-    const allFixtures = [
-      ...((regularFixtures.data || []) as any[]).map(f => ({ ...f, gw: f.gw || currentGw })),
-      ...((appFixtures.data || []) as any[]).map(f => ({ 
-        ...f, 
-        gw: f.gw || currentGw, 
-        fixture_index: f.fixture_index 
-      })),
-    ];
+    // Dedupe by api_match_id already done in helper
+    const allFixtures: PollFixture[] = dualFixtures;
 
     if (allFixtures.length === 0) {
-      console.log('[pollLiveScores] No fixtures with api_match_id found');
-      console.log(`[pollLiveScores] Checked regular fixtures GW ${currentGw} and app_fixtures GW ${currentGw} to ${currentGw + 5}`);
+      console.log('[pollLiveScores] No fixtures with api_match_id found on either stack');
       return;
     }
 
-    const regularCount = (regularFixtures.data || []).length;
-    const appCount = (appFixtures.data || []).length;
-    
-    // Group app fixtures by GW for logging
-    const appGwGroups = new Map<number, number>();
-    const appGwDetails: Record<number, number[]> = {};
-    ((appFixtures.data || []) as any[]).forEach((f: any) => {
-      const gw = f.gw;
-      appGwGroups.set(gw, (appGwGroups.get(gw) || 0) + 1);
-      if (!appGwDetails[gw]) {
-        appGwDetails[gw] = [];
-      }
-      appGwDetails[gw].push(f.api_match_id);
-    });
-    const appGwSummary = Array.from(appGwGroups.entries())
-      .map(([gw, count]) => `${count} app_fixtures GW ${gw}`)
-      .join(', ');
-    console.log(`[pollLiveScores] Found ${allFixtures.length} fixtures (${regularCount} regular fixtures GW ${currentGw}, ${appCount} app_fixtures: ${appGwSummary})`);
-    // Log detailed breakdown of app fixtures by GW
-    Object.entries(appGwDetails).forEach(([gw, matchIds]) => {
-      console.log(`[pollLiveScores] App GW ${gw} has ${matchIds.length} fixtures with api_match_ids: ${matchIds.join(', ')}`);
-    });
+    console.log(
+      `[pollLiveScores] Found ${allFixtures.length} unique fixtures to consider across stacks`
+    );
 
     // Check current status of fixtures in database to skip FINISHED games
     const apiMatchIds = allFixtures.map(f => f.api_match_id);
@@ -210,6 +146,16 @@ async function pollAllLiveScores() {
     const fixturesToPoll = allFixtures.filter(f => {
       // Skip if already finished (according to our database)
       if (finishedMatchIds.has(f.api_match_id)) {
+        return false;
+      }
+
+      // Hard stop for historical fixtures (e.g. current_gw accidentally reset in off-season).
+      // Never re-poll matches whose kickoff was days ago — Football Data still returns them
+      // as FINISHED with full goal lists, which re-triggers push notifications.
+      if (isKickoffTooOldForPolling(f.kickoff_time, now)) {
+        console.log(
+          `[pollLiveScores] Skipping stale fixture api_match_id=${f.api_match_id} kickoff=${f.kickoff_time}`
+        );
         return false;
       }
       
@@ -255,7 +201,9 @@ async function pollAllLiveScores() {
 
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
-    const resultsUpserts: Array<{ gw: number; fixture_index: number; result: 'H' | 'A' | 'D' }> = [];
+    const resultsUpserts: FinishedResultRow[] = [];
+    // Fallback GW for live_scores when fixture.gw is missing
+    const defaultGw = runtime.seasonGw ?? runtime.legacyGw ?? 1;
     
     for (let i = 0; i < fixturesToPoll.length; i++) {
       const fixture = fixturesToPoll[i];
@@ -366,7 +314,7 @@ async function pollAllLiveScores() {
 
       updates.push({
         api_match_id: apiMatchId,
-        gw: fixture.gw || currentGw,
+        gw: fixture.gw || defaultGw,
         fixture_index: fixture.fixture_index,
         home_score: homeScore,
         away_score: awayScore,
@@ -387,18 +335,36 @@ async function pollAllLiveScores() {
         red_cards: redCards.length > 0 ? redCards : null,
       });
 
-      // If finished, derive outcome and stage for app_gw_results upsert
+      // If finished, write outcomes to every stack that owns this fixture
       if (status === 'FINISHED' || status === 'FT') {
         let outcome: 'H' | 'A' | 'D';
         if (homeScore > awayScore) outcome = 'H';
         else if (awayScore > homeScore) outcome = 'A';
         else outcome = 'D';
 
-        resultsUpserts.push({
-          gw: fixture.gw || currentGw,
-          fixture_index: fixture.fixture_index,
-          result: outcome,
-        });
+        const sources =
+          fixture.sources?.length > 0
+            ? fixture.sources
+            : [
+                {
+                  stack: 'legacy' as const,
+                  gw: fixture.gw || defaultGw,
+                  fixture_index: fixture.fixture_index,
+                },
+              ];
+
+        for (const src of sources) {
+          resultsUpserts.push({
+            stack: src.stack,
+            seasonId: src.seasonId,
+            gw: src.gw,
+            fixture_index: src.fixture_index,
+            result: outcome,
+            home_score: homeScore,
+            away_score: awayScore,
+            api_match_id: apiMatchId,
+          });
+        }
       }
 
       const goalsCount = goals.length;
@@ -433,41 +399,65 @@ async function pollAllLiveScores() {
       }
     }
 
-    // Upsert finished results into app_gw_results (idempotent)
+    // Upsert finished results into legacy and/or season results (idempotent)
     if (resultsUpserts.length > 0) {
-      const { error: resultsError } = await supabase
-        .from('app_gw_results')
-        .upsert(resultsUpserts, { onConflict: 'gw,fixture_index' });
-
-      if (resultsError) {
-        console.error('[pollLiveScores] Error upserting app_gw_results:', resultsError);
-      } else {
-        console.log(`[pollLiveScores] Upserted ${resultsUpserts.length} results into app_gw_results`);
-      }
+      await upsertDualStackResults(supabase, resultsUpserts);
     }
 
-    // Completeness check: compare app_fixtures vs app_gw_results counts for GWs in range
+    // Completeness check for both stacks
     try {
-      const { data: resultsRows } = await supabase
-        .from('app_gw_results')
-        .select('gw, fixture_index');
+      if (runtime.legacyGw != null) {
+        const gw = runtime.legacyGw;
+        const [{ data: fx }, { data: rs }] = await Promise.all([
+          supabase
+            .from('app_fixtures')
+            .select('gw, fixture_index')
+            .gte('gw', gw)
+            .lte('gw', gw + 5),
+          supabase.from('app_gw_results').select('gw, fixture_index'),
+        ]);
+        const fxByGw = new Map<number, number>();
+        (fx || []).forEach((f: any) => fxByGw.set(f.gw, (fxByGw.get(f.gw) || 0) + 1));
+        const rsByGw = new Map<number, number>();
+        (rs || []).forEach((r: any) => rsByGw.set(r.gw, (rsByGw.get(r.gw) || 0) + 1));
+        Array.from(fxByGw.entries()).forEach(([g, fxCount]) => {
+          const resCount = rsByGw.get(g) || 0;
+          if (resCount < fxCount) {
+            console.warn(
+              `[pollLiveScores] Legacy results missing GW ${g}: ${resCount}/${fxCount} app_gw_results`
+            );
+          }
+        });
+      }
 
-      const resultsByGw = new Map<number, number>();
-      (resultsRows || []).forEach((r: any) => {
-        resultsByGw.set(r.gw, (resultsByGw.get(r.gw) || 0) + 1);
-      });
-
-      const fixtureCountByGw = new Map<number, number>();
-      (allAppFixtures || []).forEach((f: any) => {
-        fixtureCountByGw.set(f.gw, (fixtureCountByGw.get(f.gw) || 0) + 1);
-      });
-
-      Array.from(fixtureCountByGw.entries()).forEach(([gw, fxCount]) => {
-        const resCount = resultsByGw.get(gw) || 0;
-        if (resCount < fxCount) {
-          console.warn(`[pollLiveScores] Results missing for GW ${gw}: ${resCount}/${fxCount} app_gw_results rows`);
-        }
-      });
+      if (runtime.seasonId && runtime.seasonGw != null) {
+        const seasonId = runtime.seasonId;
+        const gw = runtime.seasonGw;
+        const [{ data: fx }, { data: rs }] = await Promise.all([
+          supabase
+            .from('app_season_fixtures')
+            .select('gw, fixture_index')
+            .eq('season_id', seasonId)
+            .gte('gw', gw)
+            .lte('gw', gw + 5),
+          supabase
+            .from('app_season_results')
+            .select('gw, fixture_index')
+            .eq('season_id', seasonId),
+        ]);
+        const fxByGw = new Map<number, number>();
+        (fx || []).forEach((f: any) => fxByGw.set(f.gw, (fxByGw.get(f.gw) || 0) + 1));
+        const rsByGw = new Map<number, number>();
+        (rs || []).forEach((r: any) => rsByGw.set(r.gw, (rsByGw.get(r.gw) || 0) + 1));
+        Array.from(fxByGw.entries()).forEach(([g, fxCount]) => {
+          const resCount = rsByGw.get(g) || 0;
+          if (resCount < fxCount) {
+            console.warn(
+              `[pollLiveScores] Season results missing GW ${g}: ${resCount}/${fxCount} app_season_results`
+            );
+          }
+        });
+      }
     } catch (e) {
       console.error('[pollLiveScores] Completeness check failed:', e);
     }
@@ -487,6 +477,22 @@ export const handler: Handler = async (event) => {
   const context = process.env.CONTEXT || process.env.NETLIFY_CONTEXT || 'unknown';
   const branch = process.env.BRANCH || process.env.HEAD || process.env.COMMIT_REF || 'unknown';
   const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
+
+  if (!shouldRunScheduledPollForSite(siteUrl)) {
+    console.log(`[pollLiveScores] Skipping non-canonical site: ${siteUrl}`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: false, message: 'Polling is owned by playtotl.com' }),
+    };
+  }
+
+  if (!FOOTBALL_DATA_API_KEY) {
+    console.error('[pollLiveScores] FOOTBALL_DATA_API_KEY is not configured');
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Live-score provider is not configured' }),
+    };
+  }
 
   // Log environment info for debugging
   console.log(`[pollLiveScores] Environment check:`, {

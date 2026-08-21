@@ -1,6 +1,7 @@
 import TeamBadge from '../TeamBadge';
 import PickChip from './PickChip';
 import { getMediumName } from '../../lib/teamNames';
+import { formatKickoffTimeUk } from '../../lib/kickoffDisplay';
 
 export type Fixture = {
   id?: string;
@@ -88,16 +89,8 @@ export default function LeagueFixtureCard({
   const homeName = getMediumName(homeKey) || f.home_name || f.home_team || "Home";
   const awayName = getMediumName(awayKey) || f.away_name || f.away_team || "Away";
 
-  // Format kickoff time
-  const timeOf = (iso?: string | null) => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    const hh = String(d.getUTCHours()).padStart(2, '0');
-    const mm = String(d.getUTCMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
-  };
-  const timeStr = timeOf(f.kickoff_time);
+  // Format kickoff time in UK (BST/GMT), not UTC wall clock
+  const timeStr = formatKickoffTimeUk(f.kickoff_time);
 
   // Determine game state
   const isLive = !!(liveScore && liveScore.status === 'IN_PLAY');

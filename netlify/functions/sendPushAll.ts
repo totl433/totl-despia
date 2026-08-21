@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { isSubscribed, loadUserNotificationPreferences } from './utils/notificationHelpers';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -212,7 +213,7 @@ export const handler: Handler = async (event) => {
     // Build notification payload
     const notificationPayload: any = {
       app_id: ONESIGNAL_APP_ID,
-      include_player_ids: validPlayerIds,
+      include_subscription_ids: validPlayerIds,
       headings: { en: title },
       contents: { en: message },
       // Add iOS badge to app icon (shows red number badge)
@@ -229,11 +230,11 @@ export const handler: Handler = async (event) => {
     console.log(`[sendPushAll] Sending to ${validPlayerIds.length} Player IDs`);
     console.log(`[sendPushAll] Badge settings: ios_badgeType=${notificationPayload.ios_badgeType}, ios_badgeCount=${notificationPayload.ios_badgeCount}`);
     
-    const resp = await fetch('https://onesignal.com/api/v1/notifications', {
+    const resp = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+        'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
       },
       body: JSON.stringify(notificationPayload),
     });

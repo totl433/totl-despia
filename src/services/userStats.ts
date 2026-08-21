@@ -1,6 +1,15 @@
 import { supabase } from '../lib/supabase';
 import { getFullName } from '../lib/teamNames';
-import { calculateLastGwRank, calculateFormRank, calculateSeasonRank } from '../lib/helpers';
+import { computeTrophyCabinetCounts, type GwPointsRow } from '../lib/trophyCabinetStats';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
+import { fetchAllGwPoints, fetchOverallOcp } from '../lib/fetchAllGwPoints';
+import { resolveLeaderboardSeasonKey } from '../lib/leaderboardMonths';
+
+/** PostgREST default page size is 1000 — must page or later GWs vanish from stats charts. */
+async function fetchAllAppGwPoints(seasonId?: string | null): Promise<GwPointsRow[]> {
+  return fetchAllGwPoints('asc', { seasonId: seasonId ?? null });
+}
 
 export interface UserStatsData {
   // Last completed GW percentile
@@ -58,12 +67,11 @@ export interface UserStatsData {
     averagePoints: number;
   }> | null;
   
-  // Trophy Cabinet - counts of top finishes
+  // Trophy Cabinet — Gameweek / Monthly / Season (app Stats parity; not form windows)
   trophyCabinet: {
-    lastGw: number;
-    form5: number;
-    form10: number;
-    overall: number;
+    gameweek: number;
+    monthly: number;
+    season: number;
   } | null;
 }
 
@@ -151,28 +159,35 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
   };
 
   try {
-    // 1. Get last completed GW
-    const { data: lastGwData } = await supabase
-      .from('app_gw_results')
+    const seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+    const tables = getSeasonTables(seasonCtx);
+    const seasonId = seasonCtx.useSeasonStack ? seasonCtx.seasonId : null;
+
+    // 1. Get last completed GW (stack-scoped results)
+    let lastGwQ = (supabase as any)
+      .from(tables.results)
       .select('gw')
       .order('gw', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    lastGwQ = withSeasonId(lastGwQ, seasonCtx);
+    const { data: lastGwData } = await lastGwQ.maybeSingle();
 
     const lastCompletedGw = lastGwData?.gw || null;
     stats.lastCompletedGw = lastCompletedGw;
 
     if (!lastCompletedGw) {
-      // Not enough data
+      // Not enough data (e.g. 26/27 pre-results — empty stats, not last year's)
       return stats;
     }
 
     // 2. Last completed GW percentile
     if (lastCompletedGw) {
-      const { data: gwPoints } = await supabase
-        .from('app_v_gw_points')
+      let gwPtsQ = (supabase as any)
+        .from(tables.gwPoints)
         .select('user_id, points')
         .eq('gw', lastCompletedGw);
+      if (seasonId) gwPtsQ = gwPtsQ.eq('season_id', seasonId);
+      const { data: gwPoints } = await gwPtsQ;
 
       if (gwPoints && gwPoints.length > 0) {
         const allPoints = gwPoints.map((p: any) => p.points || 0);
@@ -181,67 +196,35 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       }
     }
 
-    // 3. Overall percentile (from OCP)
-    const { data: overallStandings } = await supabase
-      .from('v_ocp_overall')
-      .select('user_id, ocp')
-      .order('ocp', { ascending: false });
+    // 3. Overall percentile (season OCP on Pile B)
+    const overallStandings = await fetchOverallOcp({ seasonId });
 
     if (overallStandings && overallStandings.length > 0) {
-      const allOcp = overallStandings.map((s: any) => s.ocp || 0);
-      const userOcp = overallStandings.find((s: any) => s.user_id === userId)?.ocp || 0;
-      // Invert percentile - higher OCP should mean higher percentile
+      const allOcp = overallStandings.map((s) => s.ocp || 0);
+      const userOcp = overallStandings.find((s) => s.user_id === userId)?.ocp || 0;
       stats.overallPercentile = calculatePercentile(userOcp, allOcp);
     }
 
-    // 4. Correct prediction rate
-    // Get all user picks and results
-    // Try both app_picks and picks tables to ensure we get all predictions
-    const [appPicksResult, picksResult] = await Promise.all([
-      supabase
-        .from('app_picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId),
-      supabase
-        .from('picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId)
-    ]);
+    // 4. Correct prediction rate — stack picks + results only
+    let userPicksQ = (supabase as any)
+      .from(tables.picks)
+      .select('gw, fixture_index, pick')
+      .eq('user_id', userId);
+    userPicksQ = withSeasonId(userPicksQ, seasonCtx);
+    const userPicksResult = await userPicksQ;
 
-    // Combine picks from both tables (app_picks takes precedence if duplicate)
-    const picksMap = new Map<string, { gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>();
-    
-    if (picksResult.data) {
-      picksResult.data.forEach((pick: any) => {
-        const key = `${pick.gw}:${pick.fixture_index}`;
-        picksMap.set(key, pick);
-      });
-    }
-    
-    if (appPicksResult.data) {
-      appPicksResult.data.forEach((pick: any) => {
-        const key = `${pick.gw}:${pick.fixture_index}`;
-        picksMap.set(key, pick); // app_picks overwrites picks if duplicate
-      });
-    }
-    
-    const allPicks = Array.from(picksMap.values());
+    const allPicks = (userPicksResult.data ?? []) as Array<{
+      gw: number;
+      fixture_index: number;
+      pick: 'H' | 'D' | 'A';
+    }>;
 
-    console.log('[userStats] Picks from app_picks:', appPicksResult.data?.length || 0);
-    console.log('[userStats] Picks from picks table:', picksResult.data?.length || 0);
-    console.log('[userStats] Total unique picks (combined):', allPicks.length);
-    if (appPicksResult.error) {
-      console.error('[userStats] Error fetching app_picks:', appPicksResult.error);
-    }
-    if (picksResult.error && picksResult.error.code !== 'PGRST116') {
-      console.error('[userStats] Error fetching picks:', picksResult.error);
-    }
-
-    const { data: allResults, error: resultsError } = await supabase
-      .from('app_gw_results')
+    let resultsQ = (supabase as any)
+      .from(tables.results)
       .select('gw, fixture_index, result');
+    resultsQ = withSeasonId(resultsQ, seasonCtx);
+    const { data: allResults, error: resultsError } = await resultsQ;
 
-    console.log('[userStats] Total results fetched:', allResults?.length || 0);
     if (resultsError) {
       console.error('[userStats] Error fetching results:', resultsError);
     }
@@ -273,11 +256,11 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
     }
 
     // 5. Best streak (top 25%) and average points per week
-    const { data: userGwPoints } = await supabase
-      .from('app_v_gw_points')
-      .select('gw, points')
-      .eq('user_id', userId)
-      .order('gw', { ascending: true });
+    const allUsersGwPoints = await fetchAllAppGwPoints(seasonId);
+    const userGwPoints = allUsersGwPoints
+      .filter((p) => String(p.user_id) === String(userId))
+      .map((p) => ({ gw: p.gw, points: p.points }))
+      .sort((a, b) => a.gw - b.gw);
 
     if (userGwPoints && userGwPoints.length > 0) {
       // Calculate average points per week
@@ -286,41 +269,35 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
 
       // Calculate best streak (top 25%)
       const completedGws = new Set<number>();
-      const { data: completedGwResults } = await supabase
-        .from('app_gw_results')
-        .select('gw')
-        .order('gw', { ascending: true });
-
-      completedGwResults?.forEach((r: any) => {
-        completedGws.add(r.gw);
+      (allResults ?? []).forEach((r: any) => {
+        if (r.gw) completedGws.add(r.gw);
       });
-
-      // Calculate percentile for each GW (fetch all GW points once)
-      const { data: allGwPoints } = await supabase
-        .from('app_v_gw_points')
-        .select('gw, user_id, points')
-        .in('gw', Array.from(completedGws));
+      // Fallback: any GW with points rows counts as complete for streak
+      if (completedGws.size === 0) {
+        allUsersGwPoints.forEach((p) => completedGws.add(p.gw));
+      }
 
       const gwPercentiles = new Map<number, number>();
       const gwPointsMap = new Map<number, Array<{ user_id: string; points: number }>>();
 
-      // Group points by GW
-      if (allGwPoints) {
-        allGwPoints.forEach((p: any) => {
-          const gw = p.gw;
-          if (!gwPointsMap.has(gw)) {
-            gwPointsMap.set(gw, []);
-          }
-          gwPointsMap.get(gw)!.push({ user_id: p.user_id, points: p.points || 0 });
-        });
-      }
+      // Group points by GW (all pages)
+      allUsersGwPoints.forEach((p) => {
+        if (!completedGws.has(p.gw) && typeof lastCompletedGw === 'number' && p.gw > lastCompletedGw) {
+          return;
+        }
+        const gw = p.gw;
+        if (!gwPointsMap.has(gw)) {
+          gwPointsMap.set(gw, []);
+        }
+        gwPointsMap.get(gw)!.push({ user_id: p.user_id, points: p.points || 0 });
+      });
 
-      // Calculate percentile for each GW
+      // Calculate percentile for each completed GW
       for (const gw of Array.from(completedGws).sort((a, b) => a - b)) {
         const gwPoints = gwPointsMap.get(gw);
         if (gwPoints && gwPoints.length > 0) {
-          const allPoints = gwPoints.map(p => p.points);
-          const userPoints = gwPoints.find(p => p.user_id === userId)?.points || 0;
+          const allPoints = gwPoints.map((p) => p.points);
+          const userPoints = gwPoints.find((p) => p.user_id === userId)?.points || 0;
           const percentile = calculatePercentile(userPoints, allPoints);
           gwPercentiles.set(gw, percentile);
         }
@@ -372,6 +349,7 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       
       userGwPoints.forEach((p: any) => {
         const points = p.points || 0;
+        if (typeof lastCompletedGw === 'number' && p.gw > lastCompletedGw) return;
         if (points > bestGw.points) {
           bestGw = { points, gw: p.gw };
         }
@@ -387,20 +365,23 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         stats.lowestSingleGw = lowestGw;
       }
 
-      // Calculate weekly Par data (user points vs average for each week)
+      // Calculate weekly Par data (user points vs field average for each completed week)
       const weeklyParData: Array<{ gw: number; userPoints: number; averagePoints: number }> = [];
       
-      // Calculate average for each GW using the already-fetched allGwPoints
       const gwAverages = new Map<number, number>();
-      
       gwPointsMap.forEach((points, gw) => {
+        if (points.length === 0) return;
         const average = points.reduce((sum, p) => sum + p.points, 0) / points.length;
         gwAverages.set(gw, average);
       });
 
-      // Build weekly Par data for user's GWs
       userGwPoints.forEach((p: any) => {
         const gw = p.gw;
+        if (typeof lastCompletedGw === 'number' && gw > lastCompletedGw) return;
+        // Prefer GWs with a settled result set; still include if user has points and field avg exists
+        if (completedGws.size > 0 && !completedGws.has(gw) && typeof lastCompletedGw === 'number' && gw > lastCompletedGw) {
+          return;
+        }
         const userPoints = p.points || 0;
         const averagePoints = gwAverages.get(gw);
         
@@ -417,113 +398,37 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
       weeklyParData.sort((a, b) => a.gw - b.gw);
       
       stats.weeklyParData = weeklyParData.length > 0 ? weeklyParData : null;
+      console.log(
+        '[userStats] Weekly par GWs:',
+        weeklyParData.length
+          ? `${weeklyParData[0]!.gw}–${weeklyParData[weeklyParData.length - 1]!.gw} (${weeklyParData.length} bars)`
+          : 'none'
+      );
 
-      // Calculate trophy counts
-      let trophyCabinet = {
-        lastGw: 0,
-        form5: 0,
-        form10: 0,
-        overall: 0,
-      };
-
-      // Reuse completedGwResults that was already fetched above
-      if (completedGwResults && allGwPoints) {
-        console.log('[userStats] Calculating trophy cabinet...');
-        const completedGwsArray = [...new Set(completedGwResults.map((r: any) => r.gw))].sort((a, b) => a - b);
-        
-        // Fetch all GW points for all users (needed for ranking calculations)
-        const { data: allUsersGwPoints } = await supabase
-          .from('app_v_gw_points')
-          .select('user_id, gw, points')
-          .order('gw', { ascending: true });
-        
-        // Fetch overall OCP data (needed for overall ranking)
-        const { data: allOverallData } = await supabase
-          .from('app_v_ocp_overall')
-          .select('user_id, name, ocp');
-        
-        completedGwsArray.forEach((gw) => {
-          // Last GW trophy
-          const lastGwRank = calculateLastGwRank(userId, gw, allUsersGwPoints || []);
-          if (lastGwRank && lastGwRank.rank === 1) {
-            trophyCabinet.lastGw++;
+      // Trophy cabinet (Gameweek / Monthly / Season — same product rules as mobile app Stats)
+      try {
+        const lc = typeof lastCompletedGw === 'number' ? lastCompletedGw : 0;
+        stats.trophyCabinet = await computeTrophyCabinetCounts(
+          userId,
+          allUsersGwPoints,
+          lc,
+          {
+            seasonKey: resolveLeaderboardSeasonKey({
+              seasonLabel: seasonCtx.seasonLabel,
+              useSeasonStack: seasonCtx.useSeasonStack,
+            }),
           }
-          
-          // 5-Week Form trophy (only if user has 5+ GWs completed)
-          if (gw >= 5) {
-            const form5Rank = calculateFormRank(
-              userId,
-              gw - 4,
-              gw,
-              allUsersGwPoints || [],
-              allOverallData || []
-            );
-            if (form5Rank && form5Rank.rank === 1) {
-              trophyCabinet.form5++;
-            }
-          }
-          
-          // 10-Week Form trophy (only if user has 10+ GWs completed)
-          if (gw >= 10) {
-            const form10Rank = calculateFormRank(
-              userId,
-              gw - 9,
-              gw,
-              allUsersGwPoints || [],
-              allOverallData || []
-            );
-            if (form10Rank && form10Rank.rank === 1) {
-              trophyCabinet.form10++;
-            }
-          }
-          
-          // Overall trophy - calculate overall ranking at this GW point
-          // Need to calculate cumulative OCP up to this GW for all users
-          // Get all unique user IDs who have played up to this GW
-          const usersUpToGw = new Set<string>();
-          (allUsersGwPoints || []).forEach((p: any) => {
-            if (p.gw <= gw) {
-              usersUpToGw.add(p.user_id);
-            }
-          });
-          
-          // Calculate cumulative points for each user up to this GW
-          const overallAtGw = Array.from(usersUpToGw).map((uid: string) => {
-            const userPointsUpToGw = (allUsersGwPoints || [])
-              .filter((p: any) => p.user_id === uid && p.gw <= gw)
-              .reduce((sum: number, p: any) => sum + (p.points || 0), 0);
-            
-            // Get user name from allOverallData if available
-            const userData = (allOverallData || []).find((u: any) => u.user_id === uid);
-            return {
-              user_id: uid,
-              name: userData?.name || null,
-              ocp: userPointsUpToGw
-            };
-          });
-          
-          const overallRank = calculateSeasonRank(userId, overallAtGw);
-          if (overallRank && overallRank.rank === 1) {
-            trophyCabinet.overall++;
-          }
-        });
-        
-        console.log('[userStats] Trophy cabinet calculated:', trophyCabinet);
-      } else {
-        console.log('[userStats] Skipping trophy calculation - missing data:', {
-          hasCompletedGwResults: !!completedGwResults,
-          hasAllGwPoints: !!allGwPoints,
-        });
+        );
+      } catch (trophyErr) {
+        console.error('[userStats] Trophy cabinet failed:', trophyErr);
+        stats.trophyCabinet = { gameweek: 0, monthly: 0, season: 0 };
       }
-
-      stats.trophyCabinet = trophyCabinet;
     } else {
       // User has no GW points, initialize trophy cabinet with zeros
       stats.trophyCabinet = {
-        lastGw: 0,
-        form5: 0,
-        form10: 0,
-        overall: 0,
+        gameweek: 0,
+        monthly: 0,
+        season: 0,
       };
     }
 
@@ -540,25 +445,19 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         const uniqueGws = Array.from(userPickGwFixtures).map((key: string) => parseInt(key.split(':')[0]));
         const gwSet = new Set(uniqueGws);
         
-        // Fetch all picks from BOTH tables for those fixtures (same as we do for user picks)
-        const [allUsersPicksApp, allUsersPicksLegacy] = await Promise.all([
-          supabase
-            .from('app_picks')
-            .select('gw, fixture_index, pick')
-            .in('gw', Array.from(gwSet)),
-          supabase
-            .from('picks')
-            .select('gw, fixture_index, pick')
-            .in('gw', Array.from(gwSet))
-        ]);
+        // Stack-scoped community picks for those GWs
+        let allUsersPicksQ = (supabase as any)
+          .from(tables.picks)
+          .select('gw, fixture_index, pick')
+          .in('gw', Array.from(gwSet));
+        allUsersPicksQ = withSeasonId(allUsersPicksQ, seasonCtx);
+        const { data: allUsersPicksApp } = await allUsersPicksQ;
 
         // Group picks by fixture to count popularity
-        // We need to count ALL picks from ALL users, not overwrite duplicates
         const pickCounts = new Map<string, Map<'H' | 'D' | 'A', number>>();
         
-        // Count picks from legacy table first
-        if (allUsersPicksLegacy.data) {
-          allUsersPicksLegacy.data.forEach((pick: any) => {
+        if (allUsersPicksApp) {
+          allUsersPicksApp.forEach((pick: any) => {
             const key = `${pick.gw}:${pick.fixture_index}`;
             if (userPickGwFixtures.has(key)) {
               if (!pickCounts.has(key)) {
@@ -569,24 +468,6 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
             }
           });
         }
-        
-        // Count picks from app_picks table (adds to existing counts)
-        if (allUsersPicksApp.data) {
-          allUsersPicksApp.data.forEach((pick: any) => {
-            const key = `${pick.gw}:${pick.fixture_index}`;
-            if (userPickGwFixtures.has(key)) {
-              if (!pickCounts.has(key)) {
-                pickCounts.set(key, new Map());
-              }
-              const counts = pickCounts.get(key)!;
-              // If this exact user already has a pick counted from legacy, skip to avoid double counting
-              // Actually, we should count all picks regardless - different users might have picks in different tables
-              // But we need to avoid counting the same user's pick twice. Let's just count all for now.
-              counts.set(pick.pick, (counts.get(pick.pick) || 0) + 1);
-            }
-          });
-        }
-
         // Calculate total unique picks counted
         let totalPicksCounted = 0;
         pickCounts.forEach((counts) => {
@@ -673,10 +554,12 @@ export async function fetchUserStats(userId: string): Promise<UserStatsData> {
         }
       });
 
-      // Get fixtures to map picks to teams
-      const { data: allFixtures } = await supabase
-        .from('app_fixtures')
+      // Get fixtures to map picks to teams (stack-scoped)
+      let fixturesQ = (supabase as any)
+        .from(tables.fixtures)
         .select('gw, fixture_index, home_code, away_code, home_team, away_team, home_name, away_name');
+      fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+      const { data: allFixtures } = await fixturesQ;
 
       if (allFixtures) {
         const fixturesMap = new Map<string, any>();

@@ -4,9 +4,17 @@
     "details": [
       {
         "appID": "X642BA28CM.com.despia.totlnative",
-        "paths": ["*"]
+        "paths": [
+          "/league/*",
+          "/predictions",
+          "/predictions/",
+          "/leagues",
+          "/leagues/",
+          "/join-league/*",
+          "/join/*",
+          "/branded-leaderboards/*"
+        ]
       }
     ]
   }
 }
-

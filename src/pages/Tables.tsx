@@ -12,6 +12,8 @@ import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { PageHeader } from "../components/PageHeader";
 import { fetchUserLeagues } from "../services/userLeagues";
 import CreateJoinTray from "../components/CreateJoinTray";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables, isNewSeasonFresh, withSeasonId } from "../lib/seasonStack";
 
 /**
  * Tables.tsx - Mini Leagues Page
@@ -325,8 +327,24 @@ export default function TablesPage() {
     // If cache is stale, render immediately from cache and refresh in background
     (async () => {
       try {
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: dbCurrentGwFromHook ?? 1,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        const freshSeason = isNewSeasonFresh(seasonCtx);
+
         // Step 1: Get current GW (use hook value, fallback to fixtures if hook not loaded)
-        const fixturesResult = await supabase.from("app_fixtures").select("gw").order("gw", { ascending: false }).limit(1);
+        let maxGwQ = (supabase as any)
+          .from(tables.fixtures)
+          .select('gw')
+          .order('gw', { ascending: false })
+          .limit(1);
+        maxGwQ = withSeasonId(maxGwQ, seasonCtx);
+        const fixturesResult = await maxGwQ;
         
         if (!alive) return;
 
@@ -334,6 +352,7 @@ export default function TablesPage() {
         const fetchedCurrentGw = fixturesList.length ? Math.max(...fixturesList.map((f) => f.gw)) : 1;
         // Use hook value if available, otherwise fallback to fixtures
         const dbCurrentGw = dbCurrentGwFromHook ?? (() => {
+          if (seasonCtx.useSeasonStack) return seasonCtx.currentGw ?? fetchedCurrentGw;
           const metaCache = getCached<{ current_gw: number }>('app_meta:current_gw');
           return metaCache?.current_gw ?? fetchedCurrentGw;
         })();
@@ -374,8 +393,18 @@ export default function TablesPage() {
           allMembersWithUsersResult
         ] = await Promise.all([
           supabase.from("league_members").select("league_id,user_id").in("league_id", leagueIds).limit(10000),
-          supabase.from("app_gw_results").select("gw,fixture_index,result"),
-          supabase.from("app_fixtures").select("gw,kickoff_time").order("gw", { ascending: true }).order("kickoff_time", { ascending: true }),
+          (() => {
+            let q = (supabase as any).from(tables.results).select('gw,fixture_index,result');
+            return withSeasonId(q, seasonCtx);
+          })(),
+          (() => {
+            let q = (supabase as any)
+              .from(tables.fixtures)
+              .select('gw,kickoff_time')
+              .order('gw', { ascending: true })
+              .order('kickoff_time', { ascending: true });
+            return withSeasonId(q, seasonCtx);
+          })(),
           supabase.from("league_members").select("league_id,user_id, users(id, name)").in("league_id", leagueIds).limit(10000)
         ]);
         
@@ -408,11 +437,21 @@ export default function TablesPage() {
         // CRITICAL: Use gwToDisplay so chips show green for users who submitted for the GW they're viewing
         const [submissionsResult] = await Promise.all([
           allMemberIds.length > 0
-            ? supabase.from("app_gw_submissions").select("user_id").eq("gw", gwToDisplay).in("user_id", allMemberIds).limit(10000)
+            ? (() => {
+                let q = (supabase as any)
+                  .from(tables.submissions)
+                  .select("user_id")
+                  .eq("gw", gwToDisplay)
+                  .in("user_id", allMemberIds)
+                  .limit(10000);
+                return withSeasonId(q, seasonCtx);
+              })()
             : Promise.resolve({ data: [], error: null }),
         ]);
         
-        const submittedUserIds = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
+        const submittedUserIds = new Set<string>(
+          (submissionsResult.data ?? []).map((s: any) => String(s.user_id))
+        );
         setSubmittedUserIdsSet(submittedUserIds);
         
         // Calculate submission status for each league
@@ -504,11 +543,19 @@ export default function TablesPage() {
           
           // Fetch picks - Supabase defaults to 1000 rows max
           // Use pagination if we might exceed that limit
-          const result = await supabase
-            .from("app_picks")
-            .select("user_id,gw,fixture_index,pick")
-            .in("user_id", memberIds.map(m => m.id))
-            .in("gw", relevantGws);
+          const result = await (() => {
+            let q = (supabase as any)
+              .from(tables.picks)
+              .select("user_id,gw,fixture_index,pick")
+              .in("user_id", memberIds.map(m => m.id))
+              .in("gw", freshSeason && relevantGws.length === 0 ? [-1] : relevantGws);
+            // fresh season with no results: force empty
+            if (freshSeason && relevantGws.length === 0) {
+              return Promise.resolve({ data: [], error: null });
+            }
+            q = withSeasonId(q, seasonCtx);
+            return q;
+          })();
           
           if (result.error) {
             console.error(`[Tables] Error fetching picks for ${league.name}:`, result.error);
@@ -546,7 +593,9 @@ export default function TablesPage() {
         // Store league start GW map
         setLeagueStartGwMap(leagueStartGwMap);
 
-        const submittedUserIdsSet = new Set((submissionsResult.data ?? []).map((s: any) => s.user_id));
+        const submittedUserIdsSet = new Set<string>(
+          (submissionsResult.data ?? []).map((s: any) => String(s.user_id))
+        );
         
         // Process league data
         const leagueDataMap: Record<string, LeagueData> = {};

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../hooks/useTheme';
+import { getAppScrollTop, onAppScroll } from '../lib/appScroll';
 
 export default function ScrollLogo() {
   const { isDark } = useTheme();
@@ -22,7 +23,8 @@ export default function ScrollLogo() {
     
     const handleScroll = () => {
       rafId = requestAnimationFrame(() => {
-        const scrollY = window.scrollY;
+        // Mobile shell scrolls inside .app-shell-scroll, not the window
+        const scrollY = getAppScrollTop();
         
         if (containerRef.current && logoRef.current) {
           // Calculate styles directly without state updates
@@ -91,9 +93,9 @@ export default function ScrollLogo() {
       });
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    const removeScroll = onAppScroll(handleScroll, { passive: true });
     return () => {
-      window.removeEventListener('scroll', handleScroll);
+      removeScroll();
       cancelAnimationFrame(rafId);
     };
   }, []); // No dependencies needed as we use refs

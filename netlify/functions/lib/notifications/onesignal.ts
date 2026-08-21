@@ -5,11 +5,25 @@
  * Sets grouping fields (collapse_id, thread_id, android_group) on every send.
  */
 
+import { createHash } from 'node:crypto';
+
 import type { NotificationCatalogEntry } from './catalog';
 import { formatCollapseId, formatThreadId } from './catalog';
 import type { OneSignalPayload } from './types';
+import { buildOneSignalAuthorization } from '../onesignalAuth';
 
-const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
+const ONESIGNAL_API_URL = 'https://api.onesignal.com/notifications';
+const ONESIGNAL_COLLAPSE_ID_MAX_BYTES = 64;
+
+function normalizeCollapseId(collapseId: string | null): string | null {
+  if (!collapseId || Buffer.byteLength(collapseId, 'utf8') <= ONESIGNAL_COLLAPSE_ID_MAX_BYTES) {
+    return collapseId;
+  }
+
+  // OneSignal rejects the entire notification when collapse_id exceeds 64
+  // bytes. Hash oversized event keys so they remain unique and API-safe.
+  return `totl:${createHash('sha256').update(collapseId).digest('hex').slice(0, 59)}`;
+}
 
 /**
  * Build a OneSignal notification payload
@@ -36,7 +50,9 @@ export function buildPayload(
   const { title, body, externalUserIds, playerIds, data, url, groupingParams = {}, badgeCount } = options;
   
   // Build grouping fields from catalog templates
-  const collapseId = formatCollapseId(catalogEntry.notification_key, groupingParams);
+  const collapseId = normalizeCollapseId(
+    formatCollapseId(catalogEntry.notification_key, groupingParams)
+  );
   const threadId = formatThreadId(catalogEntry.notification_key, groupingParams);
   const androidGroup = catalogEntry.onesignal.android_group_format;
   
@@ -46,10 +62,10 @@ export function buildPayload(
     contents: { en: body },
   };
   
-  // Use player_ids directly (simpler, more reliable)
+  // Stored player IDs are OneSignal subscription IDs in SDK v5+.
   // This avoids the external_user_id mapping layer that can break
   if (playerIds && playerIds.length > 0) {
-    payload.include_player_ids = playerIds;
+    payload.include_subscription_ids = playerIds;
   } else if (externalUserIds && externalUserIds.length > 0) {
     payload.include_external_user_ids = externalUserIds;
   }
@@ -71,17 +87,21 @@ export function buildPayload(
     payload.ios_badgeCount = badgeCount;
   }
   
-  // Add data payload
-  if (data) {
-    payload.data = data;
+  // OneSignal's top-level `url` is a Launch URL: on iOS it calls openURL and
+  // opens Safari. Keep destinations in Additional Data so the app's click
+  // listener owns navigation without a browser bounce.
+  const destinationUrl = typeof url === 'string' ? url.trim() : '';
+  const additionalData = data ? { ...data } : {};
+  if (destinationUrl) {
+    if (typeof additionalData.url !== 'string' || !additionalData.url.trim()) {
+      additionalData.url = destinationUrl;
+    }
+    if (typeof additionalData.navigateTo !== 'string' || !additionalData.navigateTo.trim()) {
+      additionalData.navigateTo = destinationUrl;
+    }
   }
-  
-  // Add deep link URL
-  if (url) {
-    // For Despia (native OneSignal SDK), use the top-level `url` field.
-    // This is what the native SDK uses to open an external URL on notification tap.
-    // (Do not set both `url` and `web_url`.)
-    payload.url = url;
+  if (Object.keys(additionalData).length > 0) {
+    payload.data = additionalData;
   }
   
   return payload;
@@ -114,7 +134,7 @@ export async function sendNotification(
   console.log(`[onesignal] App ID: ${payload.app_id || 'not set'}`);
   
   try {
-    const authHeader = `Basic ${restKey}`;
+    const authHeader = buildOneSignalAuthorization(restKey);
     console.log(`[onesignal] Authorization header length: ${authHeader.length}`);
     
     const response = await fetch(ONESIGNAL_API_URL, {
@@ -138,20 +158,26 @@ export async function sendNotification(
       };
     }
     
-    // Check for errors in response body
-    if (body.errors && Array.isArray(body.errors) && body.errors.length > 0) {
+    // Current API responses return a notification ID but no recipient count.
+    // A 200 without an ID means no message was created.
+    if (!body.id) {
       return {
         success: false,
         error: {
-          errors: body.errors,
+          errors: body.errors ?? 'OneSignal did not create a notification',
         },
       };
     }
+
+    const targetCount =
+      payload.include_subscription_ids?.length ||
+      payload.include_external_user_ids?.length ||
+      0;
     
     return {
       success: true,
       notification_id: body.id,
-      recipients: body.recipients || 0,
+      recipients: typeof body.recipients === 'number' ? body.recipients : targetCount,
     };
   } catch (err: any) {
     return {
@@ -232,10 +258,10 @@ export function createPayloadSummary(payload: OneSignalPayload): Record<string, 
     title: payload.headings.en,
     body: payload.contents.en.slice(0, 100),
     external_user_ids_count: payload.include_external_user_ids?.length || 0,
-    player_ids_count: payload.include_player_ids?.length || 0,
+    subscription_ids_count: payload.include_subscription_ids?.length || 0,
     target_type: payload.include_external_user_ids ? 'external_user_ids' : 'player_ids',
     has_data: !!payload.data,
-    has_url: !!payload.url,
+    has_url: typeof payload.data?.url === 'string' && payload.data.url.length > 0,
     collapse_id: payload.collapse_id,
     thread_id: payload.thread_id,
     android_group: payload.android_group,

@@ -14,6 +14,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification, formatEventId } from './lib/notifications';
+import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 /**
  * Calculate total unread message count across all leagues for a user
@@ -136,24 +137,6 @@ export const handler: Handler = async (event) => {
     console.error('[notifyLeagueMessageV2] Missing Supabase env vars');
     return json(500, { error: 'Missing Supabase environment variables' });
   }
-
-  // Get base URL for constructing full deep link URLs (OneSignal requires full URLs for iOS)
-  const getBaseUrl = () => {
-    // Try to extract from event headers
-    if (event.headers.host) {
-      const protocol = event.headers['x-forwarded-proto'] || 'https';
-      return `${protocol}://${event.headers.host}`;
-    }
-    // Fallback to environment variable
-    if (process.env.URL || process.env.SITE_URL) {
-      return (process.env.URL || process.env.SITE_URL || '').trim();
-    }
-    // Default fallback (only for local dev - shouldn't happen in production)
-    const defaultUrl = 'https://playtotl.com';
-    console.warn(`[notifyLeagueMessageV2] Base URL using default fallback: ${defaultUrl}`);
-    return defaultUrl;
-  };
-  const baseUrl = getBaseUrl();
 
   // Parse payload
   let payload: any;
@@ -287,26 +270,10 @@ export const handler: Handler = async (event) => {
   const results: any[] = [];
   
   for (const [groupKey, userIds] of recipientGroups) {
-    const [badgeCountStr, url] = groupKey.split('|');
+    const [badgeCountStr] = groupKey.split('|');
     const badgeCount = parseInt(badgeCountStr, 10) || 1;
     
-    // Ensure URL includes tab=chat and leagueCode in query params for deep link handler
-    // The URL from calculateUnreadCountAndUrl might be /league/{code} or /league/{code}?tab=chat
-    let deepLinkUrl = url;
-    if (!deepLinkUrl.includes('tab=chat')) {
-      deepLinkUrl = deepLinkUrl.includes('?') 
-        ? `${deepLinkUrl}&tab=chat`
-        : `${deepLinkUrl}?tab=chat`;
-    }
-    // Always add leagueCode to query params (needed for deep link handler)
-    deepLinkUrl = deepLinkUrl.includes('?') 
-      ? `${deepLinkUrl}&leagueCode=${leagueCode}`
-      : `${deepLinkUrl}?leagueCode=${leagueCode}`;
-    
-    // Convert relative URL to full URL for iOS (OneSignal requires full URLs for web_url)
-    const fullDeepLinkUrl = deepLinkUrl.startsWith('http') 
-      ? deepLinkUrl 
-      : `${baseUrl}${deepLinkUrl}`;
+    const fullDeepLinkUrl = buildLeaguePublicUrl(leagueCode, 'chat');
     
     const result = await dispatchNotification({
       notification_key: 'chat-message',
@@ -325,6 +292,7 @@ export const handler: Handler = async (event) => {
       url: fullDeepLinkUrl, // Use full URL for notification clicks (iOS needs full URL for web_url)
       grouping_params: {
         league_id: leagueId,
+        message_id: messageId,
       },
       league_id: leagueId, // For mute checking
       badge_count: badgeCount,

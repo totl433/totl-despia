@@ -123,11 +123,10 @@ export interface OneSignalPayload {
   headings: { en: string };
   contents: { en: string };
   data?: Record<string, any>;
-  url?: string;
   
   // Targeting (one of these)
   include_external_user_ids?: string[];
-  include_player_ids?: string[];
+  include_subscription_ids?: string[];
   included_segments?: string[];
   filters?: any[];
   
@@ -157,5 +156,7 @@ export interface PushSubscription {
   is_active: boolean;
   subscribed: boolean;
   platform?: string;
+  updated_at?: string;
+  os_payload?: Record<string, unknown> | null;
 }
 

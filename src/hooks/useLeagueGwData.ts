@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { getCached, setCached, CACHE_TTL } from '../lib/cache';
 import { getGameweekState } from '../lib/gameweekState';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 export type LeagueGwDataLeague = { id: string; name: string; code: string };
 export type LeagueGwDataMember = { id: string; name: string };
@@ -174,11 +176,26 @@ export function useLeagueGwData({
             gw: f.test_gw as number,
           })) ?? [];
       } else {
-        const { data } = await supabase
-          .from('app_fixtures')
-          .select('id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id')
-          .eq('gw', gwForData)
-          .order('fixture_index', { ascending: true });
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: gwForData,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        const { data } = await (() => {
+          let q = (supabase as any)
+            .from(tables.fixtures)
+            .select(
+              'id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id'
+            )
+            .eq('gw', gwForData)
+            .order('fixture_index', { ascending: true });
+          q = withSeasonId(q, seasonCtx);
+          return q;
+        })();
         fx = (data as any[])?.map((f) => f as LeagueGwDataFixture) ?? [];
       }
 
@@ -224,18 +241,35 @@ export function useLeagueGwData({
             submitted_at: s.submitted_at as string | null,
           })) ?? [];
       } else {
-        const { data: regularPicks } = await supabase
-          .from('app_picks')
-          .select('user_id,gw,fixture_index,pick')
-          .eq('gw', gwForData)
-          .in('user_id', memberIds);
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: gwForData,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        const { data: regularPicks } = await (() => {
+          let q = (supabase as any)
+            .from(tables.picks)
+            .select('user_id,gw,fixture_index,pick')
+            .eq('gw', gwForData)
+            .in('user_id', memberIds);
+          q = withSeasonId(q, seasonCtx);
+          return q;
+        })();
         pk = (regularPicks as any[])?.map((p) => p as LeagueGwDataPickRow) ?? [];
 
-        const { data: regularSubs } = await supabase
-          .from('app_gw_submissions')
-          .select('user_id,gw,submitted_at')
-          .eq('gw', gwForData)
-          .in('user_id', memberIds);
+        const { data: regularSubs } = await (() => {
+          let q = (supabase as any)
+            .from(tables.submissions)
+            .select('user_id,gw,submitted_at')
+            .eq('gw', gwForData)
+            .in('user_id', memberIds);
+          q = withSeasonId(q, seasonCtx);
+          return q;
+        })();
         sb = (regularSubs as any[])?.map((s) => s as LeagueGwDataSubmissionRow) ?? [];
       }
 
@@ -244,12 +278,26 @@ export function useLeagueGwData({
       setSubs(sb);
 
       // Results (final results table)
-      const { data: rs } = await supabase
-        .from('app_gw_results')
-        .select('gw,fixture_index,result')
-        .eq('gw', useTestFixtures ? 1 : gwForData);
-      if (!alive) return;
-      setResults((rs as any[])?.map((r) => r as LeagueGwDataResultRow) ?? []);
+      {
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: gwForData,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        const { data: rs } = await (() => {
+          let q = (supabase as any)
+            .from(tables.results)
+            .select('gw,fixture_index,result')
+            .eq('gw', useTestFixtures ? 1 : gwForData);
+          if (!useTestFixtures) q = withSeasonId(q, seasonCtx);
+          return q;
+        })();
+        if (!alive) return;
+        setResults((rs as any[])?.map((r) => r as LeagueGwDataResultRow) ?? []);
+      }
 
       setLoadingGwData(false);
     })();

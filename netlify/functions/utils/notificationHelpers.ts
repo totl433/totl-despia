@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { buildOneSignalAuthorization } from '../lib/onesignalAuth';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -25,7 +26,7 @@ export async function isSubscribed(
   const OS_BASE = 'https://onesignal.com/api/v1';
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
+    'Authorization': buildOneSignalAuthorization(restKey),
   };
 
   try {
@@ -205,7 +206,7 @@ export async function setExternalUserId(
   const OS_BASE = 'https://onesignal.com/api/v1';
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
+    'Authorization': buildOneSignalAuthorization(restKey),
   };
 
   try {
@@ -255,7 +256,7 @@ export async function verifyExternalUserId(
   const OS_BASE = 'https://onesignal.com/api/v1';
   const headers = {
     'Content-Type': 'application/json',
-    'Authorization': `Basic ${restKey}`,
+    'Authorization': buildOneSignalAuthorization(restKey),
   };
 
   try {

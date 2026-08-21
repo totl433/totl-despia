@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { isSubscribed } from './utils/notificationHelpers';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -85,7 +86,7 @@ export const handler: Handler = async (event) => {
 
     const payload = {
       app_id: ONESIGNAL_APP_ID,
-      include_player_ids: validPlayerIds,
+      include_subscription_ids: validPlayerIds,
       headings: { en: title },
       contents: { en: message },
       data: {
@@ -94,11 +95,11 @@ export const handler: Handler = async (event) => {
       },
     };
 
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+    const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+        'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
       },
       body: JSON.stringify(payload),
     });

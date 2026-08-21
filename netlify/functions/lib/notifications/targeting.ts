@@ -7,6 +7,8 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { PushSubscription } from './types';
+import { buildOneSignalAuthorization } from '../onesignalAuth';
+import { dedupeSubscriptionsByDevice } from './subscriptionDedupe';
 
 let supabaseClient: SupabaseClient | null = null;
 
@@ -56,7 +58,7 @@ export async function loadPushSubscriptions(
   
   const { data, error } = await supabase
     .from('push_subscriptions')
-    .select('user_id, player_id, is_active, subscribed, platform')
+    .select('user_id, player_id, is_active, subscribed, platform, updated_at, os_payload')
     .in('user_id', userIds)
     .eq('is_active', true)
     .order('updated_at', { ascending: false });
@@ -77,7 +79,15 @@ export async function loadPushSubscriptions(
     console.log(`[targeting] Total subscriptions (including inactive): ${(allSubs || []).length}`, allSubs?.map(s => ({ user_id: s.user_id?.slice(0, 8), is_active: s.is_active, subscribed: s.subscribed })));
   }
   
-  return data || [];
+  const subscriptions = (data || []) as PushSubscription[];
+  const dedupedSubscriptions = dedupeSubscriptionsByDevice(subscriptions);
+  if (dedupedSubscriptions.length !== subscriptions.length) {
+    console.log(
+      `[targeting] Removed ${subscriptions.length - dedupedSubscriptions.length} stale same-device subscription(s)`
+    );
+  }
+
+  return dedupedSubscriptions;
 }
 
 /**
@@ -164,7 +174,7 @@ export async function verifyAndFilterSubscriptions(
           `https://onesignal.com/api/v1/players/${playerId}?app_id=${ONESIGNAL_APP_ID}`,
           {
             headers: {
-              'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+              'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
             },
           }
         );

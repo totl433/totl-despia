@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 import { filterEligiblePlayerIds, loadUserNotificationPreferences } from './utils/notificationHelpers';
 import { claimIdempotencyLock, updateSendLog } from './lib/notifications/idempotency';
 
@@ -258,7 +259,7 @@ export const handler: Handler = async (event) => {
     // Send notification via OneSignal
     const notificationPayload = {
       app_id: ONESIGNAL_APP_ID,
-      include_player_ids: eligiblePlayerIds,
+      include_subscription_ids: eligiblePlayerIds,
       headings: { en: `Gameweek ${currentGw} Predictions Due Soon!` },
       contents: { en: reminderMessage },
       collapse_id: eventId, // Use same event_id for collapse_id
@@ -275,11 +276,11 @@ export const handler: Handler = async (event) => {
       ios_badgeCount: 1,
     };
 
-    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+    const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${ONESIGNAL_REST_API_KEY}`,
+        'Authorization': buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
       },
       body: JSON.stringify(notificationPayload),
     });

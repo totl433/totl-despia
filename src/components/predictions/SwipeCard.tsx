@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import TeamBadge from '../TeamBadge';
+import { formatKickoffDateUk, formatKickoffTimeUk } from '../../lib/kickoffDisplay';
 
 export interface SwipeCardFixture {
   id: string;
@@ -30,6 +31,7 @@ const STRIPED_TEAMS: Set<string> = new Set([
   'BRE', // brentford
   'BHA', // brighton
   'CRY', // crystal-palace
+  'HUL', // hull
   'NEW', // newcastle
   'SUN', // sunderland
 ]);
@@ -40,6 +42,7 @@ const STRIPED_TEAM_COLORS: Record<string, string> = {
   'BRE': '#E30613', // brentford - red (not white)
   'BHA': '#0057B8', // brighton - blue (not white)
   'CRY': '#1B458F', // crystal-palace - blue (exception: use blue not red)
+  'HUL': '#F18A01', // hull - amber (not black)
   'NEW': '#241F20', // newcastle - black (fallback when away)
   'SUN': '#E03A3E', // sunderland - red (not white)
 };
@@ -59,6 +62,7 @@ function getTeamPatternPath(code: string | null | undefined): string | null {
     'CRY': 'crystal-palace',
     'EVE': 'everton',
     'FUL': 'fulham',
+    'HUL': 'hull',
     'LEE': 'leeds',
     'LIV': 'liverpool',
     'MCI': 'man-city',
@@ -97,18 +101,11 @@ export default function SwipeCard({
   awayForm = null,
 }: SwipeCardProps) {
   const kickoffDate = fixture.kickoff_time
-    ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      })
+    ? formatKickoffDateUk(fixture.kickoff_time) || null
     : null;
 
   const kickoffTime = fixture.kickoff_time
-    ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+    ? formatKickoffTimeUk(fixture.kickoff_time) || null
     : null;
 
   // Helper function to render form dots

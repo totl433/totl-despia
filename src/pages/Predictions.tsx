@@ -12,10 +12,35 @@ import DateHeader from "../components/DateHeader";
 import { useLiveScores } from "../hooks/useLiveScores";
 import { useGameweekState } from "../hooks/useGameweekState";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
+import { useSeasonStack } from "../hooks/useSeasonStack";
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables } from "../lib/seasonStack";
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from "../components/FixtureCard";
 import Confetti from "react-confetti";
 import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
+import { resolveTeamFormsAndPositions } from "../lib/teamFormStandings";
+import { formatKickoffDateUk, formatKickoffTimeUk } from "../lib/kickoffDisplay";
 
+function seasonTablesNow() {
+  return getSeasonTables(getActiveSeasonCtx() ?? { useSeasonStack: false });
+}
+
+function predictionsCacheKey(userId: string, gw: number): string {
+  const ctx = getActiveSeasonCtx();
+  const seasonKey = ctx?.useSeasonStack ? (ctx.seasonId ?? 'stack') : 'legacy';
+  return `predictions:v2:${seasonKey}:${userId}:${gw}`;
+}
+
+/** Apply season_id filter when Pile B is active (typed loosely for PostgREST builders). */
+function withSeasonFilter(q: any): any {
+  const ctx = getActiveSeasonCtx();
+  if (ctx?.useSeasonStack && ctx.seasonId) return q.eq("season_id", ctx.seasonId);
+  return q;
+}
+
+async function seasonMaybeSingle(q: any): Promise<{ data: any; error: any }> {
+  return await withSeasonFilter(q).maybeSingle();
+}
 // Generate a color from a string (team name or code)
 function stringToColor(str: string): string {
  let hash = 0;
@@ -71,9 +96,12 @@ const TEAM_COLORS: Record<string, { primary: string; secondary: string }> = {
  BRE: { primary: "#E30613", secondary: "#FBB800" },
  BHA: { primary: "#0057B8", secondary: "#FFCD00" },
  CHE: { primary: "#034694", secondary: "#034694" },
+ COV: { primary: "#059DD9", secondary: "#059DD9" },
  CRY: { primary: "#1B458F", secondary: "#C4122E" },
  EVE: { primary: "#003399", secondary: "#003399" },
  FUL: { primary: "#FFFFFF", secondary: "#000000" },
+ HUL: { primary: "#F18A01", secondary: "#000000" },
+ IPS: { primary: "#3A64A3", secondary: "#3A64A3" },
  LIV: { primary: "#C8102E", secondary: "#00B2A9" },
  MCI: { primary: "#6CABDD", secondary: "#1C2C5B" },
  MUN: { primary: "#DA291C", secondary: "#FBE122" },
@@ -153,6 +181,8 @@ export default function PredictionsPage() {
  // Use centralized hook for display GW (single source of truth)
  // This subscribes to real-time updates when user clicks "MOVE ON GW" button
  const { displayGw } = useDisplayGameweek();
+ // Hydrate active season ctx so getActiveSeasonCtx works in this screen
+ const seasonStack = useSeasonStack();
 
  const [currentGw, setCurrentGw] = useState<number | null>(null);
  const [currentIndex, setCurrentIndex] = useState(0);
@@ -190,31 +220,19 @@ export default function PredictionsPage() {
  const [results, setResults] = useState<Map<number, "H" | "D" | "A">>(initialState.results);
  const [teamForms, setTeamForms] = useState<Map<string, string>>(new Map()); // Map<teamCode, formString>
  
- // Fetch team forms from database (fetched once per GW when published)
+ // Fetch team forms / ranks (season-aware: blank form pre-season; ranks from results after games)
  const fetchTeamForms = async (gw: number) => {
  try {
- const { data, error } = await supabase
- .from("app_team_forms")
- .select("team_code, form")
- .eq("gw", gw);
-
- if (error) {
- return;
- }
-
- if (data && data.length > 0) {
+ const { teamForms: forms } = await resolveTeamFormsAndPositions(
+   supabase as any,
+   getActiveSeasonCtx(),
+   gw
+ );
  const formsMap = new Map<string, string>();
- data.forEach((row: { team_code: string; form: string }) => {
- const teamCode = row.team_code.toUpperCase().trim();
- const form = row.form.trim().toUpperCase();
- if (teamCode && form) {
- formsMap.set(teamCode, form);
- }
+ Object.entries(forms).forEach(([code, form]) => {
+   if (code && form) formsMap.set(code, form);
  });
  setTeamForms(formsMap);
- } else {
- setTeamForms(new Map()); // Clear forms if none found
- }
  } catch (error) {
  setTeamForms(new Map()); // Clear on error
  }
@@ -637,6 +655,11 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  let alive = true;
  (async () => {
  try {
+ // Resolve dual-stack BEFORE any fixture/pick queries (avoids app_fixtures GW1 = 25/26).
+ if (user?.id) {
+   await ensureActiveSeasonCtx(supabase as any, user.id);
+ }
+
  // Use displayGw from useDisplayGameweek hook (single source of truth)
  // This automatically subscribes to real-time updates when user clicks "MOVE ON GW" button
  const gwToDisplay = displayGw;
@@ -670,7 +693,7 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  setCurrentGw(gwToDisplay);
 
  // 1. Load from cache immediately (if available)
- const cacheKey = `predictions:${user?.id}:${gwToDisplay}`;
+ const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
  let loadedFromCache = false;
  
  try {
@@ -718,11 +741,13 @@ const [_submittedMemberIds, setSubmittedMemberIds] = useState<Set<string>>(new S
  // Check cached.picks, not picks.size (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if (cached.submitted && user?.id && (!cached.picks || cached.picks.length === 0) && cached.fixtures.length > 0) {
-   const { data: pk, error: pkErr } = await supabase
-     .from("app_picks")
-     .select("gw,fixture_index,pick")
-     .eq("gw", gwToDisplay)
-     .eq("user_id", user.id);
+   const { data: pk, error: pkErr } = await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().picks)
+       .select("gw,fixture_index,pick")
+       .eq("gw", gwToDisplay)
+       .eq("user_id", user.id)
+   );
    
    if (!pkErr && pk && pk.length > 0) {
      const currentFixtureIndices = new Set(cached.fixtures.map(f => f.fixture_index));
@@ -780,10 +805,12 @@ setResults(resultsMap);
  // Check cached.results, not results state (state might not be updated yet)
  // Check cached.fixtures.length, not fixtures.length (state hasn't updated yet after setFixtures)
  if ((!cached.results || cached.results.length === 0) && cached.fixtures.length > 0) {
-   const { data: gwResultsData, error: gwResultsError } = await supabase
-     .from('app_gw_results')
-     .select('fixture_index, result')
-     .eq('gw', gwToDisplay);
+   const { data: gwResultsData, error: gwResultsError } = await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().results)
+       .select('fixture_index, result')
+       .eq('gw', gwToDisplay)
+   );
    
    if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
      const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -863,12 +890,15 @@ setResults(resultsMap);
  }
  }
 
- // Fetch fixtures from app_fixtures table
- const { data: savedFixtures, error: fixturesError } = await supabase
- .from("app_fixtures")
- .select("*")
- .eq("gw", gwToDisplay)
- .order("fixture_index", { ascending: true });
+ // Fetch fixtures (legacy app_fixtures or Pile B app_season_fixtures for testers)
+ const tables = seasonTablesNow();
+ const { data: savedFixtures, error: fixturesError } = await withSeasonFilter(
+  supabase
+   .from(tables.fixtures)
+   .select("*")
+   .eq("gw", gwToDisplay)
+   .order("fixture_index", { ascending: true })
+ );
  
  if (fixturesError) {
  throw new Error(`Failed to load fixtures: ${fixturesError.message}`);
@@ -937,10 +967,12 @@ setResults(resultsMap);
 if (alive && fixturesData.length > 0) {
   (async () => {
     try {
-      const { data: gwResultsData, error: gwResultsError } = await supabase
-        .from('app_gw_results')
-        .select('fixture_index, result')
-        .eq('gw', gwToDisplay);
+      const { data: gwResultsData, error: gwResultsError } = await withSeasonFilter(
+        (supabase as any)
+          .from(seasonTablesNow().results)
+          .select('fixture_index, result')
+          .eq('gw', gwToDisplay)
+      );
       
       if (!gwResultsError && gwResultsData && gwResultsData.length > 0) {
         const resultsMap = new Map<number, "H" | "D" | "A">();
@@ -959,7 +991,7 @@ if (alive && fixturesData.length > 0) {
               resultsArray.push({ fixture_index, result });
             });
             
-            const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
+            const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
             try {
               const existingCache = getCached<{
                 fixtures: Fixture[];
@@ -1003,12 +1035,14 @@ if (alive && fixturesData.length > 0) {
  // This prevents the swipe view from showing even briefly
  let isSubmitted = false;
  if (user?.id && fixturesData.length > 0) {
- const { data: submission } = await supabase
- .from("app_gw_submissions")
- .select("submitted_at")
- .eq("gw", gwToDisplay)
- .eq("user_id", user.id)
- .maybeSingle();
+ const pickTables = seasonTablesNow();
+ const { data: submission } = await seasonMaybeSingle(
+  supabase
+   .from(pickTables.submissions)
+   .select("submitted_at")
+   .eq("gw", gwToDisplay)
+   .eq("user_id", user.id)
+ );
  
  // Always set submission state, even if component appears to be unmounting
  if (submission?.submitted_at) {
@@ -1063,11 +1097,13 @@ if (alive && fixturesData.length > 0) {
      if (delaysMs[attempt] > 0) {
        await new Promise((r) => setTimeout(r, delaysMs[attempt]));
      }
-     const { data, error } = await supabase
-       .from("app_picks")
+     const { data, error } = await withSeasonFilter(
+       supabase
+       .from(seasonTablesNow().picks)
        .select("gw,fixture_index,pick")
        .eq("gw", gwToDisplay)
-       .eq("user_id", user!.id);
+       .eq("user_id", user!.id)
+     );
      if (!error && Array.isArray(data)) {
        return data as Array<{ gw: number; fixture_index: number; pick: "H" | "D" | "A" }>;
      }
@@ -1122,11 +1158,13 @@ if (alive && fixturesData.length > 0) {
           // Only clear if picks are completely invalid (no matches at all)
           if (pk.length > 0 && picksForCurrentFixtures.length === 0) {
             // No picks match current fixtures - clear invalid picks from database
-            await supabase
-              .from("app_picks")
-              .delete()
-              .eq("gw", gwToDisplay)
-              .eq("user_id", user.id);
+            await withSeasonFilter(
+              (supabase as any)
+                .from(seasonTablesNow().picks)
+                .delete()
+                .eq("gw", gwToDisplay)
+                .eq("user_id", user.id)
+            );
             // Don't clear UI picks aggressively on cold loads; just mark as no picks for now.
             // (A subsequent retry or navigation will reconcile.)
             hasPicks = false;
@@ -1190,7 +1228,7 @@ if (alive && fixturesData.length > 0) {
             // Cache picks for instant load next time (like HomePage does)
             if (user?.id) {
               const picksArray = Array.from(picksMap.values());
-              const cacheKey = `predictions:${user.id}:${gwToDisplay}`;
+              const cacheKey = predictionsCacheKey(user.id, gwToDisplay);
               try {
                 const existingCache = getCached<{
                   fixtures: Fixture[];
@@ -1229,11 +1267,13 @@ if (alive && fixturesData.length > 0) {
  
  if (shouldClearSubmission) {
    setSubmitted(false);
-   await supabase
-     .from("app_gw_submissions")
-     .delete()
-     .eq("gw", gwToDisplay)
-     .eq("user_id", user.id);
+   await withSeasonFilter(
+     (supabase as any)
+       .from(seasonTablesNow().submissions)
+       .delete()
+       .eq("gw", gwToDisplay)
+       .eq("user_id", user.id)
+   );
  }
  }
  
@@ -1273,20 +1313,24 @@ setLeagueMembers(members);
  
  const memberIds = members.map((m: any) => m.id);
  
- // Fetch all submissions for API Test league members
- const { data: allSubmissions } = await supabase
- .from("app_gw_submissions")
- .select("user_id, submitted_at")
- .eq("gw", gwToDisplay)
- .in("user_id", memberIds)
- .not("submitted_at", "is", null);
+ // Fetch all submissions for league members (season-aware)
+ const { data: allSubmissions } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().submissions)
+     .select("user_id, submitted_at")
+     .eq("gw", gwToDisplay)
+     .in("user_id", memberIds)
+     .not("submitted_at", "is", null)
+ );
  
  // Fetch all picks for validation
- const { data: allPicks } = await supabase
- .from("app_picks")
- .select("user_id, fixture_index")
- .eq("gw", gwToDisplay)
- .in("user_id", memberIds);
+ const { data: allPicks } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().picks)
+     .select("user_id, fixture_index")
+     .eq("gw", gwToDisplay)
+     .in("user_id", memberIds)
+ );
  
  const currentFixtureIndicesSet = new Set(fixturesData.map(f => f.fixture_index));
  const requiredFixtureCount = currentFixtureIndicesSet.size;
@@ -1443,17 +1487,20 @@ useEffect(() => {
 
  (async () => {
  try {
- // Fetch all picks for the current gameweek
- const { data: allPicks, error: picksError } = await supabase
- .from("app_picks")
- .select("fixture_index, pick")
- .eq("gw", currentGw);
+ // Fetch all picks for the current gameweek (season-aware)
+ const { data: allPicks, error: picksError } = await withSeasonFilter(
+   (supabase as any)
+     .from(seasonTablesNow().picks)
+     .select("fixture_index, pick")
+     .eq("gw", currentGw)
+ );
 
  if (picksError) {
  return;
  }
 
- if (!allPicks || allPicks.length === 0) {
+ const picksRows = (allPicks ?? []) as Array<{ fixture_index: number; pick: string }>;
+ if (picksRows.length === 0) {
  setPickPercentages(new Map());
  return;
  }
@@ -1462,7 +1509,7 @@ useEffect(() => {
  const percentagesMap = new Map<number, { H: number; D: number; A: number }>();
  
  fixtures.forEach(fixture => {
- const fixturePicks = allPicks.filter(p => p.fixture_index === fixture.fixture_index);
+ const fixturePicks = picksRows.filter((p) => p.fixture_index === fixture.fixture_index);
  const total = fixturePicks.length;
  
  if (total === 0) {
@@ -1470,9 +1517,9 @@ useEffect(() => {
  return;
  }
 
- const hCount = fixturePicks.filter(p => p.pick === 'H').length;
- const dCount = fixturePicks.filter(p => p.pick === 'D').length;
- const aCount = fixturePicks.filter(p => p.pick === 'A').length;
+ const hCount = fixturePicks.filter((p) => p.pick === 'H').length;
+ const dCount = fixturePicks.filter((p) => p.pick === 'D').length;
+ const aCount = fixturePicks.filter((p) => p.pick === 'A').length;
 
  percentagesMap.set(fixture.fixture_index, {
  H: Math.round((hCount / total) * 100),
@@ -1488,65 +1535,79 @@ useEffect(() => {
  })();
  }, [currentGw, gameState, fixtures]);
 
-// Calculate top percentage when we have results and picks
-// Use app_v_gw_points view for consistency with other components (UserPicksModal, LeaderboardCard)
-// Note: Can calculate even without results if we have picks and fixtures (for live games)
+// Rank % only when this GW has results — and only from the correct stack view.
+// Legacy app_v_gw_points still has old seasons' "GW 1", which incorrectly showed
+// e.g. "Top 17%" during 2026/27 pre-kickoff with Score 0/10 Starting soon.
 useEffect(() => {
   if (!currentGw || !user?.id || fixtures.length === 0) {
     setTopPercent(null);
     return;
   }
-  
-  // If no results yet, we can still calculate rank from picks (for live games)
-  // Only skip if we have no picks AND no results
-  if (results.size === 0 && picks.size === 0) {
+
+  // No results for this GW yet (starting soon / empty) → no rank badge
+  if (results.size === 0) {
     setTopPercent(null);
     return;
   }
 
-  // Calculate top percentage using app_v_gw_points view (same as UserPicksModal)
- (async () => {
- try {
- // Use app_v_gw_points view for consistency - this is the authoritative source
- const { data: gwPointsData, error: gwPointsError } = await supabase
- .from('app_v_gw_points')
- .select('user_id, points')
- .eq('gw', currentGw);
+  let alive = true;
+  (async () => {
+    try {
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: false,
+        seasonId: null,
+        seasonLabel: null,
+        currentGw,
+        viewingGw: currentGw,
+      };
+      const tables = getSeasonTables(seasonCtx);
 
- if (gwPointsError) {
- setTopPercent(null);
- return;
- }
+      let q = (supabase as any)
+        .from(tables.gwPoints)
+        .select('user_id, points')
+        .eq('gw', currentGw);
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        q = q.eq('season_id', seasonCtx.seasonId);
+      }
 
- if (!gwPointsData || gwPointsData.length === 0) {
- setTopPercent(null);
- return;
- }
+      const { data: gwPointsData, error: gwPointsError } = await q;
 
- // Sort by points descending
- const sorted = [...gwPointsData].sort((a, b) => (b.points || 0) - (a.points || 0));
- 
- // Find user's rank (handling ties - same rank for same points)
- let userRank = 1;
- for (let i = 0; i < sorted.length; i++) {
- if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
- userRank = i + 1;
- }
- if (sorted[i].user_id === user.id) {
- break;
- }
- }
+      if (!alive) return;
+      if (gwPointsError || !gwPointsData || gwPointsData.length === 0) {
+        setTopPercent(null);
+        return;
+      }
 
- // Calculate rank percentage: (rank / total_users) * 100
- const totalUsers = sorted.length;
- const rankPercent = Math.round((userRank / totalUsers) * 100);
- 
- setTopPercent(rankPercent);
- } catch (error) {
- setTopPercent(null);
- }
- })();
- }, [results, picks, fixtures, currentGw, user?.id]);
+      // User must appear in this GW's points (don't invent a rank from legacy leftovers)
+      if (!gwPointsData.some((r: { user_id: string }) => r.user_id === user.id)) {
+        setTopPercent(null);
+        return;
+      }
+
+      const sorted = [...gwPointsData].sort(
+        (a: { points: number | null }, b: { points: number | null }) =>
+          (b.points || 0) - (a.points || 0)
+      );
+
+      let userRank = 1;
+      for (let i = 0; i < sorted.length; i++) {
+        if (i > 0 && sorted[i - 1].points !== sorted[i].points) {
+          userRank = i + 1;
+        }
+        if (sorted[i].user_id === user.id) break;
+      }
+
+      const rankPercent = Math.round((userRank / sorted.length) * 100);
+      setTopPercent(rankPercent);
+    } catch {
+      if (alive) setTopPercent(null);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [results, fixtures, currentGw, user?.id, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
 
  const currentFixture = fixtures[currentIndex];
@@ -1675,12 +1736,14 @@ useEffect(() => {
   // #endregion agent log
 
  // CRITICAL: Ensure we're not already submitted (safety check)
- const { data: existingSubmission } = await supabase
- .from('app_gw_submissions')
- .select('submitted_at')
- .eq('user_id', user.id)
- .eq('gw', currentGw)
- .maybeSingle();
+ const tables = seasonTablesNow();
+ const { data: existingSubmission } = await seasonMaybeSingle(
+  supabase
+   .from(tables.submissions)
+   .select('submitted_at')
+   .eq('user_id', user.id)
+   .eq('gw', currentGw)
+ );
  
  if (existingSubmission?.submitted_at) {
  setSubmitted(true);
@@ -1688,13 +1751,15 @@ useEffect(() => {
  }
  
  // Save all picks - CRITICAL: Only save picks that match current fixtures
+ const ctx = getActiveSeasonCtx();
  const picksArray = Array.from(picks.values())
  .filter(pick => pick.matchday === currentGw) // Safety: only current GW
  .map(pick => ({
  user_id: user.id,
  gw: currentGw,
  fixture_index: pick.fixture_index,
- pick: pick.pick
+ pick: pick.pick,
+ ...(ctx?.useSeasonStack && ctx.seasonId ? { season_id: ctx.seasonId } : {}),
  }));
 
   // #region agent log
@@ -1711,9 +1776,9 @@ useEffect(() => {
  }
 
  const { error: picksError } = await supabase
- .from('app_picks')
+ .from(tables.picks)
  .upsert(picksArray, { 
- onConflict: 'user_id,gw,fixture_index',
+ onConflict: tables.picksOnConflict,
  ignoreDuplicates: false 
  });
 
@@ -1731,7 +1796,7 @@ useEffect(() => {
   (async () => {
     try {
       const [appRead, webRead] = await Promise.all([
-        supabase.from('app_picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
+        withSeasonFilter(supabase.from(tables.picks).select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id)),
         supabase.from('picks').select('fixture_index,pick').eq('gw', currentGw).eq('user_id', user.id),
       ]);
       const appRows = (appRead.data ?? []) as Array<{fixture_index:number;pick:"H"|"D"|"A"}>;
@@ -1755,13 +1820,14 @@ useEffect(() => {
  // Save submission - CRITICAL: Only create submission after picks are saved successfully
  // This ensures picks and submission are in sync
  const { error: submissionError } = await supabase
- .from('app_gw_submissions')
+ .from(tables.submissions)
  .upsert({
  user_id: user.id,
  gw: currentGw,
- submitted_at: new Date().toISOString()
+ submitted_at: new Date().toISOString(),
+ ...(ctx?.useSeasonStack && ctx.seasonId ? { season_id: ctx.seasonId } : {}),
  }, {
- onConflict: 'user_id,gw'
+ onConflict: tables.submissionsOnConflict
  });
 
  if (submissionError) {
@@ -1811,6 +1877,7 @@ headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
 leagueId: league_id,
 gw: currentGw,
+seasonId: ctx?.useSeasonStack ? ctx.seasonId : null,
 }),
 }).catch(() => {
 // Failed to check final submission (non-critical)
@@ -1938,7 +2005,7 @@ return (
  Predictions are no longer available.
  {deadlineTime && (
  <div className="text-xs opacity-80">
- The deadline was {deadlineTime.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} at {deadlineTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.
+ The deadline was {formatKickoffDateUk(deadlineTime.toISOString())} at {formatKickoffTimeUk(deadlineTime.toISOString())} UK.
  </div>
  )}
  <div className="text-xs opacity-80">
@@ -2099,7 +2166,7 @@ return null;
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
  let currentDate=''; let currentGroup: typeof fixtures = [];
  filteredFixtures.forEach((fixture)=>{
- const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
+ const fixtureDate = fixture.kickoff_time ? formatKickoffDateUk(fixture.kickoff_time) || 'No date' : 'No date';
  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
  });
  if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
@@ -2272,7 +2339,7 @@ return (
  const grouped: Array<{ label: string; items: typeof fixtures }>=[];
  let currentDate=''; let currentGroup: typeof fixtures = [];
  fixtures.forEach((fixture)=>{
- const fixtureDate = fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) : 'No date';
+ const fixtureDate = fixture.kickoff_time ? formatKickoffDateUk(fixture.kickoff_time) || 'No date' : 'No date';
  if (fixtureDate!==currentDate){ if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); } currentDate=fixtureDate; currentGroup=[fixture]; } else { currentGroup.push(fixture); }
  });
  if(currentGroup.length>0){ grouped.push({label:currentDate,items:currentGroup}); }
@@ -2289,7 +2356,7 @@ return (
  <div className="flex-1 min-w-0 text-right"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.home_team || fixture.home_name}</span></div>
  <div className="flex items-center gap-2 flex-shrink-0">
  <TeamBadge code={fixture.home_code} crest={fixture.home_crest} size={28} />
- <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">{fixture.kickoff_time ? new Date(fixture.kickoff_time).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+ <div className="text-slate-400 dark:text-slate-500 font-medium text-sm">{fixture.kickoff_time ? formatKickoffTimeUk(fixture.kickoff_time) : ''}</div>
  <TeamBadge code={fixture.away_code} crest={fixture.away_crest} size={28} />
  </div>
  <div className="flex-1 min-w-0 text-left"><span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate inline-block">{fixture.away_team || fixture.away_name}</span></div>

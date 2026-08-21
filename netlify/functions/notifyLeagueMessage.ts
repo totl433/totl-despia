@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
@@ -154,7 +155,7 @@ export const handler: Handler = async (event) => {
   // iOS requires url and web_url at top level for deep linking
   const oneSignalPayload: Record<string, any> = {
     app_id: ONESIGNAL_APP_ID,
-    include_player_ids: playerIds,
+    include_subscription_ids: playerIds,
     headings: { en: title },
     contents: { en: message },
     data: {
@@ -179,9 +180,11 @@ export const handler: Handler = async (event) => {
   const endpoints = isV2
     ? ['https://api.onesignal.com/notifications', 'https://onesignal.com/api/v1/notifications']
     : ['https://onesignal.com/api/v1/notifications', 'https://api.onesignal.com/notifications'];
-  const headersList = isV2
-    ? [`Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY, `Basic ${ONESIGNAL_REST_API_KEY}`]
-    : [`Basic ${ONESIGNAL_REST_API_KEY}`, `Bearer ${ONESIGNAL_REST_API_KEY}`, ONESIGNAL_REST_API_KEY];
+  const headersList = [
+    buildOneSignalAuthorization(ONESIGNAL_REST_API_KEY),
+    `Bearer ${ONESIGNAL_REST_API_KEY}`,
+    ONESIGNAL_REST_API_KEY,
+  ];
 
   let lastResp: any = null;
   for (const endpoint of endpoints) {

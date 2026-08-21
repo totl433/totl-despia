@@ -6,6 +6,8 @@ import { toPng } from 'html-to-image';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { formatPercentage } from '../lib/formatPercentage';
+import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 type LeaderboardCardProps = {
   title: string;
@@ -78,19 +80,24 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
       setShowCaptureModal(true);
       
       try {
+        const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+        const tables = getSeasonTables(seasonCtx);
+
         // Fetch fixtures for the gameweek
-        const { data: fixturesData } = await supabase
-          .from('app_fixtures')
+        let fixturesQ = (supabase as any)
+          .from(tables.fixtures)
           .select('*')
           .eq('gw', gw)
           .order('fixture_index', { ascending: true });
+        fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+        const { data: fixturesData } = await fixturesQ;
         
         if (!fixturesData || fixturesData.length === 0) {
           throw new Error('No fixtures found for this gameweek');
         }
         
         // Format fixtures exactly like shareableFixtures in GamesSection
-        const shareableFixtures = fixturesData.map(f => ({
+        const shareableFixtures = fixturesData.map((f: any) => ({
           id: f.id,
           gw: f.gw,
           fixture_index: f.fixture_index,
@@ -105,12 +112,14 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
         }));
         setShareFixtures(shareableFixtures);
         
-        // Fetch picks
-        const { data: picksData } = await supabase
-          .from('app_picks')
+        // Fetch picks (season or legacy)
+        let picksQ = (supabase as any)
+          .from(tables.picks)
           .select('fixture_index, pick')
           .eq('gw', gw)
           .eq('user_id', user.id);
+        picksQ = withSeasonId(picksQ, seasonCtx);
+        const { data: picksData } = await picksQ;
         
         const picksMap: Record<number, "H" | "D" | "A"> = {};
         (picksData || []).forEach((p: any) => {
@@ -118,34 +127,49 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
         });
         setSharePicks(picksMap);
         
-        // Fetch all GW points to calculate GW rank percentage
-        const { data: allGwPointsData, error: gwPointsError } = await supabase
-          .from('app_v_gw_points')
-          .select('user_id, points')
-          .eq('gw', gw);
+        // Rank % only when this season GW has results
+        let resultsQ = (supabase as any)
+          .from(tables.results)
+          .select('fixture_index')
+          .eq('gw', gw)
+          .limit(1);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { data: resultsRows } = await resultsQ;
+        const hasResults = Array.isArray(resultsRows) && resultsRows.length > 0;
 
-        if (!gwPointsError && allGwPointsData) {
-          const sortedGwPoints = [...allGwPointsData].sort((a, b) => b.points - a.points);
-          const totalUsers = sortedGwPoints.length;
+        if (hasResults) {
+          let pointsQ = (supabase as any)
+            .from(tables.gwPoints)
+            .select('user_id, points')
+            .eq('gw', gw);
+          if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+            pointsQ = pointsQ.eq('season_id', seasonCtx.seasonId);
+          }
+          const { data: allGwPointsData, error: gwPointsError } = await pointsQ;
 
-          if (totalUsers > 0) {
-            let userGwRank: number | undefined;
-            let currentRank = 1;
-            for (let i = 0; i < sortedGwPoints.length; i++) {
-              if (i > 0 && sortedGwPoints[i - 1].points !== sortedGwPoints[i].points) {
-                currentRank = i + 1;
+          if (!gwPointsError && allGwPointsData) {
+            const sortedGwPoints = [...allGwPointsData].sort((a, b) => b.points - a.points);
+            const totalUsers = sortedGwPoints.length;
+
+            if (totalUsers > 0) {
+              let userGwRank: number | undefined;
+              let currentRank = 1;
+              for (let i = 0; i < sortedGwPoints.length; i++) {
+                if (i > 0 && sortedGwPoints[i - 1].points !== sortedGwPoints[i].points) {
+                  currentRank = i + 1;
+                }
+                if (sortedGwPoints[i].user_id === user.id) {
+                  userGwRank = currentRank;
+                  break;
+                }
               }
-              if (sortedGwPoints[i].user_id === user.id) {
-                userGwRank = currentRank;
-                break;
-              }
-            }
 
-            if (userGwRank !== undefined) {
-              // Calculate rank percentage: (rank / total) * 100
-              // This is already the percentile, so we can use it directly
-              const rankPercent = Math.round((userGwRank / totalUsers) * 100);
-              setGwRankPercent(rankPercent);
+              if (userGwRank !== undefined) {
+                const rankPercent = Math.round((userGwRank / totalUsers) * 100);
+                setGwRankPercent(rankPercent);
+              } else {
+                setGwRankPercent(undefined);
+              }
             } else {
               setGwRankPercent(undefined);
             }
@@ -158,8 +182,8 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
         
         // Fetch live scores and convert to Record format first (like GamesSection)
         const apiMatchIds = shareableFixtures
-          .map(f => f.api_match_id)
-          .filter((id): id is number => id !== null && id !== undefined);
+          .map((f: { api_match_id?: number }) => f.api_match_id)
+          .filter((id: number | undefined): id is number => id !== null && id !== undefined);
         
         const liveScoresRecord: Record<number, any> = {};
         if (apiMatchIds.length > 0) {
@@ -169,7 +193,9 @@ export const LeaderboardCard = React.memo(function LeaderboardCard({
             .in('api_match_id', apiMatchIds);
           
           (liveScoresData || []).forEach((score: any) => {
-            const fixture = shareableFixtures.find(f => f.api_match_id === score.api_match_id);
+            const fixture = shareableFixtures.find(
+              (f: { api_match_id?: number }) => f.api_match_id === score.api_match_id
+            );
             if (fixture) {
               liveScoresRecord[fixture.fixture_index] = {
                 homeScore: score.home_score ?? 0,

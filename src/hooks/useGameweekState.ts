@@ -3,12 +3,14 @@ import { getUserGameweekState, getGameweekState, type GameweekState } from '../l
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { getCached } from '../lib/cache';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables } from '../lib/seasonStack';
 
 /**
  * Hook to get the state of a gameweek (GW_OPEN, GW_PREDICTED, DEADLINE_PASSED, LIVE, or RESULTS_PRE_GW)
  * If userId is provided, returns user-specific state (includes GW_PREDICTED and DEADLINE_PASSED)
  * If userId is not provided, returns global state (GW_OPEN, DEADLINE_PASSED, LIVE, or RESULTS_PRE_GW)
- * Subscribes to real-time updates from app_gw_results, live_scores, and app_gw_submissions
+ * Subscribes to real-time updates from results / fixtures / submissions (season-aware tables)
  */
 export function useGameweekState(gw: number | null | undefined, userId?: string | null | undefined) {
   // Try to load from cache first (pre-loaded during initial data load)
@@ -77,14 +79,17 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
       checkState(true);
     }
 
-    // Subscribe to app_gw_results changes
+    const seasonCtx = getActiveSeasonCtx();
+    const tables = getSeasonTables(seasonCtx ?? { useSeasonStack: false });
+
+    // Subscribe to results changes (legacy app_gw_results or app_season_results)
     resultsChannel = supabase
-      .channel(`gameweek-state-results-${gw}`)
+      .channel(`gameweek-state-results-${tables.results}-${gw}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'app_gw_results', filter: `gw=eq.${gw}` },
+        { event: '*', schema: 'public', table: tables.results, filter: `gw=eq.${gw}` },
         () => {
-          console.log(`[useGameweekState] 🔔 app_gw_results change for GW ${gw}, re-checking state`);
+          console.log(`[useGameweekState] 🔔 ${tables.results} change for GW ${gw}, re-checking state`);
           checkState();
         }
       )
@@ -103,28 +108,28 @@ export function useGameweekState(gw: number | null | undefined, userId?: string 
       )
       .subscribe();
 
-    // Also subscribe to app_fixtures changes (kickoff times might change)
+    // Also subscribe to fixtures changes (kickoff times might change)
     const fixturesChannel = supabase
-      .channel(`gameweek-state-fixtures-${gw}`)
+      .channel(`gameweek-state-fixtures-${tables.fixtures}-${gw}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'app_fixtures', filter: `gw=eq.${gw}` },
+        { event: '*', schema: 'public', table: tables.fixtures, filter: `gw=eq.${gw}` },
         () => {
-          console.log(`[useGameweekState] 🔔 app_fixtures change for GW ${gw}, re-checking state`);
+          console.log(`[useGameweekState] 🔔 ${tables.fixtures} change for GW ${gw}, re-checking state`);
           checkState();
         }
       )
       .subscribe();
 
-    // Subscribe to app_gw_submissions changes (user submission status)
+    // Subscribe to submissions changes (user submission status)
     if (userId) {
       submissionsChannel = supabase
-        .channel(`gameweek-state-submissions-${gw}-${userId}`)
+        .channel(`gameweek-state-submissions-${tables.submissions}-${gw}-${userId}`)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'app_gw_submissions', filter: `gw=eq.${gw}` },
+          { event: '*', schema: 'public', table: tables.submissions, filter: `gw=eq.${gw}` },
           () => {
-            console.log(`[useGameweekState] 🔔 app_gw_submissions change for GW ${gw}, re-checking state`);
+            console.log(`[useGameweekState] 🔔 ${tables.submissions} change for GW ${gw}, re-checking state`);
             checkState();
           }
         )

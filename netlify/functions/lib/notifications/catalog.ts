@@ -20,10 +20,10 @@ const catalogData = {
     "source": "client_post",
     "trigger": { "name": "league_message_sent", "event_id_format": "chat:{league_id}:{message_id}" },
     "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 60 },
-    "cooldown": { "per_user_seconds": 30 },
+    "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "chat-messages", "default": true },
-    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "onesignal": { "collapse_id_format": "chat:{league_id}:{message_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
@@ -39,7 +39,7 @@ const catalogData = {
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "mini-league-updates", "default": true },
-    "onesignal": { "collapse_id_format": "ml_updates:{league_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
+    "onesignal": { "collapse_id_format": "member_join:{league_id}:{user_id}", "thread_id_format": "league:{league_id}", "android_group_format": "totl_leagues" },
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
@@ -50,8 +50,8 @@ const catalogData = {
     "channels": ["push"],
     "audience": "all_league_members",
     "source": "client_post",
-    "trigger": { "name": "all_members_submitted", "event_id_format": "final_sub:{league_id}:{gw}" },
-    "dedupe": { "scope": "per_league_per_gw", "ttl_seconds": 86400 },
+    "trigger": { "name": "all_members_submitted", "event_id_format": "final_sub:{league_id}:{season_id}:{gw}" },
+    "dedupe": { "scope": "per_league_per_season_per_gw", "ttl_seconds": 86400 },
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "mini-league-updates", "default": true },
@@ -72,7 +72,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "final-whistle", "default": true },
     "onesignal": { "collapse_id_format": "ft:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_results" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "gameweek-complete": {
@@ -87,8 +87,8 @@ const catalogData = {
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "gw-results", "default": true },
-    "onesignal": { "collapse_id_format": "gw_complete:{gw}", "thread_id_format": "totl_gameweek", "android_group_format": "totl_results" },
-    "deep_links": { "url_format": null },
+    "onesignal": { "collapse_id_format": "gw_complete:{season_scope}:{gw}", "thread_id_format": "totl_gameweek", "android_group_format": "totl_results" },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "goal-disallowed": {
@@ -104,7 +104,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "goal_disallowed:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "goal-scored": {
@@ -120,7 +120,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "goal:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "half-time": {
@@ -136,7 +136,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "halftime:{api_match_id}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "kickoff": {
@@ -152,7 +152,7 @@ const catalogData = {
     "quiet_hours": { "start": null, "end": null },
     "preferences": { "preference_key": "score-updates", "default": true },
     "onesignal": { "collapse_id_format": "kickoff:{api_match_id}:{half}", "thread_id_format": "match:{api_match_id}", "android_group_format": "totl_scores" },
-    "deep_links": { "url_format": null },
+    "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
   "new-gameweek": {

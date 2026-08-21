@@ -6,6 +6,30 @@ import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { getCached, removeCached } from "../lib/cache";
 import GameweekBanner from "./ComingSoonBanner";
+import { hasNextGameweek, SEASON_LAST_GW } from "../lib/season";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
+
+async function fetchUserSubmission(userId: string, gw: number): Promise<boolean> {
+  const seasonCtx = getActiveSeasonCtx() ?? {
+    useSeasonStack: false,
+    seasonId: null,
+    seasonLabel: null,
+    currentGw: gw,
+    viewingGw: null,
+  };
+  const tables = getSeasonTables(seasonCtx);
+  const { data: submission } = await (() => {
+    let q = (supabase as any)
+      .from(tables.submissions)
+      .select("submitted_at")
+      .eq("user_id", userId)
+      .eq("gw", gw);
+    q = withSeasonId(q, seasonCtx);
+    return q.maybeSingle();
+  })();
+  return submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+}
 
 /**
  * Shows different banners based on game state:
@@ -57,23 +81,35 @@ export default function PredictionsBanner() {
           setVisible(false);
           return;
         }
-        
-        // Check if GW has finished and next GW fixtures don't exist
-        if (!currentGw) {
-          setVisible(false);
-          return;
-        }
-        
-        const { count: rsCount } = await supabase
-          .from("app_gw_results")
+
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw,
+          viewingGw: null,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        let resultsQ = (supabase as any)
+          .from(tables.results)
           .select("gw", { count: "exact", head: true })
           .eq("gw", currentGw);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { count: rsCount } = await resultsQ;
         
         if ((rsCount ?? 0) > 0) {
-          const { count: nextGwFxCount } = await supabase
-            .from("app_fixtures")
+          if (!hasNextGameweek(currentGw)) {
+            setVisible(false);
+            return;
+          }
+
+          let fxQ = (supabase as any)
+            .from(tables.fixtures)
             .select("id", { count: "exact", head: true })
             .eq("gw", currentGw + 1);
+          fxQ = withSeasonId(fxQ, seasonCtx);
+          const { count: nextGwFxCount } = await fxQ;
           
           if (!nextGwFxCount || nextGwFxCount === 0) {
             setBannerType("watch-space");
@@ -87,15 +123,11 @@ export default function PredictionsBanner() {
         return;
       }
       
-      // Use currentGw from hook (already fetched from app_meta)
+      // Logged-in path uses display/state effect below
       if (!currentGw) {
         setVisible(false);
         return;
       }
-      
-      // No need to manually fetch or set viewingGw - useDisplayGameweek hook handles this
-      // The hook will automatically update when user_notification_preferences changes
-      
     } catch (error) {
       console.error('[PredictionsBanner] Error in refreshBanner:', error);
       setVisible(false);
@@ -130,6 +162,10 @@ export default function PredictionsBanner() {
       // If userViewingGw is null or >= currentGw, user has moved on (no banner)
       // If userViewingGw < currentGw, user hasn't moved on (show banner)
       if (!hasMovedOn && userViewingGw !== null && userViewingGw < currentGw) {
+        if (!hasNextGameweek(userViewingGw) || currentGw > SEASON_LAST_GW) {
+          if (alive) setVisible(false);
+          return;
+        }
         // New GW published - show "GW ready" banner
         if (alive) {
           setNewGwNumber(currentGw);
@@ -153,33 +189,39 @@ export default function PredictionsBanner() {
           if (cachedSubmissions) {
             hasSubmitted = cachedSubmissions.some(s => s.user_id === user.id);
           } else {
-            // Not in cache, fetch from DB
-            const { data: submission } = await supabase
-              .from("app_gw_submissions")
-              .select("submitted_at")
-              .eq("user_id", user.id)
-              .eq("gw", effectiveGw)
-              .maybeSingle();
-            hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+            // Not in cache, fetch from DB (season-aware)
+            hasSubmitted = await fetchUserSubmission(user.id, effectiveGw);
           }
         } catch (e) {
           // Cache read failed, fetch from DB
-          const { data: submission } = await supabase
-            .from("app_gw_submissions")
-            .select("submitted_at")
-            .eq("user_id", user.id)
-            .eq("gw", effectiveGw)
-            .maybeSingle();
-          hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
+          hasSubmitted = await fetchUserSubmission(user.id, effectiveGw);
         }
         
         if (!hasSubmitted) {
           // Calculate deadline (check cache first - fixtures are pre-loaded)
           let deadlineFormatted: string | null = null;
+          const seasonCtx = getActiveSeasonCtx() ?? {
+            useSeasonStack: false,
+            seasonId: null,
+            seasonLabel: null,
+            currentGw: effectiveGw,
+            viewingGw: null,
+          };
+          const seasonKey = seasonCtx.useSeasonStack ? (seasonCtx.seasonId ?? 'stack') : 'legacy';
           try {
-            const cachedFixtures = getCached<Array<{ gw: number; kickoff_time: string }>>(`home:fixtures:${effectiveGw}`);
+            // Prefer season-scoped home cache; never use bare GW keys for Pile B
+            let cachedFixtures: Array<{ gw: number; kickoff_time: string }> | null = null;
+            if (user?.id) {
+              const scoped = getCached<{ fixtures: Array<{ gw: number; kickoff_time: string }> }>(
+                `home:fixtures:v2:${seasonKey}:${user.id}:${effectiveGw}`
+              );
+              if (scoped?.fixtures?.length) cachedFixtures = scoped.fixtures;
+            }
+            if (!cachedFixtures && seasonKey === 'legacy') {
+              cachedFixtures = getCached<Array<{ gw: number; kickoff_time: string }>>(`home:fixtures:${effectiveGw}`);
+            }
             if (cachedFixtures && cachedFixtures.length > 0) {
-              const firstFixture = cachedFixtures.sort((a, b) => 
+              const firstFixture = [...cachedFixtures].sort((a, b) => 
                 new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime()
               )[0];
               if (firstFixture.kickoff_time) {
@@ -198,13 +240,18 @@ export default function PredictionsBanner() {
           }
           
           if (!deadlineFormatted) {
-            // Not in cache, fetch from DB
-            const { data: fixtures } = await supabase
-              .from("app_fixtures")
-              .select("kickoff_time")
-              .eq("gw", effectiveGw)
-              .order("kickoff_time", { ascending: true })
-              .limit(1);
+            // Not in cache, fetch from season-aware table
+            const tables = getSeasonTables(seasonCtx);
+            const { data: fixtures } = await (() => {
+              let q = (supabase as any)
+                .from(tables.fixtures)
+                .select("kickoff_time")
+                .eq("gw", effectiveGw)
+                .order("kickoff_time", { ascending: true })
+                .limit(1);
+              q = withSeasonId(q, seasonCtx);
+              return q;
+            })();
             
             if (fixtures && fixtures.length > 0 && fixtures[0].kickoff_time) {
               const firstKickoff = new Date(fixtures[0].kickoff_time);
@@ -233,6 +280,11 @@ export default function PredictionsBanner() {
         // Hide banner in these states
         if (alive) setVisible(false);
       } else if (state === 'RESULTS_PRE_GW') {
+        if (!hasNextGameweek(effectiveGw)) {
+          if (alive) setVisible(false);
+          return;
+        }
+
         // Check if next GW is published in app_meta (not just if fixtures exist)
         // Fixtures can exist (mirrored from web) even if GW isn't published on app yet
         const nextGw = effectiveGw + 1;
@@ -277,6 +329,13 @@ export default function PredictionsBanner() {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     
     if (user?.id) {
+      const seasonCtx = getActiveSeasonCtx();
+      const useSeason = !!seasonCtx?.useSeasonStack;
+      const fixturesTable = useSeason ? 'app_season_fixtures' : 'app_fixtures';
+      const resultsTable = useSeason ? 'app_season_results' : 'app_gw_results';
+      // Pile B published state lives on runtime / user prefs (not only app_meta)
+      const metaOrRuntimeTable = useSeason ? 'app_season_runtime' : 'app_meta';
+
       channel = supabase
         .channel('predictions-banner-updates')
         .on(
@@ -284,7 +343,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_meta',
+            table: metaOrRuntimeTable,
           },
           () => {
             if (alive) refreshBanner();
@@ -295,7 +354,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_fixtures',
+            table: fixturesTable,
           },
           () => {
             if (alive) refreshBanner();
@@ -306,7 +365,7 @@ export default function PredictionsBanner() {
           {
             event: '*',
             schema: 'public',
-            table: 'app_gw_results',
+            table: resultsTable,
           },
           () => {
             if (alive) refreshBanner();
@@ -426,7 +485,7 @@ export default function PredictionsBanner() {
   if (!visible) return null;
   
   // GW Ready banner (new GW published, user needs to transition)
-  if (bannerType === "gw-ready" && newGwNumber) {
+  if (bannerType === "gw-ready" && newGwNumber && newGwNumber <= SEASON_LAST_GW) {
     return (
       <div className="w-full px-4 lg:px-6 py-3 relative gameweek-banner z-40 bg-gradient-to-br from-[#1C8376]/10 to-blue-600/10" data-banner-height>
         <div className="mx-auto max-w-6xl lg:max-w-[1024px] flex items-center justify-between gap-4">
@@ -476,9 +535,13 @@ export default function PredictionsBanner() {
   
   // Coming soon banner (RESULTS_PRE_GW, next GW not published)
   if (bannerType === "watch-space" && effectiveViewingGwCalculated) {
+    const nextDisplayGw = effectiveViewingGwCalculated + 1;
+    if (!hasNextGameweek(effectiveViewingGwCalculated)) {
+      return null;
+    }
     return (
       <GameweekBanner
-        gameweek={effectiveViewingGwCalculated + 1}
+        gameweek={nextDisplayGw}
         variant="coming-soon"
       />
     );

@@ -7,6 +7,8 @@ import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { GameweekState } from '../lib/gameweekState';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
 interface LeaderboardsSectionProps {
   lastGwRank: { rank: number; total: number; score: number; gw: number; totalFixtures: number; isTied: boolean } | null;
@@ -94,27 +96,40 @@ export function LeaderboardsSection({
       });
       
       if (outcomes.size === 0) return;
-      
-      const { data: userPicks } = await supabase
-        .from("app_picks")
+
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: false,
+        seasonId: null,
+        seasonLabel: null,
+        currentGw: currentGw ?? 1,
+        viewingGw: currentGw,
+      };
+      const tables = getSeasonTables(seasonCtx);
+
+      let picksQ = (supabase as any)
+        .from(tables.picks)
         .select("fixture_index, pick")
         .eq("gw", currentGw)
         .eq("user_id", user.id);
+      picksQ = withSeasonId(picksQ, seasonCtx);
+      const { data: userPicks } = await picksQ;
       
       if (!alive || !userPicks) return;
       
       let score = 0;
-      userPicks.forEach((pick) => {
+      userPicks.forEach((pick: { fixture_index: number; pick: string }) => {
         const outcome = outcomes.get(pick.fixture_index);
         if (outcome && pick.pick === outcome) {
           score++;
         }
       });
       
-      const { data: fixtures } = await supabase
-        .from("app_fixtures")
+      let fixturesQ = (supabase as any)
+        .from(tables.fixtures)
         .select("fixture_index")
         .eq("gw", currentGw);
+      fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+      const { data: fixtures } = await fixturesQ;
       
       const total = fixtures?.length || totalFixtures;
       
@@ -156,17 +171,28 @@ export function LeaderboardsSection({
       });
       
       if (outcomes.size === 0) return;
-      
-      const { data: userPicks } = await supabase
-        .from("app_picks")
+
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: false,
+        seasonId: null,
+        seasonLabel: null,
+        currentGw: lastGwRank.gw,
+        viewingGw: lastGwRank.gw,
+      };
+      const tables = getSeasonTables(seasonCtx);
+
+      let picksQ = (supabase as any)
+        .from(tables.picks)
         .select("fixture_index, pick")
         .eq("gw", lastGwRank.gw)
         .eq("user_id", user.id);
+      picksQ = withSeasonId(picksQ, seasonCtx);
+      const { data: userPicks } = await picksQ;
       
       if (!alive || !userPicks) return;
       
       let score = 0;
-      userPicks.forEach((pick) => {
+      userPicks.forEach((pick: { fixture_index: number; pick: string }) => {
         const outcome = outcomes.get(pick.fixture_index);
         if (outcome && pick.pick === outcome) {
           score++;

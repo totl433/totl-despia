@@ -30,7 +30,8 @@ function abbr(team: string) {
   const map: Record<string,string> = {
     'Arsenal':'ARS','Aston Villa':'AVL','AFC Bournemouth':'BOU','Bournemouth':'BOU','Brentford':'BRE',
     'Brighton & Hove Albion':'BHA','Brighton and Hove Albion':'BHA','Chelsea':'CHE','Crystal Palace':'CRY',
-    'Everton':'EVE','Fulham':'FUL','Ipswich Town':'IPS','Leeds United':'LEE','Leicester City':'LEI',
+    'Everton':'EVE','Fulham':'FUL','Hull City':'HUL','Hull':'HUL','Ipswich Town':'IPS','Ipswich':'IPS',
+    'Coventry City':'COV','Coventry':'COV','Leeds United':'LEE','Leicester City':'LEI',
     'Liverpool':'LIV','Manchester City':'MCI','Man City':'MCI','Manchester United':'MUN','Man United':'MUN',
     'Newcastle United':'NEW','Nottingham Forest':'NFO','Southampton':'SOU','Tottenham Hotspur':'TOT',
     'Tottenham':'TOT','West Ham United':'WHU','Wolverhampton Wanderers':'WOL','Wolves':'WOL','Sunderland':'SUN'

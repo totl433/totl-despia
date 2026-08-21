@@ -1,5 +1,6 @@
 import { openWhatsApp } from'../../lib/whatsappShare';
 import UserAvatar from '../UserAvatar';
+import { formatKickoffDateUk, formatKickoffTimeUk } from'../../lib/kickoffDisplay';
 
 export interface SubmissionStatusTableProps {
  members: Array<{ id: string; name: string }>;
@@ -14,16 +15,12 @@ export interface SubmissionStatusTableProps {
 
 // Helper function to generate share reminder message
 export function generateShareReminderMessage(picksGw: number, fixtures: Array<{ gw: number; kickoff_time?: string | null }>): string {
- const firstKickoff = new Date(fixtures.find(f => f.gw === picksGw)?.kickoff_time ||'');
+ const kickoffIso = fixtures.find(f => f.gw === picksGw)?.kickoff_time ||'';
+ const firstKickoff = new Date(kickoffIso);
  const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
- const dayNames = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
- const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
- const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
- const day = deadlineTime.getUTCDate();
- const month = months[deadlineTime.getUTCMonth()];
- const hours = deadlineTime.getUTCHours().toString().padStart(2,'0');
- const minutes = deadlineTime.getUTCMinutes().toString().padStart(2,'0');
- return `Gameweek ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST\n\nDon't forget!\nplaytotl.com`;
+ const datePart = formatKickoffDateUk(deadlineTime.toISOString()).toUpperCase();
+ const timePart = formatKickoffTimeUk(deadlineTime.toISOString());
+ return `Gameweek ${picksGw} Predictions Reminder!\n\nDEADLINE: THIS ${datePart}, ${timePart} UK\n\nDon't forget!\nhttps://playtotl.com/predictions`;
 }
 
 // Helper function to handle share reminder click
@@ -72,19 +69,12 @@ export default function SubmissionStatusTable({
  
  const deadlinePassed = deadlineTime ? new Date() >= deadlineTime : false;
  
- // Format deadline
+ // Format deadline in UK time (BST/GMT)
  let deadlineStr ='';
  if (deadlineTime) {
- const dayNames = variant ==='compact' 
- ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
- : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
- const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
- const dayOfWeek = dayNames[deadlineTime.getUTCDay()];
- const day = deadlineTime.getUTCDate();
- const month = months[deadlineTime.getUTCMonth()];
- const hours = deadlineTime.getUTCHours().toString().padStart(2,'0');
- const minutes = deadlineTime.getUTCMinutes().toString().padStart(2,'0');
- deadlineStr = `${dayOfWeek} ${day} ${month}, ${hours}:${minutes} BST`;
+ const datePart = formatKickoffDateUk(deadlineTime.toISOString());
+ const timePart = formatKickoffTimeUk(deadlineTime.toISOString());
+ deadlineStr = `${datePart}, ${timePart} UK`;
  }
 
  if (variant ==='compact') {

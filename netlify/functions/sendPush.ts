@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions';
+import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -12,9 +13,9 @@ export const handler: Handler = async (event) => {
   const q = new URL(event.rawUrl).searchParams;
   if (q.get('debug') === '1') {
     return json(200, {
-      endpoint: 'https://onesignal.com/api/v1/notifications',
+      endpoint: 'https://api.onesignal.com/notifications',
       appIdPreview: (process.env.ONESIGNAL_APP_ID || '').slice(0, 8) + '…',
-      authPreview: 'Basic ' + (process.env.ONESIGNAL_REST_API_KEY || '').slice(0, 4) + '…',
+      authPreview: buildOneSignalAuthorization(process.env.ONESIGNAL_REST_API_KEY || '').slice(0, 8) + '…',
     });
   }
 
@@ -44,15 +45,17 @@ export const handler: Handler = async (event) => {
     } else if (subscriptionIds.length > 0) {
       payload.include_subscription_ids = subscriptionIds; // v5+ SDK
     } else if (playerIds.length > 0) {
-      payload.include_player_ids = playerIds; // legacy fallback
+      // OneSignal now calls these subscription IDs; keep accepting the legacy
+      // request field while using the current API targeting property.
+      payload.include_subscription_ids = playerIds;
     } else {
       return json(400, { error: 'No targets: provide externalUserIds, subscriptionIds, or playerIds' });
     }
 
-    const res = await fetch('https://onesignal.com/api/v1/notifications', {
+    const res = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${restKey}`,
+        Authorization: buildOneSignalAuthorization(restKey),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),

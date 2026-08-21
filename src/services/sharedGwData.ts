@@ -8,6 +8,8 @@
 
 import { supabase } from '../lib/supabase';
 import { getCached, setCached, CACHE_TTL } from '../lib/cache';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables } from '../lib/seasonStack';
 
 export type Fixture = {
   id: number;
@@ -83,14 +85,25 @@ async function fetchWithRetry<T>(
  */
 async function fetchFixtures(gw: number): Promise<Fixture[]> {
   return fetchWithRetry(async () => {
-    const { data, error } = await supabase
-      .from('app_fixtures')
+    const ctx = getActiveSeasonCtx();
+    const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+    let q = supabase
+      .from(tables.fixtures)
       .select('id, gw, fixture_index, home_name, away_name, home_team, away_team, home_code, away_code, kickoff_time, api_match_id')
       .eq('gw', gw)
       .order('fixture_index', { ascending: true });
+    if (ctx?.useSeasonStack && ctx.seasonId) {
+      q = q.eq('season_id', ctx.seasonId);
+    }
+    const { data, error } = await q;
     
     if (error) throw error;
-    return (data ?? []) as Fixture[];
+    return (data ?? []).map((row: any) => ({
+      ...row,
+      id: typeof row.id === 'string' ? Number.parseInt(String(row.id).replace(/\D/g, '').slice(0, 9), 10) || row.fixture_index : row.id,
+      home_name: row.home_name || row.home_team,
+      away_name: row.away_name || row.away_team,
+    })) as Fixture[];
   }, 3, 1000);
 }
 
@@ -99,10 +112,16 @@ async function fetchFixtures(gw: number): Promise<Fixture[]> {
  */
 async function fetchResults(gw: number): Promise<ResultRow[]> {
   return fetchWithRetry(async () => {
-    const { data, error } = await supabase
-      .from('app_gw_results')
+    const ctx = getActiveSeasonCtx();
+    const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+    let q = supabase
+      .from(tables.results)
       .select('gw, fixture_index, result')
       .eq('gw', gw);
+    if (ctx?.useSeasonStack && ctx.seasonId) {
+      q = q.eq('season_id', ctx.seasonId);
+    }
+    const { data, error } = await q;
     
     if (error) throw error;
     return (data ?? []) as ResultRow[];

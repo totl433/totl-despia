@@ -1,9 +1,45 @@
 import { supabase } from "./supabase";
 import { getCached } from "./cache";
+import { getActiveSeasonCtx } from './activeSeasonCtx';
+import { getSeasonTables } from './seasonStack';
 
 export type GameweekState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 
 const DEADLINE_BUFFER_MINUTES = 75;
+
+function seasonCachePrefix(): string {
+  const ctx = getActiveSeasonCtx();
+  if (ctx?.useSeasonStack) return ctx.seasonId ?? 'stack';
+  return 'legacy';
+}
+
+async function fetchFixturesForGw(gw: number) {
+  const ctx = getActiveSeasonCtx();
+  const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+  let q = supabase
+    .from(tables.fixtures)
+    .select("fixture_index, kickoff_time")
+    .eq("gw", gw)
+    .order("kickoff_time", { ascending: true });
+  if (ctx?.useSeasonStack && ctx.seasonId) {
+    q = q.eq("season_id", ctx.seasonId);
+  }
+  return q;
+}
+
+async function fetchUserSubmission(userId: string, gw: number) {
+  const ctx = getActiveSeasonCtx();
+  const tables = getSeasonTables(ctx ?? { useSeasonStack: false });
+  let q = supabase
+    .from(tables.submissions)
+    .select("submitted_at")
+    .eq("user_id", userId)
+    .eq("gw", gw);
+  if (ctx?.useSeasonStack && ctx.seasonId) {
+    q = q.eq("season_id", ctx.seasonId);
+  }
+  return q.maybeSingle();
+}
 
 /**
  * Determines the global state of a gameweek (not user-specific):
@@ -12,17 +48,22 @@ const DEADLINE_BUFFER_MINUTES = 75;
  * - LIVE: First kickoff happened AND last game hasn't finished (FT)
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
-// Cache for fixture kickoff times to prevent duplicate DB queries
-const fixtureKickoffCache = new Map<number, Array<{ fixture_index: number; kickoff_time: string }>>();
-// Promise cache to prevent concurrent duplicate requests for the same GW
-const fixtureFetchPromises = new Map<number, Promise<Array<{ fixture_index: number; kickoff_time: string }>>>();
+// Cache for fixture kickoff times to prevent duplicate DB queries (season-aware keys)
+const fixtureKickoffCache = new Map<string, Array<{ fixture_index: number; kickoff_time: string }>>();
+// Promise cache to prevent concurrent duplicate requests for the same season+GW
+const fixtureFetchPromises = new Map<string, Promise<Array<{ fixture_index: number; kickoff_time: string }>>>();
 // Promise cache for live_scores queries to prevent concurrent duplicate requests
 const liveScoresFetchPromises = new Map<string, Promise<Array<{ fixture_index: number; status: string }>>>();
 
+function fixtureCacheKey(gw: number): string {
+  return `${seasonCachePrefix()}:${gw}`;
+}
+
 export async function getGameweekState(gw: number): Promise<GameweekState> {
+  const key = fixtureCacheKey(gw);
   // Check in-memory cache first (prevents duplicate requests during same render cycle)
-  if (fixtureKickoffCache.has(gw)) {
-    const fixtures = fixtureKickoffCache.get(gw)!;
+  if (fixtureKickoffCache.has(key)) {
+    const fixtures = fixtureKickoffCache.get(key)!;
     if (fixtures && fixtures.length > 0) {
       return calculateGameweekState(fixtures, gw);
     }
@@ -31,19 +72,33 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
   // Try to get fixtures from localStorage cache (pre-loaded during initial data load)
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  // Check all localStorage keys to find any user's fixtures cache for this GW
-  // Cache format: home:fixtures:${userId}:${gw}
+  // Check localStorage season-scoped keys first, then legacy
+  // Cache format: home:fixtures:v2:${seasonKey}:${userId}:${gw}
   if (typeof window !== 'undefined') {
     try {
+      const seasonPrefix = `home:fixtures:v2:${seasonCachePrefix()}:`;
       for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
-          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
+        const lsKey = localStorage.key(i);
+        if (lsKey && lsKey.startsWith(seasonPrefix) && lsKey.endsWith(`:${gw}`)) {
+          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(lsKey);
           if (cached?.fixtures?.length) {
             fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-            // Cache in memory for this render cycle
-            fixtureKickoffCache.set(gw, fixtures);
+            fixtureKickoffCache.set(key, fixtures);
             break;
+          }
+        }
+      }
+      // Legacy only when not on season stack
+      if (!fixtures && seasonCachePrefix() === 'legacy') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const lsKey = localStorage.key(i);
+          if (lsKey && lsKey.startsWith(`home:fixtures:`) && !lsKey.includes(':v2:') && lsKey.endsWith(`:${gw}`)) {
+            const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(lsKey);
+            if (cached?.fixtures?.length) {
+              fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+              fixtureKickoffCache.set(key, fixtures);
+              break;
+            }
           }
         }
       }
@@ -52,31 +107,27 @@ export async function getGameweekState(gw: number): Promise<GameweekState> {
     }
   }
   
-  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
+  // If not in cache, fetch from DB (only once per season+GW, even if multiple concurrent calls)
   if (!fixtures) {
-    // Check if there's already a fetch in progress for this GW
-    let fetchPromise = fixtureFetchPromises.get(gw);
+    // Check if there's already a fetch in progress for this key
+    let fetchPromise = fixtureFetchPromises.get(key);
     
     if (!fetchPromise) {
       // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
-          fixtureFetchPromises.delete(gw);
+          fixtureFetchPromises.delete(key);
           return [];
         }
         
-        fixtureKickoffCache.set(gw, data);
-        fixtureFetchPromises.delete(gw);
+        fixtureKickoffCache.set(key, data);
+        fixtureFetchPromises.delete(key);
         return data;
       })();
       
-      fixtureFetchPromises.set(gw, fetchPromise);
+      fixtureFetchPromises.set(key, fetchPromise);
     }
     
     fixtures = await fetchPromise;
@@ -138,71 +189,54 @@ async function calculateGameweekState(fixtures: Array<{ fixture_index: number; k
  * - RESULTS_PRE_GW: GW has finished (last game has reached FT AND no active games)
  */
 export async function getUserGameweekState(gw: number, userId: string | null | undefined): Promise<GameweekState> {
-  // Check in-memory cache first
-  if (fixtureKickoffCache.has(gw)) {
-    const fixtures = fixtureKickoffCache.get(gw)!;
+  const key = fixtureCacheKey(gw);
+
+  // Season-scoped in-memory cache (never mix 25/26 with 26/27)
+  if (fixtureKickoffCache.has(key)) {
+    const fixtures = fixtureKickoffCache.get(key)!;
     if (fixtures && fixtures.length > 0) {
       return calculateUserGameweekState(fixtures, gw, userId);
     }
   }
   
-  // Try to get fixtures from localStorage cache (pre-loaded during initial data load)
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  // Check user-specific cache first
   if (userId) {
-    const userCacheKey = `home:fixtures:${userId}:${gw}`;
-    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(userCacheKey);
+    const v2Key = `home:fixtures:v2:${seasonCachePrefix()}:${userId}:${gw}`;
+    const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(v2Key);
     if (cached?.fixtures?.length) {
       fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-      fixtureKickoffCache.set(gw, fixtures);
+      fixtureKickoffCache.set(key, fixtures);
     }
-  }
-  
-  // If not in user cache, check any user's cache for this GW
-  if (!fixtures && typeof window !== 'undefined') {
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
-          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
-          if (cached?.fixtures?.length) {
-            fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-            fixtureKickoffCache.set(gw, fixtures);
-            break;
-          }
-        }
+    // Legacy only for non-stack — never read 25/26 for stack testers
+    if (!fixtures && seasonCachePrefix() === 'legacy') {
+      const userCacheKey = `home:fixtures:${userId}:${gw}`;
+      const legacy = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(userCacheKey);
+      if (legacy?.fixtures?.length) {
+        fixtures = legacy.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
+        fixtureKickoffCache.set(key, fixtures);
       }
-    } catch (e) {
-      // Ignore cache errors
     }
   }
   
-  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
   if (!fixtures) {
-    // Check if there's already a fetch in progress for this GW
-    let fetchPromise = fixtureFetchPromises.get(gw);
+    let fetchPromise = fixtureFetchPromises.get(key);
     
     if (!fetchPromise) {
-      // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
-          fixtureFetchPromises.delete(gw);
+          fixtureFetchPromises.delete(key);
           return [];
         }
         
-        fixtureKickoffCache.set(gw, data);
-        fixtureFetchPromises.delete(gw);
+        fixtureKickoffCache.set(key, data);
+        fixtureFetchPromises.delete(key);
         return data;
       })();
       
-      fixtureFetchPromises.set(gw, fetchPromise);
+      fixtureFetchPromises.set(key, fetchPromise);
     }
     
     fixtures = await fetchPromise;
@@ -243,12 +277,7 @@ async function calculateUserGameweekState(fixtures: Array<{ fixture_index: numbe
     } else {
       // Before deadline - check if user has submitted
       if (userId) {
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", userId)
-          .eq("gw", gw)
-          .maybeSingle();
+        const { data: submission } = await fetchUserSubmission(userId, gw);
         
         const hasSubmitted = submission?.submitted_at !== null && submission?.submitted_at !== undefined;
         
@@ -278,57 +307,32 @@ async function calculateUserGameweekState(fixtures: Array<{ fixture_index: numbe
  * A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED).
  */
 export async function isGameweekFinished(gw: number): Promise<boolean> {
-  // Check in-memory cache first
+  const key = fixtureCacheKey(gw);
   let fixtures: Array<{ fixture_index: number; kickoff_time: string }> | null = null;
   
-  if (fixtureKickoffCache.has(gw)) {
-    fixtures = fixtureKickoffCache.get(gw)!;
+  if (fixtureKickoffCache.has(key)) {
+    fixtures = fixtureKickoffCache.get(key)!;
   }
   
-  // Try to get fixtures from localStorage cache
-  if (!fixtures && typeof window !== 'undefined') {
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(`home:fixtures:`) && key.endsWith(`:${gw}`)) {
-          const cached = getCached<{ fixtures: Array<{ fixture_index: number; kickoff_time: string }> }>(key);
-          if (cached?.fixtures?.length) {
-            fixtures = cached.fixtures.map(f => ({ fixture_index: f.fixture_index, kickoff_time: f.kickoff_time }));
-            fixtureKickoffCache.set(gw, fixtures);
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore cache errors
-    }
-  }
-  
-  // If not in cache, fetch from DB (only once per GW, even if multiple concurrent calls)
+  // Prefer DB over unscoped legacy fixture scans (those are 25/26 on Pile B)
   if (!fixtures) {
-    // Check if there's already a fetch in progress for this GW
-    let fetchPromise = fixtureFetchPromises.get(gw);
+    let fetchPromise = fixtureFetchPromises.get(key);
     
     if (!fetchPromise) {
-      // Create new fetch promise
       fetchPromise = (async () => {
-        const { data, error: fixturesError } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index, kickoff_time")
-          .eq("gw", gw)
-          .order("kickoff_time", { ascending: true });
+        const { data, error: fixturesError } = await fetchFixturesForGw(gw);
         
         if (fixturesError || !data || data.length === 0) {
-          fixtureFetchPromises.delete(gw);
+          fixtureFetchPromises.delete(key);
           return [];
         }
         
-        fixtureKickoffCache.set(gw, data);
-        fixtureFetchPromises.delete(gw);
+        fixtureKickoffCache.set(key, data);
+        fixtureFetchPromises.delete(key);
         return data;
       })();
       
-      fixtureFetchPromises.set(gw, fetchPromise);
+      fixtureFetchPromises.set(key, fetchPromise);
     }
     
     fixtures = await fetchPromise;

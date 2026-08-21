@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { useLeagues } from '../hooks/useLeagues';
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 
   const navItems = [
     {
@@ -140,34 +142,19 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       }
 
       try {
-        // Get app_meta.current_gw (published GW)
-        const { data: meta, error: metaError } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        if (!alive || metaError) return;
-        
-        const dbCurrentGw = meta?.current_gw ?? 1;
-
-        // Get user's current_viewing_gw (which GW they're actually viewing)
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (!alive) return;
-        
-        // Use current_viewing_gw only if explicitly set.
-        // New users (null) should default to current published GW.
-        const userViewingGw = prefs?.current_viewing_gw ?? null;
+        // Season stack: published GW from active ctx (not app_meta = 25/26 runtime)
+        const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+        const dbCurrentGw = seasonCtx.currentGw ?? 1;
+        const userViewingGw =
+          typeof seasonCtx.viewingGw === 'number' ? seasonCtx.viewingGw : null;
         
         // Determine which GW to display
         // If user hasn't transitioned to new GW, show their viewing GW (previous GW)
         // Otherwise show the current GW
-        const gwToDisplay = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const gwToDisplay =
+          userViewingGw !== null && userViewingGw < dbCurrentGw
+            ? userViewingGw
+            : dbCurrentGw;
         
         if (alive) {
           setViewingGw(gwToDisplay);
@@ -202,13 +189,24 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
       }
 
       try {
-        // Check if user has submitted predictions for the viewing GW
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", viewingGw)
-          .maybeSingle();
+        // Check if user has submitted predictions for the viewing GW (season-aware)
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: false,
+          seasonId: null,
+          seasonLabel: null,
+          currentGw: viewingGw,
+          viewingGw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        const { data: submission } = await (() => {
+          let q = (supabase as any)
+            .from(tables.submissions)
+            .select('submitted_at')
+            .eq('user_id', user.id)
+            .eq('gw', viewingGw);
+          q = withSeasonId(q, seasonCtx);
+          return q.maybeSingle();
+        })();
         
         if (!alive) return;
 
@@ -235,44 +233,13 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
     };
   }, [user?.id, viewingGw, viewingGwState]);
 
+  // In-flow flex sibling of the scroll pane (see .app-shell) — never fixed.
+  // Returning null when hidden frees height so full-screen pages (swipe) get the space.
+  if (shouldHide) return null;
+
   return (
     <>
       <style>{`
-        .bottom-nav-absolute {
-          position: fixed !important;
-          bottom: 0px !important;
-          left: 0px !important;
-          right: 0px !important;
-          width: 100vw !important;
-          max-width: 100vw !important;
-          z-index: 99999 !important;
-          transform: translate3d(0, 0, 0) !important;
-          -webkit-transform: translate3d(0, 0, 0) !important;
-          will-change: transform !important;
-          contain: layout style paint !important;
-          pointer-events: auto !important;
-          transition: transform 0.3s ease-in-out !important;
-          padding-bottom: calc(2rem + var(--safe-area-bottom)) !important;
-        }
-        .bottom-nav-slide-out {
-          transform: translate3d(0, 100%, 0) !important;
-          -webkit-transform: translate3d(0, 100%, 0) !important;
-        }
-        .bottom-nav-slide-in {
-          transform: translate3d(0, 0, 0) !important;
-          -webkit-transform: translate3d(0, 0, 0) !important;
-        }
-        @supports (padding-bottom: env(safe-area-inset-bottom)) {
-          .bottom-nav-absolute {
-            padding-bottom: calc(2rem + env(safe-area-inset-bottom)) !important;
-          }
-        }
-        @media (max-height: 800px) {
-          .bottom-nav-absolute {
-            position: fixed !important;
-            bottom: 0px !important;
-          }
-        }
         @keyframes shimmer {
           0% {
             transform: translateX(-100%) skewX(-15deg);
@@ -367,8 +334,12 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           z-index: 2;
         }
       `}</style>
-      <div className={`bottom-nav-absolute lg:hidden flex items-center justify-center px-4 pb-8 ${shouldHide ? 'bottom-nav-slide-out' : 'bottom-nav-slide-in'}`}>
-        <div ref={containerRef} className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden" style={{ width: '360px', height: '70px', borderRadius: '60px', marginBottom: '1.5rem' }}>
+      <nav className="bottom-nav-bar lg:hidden flex items-center justify-center" aria-label="Main">
+        <div
+          ref={containerRef}
+          className="bg-white dark:bg-slate-800 border border-[#E5E7EB] dark:border-slate-700 flex items-center relative overflow-hidden shadow-lg"
+          style={{ width: 'min(360px, 100%)', height: '70px', borderRadius: '60px' }}
+        >
           {/* Active state indicator */}
           {indicatorStyle && (
             <div 
@@ -444,7 +415,7 @@ export default function BottomNav({ shouldHide = false }: { shouldHide?: boolean
           );
         })}
         </div>
-      </div>
+      </nav>
     </>
   );
 }

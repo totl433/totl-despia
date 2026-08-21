@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { resolveSeasonCtx } from '../../lib/seasonStack';
 
 export type AuthGateStatus = 'checking' | 'authed' | 'guest';
 
@@ -265,7 +266,7 @@ export async function signUpWithPassword(
     password,
     options: {
       data: { display_name: trimmedName },
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: `${window.location.origin}/auth?type=signup`,
     },
   });
   
@@ -303,6 +304,12 @@ export async function signUpWithPassword(
         throw new Error('Username already taken. Please choose a different name.');
       }
       throw upsertError;
+    }
+
+    // Initialize the season preference before the first authenticated page
+    // loads so a fresh account cannot inherit legacy GW or stale browser data.
+    if (data.session) {
+      await resolveSeasonCtx(supabase as any, user.id);
     }
   }
   
@@ -531,7 +538,7 @@ export async function resendConfirmationEmail(email: string) {
     type: 'signup',
     email: normalizedEmail,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: `${window.location.origin}/auth?type=signup`,
     },
   });
   

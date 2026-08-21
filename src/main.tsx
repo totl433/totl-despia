@@ -292,6 +292,7 @@ import PredictionsPage from "./pages/Predictions";
 
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
+const JoinMiniLeaguePage = lazy(() => import("./pages/JoinMiniLeague"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const AdminDataPage = lazy(() => import("./pages/AdminData"));
 import { RequireAdmin } from "./components/RequireAdmin";
@@ -322,6 +323,13 @@ const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
 import { AuthGate } from "./features/auth";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useSeasonStack } from "./hooks/useSeasonStack";
+
+function SeasonStackHydrator({ children }: { children: React.ReactNode }) {
+  // Keep Pile B / legacy table routing in sync for all screens
+  useSeasonStack();
+  return <>{children}</>;
+}
 import PredictionsBanner from "./components/PredictionsBanner";
 import BottomNav from "./components/BottomNav";
 import FloatingProfile from "./components/FloatingProfile";
@@ -337,6 +345,8 @@ import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
 import { supabase } from "./lib/supabase";
+import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
+import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
 
 function maybeLoadGoogleAnalytics() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -373,20 +383,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   if (loading) return <div className="p-6">Loading…</div>;
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  const authState = location.pathname.startsWith('/host/leaderboards/') ? { returnTo } : undefined;
-  return user ? <>{children}</> : <Navigate to="/auth" replace state={authState} />;
+  // Remount route state when accounts change so picks and other in-memory
+  // values from the previous user can never paint the next user's screen.
+  return user
+    ? <React.Fragment key={user.id}>{children}</React.Fragment>
+    : <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
 }
 
 function AppShell() {
-  // If a Universal Link on playtotl.com opens the native app, we must avoid
-  // rendering playtotl.com inside the Despia webview (Apple review / cookie prompts).
-  // Instead, immediately bounce to the staging origin while preserving path/query/hash.
-  if (isDespiaAvailable() && window.location.hostname === 'playtotl.com') {
-    const target = `https://totl-staging.netlify.app${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.replace(target);
-    return null;
-  }
-
   // Check for deep link SYNCHRONOUSLY before React Router renders
   // This prevents the home page from ever rendering if we have a notification deep link
   const searchParams = new URLSearchParams(window.location.search);
@@ -687,47 +691,32 @@ function AppContent() {
       }
 
       try {
-        // Get app_meta.current_gw (published GW)
-        const { data: meta, error: metaError } = await supabase
-          .from("app_meta")
-          .select("current_gw")
-          .eq("id", 1)
-          .maybeSingle();
-        
-        if (!alive || metaError) {
-          setHasSubmittedPredictions(null);
-          return;
-        }
-        
-        const dbCurrentGw = meta?.current_gw ?? null;
+        // Season-aware published GW + submissions (avoid app_meta GW38 + legacy GW1 ranks)
+        const seasonCtx = await ensureActiveSeasonCtx(supabase as any, user.id);
+        const tables = getSeasonTables(seasonCtx);
+        const dbCurrentGw = seasonCtx.currentGw;
         if (!dbCurrentGw) {
           setHasSubmittedPredictions(null);
           return;
         }
 
         // Get user's current_viewing_gw (which GW they're actually viewing)
-        const { data: prefs } = await supabase
-          .from("user_notification_preferences")
-          .select("current_viewing_gw")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (!alive) return;
-        
-        // Use current_viewing_gw only if explicitly set.
-        // New users (null) should default to current published GW.
-        const userViewingGw = prefs?.current_viewing_gw ?? null;
+        const userViewingGw =
+          typeof seasonCtx.viewingGw === 'number' ? seasonCtx.viewingGw : null;
         
         // Determine which GW to check
-        const gwToCheck = userViewingGw !== null && userViewingGw < dbCurrentGw ? userViewingGw : dbCurrentGw;
+        const gwToCheck =
+          userViewingGw !== null && userViewingGw < dbCurrentGw
+            ? userViewingGw
+            : dbCurrentGw;
 
-        // Check game state for the viewing GW - only hide nav if in GW_OPEN state
-        // Import useGameweekState hook result would require restructuring, so we'll check state via query
-        // For now, check if results exist - if results exist, we're in RESULTS state, so show nav
-        const { count: resultsCount } = await supabase
-          .from("app_gw_results")
-          .select("gw", { count: "exact", head: true })
-          .eq("gw", gwToCheck);
+        // Check if results exist for this stack GW
+        let resultsQ = (supabase as any)
+          .from(tables.results)
+          .select('gw', { count: 'exact', head: true })
+          .eq('gw', gwToCheck);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { count: resultsCount } = await resultsQ;
         
         const hasResults = (resultsCount ?? 0) > 0;
         
@@ -738,12 +727,13 @@ function AppContent() {
         }
 
         // No results yet - check if user has submitted predictions for the viewing GW
-        const { data: submission } = await supabase
-          .from("app_gw_submissions")
-          .select("submitted_at")
-          .eq("user_id", user.id)
-          .eq("gw", gwToCheck)
-          .maybeSingle();
+        let subQ = (supabase as any)
+          .from(tables.submissions)
+          .select('submitted_at')
+          .eq('user_id', user.id)
+          .eq('gw', gwToCheck);
+        subQ = withSeasonId(subQ, seasonCtx);
+        const { data: submission } = await subQ.maybeSingle();
         
         if (!alive) return;
 
@@ -874,6 +864,12 @@ function AppContent() {
     location.pathname !== '/api-admin' && 
     location.pathname !== '/swipe-card-preview';
 
+  const showBottomNav =
+    location.pathname !== '/auth' &&
+    location.pathname !== '/support' &&
+    location.pathname !== '/predictions/swipe' &&
+    location.pathname !== '/swipe-card-preview';
+
   return (
     <>
       {/* Desktop Navigation Sidebar - only on desktop (1024px+) */}
@@ -885,102 +881,103 @@ function AppContent() {
         </ErrorBoundary>
       )}
 
-      {/* Main Content Area */}
-      <div>
-        {isNativeApp && <div style={{ height: "var(--safe-area-top)" }} />}
-        {/* Scroll to top on route change - must be inside Router */}
-        <ScrollToTop />
-        
-        {/* Logo is now rendered in Home.tsx component */}
-        
-        {/* Floating Profile Icon - only on Home Page and mobile */}
-        {location.pathname === '/' && (
-          <div className="lg:hidden">
-            <FloatingProfile />
-          </div>
-        )}
+      {/*
+        Mobile: .app-shell is a flex column — content scrolls in .app-shell-scroll,
+        BottomNav sits as a non-scrolling sibling (not position:fixed).
+        Desktop: media query makes this a normal flowing block.
+      */}
+      <div className="app-shell">
+        <div className="app-shell-scroll">
+          {isNativeApp && <div style={{ height: 'var(--safe-area-top)' }} />}
+          <ScrollToTop />
 
-        {/* Global Predictions Banner - hide on auth page and full-screen pages */}
-        {!isFullScreenPage && location.pathname !== '/auth' && location.pathname !== '/support' && !location.pathname.startsWith('/league/') && location.pathname !== '/predictions' && location.pathname !== '/global' && (
-          <ErrorBoundary fallback={null}>
-            <PredictionsBanner />
-          </ErrorBoundary>
-        )}
-
-        {/* Welcome Message */}
-        {/* TEMP: hidden until design is confirmed */}
-        {false && showWelcome && (
-          <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 bg-[#1C8376] text-white px-8 py-5 rounded-lg shadow-lg w-11/12 max-w-4xl">
-            <div className="relative">
-              <div className="text-center pr-10">
-                <div className="font-bold text-xl">Welcome to TOTL!</div>
-                <div className="text-sm text-[#1C8376]/80 mt-1">Your account is now active. Start making predictions!</div>
-              </div>
-              <button
-                onClick={dismissWelcome}
-                className="absolute top-0 right-0 text-[#1C8376]/60 text-2xl font-bold"
-                aria-label="Dismiss"
-              >
-                ×
-              </button>
+          {location.pathname === '/' && (
+            <div className="lg:hidden">
+              <FloatingProfile />
             </div>
-          </div>
+          )}
+
+          {!isFullScreenPage &&
+            location.pathname !== '/auth' &&
+            location.pathname !== '/support' &&
+            !location.pathname.startsWith('/league/') &&
+            location.pathname !== '/predictions' &&
+            location.pathname !== '/global' && (
+              <ErrorBoundary fallback={null}>
+                <PredictionsBanner />
+              </ErrorBoundary>
+            )}
+
+          {false && showWelcome && (
+            <div className="fixed top-40 left-1/2 transform -translate-x-1/2 z-50 bg-[#1C8376] text-white px-8 py-5 rounded-lg shadow-lg w-11/12 max-w-4xl">
+              <div className="relative">
+                <div className="text-center pr-10">
+                  <div className="font-bold text-xl">Welcome to TOTL!</div>
+                  <div className="text-sm text-[#1C8376]/80 mt-1">
+                    Your account is now active. Start making predictions!
+                  </div>
+                </div>
+                <button
+                  onClick={dismissWelcome}
+                  className="absolute top-0 right-0 text-[#1C8376]/60 text-2xl font-bold"
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
+
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/auth" element={<AuthGate />} />
+                <Route path="/support" element={<SupportPage />} />
+                <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
+                <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
+                <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
+                <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
+                <Route path="/leagues" element={<Navigate to="/tables" replace />} />
+                <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
+                <Route path="/join-league/:code" element={<RequireAuth><JoinMiniLeaguePage /></RequireAuth>} />
+                <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
+                <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
+                <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
+                <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
+                <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+                <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
+                <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
+                <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
+                <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
+                <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
+                <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
+                <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
+                <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+                <Route path="/delete-data" element={<DeleteDataPage />} />
+                <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+                <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
+                <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />
+                <Route path="/admin/leaderboards/new" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
+                <Route path="/admin/leaderboards/:id" element={<RequireAuth><RequireAdmin><AdminLeaderboardDetail /></RequireAdmin></RequireAuth>} />
+                <Route path="/admin/leaderboards/:id/edit" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
+                <Route path="/admin/leaderboards/:id/revenue" element={<RequireAuth><RequireAdmin><AdminLeaderboardRevenue /></RequireAdmin></RequireAuth>} />
+                <Route path="/host/leaderboards/:id" element={<RequireAuth><RequireHostOrAdmin><HostLeaderboardReview /></RequireHostOrAdmin></RequireAuth>} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </div>
+
+        {showBottomNav && (
+          <BottomNav
+            shouldHide={
+              (location.pathname === '/predictions' && isSwipeMode) ||
+              (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
+              location.pathname.startsWith('/league/')
+            }
+          />
         )}
-
-        {/* Routes */}
-        <ErrorBoundary>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/auth" element={<AuthGate />} />
-              <Route path="/support" element={<SupportPage />} />
-              <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
-              <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
-              <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
-              <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
-              <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
-              <Route path="/predictions" element={<RequireAuth><PredictionsPage /></RequireAuth>} />
-              <Route path="/global" element={<RequireAuth><GlobalPage /></RequireAuth>} />
-              <Route path="/temp-global" element={<RequireAuth><TempGlobalPage /></RequireAuth>} />
-              <Route path="/home-experimental" element={<RequireAuth><ErrorBoundary><HomeExperimental /></ErrorBoundary></RequireAuth>} />
-              <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
-              <Route path="/profile/edit-avatar" element={<RequireAuth><EditAvatarPage /></RequireAuth>} />
-              <Route path="/profile/notifications" element={<RequireAuth><NotificationCentrePage /></RequireAuth>} />
-              <Route path="/profile/email-preferences" element={<RequireAuth><EmailPreferencesPage /></RequireAuth>} />
-              <Route path="/profile/stats" element={<RequireAuth><StatsPage /></RequireAuth>} />
-              <Route path="/how-to-play" element={<RequireAuth><HowToPlayPage /></RequireAuth>} />
-              <Route path="/create-league" element={<RequireAuth><CreateLeaguePage /></RequireAuth>} />
-              <Route path="/cookie-policy" element={<RequireAuth><CookiePolicyPage /></RequireAuth>} />
-              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-              <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
-              <Route path="/delete-data" element={<DeleteDataPage />} />
-              <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-              <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
-              <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />
-              <Route path="/admin/leaderboards/new" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
-              <Route path="/admin/leaderboards/:id" element={<RequireAuth><RequireAdmin><AdminLeaderboardDetail /></RequireAdmin></RequireAuth>} />
-              <Route path="/admin/leaderboards/:id/edit" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
-              <Route path="/admin/leaderboards/:id/revenue" element={<RequireAuth><RequireAdmin><AdminLeaderboardRevenue /></RequireAdmin></RequireAuth>} />
-              <Route path="/host/leaderboards/:id" element={<RequireAuth><RequireHostOrAdmin><HostLeaderboardReview /></RequireHostOrAdmin></RequireAuth>} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </ErrorBoundary>
-
-        {/* Bottom Navigation - hide on auth page, swipe predictions, and when making predictions or viewing league pages */}
-        {/* Only hide completely on specific swipe routes, otherwise use shouldHide prop */}
-        {/* Also hide on desktop (lg+) */}
-        {location.pathname !== '/auth' && 
-         location.pathname !== '/support' &&
-         location.pathname !== '/predictions/swipe' && 
-         location.pathname !== '/swipe-card-preview' &&
-         <div className="lg:hidden">
-           <BottomNav shouldHide={
-             (location.pathname === '/predictions' && isSwipeMode) ||
-             (location.pathname === '/predictions' && hasSubmittedPredictions === false) ||
-             location.pathname.startsWith('/league/')
-           } />
-         </div>}
-        {isNativeApp && <div style={{ height: "var(--safe-area-bottom)" }} />}
       </div>
     </>
   );
@@ -994,7 +991,9 @@ function AppContent() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AuthProvider>
-      <AppShell />
+      <SeasonStackHydrator>
+        <AppShell />
+      </SeasonStackHydrator>
     </AuthProvider>
   </React.StrictMode>
 );

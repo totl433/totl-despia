@@ -1,5 +1,5 @@
 import { useAuth } from '../context/AuthContext';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/profile/StatCard';
@@ -7,10 +7,18 @@ import { StreakStatCard } from '../components/profile/StreakStatCard';
 import { TeamStatCard } from '../components/profile/TeamStatCard';
 import { ParChart } from '../components/profile/ParChart';
 import { TrophyCabinet } from '../components/profile/TrophyCabinet';
+import {
+  StatsPreviousSeasons,
+  buildSeasonArchiveStats,
+  fetchClosed2526Standings,
+  type ClosedSeasonStandings,
+} from '../components/profile/StatsPreviousSeasons';
 import { fetchUserStats, type UserStatsData } from '../services/userStats';
 import LiveGamesToggle from '../components/LiveGamesToggle';
-import UnicornCollection from '../components/profile/UnicornCollection';
 import { useGameweekState } from '../hooks/useGameweekState';
+import { useCurrentGameweek } from '../hooks/useCurrentGameweek';
+import { getActiveSeasonCtx } from '../lib/activeSeasonCtx';
+import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
 import { supabase } from '../lib/supabase';
 import GameweekResultsModal from '../components/GameweekResultsModal';
 
@@ -19,94 +27,50 @@ export default function Stats() {
  const [stats, setStats] = useState<UserStatsData | null>(null);
  const [loading, setLoading] = useState(true);
  const [showParChartInfo, setShowParChartInfo] = useState(false);
- const [currentGw, setCurrentGw] = useState<number | null>(null);
- const lastUpdatedGwRef = useRef<number | null>(null); // Track which GW we last updated stats for
+ const { currentGw } = useCurrentGameweek();
+ const lastUpdatedGwRef = useRef<number | null>(null);
  const [showResultsModal, setShowResultsModal] = useState(false);
  const [resultsModalGw, setResultsModalGw] = useState<number | null>(null);
  const [latestGw, setLatestGw] = useState<number | null>(null);
  const [resultsModalLoading, setResultsModalLoading] = useState(false);
- 
+ const [closed2526, setClosed2526] = useState<ClosedSeasonStandings | null>(null);
+ const [archiveSeasonLabel, setArchiveSeasonLabel] = useState<string | null>(null);
+ const [archiveLoading, setArchiveLoading] = useState(false);
+
+ const seasonArchiveRows = useMemo(
+   () => buildSeasonArchiveStats({ closed2526 }),
+   [closed2526]
+ );
+ const selectedArchiveLabel = archiveSeasonLabel ?? seasonArchiveRows[0]?.seasonLabel ?? '2025/26';
+
  async function loadStats() {
  if (!user) return;
 
  setLoading(true);
+ setArchiveLoading(true);
  try {
- const userStats = await fetchUserStats(user.id);
+ const [userStats, archive] = await Promise.all([
+   fetchUserStats(user.id),
+   fetchClosed2526Standings(user.id).catch((err) => {
+     console.error('[Stats] Previous seasons fetch failed:', err);
+     return null;
+   }),
+ ]);
  setStats(userStats);
+ setClosed2526(archive);
  } catch (error) {
  } finally {
  setLoading(false);
+ setArchiveLoading(false);
  }
  }
  
- // Get current GW from app_meta
  useEffect(() => {
- let alive = true;
+ if (currentGw) setLatestGw(currentGw);
+ }, [currentGw]);
  
- const fetchCurrentGw = async () => {
- const { data: meta } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .maybeSingle();
- 
- if (alive && meta) {
- const gw: number | null = (meta as any)?.current_gw ?? null;
- setCurrentGw(gw);
- }
- };
- 
- fetchCurrentGw();
- 
- // Subscribe to app_meta changes
- const channel = supabase
- .channel('stats-app-meta')
- .on(
- 'postgres_changes',
- {
- event: '*',
- schema: 'public',
- table: 'app_meta',
- },
- () => {
- fetchCurrentGw();
- }
- )
- .subscribe();
- 
- return () => {
- alive = false;
- supabase.removeChannel(channel);
- };
- }, []);
- 
- // Get game state for current GW
  const { state: currentGwState } = useGameweekState(currentGw, user?.id);
- 
- // Get game state for last completed GW (for results box)
  const { state: lastGwState } = useGameweekState(stats?.lastCompletedGw ?? null, user?.id);
- 
- // Get latest GW for results modal
- useEffect(() => {
- let alive = true;
- 
- const fetchLatestGw = async () => {
- const { data: meta } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .maybeSingle();
- 
- if (alive && meta) {
- const gw: number | null = (meta as any)?.current_gw ?? null;
- setLatestGw(gw);
- }
- };
- 
- fetchLatestGw();
- 
- return () => { alive = false; };
- }, []);
  
  // Initial load
  useEffect(() => {
@@ -117,10 +81,6 @@ export default function Stats() {
  }
  }, [user]);
  
- // Determine which GW to show stats for based on game state (duplicate removed)
- // GW_OPEN/GW_PREDICTED: Show previous GW (lastCompletedGw) - already handled by fetchUserStats
- // LIVE: Show static stats (don't update)
- // RESULTS_PRE_GW: Show updated stats for completed GW (update once when it finishes)
  useEffect(() => {
  if (!user || !currentGw || currentGwState === null) {
  return;
@@ -129,25 +89,29 @@ export default function Stats() {
  let alive = true;
  
  const shouldRefreshStats = async () => {
- // In LIVE state, don't refresh (show static stats)
  if (currentGwState === 'LIVE') {
- // Stats should already be loaded from initial load
  return;
  }
  
- // In RESULTS_PRE_GW, check if we need to update stats for the completed GW
  if (currentGwState === 'RESULTS_PRE_GW') {
- // Get the last completed GW
- const { data: lastGwData } = await supabase
- .from('app_gw_results')
+ const seasonCtx = getActiveSeasonCtx() ?? {
+ useSeasonStack: false,
+ seasonId: null,
+ seasonLabel: null,
+ currentGw: currentGw ?? 1,
+ viewingGw: null,
+ };
+ const tables = getSeasonTables(seasonCtx);
+ let lastGwQ = (supabase as any)
+ .from(tables.results)
  .select('gw')
  .order('gw', { ascending: false })
- .limit(1)
- .maybeSingle();
+ .limit(1);
+ lastGwQ = withSeasonId(lastGwQ, seasonCtx);
+ const { data: lastGwData } = await lastGwQ.maybeSingle();
  
  const lastCompletedGw = lastGwData?.gw || null;
  
- // Only refresh if this is a new completed GW we haven't updated for yet
  if (lastCompletedGw && lastCompletedGw !== lastUpdatedGwRef.current) {
  lastUpdatedGwRef.current = lastCompletedGw;
  if (alive) {
@@ -156,10 +120,6 @@ export default function Stats() {
  }
  return;
  }
- 
- // In GW_OPEN or GW_PREDICTED, show previous GW stats
- // Stats should already be loaded from initial load
- // No need to refresh unless we haven't loaded yet
  };
  
  shouldRefreshStats();
@@ -330,7 +290,7 @@ export default function Stats() {
  
  return (
  <StatCard
- label="Overall"
+ label="Career overall"
  value={
  isTop
  ? `You're in the top ${topPercent}% of players.`
@@ -378,19 +338,11 @@ export default function Stats() {
  {stats && stats.trophyCabinet !== null && (
  <div className="lg:col-span-2">
  <TrophyCabinet
- lastGw={stats.trophyCabinet.lastGw}
- form5={stats.trophyCabinet.form5}
- form10={stats.trophyCabinet.form10}
- overall={stats.trophyCabinet.overall}
+ gameweek={stats.trophyCabinet.gameweek}
+ monthly={stats.trophyCabinet.monthly}
+ season={stats.trophyCabinet.season}
  loading={loading}
  />
- </div>
- )}
-
- {/* Unicorn Collection */}
- {user && (
- <div className="lg:col-span-2 lg:overflow-hidden lg:rounded-xl">
- <UnicornCollection userId={user.id} loading={loading} />
  </div>
  )}
 
@@ -479,7 +431,32 @@ export default function Stats() {
  <StatCard
  label="Total Swing"
  value={swingText}
- subcopy="Your total points difference from the average across all gameweeks"
+ subcopy="Your total points difference from the average across all completed gameweeks"
+ loading={loading}
+ />
+ );
+ })()}
+
+ {/* Best week vs field average */}
+ {stats && stats.weeklyParData && stats.weeklyParData.length > 0 && (() => {
+ let best = stats.weeklyParData[0]!;
+ for (const d of stats.weeklyParData) {
+ const m = d.userPoints - d.averagePoints;
+ const bm = best.userPoints - best.averagePoints;
+ if (m > bm) best = d;
+ }
+ const margin = best.userPoints - best.averagePoints;
+ if (!Number.isFinite(margin)) return null;
+ const marginText = margin >= 0 ? `+${margin.toFixed(1)}` : margin.toFixed(1);
+ return (
+ <StatCard
+ label="Best vs average week"
+ value={
+ <span>
+ <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">{marginText}</span>
+ <span className="text-sm text-slate-600 dark:text-slate-400 ml-2">on GW{best.gw}</span>
+ </span>
+ }
  loading={loading}
  />
  );
@@ -530,6 +507,16 @@ export default function Stats() {
  }
  loading={loading}
  />
+ )}
+
+ {/* Previous Seasons — bottom of stats (completed seasons only) */}
+ {(seasonArchiveRows.length > 0 || archiveLoading) && (
+   <StatsPreviousSeasons
+     seasons={seasonArchiveRows}
+     selectedLabel={selectedArchiveLabel}
+     onSelectLabel={setArchiveSeasonLabel}
+     loading={archiveLoading && !closed2526}
+   />
  )}
  </div>
  )}

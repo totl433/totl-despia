@@ -9,6 +9,8 @@ import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { dispatchNotification, formatEventId } from './lib/notifications';
 import { getSupabase } from './lib/notifications/targeting';
+import { resolveMemberJoinName } from './lib/notifications/memberJoinName';
+import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -116,6 +118,18 @@ export const handler: Handler = async (event) => {
 
     const leagueCode = leagueData.code;
     const leagueName = leagueData.name || 'your mini-league';
+    const { data: joiningProfile, error: joiningProfileError } = await supabase
+      .from('users')
+      .select('name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (joiningProfileError) {
+      console.warn('[notifyLeagueMemberJoin] Could not load joiner profile name:', joiningProfileError);
+    }
+    const resolvedUserName = resolveMemberJoinName({
+      profileName: joiningProfile?.name,
+      suppliedName: userName,
+    });
 
     // Get all league members (excluding the person who joined)
     const { data: members, error: memErr } = await supabase
@@ -139,7 +153,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Format notification text: "Carl joined Jof and Carl"
-    const notificationText = `${userName} joined ${leagueName}`;
+    const notificationText = `${resolvedUserName} joined ${leagueName}`;
 
     // Format event ID for deduplication
     const eventId = formatEventId('member-join', {
@@ -152,7 +166,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Construct full URL for deep linking (OneSignal requires absolute URL)
-    const fullUrl = `${baseUrl}/league/${leagueCode}`;
+    const fullUrl = buildLeaguePublicUrl(leagueCode);
     console.log(`[notifyLeagueMemberJoin] Constructed URL: ${fullUrl} (baseUrl: ${baseUrl}, leagueCode: ${leagueCode})`);
     
     // Safe URL parsing for debugging
@@ -179,17 +193,23 @@ export const handler: Handler = async (event) => {
       notification_key: 'member-join',
       event_id: eventId,
       user_ids: Array.from(recipients),
-      title: `${userName} Joined!`,
+      title: `${resolvedUserName} Joined!`,
       body: notificationText,
       data: {
         type: 'member-join',
         leagueId,
         leagueCode,
         userId,
-        userName,
+        userName: resolvedUserName,
         leagueName,
+        url: fullUrl,
+        navigateTo: fullUrl,
       },
       url: fullUrl, // Deep link to specific league page (must be absolute URL for OneSignal)
+      grouping_params: {
+        league_id: leagueId,
+        user_id: userId,
+      },
       league_id: leagueId, // For mute checking
     });
 

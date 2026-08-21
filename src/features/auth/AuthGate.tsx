@@ -3,25 +3,20 @@
  * Renders nothing while checking, redirects authed users, shows AuthFlow for guests
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSupabaseAuth } from './useSupabaseAuth';
 import AuthFlow from './AuthFlow';
 import { verifySignupToken } from './useSupabaseAuth';
-
-function getSafeReturnTo(state: unknown): string {
-  if (!state || typeof state !== 'object' || !('returnTo' in state)) return '/';
-  const returnTo = (state as { returnTo?: unknown }).returnTo;
-  if (typeof returnTo !== 'string' || !returnTo.startsWith('/') || returnTo.startsWith('//')) return '/';
-  if (returnTo === '/auth' || returnTo.startsWith('/auth?') || returnTo.startsWith('/auth#')) return '/';
-  return returnTo;
-}
+import { extractSignupVerificationParams } from './authUrl';
 
 export default function AuthGate() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { status, user } = useSupabaseAuth();
   const [signupVerifyLoading, setSignupVerifyLoading] = useState(false);
-  const returnTo = getSafeReturnTo(location.state);
+  const returnTo = useMemo(() => {
+    const candidate = new URLSearchParams(window.location.search).get('returnTo');
+    return candidate?.startsWith('/') && !candidate.startsWith('//') ? candidate : '/';
+  }, []);
 
   function detectRecoveryFromUrl(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
@@ -37,18 +32,13 @@ export default function AuthGate() {
   const isRecovery = detectRecoveryFromUrl();
 
   const signupParams = useMemo(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const isSignup =
-      urlParams.get('type') === 'signup' ||
-      hashParams.get('type') === 'signup' ||
-      window.location.search.includes('type=signup') ||
-      window.location.hash.includes('type=signup');
-    if (!isSignup) return null;
-    const tokenHash = urlParams.get('token_hash') || '';
-    const email = urlParams.get('email') || '';
-    return { tokenHash, email };
-  }, []);
+    return extractSignupVerificationParams({
+      search: window.location.search,
+      hash: window.location.hash,
+      origin: window.location.origin,
+      returnTo,
+    });
+  }, [returnTo]);
 
   useEffect(() => {
     if (!signupParams?.tokenHash) return;
@@ -73,7 +63,7 @@ export default function AuthGate() {
     if (status === 'authed' && user) {
       // Check if this is a password reset flow - don't redirect
       if (!isRecovery) {
-        console.log('[AuthGate] User is authed, redirecting after authentication');
+        console.log('[AuthGate] User is authed, redirecting');
         navigate(returnTo, { replace: true });
       }
     }
@@ -81,7 +71,7 @@ export default function AuthGate() {
 
   // Handle successful auth - return to the protected page when one was requested.
   const handleAuthSuccess = () => {
-    console.log('[AuthGate] Auth success, redirecting after authentication');
+    console.log('[AuthGate] Auth success, redirecting');
     navigate(returnTo, { replace: true });
   };
 

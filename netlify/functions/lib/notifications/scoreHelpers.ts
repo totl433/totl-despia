@@ -9,6 +9,12 @@ import { dispatchNotification } from './dispatch';
 import { formatDeepLink } from './catalog';
 import type { BatchDispatchResult } from './types';
 import { createClient } from '@supabase/supabase-js';
+import {
+  buildGameweekCompleteEventId,
+  matchesGoalNotificationMinute,
+} from './scoreTransitionGuards';
+
+export { buildGameweekCompleteEventId } from './scoreTransitionGuards';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -112,13 +118,6 @@ export function buildFinalWhistleEventId(apiMatchId: number): string {
 }
 
 /**
- * Build a gameweek complete notification event_id
- */
-export function buildGameweekCompleteEventId(gw: number): string {
-  return `gw_complete:${gw}`;
-}
-
-/**
  * Build a goal disallowed notification event_id
  */
 export function buildGoalDisallowedEventId(apiMatchId: number, minute: number): string {
@@ -138,21 +137,20 @@ export async function hasGoalNotificationForMinute(
   // Event ID format: goal:{apiMatchId}:{scorer}:{minute}
   // We check for pattern: goal:{apiMatchId}:*:{minute}
   const eventIdPrefix = `goal:${apiMatchId}:`;
-  const eventIdSuffix = `:${minute}`;
-  
   const { data: existing } = await supabase
     .from('notification_send_log')
     .select('user_id, event_id')
     .eq('notification_key', 'goal-scored')
     .in('user_id', userIds)
-    .like('event_id', `${eventIdPrefix}%${eventIdSuffix}`)
+    .or(
+      `event_id.like.${eventIdPrefix}%:${minute},event_id.like.${eventIdPrefix}%:${minute}:%`
+    )
     .in('result', ['accepted', 'pending']);
   
   const usersWithExisting = new Set<string>();
   (existing || []).forEach((entry: any) => {
     if (entry.user_id && entry.event_id) {
-      // Verify it's actually for this minute
-      if (entry.event_id.endsWith(eventIdSuffix) && entry.event_id.startsWith(eventIdPrefix)) {
+      if (matchesGoalNotificationMinute(entry.event_id, apiMatchId, minute)) {
         usersWithExisting.add(entry.user_id);
       }
     }
@@ -668,9 +666,10 @@ export async function sendFinalWhistleNotification(
  */
 export async function sendGameweekCompleteNotification(
   userIds: string[],
-  gw: number
+  gw: number,
+  seasonId?: string | null
 ): Promise<BatchDispatchResult> {
-  const eventId = buildGameweekCompleteEventId(gw);
+  const eventId = buildGameweekCompleteEventId(gw, seasonId);
 
   // Build deep link URL from catalog
   const baseUrl = getBaseUrl();
@@ -685,9 +684,13 @@ export async function sendGameweekCompleteNotification(
     data: {
       type: 'gameweek_finished',
       gw,
+      ...(seasonId ? { season_id: seasonId } : {}),
     },
     url: deepLinkUrl || undefined,
-    grouping_params: { gw },
+    grouping_params: {
+      gw,
+      season_scope: seasonId || 'legacy',
+    },
     badge_count: 1,
   });
 }

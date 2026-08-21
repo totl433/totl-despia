@@ -77,7 +77,7 @@ export function useDisplayGameweek() {
       try {
         const { data, error: fetchError } = await supabase
           .from('user_notification_preferences')
-          .select('current_viewing_gw')
+          .select('current_viewing_gw, use_season_stack, current_viewing_season_id')
           .eq('user_id', user.id)
           .maybeSingle();
         
@@ -98,7 +98,11 @@ export function useDisplayGameweek() {
           setUserViewingGw(newUserViewingGw);
           
           // Update cache
-          setCached(`user_notification_prefs:${user.id}`, { current_viewing_gw: newUserViewingGw }, CACHE_TTL.HOME);
+          setCached(`user_notification_prefs:${user.id}`, {
+            current_viewing_gw: newUserViewingGw,
+            use_season_stack: !!data?.use_season_stack,
+            current_viewing_season_id: data?.current_viewing_season_id ?? null,
+          }, CACHE_TTL.HOME);
           
           // Log if user has moved on
           if (currentGw && newUserViewingGw !== null && newUserViewingGw >= currentGw) {

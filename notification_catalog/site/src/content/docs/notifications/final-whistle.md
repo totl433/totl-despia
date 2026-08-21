@@ -21,6 +21,7 @@ head: []
 | Collapse ID | `ft:{api_match_id}` |
 | Thread ID | `match:{api_match_id}` |
 | Android Group | `totl_results` |
+| Deep Link | `/predictions` |
 
 ## Trigger
 

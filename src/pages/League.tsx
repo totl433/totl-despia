@@ -30,8 +30,46 @@ import { useLeaguePageLayoutLock } from "../hooks/useLeaguePageLayoutLock";
 import { useLeagueMeta } from "../hooks/useLeagueMeta";
 import { computeGwTableRows } from "../lib/leagueScoring";
 import { filterHiddenLeaderboardRows } from "../lib/leaderboardVisibility";
+import { useSeasonStack } from "../hooks/useSeasonStack";
+import { ensureActiveSeasonCtx, getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import {
+  getSeasonTables,
+  withSeasonId,
+  isNewSeasonFresh,
+  type SeasonCtx,
+} from "../lib/seasonStack";
+import { formatKickoffDateUk } from "../lib/kickoffDisplay";
 
 const MAX_MEMBERS = 8;
+
+/** Resolve season tables for this user (Pile B → app_season_*). */
+async function resolveLeagueSeason(userId: string | undefined): Promise<{
+  ctx: SeasonCtx;
+  tables: ReturnType<typeof getSeasonTables>;
+  fresh: boolean;
+}> {
+  const ctx = userId
+    ? await ensureActiveSeasonCtx(supabase as any, userId)
+    : getActiveSeasonCtx() ?? {
+        useSeasonStack: false,
+        seasonId: null,
+        seasonLabel: null,
+        currentGw: 1,
+        viewingGw: null,
+      };
+  return {
+    ctx,
+    tables: getSeasonTables(ctx),
+    fresh: isNewSeasonFresh(ctx),
+  };
+}
+
+function mltCacheKey(leagueId: string, seasonCtx: SeasonCtx | null | undefined): string {
+  if (seasonCtx?.useSeasonStack) {
+    return `league:mltRows:v2:${seasonCtx.seasonId ?? 'stack'}:${leagueId}`;
+  }
+  return `league:mltRows:${leagueId}`;
+}
 
 /* =========================
    Types
@@ -112,6 +150,8 @@ export default function LeaguePage() {
   const { user } = useAuth();
   hookCallCountRef.current++;
   const { currentGw: hookCurrentGw } = useCurrentGameweek();
+  hookCallCountRef.current++;
+  const seasonStack = useSeasonStack();
   hookCallCountRef.current++;
   
   const [oldSchoolMode] = useState(() => {
@@ -349,8 +389,8 @@ export default function LeaguePage() {
     if (!league?.code) return;
     if (typeof window === "undefined" || typeof navigator === "undefined") return;
 
-    const shareText = `Join my mini league "${league.name}" on TotL!`;
-    const shareUrl = `${window.location.origin}/league/${league.code}`;
+    const shareText = `You've been invited to join "${league.name}" on TOTL. Tap to open the invite:`;
+    const shareUrl = `https://playtotl.com/join-league/${league.code}`;
     const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
     if (typeof nav.share === "function") {
       nav
@@ -750,60 +790,41 @@ ${shareUrl}`;
   // Store GW deadlines for synchronous access
   const [gwDeadlines, setGwDeadlines] = useState<Map<number, Date>>(new Map());
   
-  // Calculate GW deadlines once when component loads
+  // Calculate GW deadlines once when component loads (season-aware for Pile B)
   useEffect(() => {
     (async () => {
+      const { ctx, tables } = await resolveLeagueSeason(user?.id);
       const deadlines = new Map<number, Date>();
-      
-      // Get all GWs that have fixtures (not just those with results)
-      const { data: allGwData } = await supabase
-        .from("app_fixtures")
+
+      let fxQ = (supabase as any)
+        .from(tables.fixtures)
         .select("gw, kickoff_time")
         .order("gw", { ascending: true });
-      
-      // Also get test fixtures for GW 1 (now in app_fixtures)
-      const { data: testGwData } = await supabase
-        .from("app_fixtures")
-        .select("gw, kickoff_time")
-        .eq("gw", 1)
-        .order("fixture_index", { ascending: true });
-      
-      // Group by GW to find first kickoff for each GW
+      fxQ = withSeasonId(fxQ, ctx);
+      const { data: allGwData } = await fxQ;
+
       const gwFirstKickoffs = new Map<number, string>();
-      
-      // Process regular fixtures
       if (allGwData) {
         allGwData.forEach((f: any) => {
-          if (!gwFirstKickoffs.has(f.gw) || (f.kickoff_time && new Date(f.kickoff_time) < new Date(gwFirstKickoffs.get(f.gw)!))) {
-            if (f.kickoff_time) {
-              gwFirstKickoffs.set(f.gw, f.kickoff_time);
-            }
+          if (!f.kickoff_time) return;
+          if (
+            !gwFirstKickoffs.has(f.gw) ||
+            new Date(f.kickoff_time) < new Date(gwFirstKickoffs.get(f.gw)!)
+          ) {
+            gwFirstKickoffs.set(f.gw, f.kickoff_time);
           }
         });
       }
-      
-      // Process test fixtures for GW 1 (override regular GW 1 if test fixtures exist)
-      if (testGwData && testGwData.length > 0) {
-        const firstTestKickoff = testGwData.find(f => f.kickoff_time)?.kickoff_time;
-        if (firstTestKickoff) {
-          // Use test fixture kickoff for GW 1 if it's earlier than regular GW 1, or if regular GW 1 doesn't exist
-          const existingGw1 = gwFirstKickoffs.get(1);
-          if (!existingGw1 || new Date(firstTestKickoff) < new Date(existingGw1)) {
-            gwFirstKickoffs.set(1, firstTestKickoff);
-          }
-        }
-      }
-      
-      // Calculate deadline for each GW (75 minutes before first kickoff)
+
       gwFirstKickoffs.forEach((kickoffTime, gw) => {
         const firstKickoff = new Date(kickoffTime);
-        const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000)); // 75 minutes before
+        const deadlineTime = new Date(firstKickoff.getTime() - 75 * 60 * 1000);
         deadlines.set(gw, deadlineTime);
       });
-      
+
       setGwDeadlines(deadlines);
     })();
-  }, []);
+  }, [user?.id, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -817,52 +838,78 @@ ${shareUrl}`;
     return () => document.removeEventListener("click", handleClickOutside);
   }, [showGwDropdown]);
 
-  /* ---------- load current GW and latest results GW ---------- */
+  /* ---------- load current GW and latest results GW (season-aware) ---------- */
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data: meta } = await supabase
-        .from("app_meta")
-        .select("current_gw")
-        .eq("id", 1)
-        .maybeSingle();
+      const { ctx, tables, fresh } = await resolveLeagueSeason(user?.id);
       if (!alive) return;
-      setCurrentGw((meta as any)?.current_gw ?? null);
 
-      const { data: rs } = await supabase
-        .from("app_gw_results")
-        .select("gw")
-        .order("gw", { ascending: false })
-        .limit(1);
-      if (!alive) return;
-      setLatestResultsGw((rs && rs.length ? (rs[0] as any).gw : null));
+      // Pile B: published GW from season stack (never app_meta alone — can be mid-25/26)
+      // Legacy: app_meta
+      let currentGwValue: number;
+      if (ctx.useSeasonStack) {
+        currentGwValue = ctx.currentGw;
+      } else {
+        const { data: meta } = await supabase
+          .from("app_meta")
+          .select("current_gw")
+          .eq("id", 1)
+          .maybeSingle();
+        if (!alive) return;
+        currentGwValue = (meta as any)?.current_gw ?? 1;
+      }
+      setCurrentGw(currentGwValue);
 
-      const { data: allGws } = await supabase
-        .from("app_gw_results")
+      // Fresh 26/27: no last-season results in the picker
+      if (fresh) {
+        setLatestResultsGw(null);
+        setAvailableGws([currentGwValue]);
+        if (!manualGwSelectedRef.current) {
+          setSelectedGw(currentGwValue);
+        }
+        return;
+      }
+
+      let resultsQ = (supabase as any)
+        .from(tables.results)
         .select("gw")
         .order("gw", { ascending: false });
+      resultsQ = withSeasonId(resultsQ, ctx);
+      const { data: allGws } = await resultsQ;
       if (!alive) return;
-      const gwList = allGws ? [...new Set(allGws.map((r: any) => r.gw))].sort((a, b) => b - a) : [];
-      
-      // Include currentGw in availableGws if it's not already there (for live GWs without results yet)
-      const currentGwValue = (meta as any)?.current_gw;
+
+      const gwList: number[] = allGws
+        ? Array.from(new Set<number>(allGws.map((r: any) => Number(r.gw)))).sort(
+            (a, b) => b - a
+          )
+        : [];
+
+      setLatestResultsGw(gwList.length ? gwList[0] : null);
+
       if (currentGwValue && !gwList.includes(currentGwValue)) {
-        gwList.unshift(currentGwValue); // Add to beginning (highest GW)
+        gwList.unshift(currentGwValue);
       }
-      
+
       setAvailableGws(gwList);
-      // Only set selectedGw if it's not already set (from initial state)
-      if (gwList.length > 0 && !selectedGw) {
-        setSelectedGw(gwList[0]);
+
+      // Default selector: stack → published GW; legacy → max completed result GW
+      if (!manualGwSelectedRef.current) {
+        if (ctx.useSeasonStack) {
+          setSelectedGw(currentGwValue);
+        } else if (gwList.length > 0) {
+          if (!selectedGw || !gwList.includes(selectedGw)) {
+            setSelectedGw(gwList[0]);
+          }
+        }
       } else if (gwList.length > 0 && selectedGw && !gwList.includes(selectedGw)) {
-        // If selectedGw is not in available list, use first available
-        setSelectedGw(gwList[0]);
+        setSelectedGw(ctx.useSeasonStack ? currentGwValue : gwList[0]);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [gwResultsVersion]); // Re-run when app_gw_results changes
+  }, [gwResultsVersion, user?.id, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.currentGw]);
 
   // data for GW tabs
   // Memoize memberIds - create stable reference that only changes when member IDs actually change
@@ -1125,96 +1172,55 @@ ${shareUrl}`;
   // This MUST run synchronously during component initialization - no async operations
   const getInitialMltRows = (): MltRow[] => {
     try {
-      const verboseDebug = typeof window !== 'undefined' && localStorage.getItem('debug:verbose') === 'true';
-      
-      if (verboseDebug) {
-        console.log('[League] getInitialMltRows called', { code, userId: user?.id });
+      // Season-stack testers: never hydrate 25/26 season points from unscoped cache
+      const seasonSnap =
+        (user?.id
+          ? getCached<{ useSeasonStack?: boolean; seasonId?: string | null; seasonLabel?: string | null }>(
+              `season:ctx:${user.id}`
+            )
+          : null) ?? null;
+      if (seasonSnap?.useSeasonStack) {
+        if (isNewSeasonFresh({ useSeasonStack: true, seasonLabel: seasonSnap.seasonLabel ?? null })) {
+          return [];
+        }
+        // Only accept season-scoped key below
       }
-      
-      // Strategy 1: Try with code + user.id to find league ID from cached leagues
+
+      const seasonCtxForKey: SeasonCtx | null = seasonSnap?.useSeasonStack
+        ? {
+            useSeasonStack: true,
+            seasonId: seasonSnap.seasonId ?? null,
+            seasonLabel: seasonSnap.seasonLabel ?? null,
+            currentGw: 1,
+            viewingGw: null,
+          }
+        : null;
+
+      const readMlt = (leagueId: string): MltRow[] | null => {
+        const key = mltCacheKey(leagueId, seasonCtxForKey);
+        const cached = getCached<MltRow[]>(key);
+        if (cached && Array.isArray(cached) && cached.length > 0) return cached;
+        return null;
+      };
+
       if (code && user?.id) {
         const cachedLeagues = getCached<Array<{ id: string; code: string }>>(`leagues:${user.id}`);
-        if (verboseDebug) {
-          console.log('[League] getInitialMltRows - cachedLeagues', { hasCached: !!cachedLeagues, length: cachedLeagues?.length });
-        }
         if (cachedLeagues && Array.isArray(cachedLeagues)) {
-          const found = cachedLeagues.find(l => l.code.toUpperCase() === code.toUpperCase());
-          if (verboseDebug) {
-            console.log('[League] getInitialMltRows - found league', { found: !!found, leagueId: found?.id });
-          }
+          const found = cachedLeagues.find((l) => l.code.toUpperCase() === code.toUpperCase());
           if (found?.id) {
-            const cacheKey = `league:mltRows:${found.id}`;
-            const cached = getCached<MltRow[]>(cacheKey);
-            if (verboseDebug) {
-              console.log('[League] getInitialMltRows - cached mltRows', { 
-                hasCached: !!cached, 
-                length: cached?.length, 
-                cacheKey,
-                cachedType: typeof cached,
-                isArray: Array.isArray(cached),
-                rawCache: cached
-              });
-            }
-            if (cached && Array.isArray(cached) && cached.length > 0) {
-              if (verboseDebug) {
-                console.log('[League] ✅ getInitialMltRows returning cached rows', cached.length);
-              }
-              return cached;
-            } else if (verboseDebug) {
-              console.log('[League] ❌ Cache check failed', { 
-                cached: !!cached, 
-                isArray: Array.isArray(cached), 
-                length: cached?.length,
-                cacheKey 
-              });
-            }
+            const cached = readMlt(found.id);
+            if (cached) return cached;
           }
         }
       }
-      
-      // Strategy 2: Try with initialLeague if available
+
       const initialLeague = getInitialLeague();
-      if (verboseDebug) {
-        console.log('[League] getInitialMltRows - initialLeague', { hasLeague: !!initialLeague, leagueId: initialLeague?.id });
-      }
       if (initialLeague?.id) {
-        const cached = getCached<MltRow[]>(`league:mltRows:${initialLeague.id}`);
-        if (verboseDebug) {
-          console.log('[League] getInitialMltRows - cached from initialLeague', { hasCached: !!cached, length: cached?.length });
-        }
-        if (cached && Array.isArray(cached) && cached.length > 0) {
-          if (verboseDebug) {
-            console.log('[League] ✅ getInitialMltRows returning cached rows from initialLeague', cached.length);
-          }
-          return cached;
-        }
+        const cached = readMlt(initialLeague.id);
+        if (cached) return cached;
       }
-      
-      // Strategy 3: Try all cached leagues and find one matching the code
-      // This is a fallback in case the leagues cache structure is different
-      if (code && user?.id) {
-        const allCachedLeagues = getCached<Array<{ id: string; code: string; name?: string }>>(`leagues:${user.id}`);
-        if (allCachedLeagues && Array.isArray(allCachedLeagues)) {
-          for (const l of allCachedLeagues) {
-            if (l.code?.toUpperCase() === code.toUpperCase() && l.id) {
-              const cached = getCached<MltRow[]>(`league:mltRows:${l.id}`);
-              if (cached && Array.isArray(cached) && cached.length > 0) {
-                if (verboseDebug) {
-                  console.log('[League] ✅ getInitialMltRows returning cached rows from strategy 3', cached.length);
-                }
-                return cached;
-              }
-            }
-          }
-        }
-      }
-      
-      if (verboseDebug) {
-        console.log('[League] ⚠️ getInitialMltRows returning empty array - cache miss');
-      }
-    } catch (error) {
-      console.error('[League] ❌ getInitialMltRows error', error);
-      // Silent fail - cache miss is OK, will be populated by useEffect
+    } catch {
+      // cache miss ok
     }
     return [];
   };
@@ -1226,61 +1232,29 @@ ${shareUrl}`;
     console.log('[League] Tab changed to:', tab, 'mltRows.length:', mltRows.length);
   }, [tab, mltRows.length]);
   
-  // Update mltRows from cache immediately when league.id becomes available
-  // This ensures state is ready BEFORE component renders
-  // Also retry if cache wasn't ready initially (initialDataLoader might still be running)
+  // Update mltRows from cache when league.id becomes available (season-scoped keys for Pile B)
   useEffect(() => {
-    if (league?.id) {
-      const cacheKey = `league:mltRows:${league.id}`;
-      const cached = getCached<MltRow[]>(cacheKey);
-      console.log('[League] useEffect loading mltRows from cache', { 
-        leagueId: league.id, 
-        cacheKey, 
-        hasCached: !!cached, 
-        cachedLength: cached?.length,
-        currentMltRowsLength: mltRows.length 
-      });
-      const filteredCached = cached ? filterHiddenLeaderboardRows(cached) : [];
-      if (filteredCached.length > 0) {
-        if (mltRows.length === 0) {
-          console.log('[League] ✅ Setting mltRows from cache', filteredCached.length);
-          setMltRows(filteredCached);
-        } else {
-          console.log('[League] mltRows already populated, skipping');
-        }
-      } else {
-        console.log('[League] ⚠️ No cached mltRows found - will retry multiple times');
-        // Retry multiple times with increasing delays in case initialDataLoader is still running
-        let retryCount = 0;
-        const maxRetries = 10;
-        const retryDelays = [50, 100, 150, 200, 250, 300, 400, 500, 600, 800];
-        
-        const tryRetry = () => {
-          if (retryCount >= maxRetries) {
-            console.log('[League] ❌ Max retries reached, giving up on cache');
-            return;
-          }
-          const timeout = setTimeout(() => {
-            retryCount++;
-            const retryCached = getCached<MltRow[]>(cacheKey);
-            const retryFiltered = retryCached ? filterHiddenLeaderboardRows(retryCached) : [];
-            if (retryFiltered.length > 0 && mltRows.length === 0) {
-              console.log(`[League] ✅ Retry ${retryCount} successful - Setting mltRows from cache`, retryFiltered.length);
-              setMltRows(retryFiltered);
-            } else if (retryCount < maxRetries) {
-              tryRetry();
-            }
-          }, retryDelays[retryCount] || 800);
-          return () => clearTimeout(timeout);
-        };
-        
-        const cleanup = tryRetry();
-        return cleanup;
-      }
-    } else {
-      console.log('[League] ⚠️ No league.id available yet');
+    if (!league?.id) return;
+    // Do not hydrate 25/26 mlt points for fresh 26/27 stack
+    if (seasonStack.useSeasonStack && seasonStack.isNewSeasonFresh) {
+      return;
     }
-  }, [league?.id, mltRows.length]); // Run immediately when league.id is available
+    const seasonCtxSnap: SeasonCtx | null = seasonStack.useSeasonStack
+      ? {
+          useSeasonStack: true,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: seasonStack.currentGw,
+          viewingGw: seasonStack.viewingGw,
+        }
+      : null;
+    const cacheKey = mltCacheKey(league.id, seasonCtxSnap);
+    const cached = getCached<MltRow[]>(cacheKey);
+    const filteredCached = cached ? filterHiddenLeaderboardRows(cached) : [];
+    if (filteredCached.length > 0 && mltRows.length === 0) {
+      setMltRows(filteredCached);
+    }
+  }, [league?.id, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.isNewSeasonFresh, mltRows.length]);
 
   /* ---------- Redirect to valid tab if current tab shouldn't be visible for this league ---------- */
   useEffect(() => {
@@ -1403,38 +1377,46 @@ ${shareUrl}`;
       
       // For predictions tab with regular leagues, try to detect the GW from submissions
       // This ensures we show picks even if currentGw hasn't been updated yet or if members submitted for a different GW
+      // Pile B: never walk legacy app_gw_submissions (25/26) for detecting GW
       if (tab === "gw" && !isApiTestLeague && memberIds.length > 0) {
-        // Get the most recent GW that members have submitted for
-        const { data: submissionsCheck } = await supabase
-          .from("app_gw_submissions")
-          .select("gw")
-          .in("user_id", memberIds)
-          .not("submitted_at", "is", null)
-          .order("gw", { ascending: false })
-          .limit(10); // Check last 10 GWs
-        
-        // Try to find a GW that has both submissions AND fixtures
-        if (submissionsCheck && submissionsCheck.length > 0) {
-          const submittedGws = [...new Set(submissionsCheck.map(s => s.gw))].sort((a, b) => (b || 0) - (a || 0));
-          
-          for (const submittedGw of submittedGws) {
-            if (submittedGw) {
-              // Check if fixtures exist for this GW
-              const { data: fixtureCheck } = await supabase
-                .from("app_fixtures")
-                .select("gw")
-                .eq("gw", submittedGw)
-                .limit(1);
-              
-              if (fixtureCheck && fixtureCheck.length > 0) {
-                gwForData = submittedGw;
-                break; // Use the most recent GW with fixtures
+        const { ctx: stackCtx, tables: stackTables, fresh } = await resolveLeagueSeason(user?.id);
+        if (!fresh) {
+          let subCheckQ = (supabase as any)
+            .from(stackTables.submissions)
+            .select("gw")
+            .in("user_id", memberIds)
+            .not("submitted_at", "is", null)
+            .order("gw", { ascending: false })
+            .limit(10);
+          subCheckQ = withSeasonId(subCheckQ, stackCtx);
+          const { data: submissionsCheck } = await subCheckQ;
+
+          if (submissionsCheck && submissionsCheck.length > 0) {
+            const submittedGws = Array.from(
+              new Set<number>(
+                submissionsCheck.map((s: any) => Number(s.gw)).filter((g: number) => !!g)
+              )
+            ).sort((a, b) => b - a);
+
+            for (const submittedGw of submittedGws) {
+              if (submittedGw) {
+                let fxCheckQ = (supabase as any)
+                  .from(stackTables.fixtures)
+                  .select("gw")
+                  .eq("gw", submittedGw)
+                  .limit(1);
+                fxCheckQ = withSeasonId(fxCheckQ, stackCtx);
+                const { data: fixtureCheck } = await fxCheckQ;
+
+                if (fixtureCheck && fixtureCheck.length > 0) {
+                  gwForData = submittedGw as number;
+                  break;
+                }
               }
             }
           }
         }
-        
-        // If we still don't have a valid gwForData, use currentGw if it exists
+
         if (!gwForData && currentGw) {
           gwForData = currentGw;
         }
@@ -1462,19 +1444,18 @@ ${shareUrl}`;
         // Map test_gw to gw for consistency
         fx = testFx?.map(f => ({ ...f, gw: f.test_gw })) || null;
       } else {
-        // Regular fixtures - ALWAYS use main database table for non-API Test leagues
-        // CRITICAL: Never use test_api_fixtures for regular leagues
-        // Regular fixtures - ALWAYS use main database table for non-API Test leagues
-        // CRITICAL: Never use test_api_fixtures for regular leagues
-        // NOTE: fixtures table does NOT have api_match_id column (only test_api_fixtures has it)
-        const { data: regularFx } = await supabase
-          .from("app_fixtures")
+        // Regular fixtures — season stack uses app_season_fixtures for 26/27 testers
+        const { ctx, tables } = await resolveLeagueSeason(user?.id);
+        let fxQ = (supabase as any)
+          .from(tables.fixtures)
           .select(
             "id,gw,fixture_index,home_team,away_team,home_code,away_code,home_name,away_name,kickoff_time,api_match_id"
           )
           .eq("gw", gwForData)
           .order("fixture_index", { ascending: true });
-        
+        fxQ = withSeasonId(fxQ, ctx);
+        const { data: regularFx } = await fxQ;
+
         fx = regularFx || null;
       }
 
@@ -1578,20 +1559,24 @@ ${shareUrl}`;
         // Map matchday to gw for consistency
         submissions = validSubmissions.map(s => ({ ...s, gw: s.matchday })) || null;
       } else {
-        // Regular picks and submissions - ALWAYS use main database tables for non-API Test leagues
-        // CRITICAL: Never use test_api_picks or test_api_submissions for regular leagues
-        const { data: regularPicks } = await supabase
-          .from("app_picks")
+        // Regular picks and submissions — season-scoped for Pile B
+        const { ctx, tables } = await resolveLeagueSeason(user?.id);
+        let picksQ = (supabase as any)
+          .from(tables.picks)
           .select("user_id,gw,fixture_index,pick")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
+        picksQ = withSeasonId(picksQ, ctx);
+        const { data: regularPicks } = await picksQ;
         pk = regularPicks;
-        
-        const { data: regularSubs } = await supabase
-          .from("app_gw_submissions")
+
+        let subsQ = (supabase as any)
+          .from(tables.submissions)
           .select("user_id,gw,submitted_at")
           .eq("gw", gwForData)
           .in("user_id", memberIds);
+        subsQ = withSeasonId(subsQ, ctx);
+        const { data: regularSubs } = await subsQ;
         submissions = regularSubs;
       }
       
@@ -1615,28 +1600,36 @@ ${shareUrl}`;
         return prevStr === newStr ? prev : newSubs;
       });
 
-      // For API Test league GW 1, results are stored with gw=1 (same as regular results)
-      // We'll need to check if results exist for test fixtures specifically
-      const { data: rs } = await supabase
-        .from("app_gw_results")
-        .select("gw,fixture_index,result")
-        .eq("gw", useTestFixtures ? 1 : (gwForData || 0));
-      if (!alive) return;
-      // Only update if results actually changed
-      setResults((prev) => {
-        const newResults = (rs as ResultRowRaw[]) ?? [];
-        if (prev.length !== newResults.length) return newResults;
-        if (prev.length === 0 && newResults.length === 0) return prev;
-        const prevStr = JSON.stringify(prev.sort((a, b) => a.fixture_index - b.fixture_index));
-        const newStr = JSON.stringify(newResults.sort((a, b) => a.fixture_index - b.fixture_index));
-        return prevStr === newStr ? prev : newResults;
-      });
+      // Results for GW (season-aware)
+      {
+        const { ctx, tables, fresh } = await resolveLeagueSeason(user?.id);
+        if (fresh && !useTestFixtures) {
+          if (!alive) return;
+          setResults([]);
+        } else {
+          let rsQ = (supabase as any)
+            .from(tables.results)
+            .select("gw,fixture_index,result")
+            .eq("gw", useTestFixtures ? 1 : (gwForData || 0));
+          rsQ = withSeasonId(rsQ, ctx);
+          const { data: rs } = await rsQ;
+          if (!alive) return;
+          setResults((prev) => {
+            const newResults = (rs as ResultRowRaw[]) ?? [];
+            if (prev.length !== newResults.length) return newResults;
+            if (prev.length === 0 && newResults.length === 0) return prev;
+            const prevStr = JSON.stringify(prev.sort((a, b) => a.fixture_index - b.fixture_index));
+            const newStr = JSON.stringify(newResults.sort((a, b) => a.fixture_index - b.fixture_index));
+            return prevStr === newStr ? prev : newResults;
+          });
+        }
+      }
     })();
 
     return () => {
       alive = false;
     };
-  }, [tab, currentGw, latestResultsGw, selectedGw, memberIds]);
+  }, [tab, currentGw, latestResultsGw, selectedGw, memberIds, user?.id, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   // Sync ref with liveScores state whenever it changes
   useEffect(() => {
@@ -1672,21 +1665,20 @@ ${shareUrl}`;
     }));
   }, []);
 
-  /* ---------- Subscribe to gw_results changes for real-time table updates ---------- */
+  /* ---------- Subscribe to results changes for real-time table updates ---------- */
   useEffect(() => {
-    // Subscribe to changes in app_gw_results table to trigger table recalculation and update available GWs
+    const resultTable = seasonStack.useSeasonStack ? 'app_season_results' : 'app_gw_results';
     const channel = supabase
-      .channel('app-gw-results-changes')
+      .channel(`results-changes-${resultTable}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
+          event: '*',
           schema: 'public',
-          table: 'app_gw_results',
+          table: resultTable,
         },
         () => {
-          // Increment version to trigger recalculation and update available GWs
-          setGwResultsVersion(prev => prev + 1);
+          setGwResultsVersion((prev) => prev + 1);
         }
       )
       .subscribe();
@@ -1694,7 +1686,7 @@ ${shareUrl}`;
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [seasonStack.useSeasonStack]);
 
   // Removed - now handled by useMemo + useEffect above for immediate synchronous loading
 
@@ -1702,66 +1694,64 @@ ${shareUrl}`;
   useEffect(() => {
     let alive = true;
     (async () => {
-      // If gwResultsVersion changed (results were updated), force recalculation
-      // Otherwise, if we already have rows loaded (from cache), skip calculation
-      const shouldRecalculate = gwResultsVersion > 0;
-      
-      // Check if cached data is stale (all wins/draws are 0 when there should be data)
-      // This handles the case where cache was created before wins/draws were properly calculated
-      const hasStaleCache = mltRows.length > 0 && mltRows.every(row => row.wins === 0 && row.draws === 0);
-      const shouldForceRecalc = shouldRecalculate || hasStaleCache;
-      
-      if (!shouldForceRecalc && mltRows.length > 0) {
-        return;
-      }
-      
-      // If forcing recalculation due to results change or stale cache, skip cache checks
-      if (!shouldForceRecalc) {
-        // Check cache one more time before doing anything
-        if (league?.id) {
-          const cached = getCached<MltRow[]>(`league:mltRows:${league.id}`);
-          if (cached && cached.length > 0) {
-            setMltRows(cached);
-            return;
-          }
-        }
-      }
-      
       if (!members.length) {
-        // If we have cached data, keep it; otherwise clear
-        if (!getCached<MltRow[]>(`league:mltRows:${league?.id || ''}`)) {
         setMltRows([]);
-        }
         return;
       }
-      
-      // Special handling for "API Test" league - it uses test API data, not regular game data
+
       if (league?.name === 'API Test') {
-        // Show empty table with zero points for all members (test league starts fresh)
         setMltRows(createEmptyMltRows(members));
         return;
       }
-      
-      // If forcing recalculation, skip cache check
-      if (!shouldForceRecalc) {
-        // Check cache one more time before calculating
-        const hasCachedData = league?.id && getCached<MltRow[]>(`league:mltRows:${league.id}`);
-        if (hasCachedData && hasCachedData.length > 0) {
-          setMltRows(hasCachedData);
-          return;
-        }
-      }
-      
-      // Don't calculate until we have currentGw loaded
+
       if (currentGw === null) {
         return;
       }
 
-      // Use app results for mini-league calculations (app data source)
-      const { data: rs } = await supabase.from("app_gw_results").select("gw,fixture_index,result");
+      const { ctx, tables, fresh } = await resolveLeagueSeason(user?.id);
+      if (!alive) return;
+
+      // Fresh 2026/27: zero season table — never sum app_gw_results from 25/26
+      if (fresh) {
+        const empty = createEmptyMltRows(members);
+        setMltRows(empty);
+        if (league?.id) {
+          setCached(mltCacheKey(league.id, ctx), empty, CACHE_TTL.LEAGUES);
+        }
+        return;
+      }
+
+      const cacheKey = league?.id ? mltCacheKey(league.id, ctx) : '';
+      const shouldRecalculate = gwResultsVersion > 0;
+      const hasNonZero =
+        mltRows.length > 0 && mltRows.some((row) => row.mltPts > 0 || row.wins > 0 || row.ocp > 0);
+      // On stack, ignore unscoped legacy rows painted from old cache
+      if (
+        !shouldRecalculate &&
+        mltRows.length > 0 &&
+        hasNonZero &&
+        !ctx.useSeasonStack
+      ) {
+        return;
+      }
+
+      if (!shouldRecalculate && cacheKey) {
+        const cached = getCached<MltRow[]>(cacheKey);
+        if (cached && cached.length > 0) {
+          setMltRows(filterHiddenLeaderboardRows(cached));
+          return;
+        }
+      }
+
+      let resultsQ = (supabase as any)
+        .from(tables.results)
+        .select('gw,fixture_index,result');
+      resultsQ = withSeasonId(resultsQ, ctx);
+      const { data: rs } = await resultsQ;
+      if (!alive) return;
       const resultList = (rs as ResultRowRaw[]) ?? [];
 
-      const outcomeByGwIdx = new Map<string, "H" | "D" | "A">();
+      const outcomeByGwIdx = new Map<string, 'H' | 'D' | 'A'>();
       resultList.forEach((r) => {
         const out = rowToOutcome(r);
         if (!out) return;
@@ -1769,69 +1759,80 @@ ${shareUrl}`;
       });
 
       if (outcomeByGwIdx.size === 0) {
-        setMltRows(createEmptyMltRows(members));
+        const empty = createEmptyMltRows(members);
+        setMltRows(empty);
+        if (league?.id) setCached(mltCacheKey(league.id, ctx), empty, CACHE_TTL.LEAGUES);
         return;
       }
 
-      const gwsWithResults = [...new Set(Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(":")[0], 10)))].sort(
-        (a, b) => a - b
-      );
+      const gwsWithResults = [
+        ...new Set(
+          Array.from(outcomeByGwIdx.keys()).map((k) => parseInt(k.split(':')[0], 10))
+        ),
+      ].sort((a, b) => a - b);
 
-      // Filter gameweeks to only include those from the league's start_gw onwards
-      // Special leagues that should include all historical data (start from GW0)
-      // Note: "API Test" is excluded - it uses test API data, not regular game data
-      const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
-      const gw7StartLeagues = ['The Bird league'];
-      
-      const leagueStartGw = await getLeagueStartGw(league, currentGw);
-      let relevantGws = gwsWithResults.filter(gw => gw >= leagueStartGw);
-      
-      // CRITICAL: Exclude currentGw only if it's still live (not all fixtures have results)
-      // A gameweek is complete when all fixtures have results in app_gw_results
-      // Check if currentGw is complete by comparing fixture count to result count
-      if (currentGw !== null && relevantGws.includes(currentGw)) {
-        // Fetch fixtures for currentGw to check if it's complete
-        const { data: fixturesForCurrentGw } = await supabase
-          .from("app_fixtures")
-          .select("fixture_index")
-          .eq("gw", currentGw);
-        
-        const fixtureCount = fixturesForCurrentGw?.length ?? 0;
-        const resultCountForCurrentGw = Array.from(outcomeByGwIdx.keys())
-          .filter(k => parseInt(k.split(":")[0], 10) === currentGw)
-          .length;
-        
-        // If currentGw doesn't have results for all fixtures, exclude it (still live)
-        // Otherwise, include it (complete)
-        if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
-          relevantGws = relevantGws.filter(gw => gw < currentGw);
+      // On a new season folder, treat all GWs as valid (start at 1); legacy keeps league start filters
+      let relevantGws: number[];
+      if (ctx.useSeasonStack) {
+        relevantGws = gwsWithResults.slice();
+      } else {
+        const specialLeagues = ['Prem Predictions', 'FC Football', 'Easy League'];
+        const gw7StartLeagues = ['The Bird league'];
+        const leagueStartGw = await getLeagueStartGw(league, currentGw);
+        relevantGws = gwsWithResults.filter((gw) => gw >= leagueStartGw);
+        if (
+          !specialLeagues.includes(league?.name || '') &&
+          !gw7StartLeagues.includes(league?.name || '') &&
+          relevantGws.length === 0
+        ) {
+          setMltRows(createEmptyMltRows(members));
+          return;
         }
-        // If currentGw is complete (all fixtures have results), keep it in relevantGws
-      } else if (currentGw !== null) {
-        // currentGw is not in gwsWithResults, so exclude it
-        relevantGws = relevantGws.filter(gw => gw < currentGw);
       }
 
-      // For late-starting leagues, if there are no results for the start gameweek or later, show empty table
-      if (!specialLeagues.includes(league?.name || '') && !gw7StartLeagues.includes(league?.name || '') && relevantGws.length === 0) {
-        setMltRows(createEmptyMltRows(members));
+      if (currentGw !== null && relevantGws.includes(currentGw)) {
+        let fxQ = (supabase as any)
+          .from(tables.fixtures)
+          .select('fixture_index')
+          .eq('gw', currentGw);
+        fxQ = withSeasonId(fxQ, ctx);
+        const { data: fixturesForCurrentGw } = await fxQ;
+        const fixtureCount = fixturesForCurrentGw?.length ?? 0;
+        const resultCountForCurrentGw = Array.from(outcomeByGwIdx.keys()).filter(
+          (k) => parseInt(k.split(':')[0], 10) === currentGw
+        ).length;
+        if (fixtureCount > 0 && resultCountForCurrentGw < fixtureCount) {
+          relevantGws = relevantGws.filter((gw) => gw < currentGw);
+        }
+      } else if (currentGw !== null) {
+        relevantGws = relevantGws.filter((gw) => gw < currentGw);
+      }
+
+      if (relevantGws.length === 0) {
+        const empty = createEmptyMltRows(members);
+        setMltRows(empty);
+        if (league?.id) setCached(mltCacheKey(league.id, ctx), empty, CACHE_TTL.LEAGUES);
         return;
       }
-      
-      // IMPORTANT: app_picks can exceed default row limits; page to avoid truncated season math.
+
       const picksAll: PickRow[] = [];
       const PICK_PAGE_SIZE = 1000;
       let pickFrom = 0;
       while (true) {
-        const { data: pkPage, error: pkErr } = await supabase
-          .from("app_picks")
-          .select("user_id,gw,fixture_index,pick")
-          .in("user_id", members.map((m) => m.id))
-          .in("gw", relevantGws)
-          .order("gw", { ascending: true })
-          .order("fixture_index", { ascending: true })
-          .order("user_id", { ascending: true })
+        let picksQ = (supabase as any)
+          .from(tables.picks)
+          .select('user_id,gw,fixture_index,pick')
+          .in(
+            'user_id',
+            members.map((m) => m.id)
+          )
+          .in('gw', relevantGws)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .order('user_id', { ascending: true })
           .range(pickFrom, pickFrom + PICK_PAGE_SIZE - 1);
+        picksQ = withSeasonId(picksQ, ctx);
+        const { data: pkPage, error: pkErr } = await picksQ;
         if (pkErr) throw pkErr;
         const page = (pkPage as PickRow[]) ?? [];
         picksAll.push(...page);
@@ -1849,8 +1850,8 @@ ${shareUrl}`;
 
       relevantGws.forEach((g) => {
         const idxInGw = Array.from(outcomeByGwIdx.entries())
-          .filter(([k]) => parseInt(k.split(":")[0], 10) === g)
-          .map(([k, v]) => ({ idx: parseInt(k.split(":")[1], 10), out: v }));
+          .filter(([k]) => parseInt(k.split(':')[0], 10) === g)
+          .map(([k, v]) => ({ idx: parseInt(k.split(':')[1], 10), out: v }));
 
         idxInGw.forEach(({ idx, out }) => {
           const thesePicks = picksAll.filter((p) => p.gw === g && p.fixture_index === idx);
@@ -1877,7 +1878,7 @@ ${shareUrl}`;
       const unis = new Map<string, number>();
       const wins = new Map<string, number>();
       const draws = new Map<string, number>();
-      const form = new Map<string, ("W" | "D" | "L")[]>();
+      const form = new Map<string, ('W' | 'D' | 'L')[]>();
       members.forEach((m) => {
         mltPts.set(m.id, 0);
         ocp.set(m.id, 0);
@@ -1903,17 +1904,17 @@ ${shareUrl}`;
         if (coTop.length === 1) {
           mltPts.set(top.user_id, (mltPts.get(top.user_id) ?? 0) + 3);
           wins.set(top.user_id, (wins.get(top.user_id) ?? 0) + 1);
-          form.get(top.user_id)!.push("W");
-          rows.slice(1).forEach((r) => form.get(r.user_id)!.push("L"));
+          form.get(top.user_id)!.push('W');
+          rows.slice(1).forEach((r) => form.get(r.user_id)!.push('L'));
         } else {
           coTop.forEach((r) => {
             mltPts.set(r.user_id, (mltPts.get(r.user_id) ?? 0) + 1);
             draws.set(r.user_id, (draws.get(r.user_id) ?? 0) + 1);
-            form.get(r.user_id)!.push("D");
+            form.get(r.user_id)!.push('D');
           });
           rows
             .filter((r) => !coTop.find((t) => t.user_id === r.user_id))
-            .forEach((r) => form.get(r.user_id)!.push("L"));
+            .forEach((r) => form.get(r.user_id)!.push('L'));
         }
       });
 
@@ -1928,20 +1929,32 @@ ${shareUrl}`;
         form: form.get(m.id) ?? [],
       }));
 
-      rows.sort((a, b) => b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name));
+      rows.sort(
+        (a, b) =>
+          b.mltPts - a.mltPts || b.unicorns - a.unicorns || b.ocp - a.ocp || a.name.localeCompare(b.name)
+      );
 
       if (!alive) return;
       setMltRows(rows);
-      // Cache the calculated rows for instant loading next time
       if (league?.id) {
-        setCached(`league:mltRows:${league.id}`, rows, CACHE_TTL.LEAGUES);
+        setCached(mltCacheKey(league.id, ctx), rows, CACHE_TTL.LEAGUES);
       }
     })();
 
     return () => {
       alive = false;
     };
-  }, [members, league, currentGw, createEmptyMltRows, gwResultsVersion]);
+  }, [
+    members,
+    league,
+    currentGw,
+    createEmptyMltRows,
+    gwResultsVersion,
+    user?.id,
+    seasonStack.useSeasonStack,
+    seasonStack.seasonId,
+    seasonStack.isNewSeasonFresh,
+  ]);
 
   /* =========================
      Renderers
@@ -2179,8 +2192,8 @@ ${shareUrl}`;
       if (!league?.code) return;
       if (typeof window === "undefined" || typeof navigator === "undefined") return;
 
-      const shareText = `Join my mini league "${league.name}" on TotL!`;
-      const shareUrl = `${window.location.origin}/league/${league.code}`;
+      const shareText = `You've been invited to join "${league.name}" on TOTL. Tap to open the invite:`;
+      const shareUrl = `https://playtotl.com/join-league/${league.code}`;
       const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
       
       if (typeof nav.share === "function") {
@@ -2469,9 +2482,8 @@ ${shareUrl}`;
     const sections = useMemo(() => {
       const fmt = (iso?: string | null) => {
         if (!iso) return "Fixtures";
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return "Fixtures";
-        return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+        const label = formatKickoffDateUk(iso);
+        return label || "Fixtures";
       };
       const buckets = new Map<string, { label: string; key: number; items: Fixture[] }>();
       fixtures

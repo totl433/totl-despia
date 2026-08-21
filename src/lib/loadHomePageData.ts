@@ -10,6 +10,12 @@ import { resolveLeagueStartGw } from './leagueStart';
 import { APP_ONLY_USER_IDS } from './appOnlyUsers';
 import { logDataFetch } from './dataFetchLogger';
 import { filterHiddenLeaderboardRows, filterHiddenMembers } from './leaderboardVisibility';
+import { getActiveSeasonCtx, ensureActiveSeasonCtx } from './activeSeasonCtx';
+import {
+  getSeasonTables,
+  withSeasonId,
+  type SeasonCtx,
+} from './seasonStack';
 
 type LeagueMember = { id: string; name: string };
 type PickRow = { user_id: string; gw: number; fixture_index: number; pick: "H" | "D" | "A" };
@@ -125,10 +131,27 @@ export async function loadHomePageData(
   leagues: Array<{ id: string; name: string }>,
   currentGw: number
 ): Promise<HomePageData> {
+  // Always resolve from DB for this user so we never use a stale "legacy" session
+  // left from before prefs load (which would load app_fixtures GW1 = 25/26).
+  let seasonCtx: SeasonCtx;
+  try {
+    seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+  } catch {
+    seasonCtx = getActiveSeasonCtx() ?? {
+      useSeasonStack: false,
+      seasonId: null,
+      seasonLabel: null,
+      currentGw,
+      viewingGw: null,
+    };
+  }
+  const tables = getSeasonTables(seasonCtx);
+  const seasonCacheKey = seasonCtx.useSeasonStack ? (seasonCtx.seasonId ?? 'stack') : 'legacy';
+
   // Check cache first
-  const basicCacheKey = `home:basic:${userId}`;
-  const fixturesCacheKey = `home:fixtures:${userId}:${currentGw}`;
-  const leagueDataCacheKey = `home:leagueData:v6:${userId}:${currentGw}`; // v6: Ensure HP ordering matches /tables (avoid truncated prewarm caches)
+  const basicCacheKey = `home:basic:v2:${seasonCacheKey}:${userId}`;
+  const fixturesCacheKey = `home:fixtures:v2:${seasonCacheKey}:${userId}:${currentGw}`;
+  const leagueDataCacheKey = `home:leagueData:v7:${seasonCacheKey}:${userId}:${currentGw}`; // v7: season-aware
   
   const cachedBasic = getCached<{
     currentGw: number;
@@ -217,9 +240,42 @@ export async function loadHomePageData(
     };
   }
   
-  // Fetch all data in parallel
+  // Fetch all data in parallel (season-aware tables when Pile B is active)
   const leagueIds = leagues.map(l => l.id);
-  
+
+  let latestResultsQ = (supabase as any)
+    .from(tables.results)
+    .select('gw')
+    .order('gw', { ascending: false })
+    .limit(1);
+  latestResultsQ = withSeasonId(latestResultsQ, seasonCtx);
+
+  let fixturesQ = (supabase as any)
+    .from(tables.fixtures)
+    .select(
+      'id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time'
+    )
+    .eq('gw', currentGw)
+    .order('fixture_index', { ascending: true });
+  fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+
+  let picksQ = (supabase as any)
+    .from(tables.picks)
+    .select('user_id, gw, fixture_index, pick')
+    .eq('user_id', userId)
+    .eq('gw', currentGw);
+  picksQ = withSeasonId(picksQ, seasonCtx);
+
+  let submissionsQ = (supabase as any)
+    .from(tables.submissions)
+    .select('user_id')
+    .eq('gw', currentGw)
+    .not('submitted_at', 'is', null);
+  submissionsQ = withSeasonId(submissionsQ, seasonCtx);
+
+  let allResultsQ = (supabase as any).from(tables.results).select('gw, fixture_index, result');
+  allResultsQ = withSeasonId(allResultsQ, seasonCtx);
+
   const [
     metaResult,
     latestGwResult,
@@ -235,17 +291,46 @@ export async function loadHomePageData(
     liveScoresResult,
   ] = await Promise.all([
     supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
-    // IMPORTANT: use app_gw_results as the source of truth (matches /tables)
-    supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
-    supabase.from("app_v_ocp_overall").select("user_id, name, ocp"),
-    supabase.from("app_fixtures").select("id, gw, fixture_index, api_match_id, home_code, away_code, home_team, away_team, home_name, away_name, kickoff_time").eq("gw", currentGw).order("fixture_index", { ascending: true }),
-    supabase.from("app_picks").select("user_id, gw, fixture_index, pick").eq("user_id", userId).eq("gw", currentGw),
+    latestResultsQ.maybeSingle(),
+    // Season stack uses app_v_season_* views; legacy uses app_v_*.
+    // Empty at season start until results exist (no last-season bleed-through).
+    (async () => {
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        let q = (supabase as any)
+          .from(tables.gwPoints)
+          .select("user_id, gw, points")
+          .eq("season_id", seasonCtx.seasonId)
+          .order("gw", { ascending: true });
+        return q;
+      }
+      return supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true });
+    })(),
+    (async () => {
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        let q = (supabase as any)
+          .from(tables.ocpOverall)
+          .select("user_id, name, ocp")
+          .eq("season_id", seasonCtx.seasonId);
+        return q;
+      }
+      return supabase.from("app_v_ocp_overall").select("user_id, name, ocp");
+    })(),
+    fixturesQ,
+    picksQ,
     leagueIds.length > 0 ? supabase.from("league_members").select("league_id, user_id, users!inner(id, name)").in("league_id", leagueIds) : Promise.resolve({ data: [], error: null }),
-    supabase.from("app_gw_submissions").select("user_id").eq("gw", currentGw).not("submitted_at", "is", null),
-    supabase.from("app_gw_results").select("gw, fixture_index, result"),
-    supabase.from("picks").select("user_id, gw, created_at").limit(10000),
-    supabase.from("app_picks").select("user_id, gw, created_at").limit(10000),
+    submissionsQ,
+    allResultsQ,
+    seasonCtx.useSeasonStack
+      ? Promise.resolve({ data: [], error: null })
+      : supabase.from("picks").select("user_id, gw, created_at").limit(10000),
+    (() => {
+      let q = (supabase as any)
+        .from(tables.picks)
+        .select('user_id, gw, created_at')
+        .limit(10000);
+      q = withSeasonId(q, seasonCtx);
+      return q;
+    })(),
     // Seed Home mini-league live tables during LIVE by using live_scores outcomes (same rule as LeaguePage)
     supabase
       .from("live_scores")
@@ -255,15 +340,16 @@ export async function loadHomePageData(
   
   // Log critical queries for debugging
   logDataFetch('loadHomePageData', 'Fetch league members', 'league_members', membersResult, { leagueIds: leagueIds.length, userId });
-  logDataFetch('loadHomePageData', 'Fetch fixtures', 'app_fixtures', fixturesResult, { gw: currentGw, userId });
-  logDataFetch('loadHomePageData', 'Fetch user picks', 'app_picks', picksResult, { gw: currentGw, userId });
+  logDataFetch('loadHomePageData', 'Fetch fixtures', tables.fixtures, fixturesResult, { gw: currentGw, userId, season: seasonCacheKey });
+  logDataFetch('loadHomePageData', 'Fetch user picks', tables.picks, picksResult, { gw: currentGw, userId, season: seasonCacheKey });
   if (fixturesResult.error || membersResult.error) {
     logDataFetch('loadHomePageData', 'Fetch meta', 'app_meta', metaResult, { userId });
     logDataFetch('loadHomePageData', 'Fetch overall standings', 'app_v_ocp_overall', overallResult, { userId });
   }
   
-  const gw = metaResult.data?.current_gw ?? currentGw;
-  const latestGw = latestGwResult.data?.gw ?? gw;
+  // On Pile B, currentGw is already season-resolved by the caller; don't override with app_meta.
+  const gw = seasonCtx.useSeasonStack ? currentGw : (metaResult.data?.current_gw ?? currentGw);
+  const latestGw = latestGwResult.data?.gw ?? (seasonCtx.useSeasonStack ? 0 : gw);
   const allGwPointsRaw = (allGwPointsResult.data as Array<{user_id: string, gw: number, points: number}>) ?? [];
   const overallRaw = (overallResult.data as Array<{user_id: string, name: string | null, ocp: number | null}>) ?? [];
   const allGwPoints = filterHiddenLeaderboardRows(allGwPointsRaw);
@@ -390,23 +476,27 @@ export async function loadHomePageData(
     // (We don't actually care about order, but we need stable paging.)
     while (true) {
       const to = from + PAGE_SIZE - 1;
-      const pageResult = await supabase
-        .from('app_picks')
-        .select('user_id, gw, fixture_index, pick')
-        .in('user_id', allMemberIds)
-        .gte('gw', boundedStartGw)
-        .lte('gw', boundedEndGw)
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true })
-        .order('user_id', { ascending: true })
-        .range(from, to);
+      const pageResult = await (() => {
+        let q = (supabase as any)
+          .from(tables.picks)
+          .select('user_id, gw, fixture_index, pick')
+          .in('user_id', allMemberIds)
+          .gte('gw', boundedStartGw)
+          .lte('gw', boundedEndGw)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .order('user_id', { ascending: true })
+          .range(from, to);
+        q = withSeasonId(q, seasonCtx);
+        return q;
+      })();
 
       logDataFetch(
         'loadHomePageData',
         'Fetch all ML member picks (bounded paged)',
-        'app_picks',
+        tables.picks,
         pageResult,
-        { memberCount: allMemberIds.length, gwRange: `${boundedStartGw}-${boundedEndGw}`, from, to, leaguesCount: leagues.length, userId }
+        { memberCount: allMemberIds.length, gwRange: `${boundedStartGw}-${boundedEndGw}`, from, to, leaguesCount: leagues.length, userId, season: seasonCacheKey }
       );
 
       if (pageResult.error) break;

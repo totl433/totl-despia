@@ -16,9 +16,12 @@ import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import type { GameweekState } from "../lib/gameweekState";
 import GameweekResultsModal from "../components/GameweekResultsModal";
+import NewSeasonBanner from "../components/NewSeasonBanner";
 import { loadHomePageData } from "../lib/loadHomePageData";
 import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../lib/helpers";
-
+import { useSeasonStack } from "../hooks/useSeasonStack";
+import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
 // Types
 type LeagueMember = { id: string; name: string };
 type LeagueDataInternal = {
@@ -62,6 +65,11 @@ type Fixture = {
  */
 export default function HomePage() {
   const { user } = useAuth();
+  const seasonStack = useSeasonStack();
+  const newSeasonLabel =
+    seasonStack.seasonLabel && seasonStack.seasonLabel.trim()
+      ? seasonStack.seasonLabel.trim()
+      : '2026/27';
   
   // Load initial state from cache synchronously (happens before first render)
   const loadInitialStateFromCache = () => {
@@ -96,15 +104,36 @@ export default function HomePage() {
       // CRITICAL: Check user's viewing GW preference FIRST (pre-loaded by initialDataLoader)
       // This determines which GW the user is actually viewing (may be different from current GW)
       let userViewingGw: number | null = null;
+      // Season-scoped keys only — never paint pile-B users with legacy 25/26 GW1 cache
+      let seasonCacheKey = 'legacy';
       try {
-        const prefsCache = getCached<{ current_viewing_gw: number | null }>(`user_notification_prefs:${userId}`);
+        const prefsCache = getCached<{
+          current_viewing_gw: number | null;
+          use_season_stack?: boolean;
+          current_viewing_season_id?: string | null;
+        }>(`user_notification_prefs:${userId}`);
         userViewingGw = prefsCache?.current_viewing_gw ?? null;
+        if (prefsCache?.use_season_stack) {
+          seasonCacheKey = prefsCache.current_viewing_season_id ?? 'stack';
+        }
       } catch (e) {
         // Ignore cache errors
       }
+      try {
+        const seasonCtxCache = getCached<{
+          useSeasonStack?: boolean;
+          seasonId?: string | null;
+        }>(`season:ctx:${userId}`);
+        if (seasonCtxCache?.useSeasonStack) {
+          seasonCacheKey = seasonCtxCache.seasonId ?? 'stack';
+        }
+      } catch {
+        // ignore
+      }
       
-      // Get current GW from cache (pre-loaded by initialDataLoader)
-      const cacheKey = `home:basic:${userId}`;
+      // Prefer season-scoped cache so pile-B never paints 25/26 fixtures from legacy keys
+      const cacheKeyV2 = `home:basic:v2:${seasonCacheKey}:${userId}`;
+      const cacheKeyLegacy = `home:basic:${userId}`;
       const cached = getCached<{
         currentGw: number;
         latestGw: number;
@@ -114,7 +143,7 @@ export default function HomePage() {
         fiveGwRank?: { rank: number; total: number; isTied: boolean } | null;
         tenGwRank?: { rank: number; total: number; isTied: boolean } | null;
         seasonRank?: { rank: number; total: number; isTied: boolean } | null;
-      }>(cacheKey);
+      }>(cacheKeyV2) ?? (seasonCacheKey === 'legacy' ? getCached(cacheKeyLegacy) : null);
       
       // Determine which GW to display (user's viewing GW, or current GW if not set)
       const dbCurrentGw = cached?.currentGw ?? 1;
@@ -137,14 +166,16 @@ export default function HomePage() {
           away_team?: string | null;
           result?: "H" | "D" | "A" | null;
         }> = {};
-        const fixturesCacheKey = `home:fixtures:${userId}:${gwToDisplay}`;
+        const fixturesCacheKey = `home:fixtures:v2:${seasonCacheKey}:${userId}:${gwToDisplay}`;
+        const fixturesCacheKeyLegacy = `home:fixtures:${userId}:${gwToDisplay}`;
         
         try {
           const fixturesCached = getCached<{
             fixtures: Fixture[];
             userPicks: Record<number, "H" | "D" | "A">;
             liveScores?: Array<{ api_match_id: number; fixture_index?: number; [key: string]: any }>;
-          }>(fixturesCacheKey);
+          }>(fixturesCacheKey)
+            ?? (seasonCacheKey === 'legacy' ? getCached(fixturesCacheKeyLegacy) : null);
           
           if (fixturesCached?.fixtures?.length) {
             fixtures = fixturesCached.fixtures;
@@ -769,7 +800,10 @@ export default function HomePage() {
     // If we have fixtures from cache, load gw_results from cache only
     if (fixtures.length > 0) {
       if (!gw) return;
-      const cacheKey = `home:gwResults:${gw}`;
+      const seasonKey = seasonStack.useSeasonStack
+        ? (seasonStack.seasonId ?? 'season')
+        : 'legacy';
+      const cacheKey = `home:gwResults:${seasonKey}:${gw}`;
       const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(cacheKey);
       if (cached) {
         const resultsMap: Record<number, "H" | "D" | "A"> = {};
@@ -794,8 +828,11 @@ export default function HomePage() {
       return;
     }
     
-    // Check cache first
-    const cacheKey = `home:gwResults:${gw}`;
+    // Check cache first (season-scoped key so 25/26 GW N never bleeds into 26/27)
+    const seasonKey = seasonStack.useSeasonStack
+      ? (seasonStack.seasonId ?? 'season')
+      : 'legacy';
+    const cacheKey = `home:gwResults:${seasonKey}:${gw}`;
     const cached = getCached<Array<{ fixture_index: number; result: "H" | "D" | "A" }>>(cacheKey);
     if (cached) {
       const resultsMap: Record<number, "H" | "D" | "A"> = {};
@@ -817,10 +854,20 @@ export default function HomePage() {
     let alive = true;
     (async () => {
       try {
-        const { data: results, error } = await supabase
-          .from("app_gw_results")
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: gw,
+          viewingGw: gw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        let resultsQ = (supabase as any)
+          .from(tables.results)
           .select("fixture_index, result")
           .eq("gw", gw);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { data: results, error } = await resultsQ;
         
         if (!alive) return;
         
@@ -844,7 +891,7 @@ export default function HomePage() {
     })();
     
     return () => { alive = false; };
-  }, [gw, fixtures]);
+  }, [gw, fixtures, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.seasonLabel]);
 
   // Merge live scores: start with cached data (from initialState), then merge hook updates
   // liveScoresFromCache state already contains data loaded synchronously from cache
@@ -943,9 +990,24 @@ export default function HomePage() {
     });
     
     if (fixtures.length > 0 && hasLeagueRows) {
-      console.log('[Home] Cache complete, skipping loadHomePageData');
-      setBasicDataLoading(false);
-      return;
+      // Pile B: never trust a paint that only hydrated from legacy 25/26 cache keys
+      const seasonCtxSnap = user?.id
+        ? getCached<{ useSeasonStack?: boolean; seasonId?: string | null }>(`season:ctx:${user.id}`)
+        : null;
+      const seasonKey = seasonCtxSnap?.useSeasonStack
+        ? (seasonCtxSnap.seasonId ?? 'stack')
+        : null;
+      const hasSeasonFixtures =
+        seasonKey && user?.id && gw
+          ? !!getCached(`home:fixtures:v2:${seasonKey}:${user.id}:${gw}`)
+          : true; // legacy path ok
+
+      if (!seasonCtxSnap?.useSeasonStack || hasSeasonFixtures) {
+        console.log('[Home] Cache complete, skipping loadHomePageData');
+        setBasicDataLoading(false);
+        return;
+      }
+      console.log('[Home] Stack user missing season fixtures cache — refetching (avoid 25/26 paint)');
     }
     
     // If we have fixtures but no leagueRows (or empty leagueRows), we need to load data to calculate rows
@@ -1033,18 +1095,20 @@ export default function HomePage() {
 
   // Fixtures and league data are now loaded by unified loadHomePageData function
   
-  // Subscribe to app_gw_results changes
+  // Subscribe to results changes (legacy or season table)
   useEffect(() => {
     if (!user?.id) return;
+
+    const resultsTable = seasonStack.useSeasonStack ? 'app_season_results' : 'app_gw_results';
     
     const channel = supabase
-      .channel('home-gw-results-changes')
+      .channel(`home-gw-results-changes-${resultsTable}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'app_gw_results',
+          table: resultsTable,
         },
         (_payload) => {
           const cacheKey = `home:basic:${user.id}`;
@@ -1062,12 +1126,21 @@ export default function HomePage() {
     const handleVisibilityChange = async () => {
       if (!document.hidden && user?.id) {
         try {
-          const { data: latestGwResult } = await supabase
-            .from("app_gw_results")
+          const seasonCtx = getActiveSeasonCtx() ?? {
+            useSeasonStack: seasonStack.useSeasonStack,
+            seasonId: seasonStack.seasonId,
+            seasonLabel: seasonStack.seasonLabel,
+            currentGw: gw ?? 1,
+            viewingGw: gw,
+          };
+          const tables = getSeasonTables(seasonCtx);
+          let latestQ = (supabase as any)
+            .from(tables.results)
             .select("gw")
             .order("gw", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+          latestQ = withSeasonId(latestQ, seasonCtx);
+          const { data: latestGwResult } = await latestQ.maybeSingle();
           
           const newLatestGw = latestGwResult?.gw ?? null;
           if (newLatestGw !== null && newLatestGw !== latestGw) {
@@ -1093,7 +1166,7 @@ export default function HomePage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
-  }, [user?.id, gw, latestGw]);
+  }, [user?.id, gw, latestGw, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.seasonLabel]);
 
   // Refetch data when gwResultsVersion changes (only if no cache from pre-loader)
   useEffect(() => {
@@ -1108,9 +1181,33 @@ export default function HomePage() {
     
     (async () => {
       try {
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: gw ?? 1,
+          viewingGw: gw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+
+        let latestResultsQ = (supabase as any)
+          .from(tables.results)
+          .select("gw")
+          .order("gw", { ascending: false })
+          .limit(1);
+        latestResultsQ = withSeasonId(latestResultsQ, seasonCtx);
+
+        let pointsQ = (supabase as any)
+          .from(tables.gwPoints)
+          .select("user_id, gw, points")
+          .order("gw", { ascending: true });
+        if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+          pointsQ = pointsQ.eq("season_id", seasonCtx.seasonId);
+        }
+
         const [latestGwResult, allGwPointsResult] = await Promise.all([
-          supabase.from("app_gw_results").select("gw").order("gw", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("app_v_gw_points").select("user_id, gw, points").order("gw", { ascending: true }),
+          latestResultsQ.maybeSingle(),
+          pointsQ,
         ]);
         
         if (!alive) return;
@@ -1151,10 +1248,15 @@ export default function HomePage() {
   }, [gwResultsVersion, user?.id, latestGw, fixtures.length]);
   
   // Load user submissions from cache immediately, then refresh in background
+  // Season-aware: Pile B users must read app_season_submissions (not legacy app_gw_submissions)
+  const submissionsCacheKey = user?.id
+    ? `home:userSubmissions:${user.id}:${seasonStack.useSeasonStack ? seasonStack.seasonId ?? 'season' : 'legacy'}`
+    : null;
+
   const [userSubmissions, setUserSubmissions] = useState<Set<number>>(() => {
-    if (!user?.id) return new Set();
+    if (!user?.id || !submissionsCacheKey) return new Set();
     try {
-      const cached = getCached<number[]>(`home:userSubmissions:${user.id}`);
+      const cached = getCached<number[]>(submissionsCacheKey);
       return cached ? new Set(cached) : new Set();
     } catch {
       return new Set();
@@ -1162,39 +1264,51 @@ export default function HomePage() {
   });
   
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || !submissionsCacheKey) {
       setUserSubmissions(new Set());
       return;
     }
     
     // Check cache first
-    const cached = getCached<number[]>(`home:userSubmissions:${user.id}`);
+    const cached = getCached<number[]>(submissionsCacheKey);
     if (cached) {
       setUserSubmissions(new Set(cached));
     }
     
     let alive = true;
     const loadSubmissions = async () => {
-      const { data: submissions } = await supabase
-        .from('app_gw_submissions')
-        .select('gw')
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: seasonStack.useSeasonStack,
+        seasonId: seasonStack.seasonId,
+        seasonLabel: seasonStack.seasonLabel,
+        currentGw: seasonStack.currentGw ?? gw,
+        viewingGw: gw,
+      };
+      const tables = getSeasonTables(seasonCtx);
+
+      let q = (supabase as any)
+        .from(tables.submissions)
+        .select('gw, submitted_at')
         .eq('user_id', user.id)
+        .not('submitted_at', 'is', null)
         .order('gw', { ascending: false });
+      q = withSeasonId(q, seasonCtx);
+
+      const { data: submissions } = await q;
       
       if (alive && submissions) {
-        const gws = submissions.map((s: any) => s.gw);
+        const gws = submissions.map((s: { gw: number }) => s.gw);
         setUserSubmissions(new Set(gws));
-        // Update cache
-        setCached(`home:userSubmissions:${user.id}`, gws, CACHE_TTL.HOME);
+        setCached(submissionsCacheKey, gws, CACHE_TTL.HOME);
       }
     };
     
     // Only fetch if cache is missing or stale (background refresh)
     if (!cached) {
-    loadSubmissions();
+      loadSubmissions();
     } else {
       // Background refresh for stale cache
-      const cacheTimestamp = getCacheTimestamp(`home:userSubmissions:${user.id}`);
+      const cacheTimestamp = getCacheTimestamp(submissionsCacheKey);
       const cacheAge = cacheTimestamp ? Date.now() - cacheTimestamp : Infinity;
       const isCacheStale = cacheAge > 5 * 60 * 1000; // 5 minutes
       if (isCacheStale) {
@@ -1212,7 +1326,15 @@ export default function HomePage() {
       alive = false;
       window.removeEventListener('predictionsSubmitted', handleSubmission);
     };
-  }, [user?.id, gw]);
+  }, [
+    user?.id,
+    gw,
+    submissionsCacheKey,
+    seasonStack.useSeasonStack,
+    seasonStack.seasonId,
+    seasonStack.seasonLabel,
+    seasonStack.currentGw,
+  ]);
 
   const hasSubmittedCurrentGw = useMemo(() => {
     if (!user?.id || !gw) return false;
@@ -1658,11 +1780,19 @@ export default function HomePage() {
   }
 
   return (
-    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 min-h-screen relative">
+    <div className="max-w-6xl lg:max-w-[1024px] mx-auto px-4 lg:px-6 pt-2 pb-4 relative">
       {/* Logo header */}
       <div ref={logoContainerRef} className="relative mb-4 lg:hidden">
         <ScrollLogo />
       </div>
+
+      {/* New season promo — Pile B only; hide once GW picks submitted */}
+      {seasonStack.useSeasonStack && !seasonStack.loading ? (
+        <NewSeasonBanner
+          seasonLabel={newSeasonLabel}
+          hasSubmittedPicks={hasSubmittedCurrentGw}
+        />
+      ) : null}
       
       {/* Gameweek Results Button - Show when current viewing GW has finished */}
       {shouldShowGwResultsButton && (
@@ -1755,9 +1885,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Bottom padding */}
-          <div className="h-20"></div>
-      
       {/* GameweekResultsModal */}
       {showResultsModal && resultsModalGw && (
         <GameweekResultsModal

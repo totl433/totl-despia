@@ -15,6 +15,15 @@ import FirstVisitInfoBanner from "../components/FirstVisitInfoBanner";
 import UserAvatar from "../components/UserAvatar";
 import { filterHiddenLeaderboardRows, isHiddenFromLeaderboards } from "../lib/leaderboardVisibility";
 import { fetchAllGwPoints, type GwPointsRow } from "../lib/fetchAllGwPoints";
+import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
+import { useSeasonStack } from "../hooks/useSeasonStack";
+import {
+  getEffectiveCurrentMonthKey,
+  getMonthAllocations,
+  isMonthAvailable,
+  resolveLeaderboardSeasonKey,
+} from "../lib/leaderboardMonths";
 
 type OverallRow = {
   user_id: string;
@@ -22,22 +31,50 @@ type OverallRow = {
   ocp: number;
 };
 
+type MonthlyRow = {
+  user_id: string;
+  name: string;
+  monthPoints: number;
+  gwPoints: Array<number | null>;
+  rank: number;
+};
+
+type LeaderboardTab = "overall" | "monthly" | "lastgw";
+
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
+  const seasonStack = useSeasonStack();
   const isNativeApp = isDespiaAvailable();
   const [searchParams, setSearchParams] = useSearchParams();
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const userRowRef = useRef<HTMLTableRowElement>(null);
   
   const tabParam = searchParams.get("tab");
-  const validTab = (tabParam === "form5" || tabParam === "form10" || tabParam === "lastgw" || tabParam === "overall") 
-    ? tabParam 
-    : "lastgw";
+  const validTab: LeaderboardTab =
+    tabParam === "overall" || tabParam === "monthly" || tabParam === "lastgw"
+      ? tabParam
+      : tabParam === "form5" || tabParam === "form10"
+        ? "monthly"
+        : "lastgw";
 
   // Load initial state from cache synchronously to avoid loading spinner
   const loadInitialStateFromCache = () => {
+    if (seasonStack.loading) {
+      return {
+        loading: true,
+        latestGw: null as number | null,
+        gwPoints: [] as GwPointsRow[],
+        overall: [] as OverallRow[],
+        prevOcp: {} as Record<string, number>,
+        hasCache: false,
+        isCacheStale: false,
+      };
+    }
     try {
-      const cacheKey = `global:leaderboard`;
+      const seasonKey = seasonStack.useSeasonStack
+        ? (seasonStack.seasonId ?? "stack")
+        : "legacy";
+      const cacheKey = `global:leaderboard:v2:${seasonKey}`;
       const cached = getCached<{
         latestGw: number;
         gwPoints: GwPointsRow[];
@@ -86,7 +123,8 @@ export default function GlobalLeaderboardPage() {
   const [overall, setOverall] = useState<OverallRow[]>(initialState.overall);
   const [gwPoints, setGwPoints] = useState<GwPointsRow[]>(initialState.gwPoints);
   const [prevOcp, setPrevOcp] = useState<Record<string, number>>(initialState.prevOcp);
-  const [activeTab, setActiveTab] = useState<"overall" | "form5" | "form10" | "lastgw">(validTab);
+  const activeTab = validTab;
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   // Track gw_results changes to trigger leaderboard recalculation
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   
@@ -217,20 +255,33 @@ export default function GlobalLeaderboardPage() {
         return;
       }
       
-      // Fetch all picks for current GW
-      const { data: allPicks } = await supabase
-        .from("app_picks")
+      // Fetch all picks for current GW (season stack uses app_season_picks)
+      const seasonCtx = getActiveSeasonCtx() ?? {
+        useSeasonStack: seasonStack.useSeasonStack,
+        seasonId: seasonStack.seasonId,
+        seasonLabel: seasonStack.seasonLabel,
+        currentGw: seasonStack.currentGw,
+        viewingGw: seasonStack.viewingGw,
+      };
+      const tables = getSeasonTables(seasonCtx);
+      let picksQ = (supabase as any)
+        .from(tables.picks)
         .select("user_id, fixture_index, pick")
         .eq("gw", liveGw);
+      picksQ = withSeasonId(picksQ, seasonCtx);
+      const { data: allPicksRaw } = await picksQ;
       
-      if (!alive || !allPicks) return;
+      if (!alive || !allPicksRaw) return;
+
+      type LivePickRow = { user_id: string; fixture_index: number; pick: string };
+      const allPicks = allPicksRaw as LivePickRow[];
       
       // Calculate points per user
       // First, initialize all users who have picks (to ensure we include users with 0 points)
       const userPoints = new Map<string, number>();
-      const uniqueUserIds = new Set(allPicks.map(p => p.user_id));
-      uniqueUserIds.forEach(userId => {
-        userPoints.set(userId, 0);
+      const uniqueUserIds = new Set(allPicks.map((p) => p.user_id));
+      uniqueUserIds.forEach((uid) => {
+        userPoints.set(uid, 0);
       });
       
       // Then calculate points for correct predictions
@@ -257,25 +308,33 @@ export default function GlobalLeaderboardPage() {
     return () => { alive = false; };
   }, [liveGw, isCurrentGwLive, liveScoresMap]);
 
-  // Sync activeTab with URL param and set default to lastgw if no tab specified
+  // Normalize legacy or missing tab params. The URL is the single source of truth,
+  // avoiding a one-render race between local tab state and search params.
   useEffect(() => {
-    if (!tabParam) {
+    if (tabParam === "form5" || tabParam === "form10") {
+      setSearchParams({ tab: "monthly" }, { replace: true });
+    } else if (!tabParam) {
       setSearchParams({ tab: "lastgw" }, { replace: true });
     }
-    if (validTab !== activeTab) {
-      setActiveTab(validTab);
-    }
-  }, [validTab, tabParam, activeTab, setSearchParams]);
+  }, [tabParam, setSearchParams]);
 
   // Update URL when tab changes
-  const handleTabChange = (tab: "overall" | "form5" | "form10" | "lastgw") => {
-    setActiveTab(tab);
+  const handleTabChange = (tab: LeaderboardTab) => {
     setSearchParams({ tab });
   };
 
   useEffect(() => {
+    if (activeTab === "monthly") {
+      setShowMiniLeagueFriendsOnly(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (seasonStack.loading) return;
+
     let alive = true;
-    const cacheKey = `global:leaderboard`;
+    const seasonKey = seasonStack.useSeasonStack ? (seasonStack.seasonId ?? 'stack') : 'legacy';
+    const cacheKey = `global:leaderboard:v2:${seasonKey}`;
     
     // Check cache freshness synchronously
     const cacheTimestamp = getCacheTimestamp(cacheKey);
@@ -297,24 +356,62 @@ export default function GlobalLeaderboardPage() {
         }
         setErr("");
 
-        // 1) latest GW from results - App reads from app_gw_results
-        const { data: latest, error: lErr } = await supabase
-          .from("app_gw_results")
+        // 1) latest GW from results (season-aware)
+        const seasonCtx = getActiveSeasonCtx() ?? {
+          useSeasonStack: seasonStack.useSeasonStack,
+          seasonId: seasonStack.seasonId,
+          seasonLabel: seasonStack.seasonLabel,
+          currentGw: seasonStack.currentGw,
+          viewingGw: seasonStack.viewingGw,
+        };
+        const tables = getSeasonTables(seasonCtx);
+        let latestQ = (supabase as any)
+          .from(tables.results)
           .select("gw")
           .order("gw", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        latestQ = withSeasonId(latestQ, seasonCtx);
+        const { data: latest, error: lErr } = await latestQ.maybeSingle();
         if (lErr) throw lErr;
-        const gw = latest?.gw ?? 1;
+        // No results yet → 0 so lastgw/form empty until first finished GW
+        const gw = latest?.gw ?? 0;
         if (alive) setLatestGw(gw);
 
-        // 2) all GW points (needed for form leaderboards) - App reads from app_v_gw_points
-        const gp = await fetchAllGwPoints("asc");
+        // 2) all GW points — season views when on Pile B (empty until results + picks scored)
+        const gp = await fetchAllGwPoints("asc", {
+          seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+        });
 
-        // 3) overall - App reads from app_v_ocp_overall
-        const { data: ocp, error: oErr } = await supabase
-          .from("app_v_ocp_overall")
-          .select("user_id, name, ocp");
+        // 3) overall OCP — season-scoped on Pile B
+        let ocp: OverallRow[] | null = null;
+        let oErr: Error | null = null;
+        try {
+          if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+            let ocpQ = (supabase as any)
+              .from(tables.ocpOverall)
+              .select("user_id, name, ocp")
+              .eq("season_id", seasonCtx.seasonId);
+            const res = await ocpQ;
+            ocp = res.data as OverallRow[] | null;
+            oErr = res.error;
+            if (!oErr && (ocp?.length ?? 0) === 0) {
+              const rosterRes = await supabase
+                .from("app_v_ocp_overall")
+                .select("user_id, name");
+              oErr = rosterRes.error;
+              ocp = ((rosterRes.data ?? []) as Array<{
+                user_id: string;
+                name: string | null;
+              }>).map((row) => ({ ...row, ocp: 0 }));
+            }
+          } else {
+            const res = await supabase.from("app_v_ocp_overall").select("user_id, name, ocp");
+            ocp = res.data as OverallRow[] | null;
+            oErr = res.error;
+          }
+        } catch (e: any) {
+          oErr = e;
+        }
         if (oErr) throw oErr;
 
         if (!alive) return;
@@ -360,23 +457,37 @@ export default function GlobalLeaderboardPage() {
     return () => {
       alive = false;
     };
-  }, [gwResultsVersion, hasCache]);
+  }, [
+    gwResultsVersion,
+    hasCache,
+    seasonStack.loading,
+    seasonStack.useSeasonStack,
+    seasonStack.seasonId,
+  ]);
 
-  /* ---------- Subscribe to app_gw_results changes for real-time leaderboard updates ---------- */
+  /* ---------- Subscribe to results changes for real-time leaderboard updates ---------- */
   useEffect(() => {
-    // Subscribe to changes in app_gw_results table to trigger leaderboard recalculation
+    const seasonCtx = getActiveSeasonCtx() ?? {
+      useSeasonStack: seasonStack.useSeasonStack,
+      seasonId: seasonStack.seasonId,
+      seasonLabel: seasonStack.seasonLabel,
+      currentGw: seasonStack.currentGw,
+      viewingGw: seasonStack.viewingGw,
+    };
+    const tables = getSeasonTables(seasonCtx);
     const channel = supabase
-      .channel('global-gw-results-changes')
+      .channel(`global-gw-results-changes-${tables.results}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
+          event: '*',
           schema: 'public',
-          table: 'app_gw_results',
+          table: tables.results,
         },
         () => {
           // Clear cache to force fresh fetch
-          const cacheKey = `global:leaderboard`;
+          const seasonKey = seasonStack.useSeasonStack ? (seasonStack.seasonId ?? 'stack') : 'legacy';
+          const cacheKey = `global:leaderboard:v2:${seasonKey}`;
           try {
             removeCached(cacheKey);
           } catch (e) {
@@ -391,7 +502,7 @@ export default function GlobalLeaderboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   function ranksFromScores(scores: Record<string, number>): Record<string, number> {
     const ids = Object.keys(scores);
@@ -415,77 +526,6 @@ export default function GlobalLeaderboardPage() {
 
   const prevRanks = useMemo(() => ranksFromScores(prevOcp), [prevOcp]);
 
-  // Helper function to create form rows for a given number of weeks
-  const createFormRows = useMemo(() => {
-    return (weeks: number) => {
-      if (!latestGw || latestGw < weeks) return [];
-      
-      // Get last N gameweeks
-      const startGw = latestGw - weeks + 1;
-      const formGwPoints = gwPoints.filter(gp => gp.gw >= startGw && gp.gw <= latestGw);
-      
-      // Group by user and count weeks played
-      const userFormData = new Map<string, { user_id: string; name: string; formPoints: number; weeksPlayed: Set<number> }>();
-      
-      // Initialize with users from overall
-      overall.forEach(o => {
-        userFormData.set(o.user_id, {
-          user_id: o.user_id,
-          name: o.name ?? "User",
-          formPoints: 0,
-          weeksPlayed: new Set()
-        });
-      });
-      
-      // Add form points and track which weeks each user played
-      formGwPoints.forEach(gp => {
-        const user = userFormData.get(gp.user_id);
-        if (user) {
-          user.formPoints += gp.points;
-          user.weeksPlayed.add(gp.gw);
-        } else {
-          userFormData.set(gp.user_id, {
-            user_id: gp.user_id,
-            name: "User",
-            formPoints: gp.points,
-            weeksPlayed: new Set([gp.gw])
-          });
-        }
-      });
-      
-      // Only include players who have played ALL N weeks
-      const completeFormPlayers = Array.from(userFormData.values())
-        .filter(user => {
-          // Check if user played all N weeks
-          for (let gw = startGw; gw <= latestGw; gw++) {
-            if (!user.weeksPlayed.has(gw)) {
-              return false;
-            }
-          }
-          return true;
-        })
-        .map(user => ({
-          user_id: user.user_id,
-          name: user.name,
-          formPoints: user.formPoints,
-          gamesPlayed: weeks // Always N for complete form players
-        }))
-        .sort((a, b) => (b.formPoints - a.formPoints) || a.name.localeCompare(b.name));
-      
-      // Add joint ranking
-      let currentRank = 1;
-      return completeFormPlayers.map((player, index) => {
-        if (index > 0 && completeFormPlayers[index - 1].formPoints !== player.formPoints) {
-          currentRank = index + 1;
-        }
-        return {
-          ...player,
-          rank: currentRank,
-        };
-      });
-    };
-  }, [overall, gwPoints, latestGw]);
-
   // Helper function to filter rows by mini league friends
   const filterByMiniLeagueFriends = useMemo(() => {
     return <T extends { user_id: string }>(rows: T[]): T[] => {
@@ -498,33 +538,248 @@ export default function GlobalLeaderboardPage() {
     };
   }, [showMiniLeagueFriendsOnly, miniLeagueFriendIds]);
 
-  // 5 Week Form leaderboard
-  const form5RowsUnfiltered = useMemo(() => createFormRows(5), [createFormRows]);
-  const form5Rows = useMemo(() => filterByMiniLeagueFriends(form5RowsUnfiltered), [form5RowsUnfiltered, filterByMiniLeagueFriends]);
-  
-  // 10 Week Form leaderboard
-  const form10RowsUnfiltered = useMemo(() => createFormRows(10), [createFormRows]);
-  const form10Rows = useMemo(() => filterByMiniLeagueFriends(form10RowsUnfiltered), [form10RowsUnfiltered, filterByMiniLeagueFriends]);
+  const leaderboardSeasonKey = resolveLeaderboardSeasonKey({
+    seasonLabel: seasonStack.seasonLabel,
+    isNewSeasonFresh: seasonStack.isNewSeasonFresh,
+    useSeasonStack: seasonStack.useSeasonStack,
+  });
+  const monthAnchorGw =
+    seasonStack.currentGw || currentGwFromMeta || latestGw || null;
+  const monthLiveState = useMemo(() => ({
+    hasActiveLiveGames: isCurrentGwLive,
+    isCurrentGwComplete: currentGwState === "RESULTS_PRE_GW",
+    hasGwKickoffStarted:
+      currentGwState === "DEADLINE_PASSED" ||
+      currentGwState === "LIVE" ||
+      currentGwState === "RESULTS_PRE_GW",
+  }), [currentGwState, isCurrentGwLive]);
+  const monthAvailabilityOptions = useMemo(
+    () => ({ allowPreKickoffOpeningMonth: seasonStack.isNewSeasonFresh }),
+    [seasonStack.isNewSeasonFresh]
+  );
+  const effectiveMonthKey = useMemo(
+    () =>
+      selectedMonthKey ??
+      getEffectiveCurrentMonthKey(
+        monthAnchorGw,
+        monthLiveState,
+        leaderboardSeasonKey,
+        monthAvailabilityOptions
+      ),
+    [
+      selectedMonthKey,
+      monthAnchorGw,
+      monthLiveState,
+      leaderboardSeasonKey,
+      monthAvailabilityOptions,
+    ]
+  );
+  const selectedMonth = useMemo(
+    () =>
+      getMonthAllocations(leaderboardSeasonKey).find(
+        (month) => month.monthKey === effectiveMonthKey
+      ) ?? null,
+    [effectiveMonthKey, leaderboardSeasonKey]
+  );
+  const selectableMonths = useMemo(
+    () =>
+      getMonthAllocations(leaderboardSeasonKey)
+        .filter((month) =>
+          isMonthAvailable(
+            month,
+            monthAnchorGw,
+            monthLiveState,
+            monthAvailabilityOptions
+          )
+        )
+        .reverse(),
+    [
+      leaderboardSeasonKey,
+      monthAnchorGw,
+      monthLiveState,
+      monthAvailabilityOptions,
+    ]
+  );
+
+  useEffect(() => {
+    if (
+      selectedMonthKey &&
+      !getMonthAllocations(leaderboardSeasonKey).some(
+        (month) => month.monthKey === selectedMonthKey
+      )
+    ) {
+      setSelectedMonthKey(null);
+    }
+  }, [leaderboardSeasonKey, selectedMonthKey]);
+
+  const monthlyRows = useMemo<MonthlyRow[]>(() => {
+    if (!selectedMonth) return [];
+    const gameweeks = Array.from(
+      { length: selectedMonth.endGw - selectedMonth.startGw + 1 },
+      (_, index) => selectedMonth.startGw + index
+    );
+    const users = new Map<
+      string,
+      { name: string; monthPoints: number; byGw: Map<number, number> }
+    >();
+    overall.forEach((row) => {
+      users.set(row.user_id, {
+        name: row.name ?? "User",
+        monthPoints: 0,
+        byGw: new Map(),
+      });
+    });
+
+    const activeLiveGwInMonth =
+      isCurrentGwLive &&
+      liveGw !== null &&
+      liveCurrentGwPoints.length > 0 &&
+      liveGw >= selectedMonth.startGw &&
+      liveGw <= selectedMonth.endGw;
+
+    gwPoints.forEach((row) => {
+      if (row.gw < selectedMonth.startGw || row.gw > selectedMonth.endGw) return;
+      if (activeLiveGwInMonth && row.gw === liveGw) return;
+      const entry = users.get(row.user_id) ?? {
+        name: "User",
+        monthPoints: 0,
+        byGw: new Map<number, number>(),
+      };
+      entry.monthPoints += Number(row.points ?? 0);
+      entry.byGw.set(row.gw, Number(row.points ?? 0));
+      users.set(row.user_id, entry);
+    });
+
+    if (activeLiveGwInMonth && liveGw !== null) {
+      liveCurrentGwPoints.forEach((row) => {
+        const entry = users.get(row.user_id) ?? {
+          name: "User",
+          monthPoints: 0,
+          byGw: new Map<number, number>(),
+        };
+        entry.monthPoints += Number(row.points ?? 0);
+        entry.byGw.set(liveGw, Number(row.points ?? 0));
+        users.set(row.user_id, entry);
+      });
+    }
+
+    const sorted = Array.from(users.entries())
+      .filter(([, entry]) => seasonStack.isNewSeasonFresh || entry.monthPoints > 0)
+      .map(([user_id, entry]) => ({
+        user_id,
+        name: entry.name,
+        monthPoints: entry.monthPoints,
+        gwPoints: gameweeks.map((gw) => entry.byGw.get(gw) ?? null),
+      }))
+      .sort(
+        (a, b) =>
+          b.monthPoints - a.monthPoints || a.name.localeCompare(b.name)
+      );
+
+    let rank = 1;
+    return sorted.map((row, index) => {
+      if (
+        index > 0 &&
+        sorted[index - 1].monthPoints !== row.monthPoints
+      ) {
+        rank = index + 1;
+      }
+      return { ...row, rank };
+    });
+  }, [
+    gwPoints,
+    isCurrentGwLive,
+    liveCurrentGwPoints,
+    liveGw,
+    overall,
+    seasonStack.isNewSeasonFresh,
+    selectedMonth,
+  ]);
+
+  const monthlyWinnerIds = useMemo(() => {
+    if (!selectedMonth || monthAnchorGw == null || monthlyRows.length === 0) {
+      return new Set<string>();
+    }
+    const monthComplete =
+      monthAnchorGw > selectedMonth.endGw ||
+      (monthAnchorGw === selectedMonth.endGw &&
+        currentGwState === "RESULTS_PRE_GW");
+    const topPoints = monthlyRows[0]?.monthPoints ?? 0;
+    if (!monthComplete || topPoints <= 0) return new Set<string>();
+    return new Set(
+      monthlyRows
+        .filter((row) => row.monthPoints === topPoints)
+        .map((row) => row.user_id)
+    );
+  }, [currentGwState, monthAnchorGw, monthlyRows, selectedMonth]);
+
+  const monthProgress = useMemo(() => {
+    if (!selectedMonth || monthAnchorGw == null) return null;
+    const total = selectedMonth.endGw - selectedMonth.startGw + 1;
+    let completed = 0;
+    let currentFraction = 0;
+    if (monthAnchorGw > selectedMonth.endGw) {
+      completed = total;
+    } else if (monthAnchorGw >= selectedMonth.startGw) {
+      completed = monthAnchorGw - selectedMonth.startGw;
+      if (currentGwState === "RESULTS_PRE_GW") {
+        completed += 1;
+      } else if (currentGwState === "LIVE" && liveScoresMap.size > 0) {
+        const scores = Array.from(liveScoresMap.values()).filter(
+          (score) => score.gw === monthAnchorGw
+        );
+        const finished = scores.filter(
+          (score) => score.status === "FINISHED"
+        ).length;
+        currentFraction = scores.length > 0 ? finished / scores.length : 0;
+      }
+    }
+    return {
+      total,
+      completed: Math.min(completed, total),
+      currentFraction,
+    };
+  }, [
+    currentGwState,
+    liveScoresMap,
+    monthAnchorGw,
+    selectedMonth,
+  ]);
   
   // Last GW leaderboard - only players who completed the last gameweek
   // Use live scores if current GW is live (single source of truth)
+  const showOpeningGwAtZero =
+    seasonStack.isNewSeasonFresh && latestGw === 0 && currentGwFromMeta !== null;
+  const displayedGw =
+    isCurrentGwLive && currentGwFromMeta
+      ? currentGwFromMeta
+      : showOpeningGwAtZero
+        ? currentGwFromMeta
+        : latestGw;
   const lastGwRowsUnfiltered = useMemo(() => {
-    if (!latestGw) return [];
+    if (!displayedGw) return [];
     
     // Use live scores if current GW is live, otherwise use database view for latestGw
     // When current GW is live, show current GW with live scores (not latestGw from app_gw_results)
     const lastGwPoints = (isCurrentGwLive && liveCurrentGwPoints.length > 0 && liveGw)
       ? liveCurrentGwPoints
-      : gwPoints.filter(gp => gp.gw === latestGw);
+      : gwPoints.filter(gp => gp.gw === displayedGw);
     
     const userMap = new Map(overall.map(o => [o.user_id, o.name ?? "User"]));
     
-    const sorted = lastGwPoints
-      .map(gp => ({
-        user_id: gp.user_id,
-        name: userMap.get(gp.user_id) ?? "User",
-        points: gp.points,
-      }))
+    const sorted = (
+      showOpeningGwAtZero && lastGwPoints.length === 0
+        ? overall.map((row) => ({
+            user_id: row.user_id,
+            name: row.name ?? "User",
+            points: 0,
+          }))
+        : lastGwPoints.map((gp) => ({
+            user_id: gp.user_id,
+            name: userMap.get(gp.user_id) ?? "User",
+            points: gp.points,
+          }))
+    )
       .sort((a, b) => (b.points - a.points) || a.name.localeCompare(b.name));
     
     // Add joint ranking
@@ -538,7 +793,15 @@ export default function GlobalLeaderboardPage() {
         rank: currentRank,
       };
     });
-  }, [gwPoints, latestGw, overall, isCurrentGwLive, liveCurrentGwPoints, liveGw]);
+  }, [
+    displayedGw,
+    gwPoints,
+    isCurrentGwLive,
+    liveCurrentGwPoints,
+    liveGw,
+    overall,
+    showOpeningGwAtZero,
+  ]);
   
   const lastGwRows = useMemo(() => filterByMiniLeagueFriends(lastGwRowsUnfiltered), [lastGwRowsUnfiltered, filterByMiniLeagueFriends]);
 
@@ -723,7 +986,12 @@ export default function GlobalLeaderboardPage() {
   useEffect(() => {
     if (!loading && user?.id && tableContainerRef.current && userRowRef.current) {
       // Find user's rank in the current tab's data
-      const currentRows = activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows;
+      const currentRows =
+        activeTab === "overall"
+          ? rowsFiltered
+          : activeTab === "monthly"
+            ? monthlyRows
+            : lastGwRows;
       const userIndex = currentRows.findIndex(r => r.user_id === user.id);
       const userRank = userIndex >= 0 ? (currentRows[userIndex] as any).rank || userIndex + 1 : null;
       
@@ -745,7 +1013,7 @@ export default function GlobalLeaderboardPage() {
         }
       });
     }
-  }, [loading, user?.id, activeTab, rowsFiltered, form5Rows, form10Rows, lastGwRows]);
+  }, [loading, user?.id, activeTab, rowsFiltered, monthlyRows, lastGwRows]);
 
   return (
     <div
@@ -839,53 +1107,41 @@ export default function GlobalLeaderboardPage() {
                     : "text-slate-600 dark:text-slate-400"
                 }`}
               >
-                GW
+                {displayedGw ? `GW${displayedGw}` : "GW"}
               </button>
               <button
-                onClick={() => handleTabChange("form5")}
+                onClick={() => handleTabChange("monthly")}
                 className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
-                  activeTab === "form5"
+                  activeTab === "monthly"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 dark:text-slate-400"
                 }`}
               >
-                5
-              </button>
-              <button
-                onClick={() => handleTabChange("form10")}
-                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
-                  activeTab === "form10"
-                    ? "bg-[#1C8376] text-white shadow-md"
-                    : "text-slate-600 dark:text-slate-400"
-                }`}
-              >
-                10
+                {selectedMonth?.label.split(" ")[0] ?? "Month"}
               </button>
               <button
                 onClick={() => handleTabChange("overall")}
-                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all flex items-center justify-center ${
+                className={`flex-1 py-2.5 rounded-full text-base font-semibold transition-all ${
                   activeTab === "overall"
                     ? "bg-[#1C8376] text-white shadow-md"
                     : "text-slate-600 dark:text-slate-400"
                 }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-5 h-5">
-                  <g>
-                    <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
-                  </g>
-                </svg>
+                Overall
               </button>
             </div>
           </div>
 
           {/* Toggle for Mini League Friends */}
-          <div className="flex justify-center pb-4">
-            <SegmentedToggle
-              value={showMiniLeagueFriendsOnly}
-              onToggle={setShowMiniLeagueFriendsOnly}
-              labels={{ left: "All Players", right: "Mini League Friends" }}
-            />
-          </div>
+          {activeTab !== "monthly" && (
+            <div className="flex justify-center pb-4">
+              <SegmentedToggle
+                value={showMiniLeagueFriendsOnly}
+                onToggle={setShowMiniLeagueFriendsOnly}
+                labels={{ left: "All Players", right: "Mini League Friends" }}
+              />
+            </div>
+          )}
 
           {/* Tab Subtitles */}
           {activeTab === "overall" && (
@@ -896,29 +1152,80 @@ export default function GlobalLeaderboardPage() {
             </div>
           )}
           
-          {activeTab === "form5" && (
-            <div className="text-center pb-3">
-              {latestGw && latestGw >= 5 ? (
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  All Players who completed the last 5 Gameweeks
+          {activeTab === "monthly" && selectedMonth && (
+            <div className="pb-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-lg font-black text-slate-900 dark:text-white">
+                    Player of the Month
+                  </div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    GW{selectedMonth.startGw}–{selectedMonth.endGw}
+                  </div>
                 </div>
-              ) : (
-                <div className="text-sm text-amber-600 font-medium">
-                  ⚠️ Watch this space! Complete 5 GW in a row to see the 5 Week Form Leaderboard.
-                </div>
-              )}
-            </div>
-          )}
-          
-          {activeTab === "form10" && (
-            <div className="text-center pb-3">
-              {latestGw && latestGw >= 10 ? (
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  All Players who completed the last 10 Gameweeks
-                </div>
-              ) : (
-                <div className="text-sm text-amber-600 font-medium">
-                  ⚠️ Watch this space! Complete 10 GW in a row to see the 10 Week Form Leaderboard.
+                <label className="relative flex-shrink-0">
+                  <span className="sr-only">Select month</span>
+                  <select
+                    value={selectedMonth.monthKey}
+                    onChange={(event) => setSelectedMonthKey(event.target.value)}
+                    className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3 pr-9 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-[#1C8376] focus:ring-2 focus:ring-[#1C8376]/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  >
+                    {selectableMonths.map((month) => (
+                      <option key={month.monthKey} value={month.monthKey}>
+                        {month.label}
+                      </option>
+                    ))}
+                  </select>
+                  <svg
+                    aria-hidden
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </label>
+              </div>
+              {monthProgress && monthProgress.completed < monthProgress.total && (
+                <div
+                  className="relative mt-3 flex h-6 overflow-hidden rounded bg-slate-200 dark:bg-slate-700"
+                  aria-label={`${monthProgress.completed} of ${monthProgress.total} gameweeks completed`}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#2D9D8B] via-[#1C8376] to-[#157A6E] transition-[width] duration-700"
+                    style={{
+                      width: `${
+                        ((monthProgress.completed + monthProgress.currentFraction) /
+                          monthProgress.total) *
+                        100
+                      }%`,
+                    }}
+                  />
+                  {Array.from(
+                    { length: monthProgress.total },
+                    (_, index) => selectedMonth.startGw + index
+                  ).map((gw, index) => {
+                    const hasFill =
+                      index < monthProgress.completed ||
+                      (index === monthProgress.completed &&
+                        monthProgress.currentFraction > 0);
+                    return (
+                    <div
+                      key={gw}
+                      className={`relative z-10 flex flex-1 items-center justify-center text-[10px] font-bold ${
+                        hasFill
+                          ? "text-white"
+                          : "text-slate-500 dark:text-slate-300"
+                      }`}
+                    >
+                      GW{gw}
+                    </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -927,7 +1234,9 @@ export default function GlobalLeaderboardPage() {
           {activeTab === "lastgw" && (
             <div className="text-center pb-3">
               <div className="text-sm text-slate-600 dark:text-slate-400">
-                All players who submitted for GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw}
+                {showOpeningGwAtZero
+                  ? `GW${displayedGw} starts at zero for all players`
+                  : `All players who submitted for GW${displayedGw}`}
               </div>
             </div>
           )}
@@ -944,23 +1253,11 @@ export default function GlobalLeaderboardPage() {
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1C8376]"></div>
           </div>
-        ) : activeTab === "form5" && latestGw && latestGw < 5 ? (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center">
-            <div className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">5 Week Form Leaderboard Coming Soon</div>
-            <div className="text-slate-600 dark:text-slate-400">
-              Complete 5 gameweeks in a row to unlock the 5 Week Form Leaderboard and see who's in the best form!
-            </div>
-          </div>
-        ) : activeTab === "form10" && latestGw && latestGw < 10 ? (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-12 text-center">
-            <div className="text-lg font-semibold text-slate-700 dark:text-slate-200 mb-2">10 Week Form Leaderboard Coming Soon</div>
-            <div className="text-slate-600 dark:text-slate-400">
-              Complete 10 gameweeks in a row to unlock the 10 Week Form Leaderboard and see who's in the best form!
-            </div>
-          </div>
-        ) : (activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).length === 0 ? (
+        ) : (activeTab === "overall" ? rowsFiltered : activeTab === "monthly" ? monthlyRows : lastGwRows).length === 0 ? (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 text-slate-600 dark:text-slate-400">
-            No leaderboard data yet.
+            {activeTab === "monthly"
+              ? "No monthly leaderboard data yet."
+              : "No leaderboard data yet."}
           </div>
         ) : (
           <div 
@@ -990,7 +1287,7 @@ export default function GlobalLeaderboardPage() {
                       <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
                       <th className="px-1 py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '55px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
-                          GW{isCurrentGwLive && currentGwFromMeta ? currentGwFromMeta : latestGw || '?'}
+                          GW{displayedGw || '?'}
                           {isCurrentGwLive && currentGwFromMeta && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1012,10 +1309,26 @@ export default function GlobalLeaderboardPage() {
                       </th>
                     </>
                   )}
-                  {(activeTab === "form5" || activeTab === "form10") && (
+                  {activeTab === "monthly" && selectedMonth && (
                     <>
-                      <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
-                      <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>PTS</th>
+                      {Array.from(
+                        { length: selectedMonth.endGw - selectedMonth.startGw + 1 },
+                        (_, index) => selectedMonth.startGw + index
+                      ).map((gw) => (
+                        <th
+                          key={gw}
+                          className="py-3 text-center text-[11px] font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                          style={{ width: '32px' }}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {isCurrentGwLive && liveGw === gw && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                            )}
+                            {gw}
+                          </span>
+                        </th>
+                      ))}
+                      <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '55px' }}>PTS</th>
                     </>
                   )}
                   {activeTab === "lastgw" && (
@@ -1023,7 +1336,7 @@ export default function GlobalLeaderboardPage() {
                       <th className="px-4 py-3 text-center font-semibold bg-slate-50 dark:bg-slate-800" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}></th>
                       <th className="py-3 text-center font-normal bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400" style={{ width: '60px', paddingLeft: '0.5rem', paddingRight: '0.5rem' }}>
                         <div className="flex items-center justify-center gap-1">
-                          GW{(isCurrentGwLive && currentGwFromMeta) ? currentGwFromMeta : (latestGw || '?')}
+                          GW{displayedGw || '?'}
                           {isCurrentGwLive && currentGwFromMeta && (
                             <span className="relative flex h-1.5 w-1.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1037,7 +1350,7 @@ export default function GlobalLeaderboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {(activeTab === "overall" ? rowsFiltered : activeTab === "form5" ? form5Rows : activeTab === "form10" ? form10Rows : lastGwRows).map((r, i, arr) => {
+                {(activeTab === "overall" ? rowsFiltered : activeTab === "monthly" ? monthlyRows : lastGwRows).map((r, i, arr) => {
                   const isMe = r.user_id === user?.id;
                   
                   // Check if this rank has multiple players
@@ -1047,7 +1360,20 @@ export default function GlobalLeaderboardPage() {
                     return itemRank === currentRank;
                   }).length;
                   const isTied = rankCount > 1;
-                  const isTopRank = currentRank === 1;
+                  const rowScore =
+                    'ocp' in r
+                      ? r.ocp
+                      : 'monthPoints' in r
+                        ? r.monthPoints
+                        : 'points' in r
+                          ? r.points
+                          : 0;
+                  const isMonthlyWinner =
+                    activeTab === "monthly" && monthlyWinnerIds.has(r.user_id);
+                  const isTopRank =
+                    currentRank === 1 &&
+                    rowScore > 0 &&
+                    (activeTab !== "monthly" || isMonthlyWinner);
                   
                   // Special styling for top-ranked players
 
@@ -1079,7 +1405,9 @@ export default function GlobalLeaderboardPage() {
 
                   // Highlight entire row for current user - make it very obvious
                   const isDark = document.documentElement.classList.contains('dark');
-                  const rowBgColor = isMe 
+                  const rowBgColor = isMonthlyWinner
+                    ? 'transparent'
+                    : isMe
                     ? (isDark ? '#065f46' : '#a7f3d0')
                     : (isDark ? '#0f172a' : '#f8fafc');
                   
@@ -1088,17 +1416,26 @@ export default function GlobalLeaderboardPage() {
                       key={r.user_id}
                       ref={isMe ? userRowRef : null}
                       onClick={() => handleUserClick(r.user_id, r.name)}
-                      className={`cursor-pointer ${isMe ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
+                      className={`cursor-pointer ${isMe && !isMonthlyWinner ? 'border-l-4 border-emerald-600 shadow-sm' : ''}`}
                       style={{
                         ...(i > 0 ? { 
                           borderTop: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
                           position: 'relative',
-                          backgroundColor: rowBgColor
-                        } : { position: 'relative', backgroundColor: rowBgColor })
+                          backgroundColor: rowBgColor,
+                          backgroundImage: isMonthlyWinner
+                            ? 'linear-gradient(135deg, #facc15, #f97316, #ec4899, #9333ea)'
+                            : undefined,
+                        } : {
+                          position: 'relative',
+                          backgroundColor: rowBgColor,
+                          backgroundImage: isMonthlyWinner
+                            ? 'linear-gradient(135deg, #facc15, #f97316, #ec4899, #9333ea)'
+                            : undefined,
+                        })
                       }}
                     >
                       {/* Rank number only */}
-                      <td className="py-3 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{ 
+                      <td className={`py-3 text-left tabular-nums whitespace-nowrap relative ${isMonthlyWinner ? 'text-white' : 'text-slate-900 dark:text-slate-100'}`} style={{
                         width: '35px',
                         paddingLeft: '0.5rem', 
                         paddingRight: '0.25rem',
@@ -1129,14 +1466,14 @@ export default function GlobalLeaderboardPage() {
                           </div>
                           {isTopRank && (
                             <span className="inline-flex items-center sparkle-trophy flex-shrink-0">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="w-4 h-4 text-yellow-500">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className={`w-4 h-4 ${isMonthlyWinner ? 'text-white' : 'text-yellow-500'}`}>
                                 <g>
                                   <path fill="currentColor" d="M16 3c1.1046 0 2 0.89543 2 2h2c1.1046 0 2 0.89543 2 2v1c0 2.695 -2.1323 4.89 -4.8018 4.9941 -0.8777 1.5207 -2.4019 2.6195 -4.1982 2.9209V19h3c0.5523 0 1 0.4477 1 1s-0.4477 1 -1 1H8c-0.55228 0 -1 -0.4477 -1 -1s0.44772 -1 1 -1h3v-3.085c-1.7965 -0.3015 -3.32148 -1.4 -4.19922 -2.9209C4.13175 12.8895 2 10.6947 2 8V7c0 -1.10457 0.89543 -2 2 -2h2c0 -1.10457 0.89543 -2 2 -2zm-8 7c0 2.2091 1.79086 4 4 4 2.2091 0 4 -1.7909 4 -4V5H8zM4 8c0 1.32848 0.86419 2.4532 2.06055 2.8477C6.02137 10.5707 6 10.2878 6 10V7H4zm14 2c0 0.2878 -0.0223 0.5706 -0.0615 0.8477C19.1353 10.4535 20 9.32881 20 8V7h-2z" strokeWidth="1"></path>
                                 </g>
                               </svg>
                             </span>
                           )}
-                          <span className={`text-xs truncate min-w-0 whitespace-nowrap ${isMe ? 'font-bold text-emerald-900 dark:text-emerald-300' : 'font-normal text-slate-900 dark:text-slate-100'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={`text-xs truncate min-w-0 whitespace-nowrap ${isMonthlyWinner ? 'font-bold text-white' : isMe ? 'font-bold text-emerald-900 dark:text-emerald-300' : 'font-normal text-slate-900 dark:text-slate-100'}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {r.name}
                           </span>
                         </div>
@@ -1160,17 +1497,27 @@ export default function GlobalLeaderboardPage() {
                         </>
                       )}
 
-                      {/* Form tab columns (both 5 Week and 10 Week) */}
-                      {(activeTab === "form5" || activeTab === "form10") && (
+                      {/* Monthly gameweek breakdown and total */}
+                      {activeTab === "monthly" && (
                         <>
-                          <td className="px-4 py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ width: '40px', paddingLeft: '0.5rem', paddingRight: '0.5rem', backgroundColor: rowBgColor }}></td>
-                          <td className="py-3 text-center tabular-nums font-bold text-slate-900 dark:text-slate-100" style={{ 
-                            width: '60px',
-                            paddingLeft: '0.5rem', 
-                            paddingRight: '0.5rem',
+                          {'gwPoints' in r && r.gwPoints.map((points, index) => (
+                            <td
+                              key={`${r.user_id}-${index}`}
+                              className={`py-3 text-center text-xs tabular-nums font-semibold ${
+                                isMonthlyWinner
+                                  ? 'text-white'
+                                  : 'text-slate-500 dark:text-slate-400'
+                              }`}
+                              style={{ width: '32px', backgroundColor: rowBgColor }}
+                            >
+                              {points ?? '—'}
+                            </td>
+                          ))}
+                          <td className={`py-3 text-center tabular-nums font-bold ${isMonthlyWinner ? 'text-white' : 'text-slate-900 dark:text-slate-100'}`} style={{
+                            width: '55px',
                             backgroundColor: rowBgColor
                           }}>
-                            {'formPoints' in r ? r.formPoints : 0}
+                            {'monthPoints' in r ? r.monthPoints : 0}
                           </td>
                         </>
                       )}

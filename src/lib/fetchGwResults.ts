@@ -1,5 +1,8 @@
 import { supabase } from './supabase';
 import { calculateLastGwRank, calculateFormRank, calculateSeasonRank } from './helpers';
+import { ensureActiveSeasonCtx } from './activeSeasonCtx';
+import { getSeasonTables, withSeasonId, type SeasonCtx, type SeasonTables } from './seasonStack';
+import { fetchAllGwPoints, fetchOverallOcp } from './fetchAllGwPoints';
 
 export interface GwResults {
   score: number;
@@ -22,43 +25,69 @@ export interface GwResults {
   };
 }
 
-/**
- * Fetches all data needed for the Gameweek Results Modal
- * This function can be called during app initialization to pre-load data
- */
-export async function fetchGwResults(userId: string, gw: number): Promise<GwResults> {
-  // 1. Get GW score and rank
-  const { data: gwPointsData, error: gwPointsError } = await supabase
-    .from('app_v_gw_points')
+type PointsRow = { user_id: string; gw: number; points: number };
+type OcpRow = { user_id: string; name: string | null; ocp: number };
+
+async function queryGwPointsForGw(
+  tables: SeasonTables,
+  seasonCtx: SeasonCtx,
+  gw: number
+): Promise<Array<{ user_id: string; points: number }>> {
+  let q = (supabase as any)
+    .from(tables.gwPoints)
     .select('user_id, points')
     .eq('gw', gw);
-
-  if (gwPointsError) {
-    throw new Error(`Failed to load GW points: ${gwPointsError.message}`);
+  if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+    q = q.eq('season_id', seasonCtx.seasonId);
   }
-
-  const allGwPoints = (gwPointsData ?? []).map((p: any) => ({
-    user_id: p.user_id,
-    gw: gw,
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((p: any) => ({
+    user_id: p.user_id as string,
     points: p.points || 0,
+  }));
+}
+
+/**
+ * Fetches all data needed for the Gameweek Results Modal.
+ * Season-aware: Pile B uses app_season_* / app_v_season_* (never last-year GW # from legacy).
+ */
+export async function fetchGwResults(userId: string, gw: number): Promise<GwResults> {
+  const seasonCtx = await ensureActiveSeasonCtx(supabase as any, userId);
+  const tables = getSeasonTables(seasonCtx);
+  const seasonId = seasonCtx.useSeasonStack ? seasonCtx.seasonId : null;
+
+  // 1. Get GW score and rank (stack-scoped)
+  const gwPointsData = await queryGwPointsForGw(tables, seasonCtx, gw);
+
+  const allGwPoints: PointsRow[] = gwPointsData.map((p) => ({
+    user_id: p.user_id,
+    gw,
+    points: p.points,
   }));
 
   const userGwPoints = allGwPoints.find((p) => p.user_id === userId);
   const score = userGwPoints?.points || 0;
 
-  // Calculate GW rank
   const gwRankData = calculateLastGwRank(userId, gw, allGwPoints);
   const gwRank = gwRankData?.rank || null;
   const gwRankTotal = gwRankData?.total || null;
 
-  // Get total fixtures for this GW
-  const { data: fixturesData } = await supabase
-    .from('app_fixtures')
-    .select('id')
-    .eq('gw', gw);
+  let fixturesQ = (supabase as any).from(tables.fixtures).select('id').eq('gw', gw);
+  fixturesQ = withSeasonId(fixturesQ, seasonCtx);
+  const { data: fixturesData } = await fixturesQ;
   const totalFixtures = fixturesData?.length || 10;
 
-  // 2. Calculate trophies earned in THIS GW
+  // Full season points (for form windows + overall-before recalcs)
+  const allSeasonPoints = await fetchAllGwPoints('asc', { seasonId });
+  const overallOcp = await fetchOverallOcp({ seasonId });
+  const overallForForm: OcpRow[] = overallOcp.map((o) => ({
+    user_id: o.user_id,
+    name: o.name,
+    ocp: o.ocp || 0,
+  }));
+
+  // 2. Trophies earned in THIS GW
   const trophies = {
     gw: false,
     form5: false,
@@ -66,104 +95,42 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
     overall: false,
   };
 
-  // GW trophy: finished #1 in this GW
   if (gwRank === 1) {
     trophies.gw = true;
   }
 
-  // 5-form trophy: finished #1 in 5-form after this GW (if GW >= 5)
   if (gw >= 5) {
-    const { data: allPointsForForm } = await supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', gw - 4)
-      .lte('gw', gw);
-
-    const { data: overallData } = await supabase
-      .from('app_v_ocp_overall')
-      .select('user_id, name, ocp');
-
-    if (allPointsForForm && overallData) {
-      const form5Rank = calculateFormRank(
-        userId,
-        gw - 4,
-        gw,
-        allPointsForForm.map((p: any) => ({
-          user_id: p.user_id,
-          gw: p.gw,
-          points: p.points || 0,
-        })),
-        overallData.map((o: any) => ({
-          user_id: o.user_id,
-          name: o.name,
-          ocp: o.ocp || 0,
-        }))
-      );
-      if (form5Rank?.rank === 1) {
-        trophies.form5 = true;
-      }
-    }
-  }
-
-  // 10-form trophy: finished #1 in 10-form after this GW (if GW >= 10)
-  if (gw >= 10) {
-    const { data: allPointsForForm } = await supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', gw - 9)
-      .lte('gw', gw);
-
-    const { data: overallData } = await supabase
-      .from('app_v_ocp_overall')
-      .select('user_id, name, ocp');
-
-    if (allPointsForForm && overallData) {
-      const form10Rank = calculateFormRank(
-        userId,
-        gw - 9,
-        gw,
-        allPointsForForm.map((p: any) => ({
-          user_id: p.user_id,
-          gw: p.gw,
-          points: p.points || 0,
-        })),
-        overallData.map((o: any) => ({
-          user_id: o.user_id,
-          name: o.name,
-          ocp: o.ocp || 0,
-        }))
-      );
-      if (form10Rank?.rank === 1) {
-        trophies.form10 = true;
-      }
-    }
-  }
-
-  // Overall trophy: finished #1 in overall after this GW
-  const { data: overallData } = await supabase
-    .from('app_v_ocp_overall')
-    .select('user_id, name, ocp');
-
-  if (overallData) {
-    const overallRank = calculateSeasonRank(
+    const form5Rank = calculateFormRank(
       userId,
-      overallData.map((o: any) => ({
-        user_id: o.user_id,
-        name: o.name,
-        ocp: o.ocp || 0,
-      }))
+      gw - 4,
+      gw,
+      allSeasonPoints.filter((p) => p.gw >= gw - 4 && p.gw <= gw),
+      overallForForm
     );
-    if (overallRank?.rank === 1) {
-      trophies.overall = true;
-    }
+    if (form5Rank?.rank === 1) trophies.form5 = true;
   }
 
-  // 3. Count ML victories (leagues where user finished #1 for this GW)
+  if (gw >= 10) {
+    const form10Rank = calculateFormRank(
+      userId,
+      gw - 9,
+      gw,
+      allSeasonPoints.filter((p) => p.gw >= gw - 9 && p.gw <= gw),
+      overallForForm
+    );
+    if (form10Rank?.rank === 1) trophies.form10 = true;
+  }
+
+  const overallRank = calculateSeasonRank(userId, overallForForm);
+  if (overallRank?.rank === 1) {
+    trophies.overall = true;
+  }
+
+  // 3. ML victories for this GW (season-scoped points/picks/results)
   let mlVictories = 0;
   const mlVictoryNames: string[] = [];
   const mlVictoryData: Array<{ id: string; name: string; avatar: string | null }> = [];
 
-  // Get all leagues user is in
   const { data: userLeagues } = await supabase
     .from('league_members')
     .select('league_id')
@@ -172,53 +139,54 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
   if (userLeagues && userLeagues.length > 0) {
     const leagueIds = userLeagues.map((l: any) => l.league_id);
 
-    // For each league, check if user won
     for (const leagueId of leagueIds) {
-      // Get league name and avatar
       const { data: leagueData } = await supabase
         .from('leagues')
         .select('id, name, avatar')
         .eq('id', leagueId)
         .maybeSingle();
-      
+
       const leagueName = leagueData?.name || 'Unknown League';
       const leagueAvatar = leagueData?.avatar || null;
 
-      // Get all members of this league
       const { data: members } = await supabase
         .from('league_members')
         .select('user_id')
         .eq('league_id', leagueId);
 
-      if (!members || members.length < 2) continue; // Need at least 2 members
+      if (!members || members.length < 2) continue;
 
       const memberIds = members.map((m: any) => m.user_id);
 
-      // Get GW points for all members
-      const { data: leagueGwPoints } = await supabase
-        .from('app_v_gw_points')
+      let leaguePtsQ = (supabase as any)
+        .from(tables.gwPoints)
         .select('user_id, points')
         .eq('gw', gw)
         .in('user_id', memberIds);
-
+      if (seasonCtx.useSeasonStack && seasonCtx.seasonId) {
+        leaguePtsQ = leaguePtsQ.eq('season_id', seasonCtx.seasonId);
+      }
+      const { data: leagueGwPoints } = await leaguePtsQ;
       if (!leagueGwPoints || leagueGwPoints.length === 0) continue;
 
-      // Get picks for unicorn calculation (if league has 3+ members)
-      let unicornCounts: Map<string, number> = new Map();
+      const unicornCounts: Map<string, number> = new Map();
       if (members.length >= 3) {
-        const { data: allPicks } = await supabase
-          .from('app_picks')
+        let picksQ = (supabase as any)
+          .from(tables.picks)
           .select('fixture_index, pick, user_id')
           .eq('gw', gw)
           .in('user_id', memberIds);
+        picksQ = withSeasonId(picksQ, seasonCtx);
+        const { data: allPicks } = await picksQ;
 
-        const { data: results } = await supabase
-          .from('app_gw_results')
+        let resultsQ = (supabase as any)
+          .from(tables.results)
           .select('fixture_index, result')
           .eq('gw', gw);
+        resultsQ = withSeasonId(resultsQ, seasonCtx);
+        const { data: results } = await resultsQ;
 
         if (allPicks && results) {
-          // Count unicorns per user
           const fixturePicks = new Map<number, Map<'H' | 'D' | 'A', string[]>>();
           allPicks.forEach((pick: any) => {
             if (!fixturePicks.has(pick.fixture_index)) {
@@ -236,16 +204,14 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
             if (picks) {
               const correctPicks = picks.get(result.result);
               if (correctPicks && correctPicks.length === 1) {
-                // Only one person got it right - unicorn!
-                const userId = correctPicks[0];
-                unicornCounts.set(userId, (unicornCounts.get(userId) || 0) + 1);
+                const uid = correctPicks[0];
+                unicornCounts.set(uid, (unicornCounts.get(uid) || 0) + 1);
               }
             }
           });
         }
       }
 
-      // Sort by points (desc), then unicorns (desc)
       const sorted = [...leagueGwPoints]
         .map((p: any) => ({
           user_id: p.user_id,
@@ -257,7 +223,6 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
           return b.unicorns - a.unicorns;
         });
 
-      // Check if user is first (and not a draw)
       if (sorted.length > 0 && sorted[0].user_id === userId) {
         const isDraw =
           sorted.length > 1 &&
@@ -276,175 +241,79 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
     }
   }
 
-  // 4. Calculate leaderboard changes (before vs after this GW)
+  // 4. Leaderboard changes (before vs after this GW)
   const leaderboardChanges = {
     overall: { before: null as number | null, after: null as number | null, change: null as number | null },
     form5: { before: null as number | null, after: null as number | null, change: null as number | null },
     form10: { before: null as number | null, after: null as number | null, change: null as number | null },
   };
 
-  // Get overall data before and after
-  const { data: overallDataForChanges } = await supabase
-    .from('app_v_ocp_overall')
-    .select('user_id, name, ocp');
+  const afterOverall = calculateSeasonRank(userId, overallForForm);
+  leaderboardChanges.overall.after = afterOverall?.rank || null;
 
-  if (overallDataForChanges) {
-    // After: current overall rank
-    const afterOverall = calculateSeasonRank(
-      userId,
-      overallDataForChanges.map((o: any) => ({
-        user_id: o.user_id,
-        name: o.name,
-        ocp: o.ocp || 0,
-      }))
-    );
-    leaderboardChanges.overall.after = afterOverall?.rank || null;
-
-    // Before: calculate overall rank up to GW-1
-    if (gw > 1) {
-      const { data: allPointsBefore } = await supabase
-        .from('app_v_gw_points')
-        .select('user_id, gw, points')
-        .lt('gw', gw);
-
-      if (allPointsBefore) {
-        const usersBefore = new Set(allPointsBefore.map((p: any) => p.user_id));
-        const overallBefore = Array.from(usersBefore).map((uid) => {
-          const points = allPointsBefore
-            .filter((p: any) => p.user_id === uid)
-            .reduce((sum, p) => sum + (p.points || 0), 0);
-          const userData = overallDataForChanges.find((o: any) => o.user_id === uid);
-          return {
-            user_id: uid,
-            name: userData?.name || null,
-            ocp: points,
-          };
-        });
-
-        const beforeOverall = calculateSeasonRank(userId, overallBefore);
-        leaderboardChanges.overall.before = beforeOverall?.rank || null;
-      }
-    }
+  if (gw > 1) {
+    const pointsBefore = allSeasonPoints.filter((p) => p.gw < gw);
+    const usersBefore = new Set(pointsBefore.map((p) => p.user_id));
+    const overallBefore = Array.from(usersBefore).map((uid) => {
+      const points = pointsBefore
+        .filter((p) => p.user_id === uid)
+        .reduce((sum, p) => sum + (p.points || 0), 0);
+      const userData = overallForForm.find((o) => o.user_id === uid);
+      return {
+        user_id: uid,
+        name: userData?.name || null,
+        ocp: points,
+      };
+    });
+    const beforeOverall = calculateSeasonRank(userId, overallBefore);
+    leaderboardChanges.overall.before = beforeOverall?.rank || null;
   }
 
-  // Calculate form changes
   if (gw >= 5) {
-    const { data: allPointsForForm } = await supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', Math.max(1, gw - 4))
-      .lte('gw', gw);
+    const windowPts = allSeasonPoints.filter((p) => p.gw >= Math.max(1, gw - 4) && p.gw <= gw);
+    const afterForm5 = calculateFormRank(userId, gw - 4, gw, windowPts, overallForForm);
+    leaderboardChanges.form5.after = afterForm5?.rank || null;
 
-    const { data: overallDataForForm } = await supabase
-      .from('app_v_ocp_overall')
-      .select('user_id, name, ocp');
-
-    if (allPointsForForm && overallDataForForm) {
-      // After: 5-form rank including this GW
-      const afterForm5 = calculateFormRank(
+    if (gw > 5) {
+      const beforeForm5 = calculateFormRank(
         userId,
-        gw - 4,
-        gw,
-        allPointsForForm.map((p: any) => ({
-          user_id: p.user_id,
-          gw: p.gw,
-          points: p.points || 0,
-        })),
-        overallDataForForm.map((o: any) => ({
-          user_id: o.user_id,
-          name: o.name,
-          ocp: o.ocp || 0,
-        }))
+        gw - 5,
+        gw - 1,
+        windowPts.filter((p) => p.gw < gw),
+        overallForForm
       );
-      leaderboardChanges.form5.after = afterForm5?.rank || null;
-
-      // Before: 5-form rank up to GW-1
-      if (gw > 5) {
-        const beforeForm5 = calculateFormRank(
-          userId,
-          gw - 5,
-          gw - 1,
-          allPointsForForm
-            .filter((p: any) => p.gw < gw)
-            .map((p: any) => ({
-              user_id: p.user_id,
-              gw: p.gw,
-              points: p.points || 0,
-            })),
-          overallDataForForm.map((o: any) => ({
-            user_id: o.user_id,
-            name: o.name,
-            ocp: o.ocp || 0,
-          }))
-        );
-        leaderboardChanges.form5.before = beforeForm5?.rank || null;
-      }
+      leaderboardChanges.form5.before = beforeForm5?.rank || null;
     }
   }
 
   if (gw >= 10) {
-    const { data: allPointsForForm } = await supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', Math.max(1, gw - 9))
-      .lte('gw', gw);
+    const windowPts = allSeasonPoints.filter((p) => p.gw >= Math.max(1, gw - 9) && p.gw <= gw);
+    const afterForm10 = calculateFormRank(userId, gw - 9, gw, windowPts, overallForForm);
+    leaderboardChanges.form10.after = afterForm10?.rank || null;
 
-    const { data: overallDataForForm } = await supabase
-      .from('app_v_ocp_overall')
-      .select('user_id, name, ocp');
-
-    if (allPointsForForm && overallDataForForm) {
-      // After: 10-form rank including this GW
-      const afterForm10 = calculateFormRank(
+    if (gw > 10) {
+      const beforeForm10 = calculateFormRank(
         userId,
-        gw - 9,
-        gw,
-        allPointsForForm.map((p: any) => ({
-          user_id: p.user_id,
-          gw: p.gw,
-          points: p.points || 0,
-        })),
-        overallDataForForm.map((o: any) => ({
-          user_id: o.user_id,
-          name: o.name,
-          ocp: o.ocp || 0,
-        }))
+        gw - 10,
+        gw - 1,
+        windowPts.filter((p) => p.gw < gw),
+        overallForForm
       );
-      leaderboardChanges.form10.after = afterForm10?.rank || null;
-
-      // Before: 10-form rank up to GW-1
-      if (gw > 10) {
-        const beforeForm10 = calculateFormRank(
-          userId,
-          gw - 10,
-          gw - 1,
-          allPointsForForm
-            .filter((p: any) => p.gw < gw)
-            .map((p: any) => ({
-              user_id: p.user_id,
-              gw: p.gw,
-              points: p.points || 0,
-            })),
-          overallDataForForm.map((o: any) => ({
-            user_id: o.user_id,
-            name: o.name,
-            ocp: o.ocp || 0,
-          }))
-        );
-        leaderboardChanges.form10.before = beforeForm10?.rank || null;
-      }
+      leaderboardChanges.form10.before = beforeForm10?.rank || null;
     }
   }
 
-  // Calculate changes
   if (leaderboardChanges.overall.before !== null && leaderboardChanges.overall.after !== null) {
-    leaderboardChanges.overall.change = leaderboardChanges.overall.before - leaderboardChanges.overall.after;
+    leaderboardChanges.overall.change =
+      leaderboardChanges.overall.before - leaderboardChanges.overall.after;
   }
   if (leaderboardChanges.form5.before !== null && leaderboardChanges.form5.after !== null) {
-    leaderboardChanges.form5.change = leaderboardChanges.form5.before - leaderboardChanges.form5.after;
+    leaderboardChanges.form5.change =
+      leaderboardChanges.form5.before - leaderboardChanges.form5.after;
   }
   if (leaderboardChanges.form10.before !== null && leaderboardChanges.form10.after !== null) {
-    leaderboardChanges.form10.change = leaderboardChanges.form10.before - leaderboardChanges.form10.after;
+    leaderboardChanges.form10.change =
+      leaderboardChanges.form10.before - leaderboardChanges.form10.after;
   }
 
   return {
@@ -459,4 +328,3 @@ export async function fetchGwResults(userId: string, gw: number): Promise<GwResu
     leaderboardChanges,
   };
 }
-

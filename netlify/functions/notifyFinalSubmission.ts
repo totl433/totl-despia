@@ -13,7 +13,12 @@
 
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
-import { dispatchNotification, formatEventId } from './lib/notifications';
+import { dispatchNotification } from './lib/notifications';
+import {
+  buildFinalSubmissionEventId,
+  resolveFinalSubmissionScope,
+} from './lib/notifications/finalSubmission';
+import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -31,27 +36,13 @@ function json(statusCode: number, body: unknown) {
 }
 
 /**
- * Get base URL for building full deep link URLs
- * Matches pattern used in notifyLeagueMessageV2
- */
-function getBaseUrl(): string {
-  // Netlify provides URL env var in production
-  if (process.env.URL || process.env.SITE_URL) {
-    return (process.env.URL || process.env.SITE_URL || '').trim();
-  }
-  // Fallback for local dev (shouldn't happen in production)
-  const defaultUrl = 'https://playtotl.com';
-  console.warn(`[notifyFinalSubmission] Base URL using default fallback: ${defaultUrl}`);
-  return defaultUrl;
-}
-
-/**
  * Check if all members have submitted and notify league members
  * Works for all mini-leagues by checking all pick tables
  */
 async function checkAndNotifyFinalSubmission(
   leagueId: string,
-  gw: number
+  gw: number,
+  seasonId: unknown
 ) {
   try {
     // Get all league members
@@ -68,14 +59,17 @@ async function checkAndNotifyFinalSubmission(
     const memberIds = members.map((m: any) => m.user_id);
     console.log(`[notifyFinalSubmission] Checking ${memberIds.length} members for league ${leagueId}, GW ${gw}`);
 
-    // Check submissions in app_gw_submissions
-    // This table contains submissions from both app users and mirrored web users
-    const { data: submissions, error: submissionsError } = await supabase
-      .from('app_gw_submissions')
+    const scope = resolveFinalSubmissionScope(seasonId);
+    let submissionsQuery = supabase
+      .from(scope.table)
       .select('user_id')
       .eq('gw', gw)
       .in('user_id', memberIds)
       .not('submitted_at', 'is', null);
+    if (scope.seasonId) {
+      submissionsQuery = submissionsQuery.eq('season_id', scope.seasonId);
+    }
+    const { data: submissions, error: submissionsError } = await submissionsQuery;
 
     if (submissionsError) {
       console.error('[notifyFinalSubmission] Error fetching submissions:', submissionsError);
@@ -103,18 +97,10 @@ async function checkAndNotifyFinalSubmission(
     const leagueName = league?.name || 'your league';
     const leagueCode = league?.code;
 
-    // Build event ID using catalog format
-    const eventId = formatEventId('final-submission', { league_id: leagueId, gw });
-    if (!eventId) {
-      console.error('[notifyFinalSubmission] Failed to format event ID');
-      return { success: false, error: 'Failed to format event ID' };
-    }
-
-    // Build deep link URL in the same format as chat deep links:
-    // Use home + leagueCode query params so AppShell can rewrite BEFORE Home renders.
-    const baseUrl = getBaseUrl();
-    const relativeUrl = leagueCode ? `/?leagueCode=${leagueCode}&tab=gw` : undefined;
-    const fullUrl = relativeUrl ? `${baseUrl}${relativeUrl}` : undefined;
+    // Season is part of the key so GW1 in a new season cannot collide with
+    // legacy GW1 or a previous season's notification.
+    const eventId = buildFinalSubmissionEventId(leagueId, gw, scope.seasonId);
+    const fullUrl = leagueCode ? buildLeaguePublicUrl(leagueCode, 'gw') : undefined;
 
     // Dispatch via unified system
     const result = await dispatchNotification({
@@ -127,6 +113,7 @@ async function checkAndNotifyFinalSubmission(
         type: 'final_submission',
         league_id: leagueId,
         league_code: leagueCode,
+        season_id: scope.seasonId,
         gw,
         url: fullUrl,
         navigateTo: fullUrl,
@@ -169,14 +156,14 @@ export const handler: Handler = async (event) => {
     }
 
     // Support both 'matchday' (legacy) and 'gw' (new) parameters
-    const { leagueId, matchday, gw, isTestApi } = payload;
+    const { leagueId, matchday, gw, seasonId } = payload;
     const gameweek = gw !== undefined ? gw : matchday;
 
     if (!leagueId || gameweek === undefined) {
       return json(400, { error: 'Missing leagueId or gw/matchday' });
     }
 
-    const result = await checkAndNotifyFinalSubmission(leagueId, gameweek);
+    const result = await checkAndNotifyFinalSubmission(leagueId, gameweek, seasonId);
 
     if (result.success) {
       return json(200, result);

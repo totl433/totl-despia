@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import DateHeader from './DateHeader';
 import { FixtureCard, type Fixture as FixtureCardFixture, type LiveScore as FixtureCardLiveScore } from './FixtureCard';
+import { formatKickoffDateUk } from '../lib/kickoffDisplay';
 
 interface DateGroupedFixturesProps {
   fixtureCards: Array<{ fixture: FixtureCardFixture; liveScore: FixtureCardLiveScore | null; pick: "H" | "D" | "A" | undefined }>;
@@ -21,11 +22,7 @@ export default function DateGroupedFixtures({
     
     fixtureCards.forEach(({ fixture, liveScore, pick }) => {
       const dateKey = fixture.kickoff_time
-        ? new Date(fixture.kickoff_time).toLocaleDateString('en-GB', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-          })
+        ? formatKickoffDateUk(fixture.kickoff_time) || 'No date'
         : 'No date';
       
       if (!groups.has(dateKey)) {
