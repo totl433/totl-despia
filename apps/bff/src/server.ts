@@ -22,6 +22,7 @@ import { requireUser } from './auth.js';
 import { captureException, initSentry } from './sentry.js';
 import { computeGwResults } from './gwResults.js';
 import { computeLiveGwScoresForGw } from './liveGwScores.js';
+import { buildHostReviewLink } from './hostReviewLinks.js';
 import {
   getEmailPreferences,
   getProfileStats,
@@ -641,8 +642,9 @@ app.post('/v1/admin/branded-leaderboards/:id/notify-host-review', async (req) =>
     throw Object.assign(new Error('Host user not found or has no email'), { statusCode: 404 });
   }
 
-  const baseUrl = (env.SITE_URL ?? 'https://playtotl.com').replace(/\/$/, '');
-  const reviewLink = `${baseUrl}/host/leaderboards/${encodeURIComponent(params.id)}`;
+  // Host campaign reviews are web-only. HOST_REVIEW_SITE_URL is deliberately
+  // isolated from SITE_URL, which may point at staging for unrelated behavior.
+  const reviewLink = buildHostReviewLink(params.id, env.HOST_REVIEW_SITE_URL);
 
   await sendHostReviewReadyEmail({
     env,

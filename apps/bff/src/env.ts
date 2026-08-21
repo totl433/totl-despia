@@ -9,6 +9,7 @@ const EnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   CORS_ORIGIN: z.string().optional(),
   SITE_URL: z.string().url().optional(),
+  HOST_REVIEW_SITE_URL: z.string().url().optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
   REVENUECAT_SECRET_KEY: z.string().min(1).optional(),
   REVENUECAT_PROJECT_ID: z.string().min(1).optional(),
