@@ -168,46 +168,35 @@ export const handler: Handler = async (event) => {
     
     console.log(`[sendPushAll] Sending to ${userIdsIncluded.size} unique users`);
     
-    // Load user notification preferences if notification type is provided
-    let userIdsToFilter: string[] = [];
-    if (data?.type === 'new-gameweek' || data?.type === 'fixtures_published') {
-      // Get user IDs from subscriptions
-      userIdsToFilter = Array.from(new Set((subs || []).map((s: any) => s.user_id).filter(Boolean)));
-      
-      if (userIdsToFilter.length > 0) {
-        // Load user notification preferences using shared utility
-        const prefsMap = await loadUserNotificationPreferences(userIdsToFilter);
-        
-        // Filter out users who disabled new-gameweek notifications
-        const filteredSubs = (subs || []).filter((sub: any) => {
-          if (!sub.user_id) return true; // Keep if no user_id
-          const userPrefs = prefsMap.get(sub.user_id);
-          return userPrefs?.['new-gameweek'] !== false; // Keep if not explicitly disabled
-        });
-        
-        // Update subs to only include users who want notifications
-        const filteredPlayerIds = filteredSubs
-          .map((s: any) => s.player_id)
-          .filter(Boolean);
-        
-        // Re-check subscriptions for filtered list
-        const filteredChecks = await Promise.allSettled(
-          filteredPlayerIds.map(async (playerId) => {
-            const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
-            return { playerId, subscribed: result.subscribed };
-          })
-        );
-        
-        validPlayerIds = filteredPlayerIds.filter((playerId, i) => {
-          const check = filteredChecks[i];
-          if (check.status === 'fulfilled') {
-            return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
-          }
-          return false;
-        });
-        
-        console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} users who want new-gameweek notifications (from ${userIdsToFilter.length} total users)`);
-      }
+    // All-user blasts honour Notification Centre "New Gameweek Published" (on by default).
+    const userIdsToFilter = Array.from(new Set((subs || []).map((s: any) => s.user_id).filter(Boolean)));
+    if (userIdsToFilter.length > 0) {
+      const prefsMap = await loadUserNotificationPreferences(userIdsToFilter);
+      const filteredSubs = (subs || []).filter((sub: any) => {
+        if (!sub.user_id) return true;
+        const userPrefs = prefsMap.get(sub.user_id);
+        return userPrefs?.['new-gameweek'] !== false;
+      });
+      const filteredPlayerIds = filteredSubs
+        .map((s: any) => s.player_id)
+        .filter(Boolean);
+
+      const filteredChecks = await Promise.allSettled(
+        filteredPlayerIds.map(async (playerId) => {
+          const result = await isSubscribed(playerId, ONESIGNAL_APP_ID, ONESIGNAL_REST_API_KEY);
+          return { playerId, subscribed: result.subscribed };
+        })
+      );
+
+      validPlayerIds = filteredPlayerIds.filter((playerId, i) => {
+        const check = filteredChecks[i];
+        if (check.status === 'fulfilled') {
+          return (check as PromiseFulfilledResult<{ playerId: string; subscribed: boolean }>).value.subscribed;
+        }
+        return false;
+      });
+
+      console.log(`[sendPushAll] Filtered to ${validPlayerIds.length} users who want new-gameweek notifications (from ${userIdsToFilter.length} total users)`);
     }
 
     // Build notification payload

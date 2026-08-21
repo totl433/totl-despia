@@ -30,7 +30,7 @@ export default function NotificationCentre() {
  {
  id: 'new-gameweek',
  label: 'New Gameweek Published',
- description: 'Get notified when a new gameweek is published and ready for predictions',
+ description: 'Gameweek announcements and all-user updates, including when a new gameweek is ready',
  enabled: true,
  },
  {
@@ -162,7 +162,7 @@ export default function NotificationCentre() {
  {
  id: 'new-gameweek',
  label: 'New Gameweek Published',
- description: 'Get notified when a new gameweek is published and ready for predictions',
+ description: 'Gameweek announcements and all-user updates, including when a new gameweek is ready',
  enabled: prefs['new-gameweek'] !== false,
  },
  {
