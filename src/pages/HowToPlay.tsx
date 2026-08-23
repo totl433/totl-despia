@@ -6,7 +6,7 @@ export default function HowToPlayPage() {
  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
  predictions: true, // Open by default
  leaderboard: false,
- form: false,
+ monthly: false,
  "mini-leagues": false,
  unicorns: false,
  summary: false,
@@ -123,45 +123,43 @@ export default function HowToPlayPage() {
  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
  <h3 className="font-semibold text-emerald-800 mb-2">🎯 Simple Rules</h3>
  <p className="text-emerald-700">
- The more correct Predictions you make, the higher you climb. <strong>No extra points, no ties</strong> — just football instincts and consistency.
+ The more correct Predictions you make, the higher you climb. There's an <strong>Overall</strong> table for the season, a <strong>Gameweek</strong> table for this week, and a <strong>Monthly</strong> table that resets each month.
  </p>
  </div>
  </div>
  </Section>
 
- <Section id="form" title="Form Leaderboards" icon="⚡" collapsible defaultOpen={openSections.form} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, form: isOpen }))}>
+ <Section id="monthly" title="Monthly comps" icon="📅" collapsible defaultOpen={openSections.monthly} onToggle={(isOpen: boolean) => setOpenSections(prev => ({ ...prev, monthly: isOpen }))}>
  <div className="space-y-4">
  <p className="text-base leading-relaxed text-slate-900 dark:text-slate-100">
- <strong>Form Leaderboards</strong> focus on how you're performing <strong>right now</strong>, not over the whole season.
+ The <strong>Monthly</strong> table is a fresh race each calendar month. Same scoring as everything else: <strong>1 point per correct Prediction</strong>, added up across that month's Gameweeks.
  </p>
 
- <div className="space-y-3">
- <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
- <h3 className="font-semibold text-blue-800 mb-2">⚡ 5-Week Form Table</h3>
- <p className="text-blue-700">
- Your short-term <strong>"hot streak"</strong> — great for spotting who's on fire lately.
+ <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+ <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">⏰ Joined late?</h3>
+ <p className="text-amber-700 dark:text-amber-300">
+ You can still win the month. Each month starts from zero, so you don't need a season's worth of weeks behind you.
  </p>
- </div>
-
- <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
- <h3 className="font-semibold text-purple-800 mb-2">🔥 10-Week Form Table</h3>
- <p className="text-purple-700">
- The standard rolling form that rewards <strong>consistency and momentum</strong>.
- </p>
- </div>
  </div>
 
  <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
- <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">📊 How They Work</h3>
+ <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">📊 How you get on the table</h3>
  <p className="text-slate-700 dark:text-slate-300">
- Both update each week and show the players in top form. To appear on the <strong>10-Week Form Table</strong>, make sure you've played 10 Gameweeks in a row — <strong>consistency is key</strong>!
+ Submit for a Gameweek in that month and you're in, even if you're still on 0.
  </p>
  </div>
 
- <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
- <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-2">💡 Don't worry if you joined TOTL late</h3>
- <p className="text-amber-700 dark:text-amber-300">
- Once you've played enough weeks, you'll automatically show up in these tables.
+ <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+ <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">🏆 Winning the month</h3>
+ <p className="text-emerald-700 dark:text-emerald-300">
+ When the last Gameweek of the month is finished, whoever has the most points that month wins. <strong>Ties share first</strong> — everyone on the top score gets the month.
+ </p>
+ </div>
+
+ <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+ <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">🏅 Trophies</h3>
+ <p className="text-blue-700 dark:text-blue-300">
+ A monthly win (or a tie for first) goes in your trophy cabinet, alongside Gameweek wins.
  </p>
  </div>
  </div>
@@ -172,8 +170,7 @@ export default function HowToPlayPage() {
  <div className="bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
  <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">🏆 Your Mission</h3>
  <p className="text-emerald-700 dark:text-emerald-300">
- Predict each week. Beat your mates. Climb the Leaderboard — or rise up the Form
- Tables. Stay sharp and see who's truly <strong>Top of the League</strong>.
+ Predict each week. Beat your mates. Climb Overall — or win the month. Stay sharp and see who's truly <strong>Top of the League</strong>.
  </p>
  </div>
  </div>
