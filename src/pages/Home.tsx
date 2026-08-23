@@ -22,6 +22,7 @@ import { calculateFormRank, calculateLastGwRank, calculateSeasonRank } from "../
 import { useSeasonStack } from "../hooks/useSeasonStack";
 import { getSeasonTables, withSeasonId } from "../lib/seasonStack";
 import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
+import { computeCareerStreak } from "../lib/predictionStreak";
 // Types
 type LeagueMember = { id: string; name: string };
 type LeagueDataInternal = {
@@ -1341,6 +1342,63 @@ export default function HomePage() {
     return userSubmissions.has(gw);
   }, [user?.id, gw, userSubmissions]);
 
+  // Previous-season weeks live in the legacy pile. Needed for all-time HP streak
+  // once the user is on the current season stack (otherwise GW1 looks like streak 1).
+  const previousCareerCacheKey = user?.id ? `home:previousSeasonCareer:${user.id}` : null;
+  const [previousCareer, setPreviousCareer] = useState<{
+    pointsByGw: Record<number, number>;
+    submitted: number[];
+  } | null>(() => {
+    if (!previousCareerCacheKey) return null;
+    try {
+      return getCached<{ pointsByGw: Record<number, number>; submitted: number[] }>(previousCareerCacheKey);
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (!user?.id || !previousCareerCacheKey) {
+      setPreviousCareer(null);
+      return;
+    }
+
+    const cached = getCached<{ pointsByGw: Record<number, number>; submitted: number[] }>(
+      previousCareerCacheKey
+    );
+    if (cached) setPreviousCareer(cached);
+
+    let alive = true;
+    (async () => {
+      const [pointsResult, submissionsResult] = await Promise.all([
+        (supabase as any)
+          .from('app_v_gw_points')
+          .select('gw, points')
+          .eq('user_id', user.id),
+        (supabase as any)
+          .from('app_gw_submissions')
+          .select('gw')
+          .eq('user_id', user.id)
+          .not('submitted_at', 'is', null),
+      ]);
+
+      if (!alive) return;
+
+      const pointsByGw: Record<number, number> = {};
+      for (const row of (pointsResult.data ?? []) as Array<{ gw: number; points: number }>) {
+        pointsByGw[row.gw] = row.points;
+      }
+      const submitted = ((submissionsResult.data ?? []) as Array<{ gw: number }>).map((row) => row.gw);
+      const next = { pointsByGw, submitted };
+      setPreviousCareer(next);
+      setCached(previousCareerCacheKey, next, CACHE_TTL.HOME);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, previousCareerCacheKey]);
+
   // Calculate score component
   const scoreComponent = useMemo(() => {
     if (!fixtures.length) return null;
@@ -1502,41 +1560,75 @@ export default function HomePage() {
   }, [fixtures, liveScores]);
 
   const userStreakData = useMemo(() => {
-    if (!user?.id || !latestGw) return null;
-    
-    const userGwPoints = gwPoints.filter(gp => gp.user_id === user.id).sort((a, b) => b.gw - a.gw);
-    
-    let streak = 0;
-    let expectedGw = latestGw;
-    const userGwPointsSet = new Set(userGwPoints.map(gp => gp.gw));
-    
-    while (expectedGw >= 1) {
-      const hasPoints = userGwPointsSet.has(expectedGw);
-      const hasSubmission = userSubmissions.has(expectedGw);
-      
-      if (hasPoints || hasSubmission) {
-        streak++;
-        expectedGw--;
-      } else {
-        break;
+    if (!user?.id) return null;
+
+    const streakCacheKey = `home:careerStreak:${user.id}`;
+    const cachedStreak = getCached<{
+      streak: number;
+      last10GwScores: Array<{ gw: number; score: number | null }>;
+    }>(streakCacheKey);
+
+    // Don't flash a single-season streak of 1 while Pile B context or last-season
+    // weeks are still loading.
+    if (seasonStack.loading || (seasonStack.useSeasonStack && previousCareer === null)) {
+      return cachedStreak;
+    }
+
+    const currentGw = Math.max(
+      gw || 0,
+      latestGw || 0,
+      seasonStack.currentGw || 0,
+      dbCurrentGw || 0
+    );
+    if (!currentGw && !seasonStack.useSeasonStack) return cachedStreak;
+
+    const currentPointsByGw = new Map<number, number>();
+    for (const row of gwPoints) {
+      if (row.user_id === user.id) currentPointsByGw.set(row.gw, row.points);
+    }
+
+    const includePrevious = seasonStack.useSeasonStack;
+    const previousPointsByGw = new Map<number, number>();
+    const previousSubmitted = new Set<number>();
+    if (includePrevious && previousCareer) {
+      for (const [gwKey, points] of Object.entries(previousCareer.pointsByGw)) {
+        previousPointsByGw.set(Number(gwKey), points);
+      }
+      for (const submittedGw of previousCareer.submitted) {
+        previousSubmitted.add(submittedGw);
       }
     }
-    
-    const last10GwScores: Array<{ gw: number; score: number | null }> = [];
-    const startGw = Math.max(1, latestGw - 9);
-    for (let gw = latestGw; gw >= startGw; gw--) {
-      const gwData = userGwPoints.find(gp => gp.gw === gw);
-      last10GwScores.push({
-        gw,
-        score: gwData ? gwData.points : null
-      });
+
+    const result = computeCareerStreak({
+      currentGw,
+      currentPointsByGw,
+      currentSubmitted: userSubmissions,
+      previousPointsByGw,
+      previousSubmitted,
+    });
+
+    if (result.streak === 0 && result.last10GwScores.length === 0) {
+      return cachedStreak;
     }
-    
-    return {
-      streak,
-      last10GwScores: last10GwScores.reverse()
-    };
-  }, [user?.id, gwPoints, latestGw, userSubmissions]);
+
+    return result;
+  }, [
+    user?.id,
+    gwPoints,
+    latestGw,
+    userSubmissions,
+    previousCareer,
+    seasonStack.loading,
+    seasonStack.useSeasonStack,
+    seasonStack.currentGw,
+    gw,
+    dbCurrentGw,
+  ]);
+
+  useEffect(() => {
+    if (!user?.id || !userStreakData) return;
+    setCached(`home:careerStreak:${user.id}`, userStreakData, CACHE_TTL.HOME);
+  }, [user?.id, userStreakData]);
 
   // Calculate live scores for leaderboards from cached data (instant display)
   const currentGwLiveScore = useMemo(() => {

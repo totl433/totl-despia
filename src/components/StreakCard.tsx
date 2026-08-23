@@ -9,7 +9,7 @@ type StreakCardProps = {
 export const StreakCard = React.memo(function StreakCard({
  streak,
  last10GwScores,
- latestGw,
+ latestGw: _latestGw,
 }: StreakCardProps) {
  const scores = last10GwScores;
  const playedScores = scores.filter(s => s.score !== null);
@@ -26,15 +26,15 @@ export const StreakCard = React.memo(function StreakCard({
  <div className="mb-2 relative" style={{ height: '70px' }}>
  <div className="relative h-full">
  <div className="flex items-end justify-between gap-1 h-full px-1">
- {scores.map((gwData) => {
+ {scores.map((gwData, index) => {
  const isPlayed = gwData.score !== null;
- const isLatest = gwData.gw === latestGw;
+ const isLatest = index === scores.length - 1;
  const score = gwData.score ?? 0;
  const barHeight = isPlayed ? ((score - minScore) / range) * graphHeight : 0;
  
  return (
  <div
- key={gwData.gw}
+ key={`${index}-${gwData.gw}`}
  className="flex flex-col items-center justify-end gap-1 flex-1 relative min-w-0"
  >
  {isPlayed && (
