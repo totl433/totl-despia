@@ -3,19 +3,31 @@
  *
  * We key off `user_id` (stable) rather than email (not present in public tables).
  * This hides test accounts from Global + mini-league leaderboard surfaces,
- * while allowing explicit exceptions like HomeWins.
+ * while allowing explicit exceptions like HomeWins and Jof.
  */
 
-// Keep this account visible (requested exception).
+// Keep these accounts visible (requested exceptions).
 const ALWAYS_VISIBLE_USER_IDS = new Set<string>([
-  // HomeWins
-  '41f23cc8-427c-40d4-a8b5-2527a63f39c5',
+  '41f23cc8-427c-40d4-a8b5-2527a63f39c5', // HomeWins (sotbjof+test)
+  '4542c037-5b38-40d0-b189-847b8f17c222', // Jof (jof.middleton@gmail.com)
 ]);
 
 // Hide these test accounts from leaderboards.
-// Includes the known sotbjof auth accounts plus other local test usernames seen on Overall.
 const HIDDEN_LEADERBOARD_USER_IDS = new Set<string>([
-  // sotbjof auth accounts (excluding HomeWins)
+  // Current sotbjof auth accounts (excluding HomeWins)
+  '3b4fe473-fe72-40e7-b5ce-32ae19978f92', // sotbjof+2627
+  'c483e6d2-2c2b-4134-8eba-bdde4605297d', // sotbjof+brandnew
+  '048b8821-eaec-46ed-b3f8-4eaf0c6344b8', // sotbjof+cursor / Cursor
+  'bfe8e2d7-2dbd-4cda-9d1c-9fa82d5b4481', // sotbjof+newseason
+  '8e875ad5-6199-448e-89d7-7bada9a0391a', // sotbjof+test27 / Jof 27
+  '318e876b-24b7-4112-8c3b-d035df37659d', // sotbjof+testuser4 / DDDJOF
+  '6836a693-972f-4144-a347-159abcb00cd5', // sotbjof+twentyseven
+  '1047b535-7fbf-4a49-b797-8193dcdde084', // sotbjof+username / AAAJOF
+  '8ca79657-979e-48b7-9d7b-88d086250564', // sotbjof+username2 / BBBJOF
+  'e3095e5d-727c-4659-bbf2-3bf3894532ee', // sotbjof+username3 / CCCJOF
+  'a0e188a2-0097-4627-9b98-220da22b2b81', // sotbjof+weds
+
+  // Older sotbjof auth ids (keep hidden if those rows still exist)
   '033a4a04-2418-4791-92e1-5dfd51696132',
   '10a4244a-580b-4ef3-8fd2-bd141f66550c',
   '7415ef5e-d74e-44eb-bfec-90a59ac1c9ae',
@@ -25,6 +37,11 @@ const HIDDEN_LEADERBOARD_USER_IDS = new Set<string>([
   'd2eeae8d-c3c2-4981-a795-5fd11951d428',
   'a81c40c6-49cb-4736-b977-0ace213db6b9',
   '8fc2fdf0-045f-4e14-b741-ff3d99029e99',
+
+  // jof.middleton auth accounts (excluding Jof)
+  '67287840-764f-4999-b951-a0817380d119', // jof.middleton+aug / JofAug
+  '97ee8429-7af6-4d37-a3fa-acb9bc40e5b6', // jof.middleton+test / Jof Test
+  '0c8cb8e7-2790-43c4-b72c-4719e2296e72', // jof.middlton+signup / jof.middleton
 
   // Other test users seen on Overall leaderboard
   '6c4e2a47-def4-48af-8fea-ea06767772b3', // tbjof
@@ -54,4 +71,3 @@ export function filterHiddenLeaderboardRows<T extends { user_id: string }>(rows:
 export function filterHiddenMembers<T extends { id: string }>(members: T[]): T[] {
   return members.filter((m) => !isHiddenFromLeaderboards(m.id));
 }
-

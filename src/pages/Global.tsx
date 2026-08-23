@@ -41,6 +41,38 @@ type MonthlyRow = {
 
 type LeaderboardTab = "overall" | "monthly" | "lastgw";
 
+const NAME_LOOKUP_CHUNK = 100;
+
+async function fetchProfileNamesById(userIds: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  for (let i = 0; i < unique.length; i += NAME_LOOKUP_CHUNK) {
+    const chunk = unique.slice(i, i + NAME_LOOKUP_CHUNK);
+    const { data, error } = await supabase.from("users").select("id, name").in("id", chunk);
+    if (error) {
+      console.error("[Global] Error fetching user names:", error);
+      break;
+    }
+    for (const row of (data ?? []) as Array<{ id: string; name: string | null }>) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (row.id && name) names.set(row.id, name);
+    }
+  }
+  return names;
+}
+
+function leaderboardName(
+  userId: string,
+  overallName: string | null | undefined,
+  profileNames: Map<string, string>
+): string {
+  const fromOverall = typeof overallName === "string" ? overallName.trim() : "";
+  if (fromOverall) return fromOverall;
+  const fromProfile = profileNames.get(userId)?.trim() ?? "";
+  if (fromProfile) return fromProfile;
+  return "User";
+}
+
 export default function GlobalLeaderboardPage() {
   const { user } = useAuth();
   const seasonStack = useSeasonStack();
@@ -216,6 +248,7 @@ export default function GlobalLeaderboardPage() {
   
   // Fetch picks and calculate live scores for current GW
   const [liveCurrentGwPoints, setLiveCurrentGwPoints] = useState<GwPointsRow[]>([]);
+  const [profileNames, setProfileNames] = useState<Map<string, string>>(new Map());
   
   useEffect(() => {
     if (!liveGw || !isCurrentGwLive || liveScoresMap.size === 0) {
@@ -294,14 +327,26 @@ export default function GlobalLeaderboardPage() {
       });
       
       // Convert to GwPointsRow format
-      const livePoints: GwPointsRow[] = Array.from(userPoints.entries()).map(([user_id, points]) => ({
+      const visibleUserIds = Array.from(uniqueUserIds).filter(
+        (userId) => !isHiddenFromLeaderboards(userId)
+      );
+      const livePoints: GwPointsRow[] = visibleUserIds.map((user_id) => ({
         user_id,
         gw: liveGw,
-        points,
+        points: userPoints.get(user_id) || 0,
       }));
+
+      // Live GW includes pickers who are not on last season's Overall roster yet.
+      // Look up users.name so we don't label them "User".
+      const fetchedNames = await fetchProfileNamesById(visibleUserIds);
       
       if (alive) {
         setLiveCurrentGwPoints(livePoints);
+        setProfileNames((prev) => {
+          const next = new Map(prev);
+          fetchedNames.forEach((name, id) => next.set(id, name));
+          return next;
+        });
       }
     })();
     
@@ -612,6 +657,13 @@ export default function GlobalLeaderboardPage() {
     }
   }, [leaderboardSeasonKey, selectedMonthKey]);
 
+  const overallNameById = useMemo(
+    () => new Map(overall.map((row) => [row.user_id, row.name])),
+    [overall]
+  );
+  const nameFor = (userId: string) =>
+    leaderboardName(userId, overallNameById.get(userId), profileNames);
+
   const monthlyRows = useMemo<MonthlyRow[]>(() => {
     if (!selectedMonth) return [];
     const gameweeks = Array.from(
@@ -624,7 +676,7 @@ export default function GlobalLeaderboardPage() {
     >();
     overall.forEach((row) => {
       users.set(row.user_id, {
-        name: row.name ?? "User",
+        name: nameFor(row.user_id),
         monthPoints: 0,
         byGw: new Map(),
       });
@@ -641,7 +693,7 @@ export default function GlobalLeaderboardPage() {
       if (row.gw < selectedMonth.startGw || row.gw > selectedMonth.endGw) return;
       if (activeLiveGwInMonth && row.gw === liveGw) return;
       const entry = users.get(row.user_id) ?? {
-        name: "User",
+        name: nameFor(row.user_id),
         monthPoints: 0,
         byGw: new Map<number, number>(),
       };
@@ -653,7 +705,7 @@ export default function GlobalLeaderboardPage() {
     if (activeLiveGwInMonth && liveGw !== null) {
       liveCurrentGwPoints.forEach((row) => {
         const entry = users.get(row.user_id) ?? {
-          name: "User",
+          name: nameFor(row.user_id),
           monthPoints: 0,
           byGw: new Map<number, number>(),
         };
@@ -663,8 +715,17 @@ export default function GlobalLeaderboardPage() {
       });
     }
 
+    const playedThisMonth = new Set<string>();
+    gwPoints.forEach((row) => {
+      if (row.gw < selectedMonth.startGw || row.gw > selectedMonth.endGw) return;
+      playedThisMonth.add(row.user_id);
+    });
+    if (activeLiveGwInMonth) {
+      liveCurrentGwPoints.forEach((row) => playedThisMonth.add(row.user_id));
+    }
+
     const sorted = Array.from(users.entries())
-      .filter(([, entry]) => seasonStack.isNewSeasonFresh || entry.monthPoints > 0)
+      .filter(([userId, entry]) => entry.monthPoints > 0 || playedThisMonth.has(userId))
       .map(([user_id, entry]) => ({
         user_id,
         name: entry.name,
@@ -692,8 +753,9 @@ export default function GlobalLeaderboardPage() {
     liveCurrentGwPoints,
     liveGw,
     overall,
-    seasonStack.isNewSeasonFresh,
     selectedMonth,
+    profileNames,
+    overallNameById,
   ]);
 
   const monthlyWinnerIds = useMemo(() => {
@@ -765,18 +827,16 @@ export default function GlobalLeaderboardPage() {
       ? liveCurrentGwPoints
       : gwPoints.filter(gp => gp.gw === displayedGw);
     
-    const userMap = new Map(overall.map(o => [o.user_id, o.name ?? "User"]));
-    
     const sorted = (
       showOpeningGwAtZero && lastGwPoints.length === 0
         ? overall.map((row) => ({
             user_id: row.user_id,
-            name: row.name ?? "User",
+            name: nameFor(row.user_id),
             points: 0,
           }))
         : lastGwPoints.map((gp) => ({
             user_id: gp.user_id,
-            name: userMap.get(gp.user_id) ?? "User",
+            name: nameFor(gp.user_id),
             points: gp.points,
           }))
     )
@@ -800,6 +860,8 @@ export default function GlobalLeaderboardPage() {
     liveCurrentGwPoints,
     liveGw,
     overall,
+    profileNames,
+    overallNameById,
     showOpeningGwAtZero,
   ]);
   
@@ -846,7 +908,7 @@ export default function GlobalLeaderboardPage() {
       const totalOcp = ocpByUser.get(o.user_id) || 0;
       return {
         user_id: o.user_id,
-        name: o.name ?? "User",
+        name: nameFor(o.user_id),
         this_gw: liveGwPoints,
         ocp: totalOcp,
       };
@@ -859,7 +921,7 @@ export default function GlobalLeaderboardPage() {
         const totalOcp = ocpByUser.get(g.user_id) || g.points;
         merged.push({
           user_id: g.user_id,
-          name: "User",
+          name: nameFor(g.user_id),
           this_gw: g.points,
           ocp: totalOcp,
         });
@@ -880,7 +942,7 @@ export default function GlobalLeaderboardPage() {
         rank: currentRank,
       };
     });
-  }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints, liveGw]);
+  }, [overall, gwPoints, latestGw, isCurrentGwLive, liveCurrentGwPoints, liveGw, profileNames, overallNameById]);
   
   // Filter rows for Overall tab
   const rowsFiltered = useMemo(() => filterByMiniLeagueFriends(rows), [rows, filterByMiniLeagueFriends]);
