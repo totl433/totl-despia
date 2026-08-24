@@ -560,7 +560,7 @@ export async function finalizeFixtureResultsDualStack(
   return { allFinishedLegacy, allFinishedSeason };
 }
 
-async function isGwAllFinished(
+export async function isGwAllFinished(
   sb: SupabaseClient,
   stack: StackSource,
   gw: number,
@@ -608,8 +608,28 @@ async function isGwAllFinished(
 }
 
 /**
- * User IDs with any pick in a GW on the given stack (for GW-complete notifs).
+ * User IDs who played a GW (submissions, paginated; picks as fallback).
  */
+async function fetchDistinctUserIds(
+  sb: SupabaseClient,
+  table: string,
+  applyFilters: (query: any) => any
+): Promise<string[]> {
+  const ids = new Set<string>();
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await applyFilters(sb.from(table).select('user_id')).range(from, to);
+    if (error) throw error;
+    const page = data ?? [];
+    for (const row of page as Array<{ user_id?: string | null }>) {
+      if (row.user_id) ids.add(row.user_id);
+    }
+    if (page.length < pageSize) break;
+  }
+  return [...ids];
+}
+
 export async function fetchGwPickerUserIds(
   sb: SupabaseClient,
   stack: StackSource,
@@ -617,14 +637,16 @@ export async function fetchGwPickerUserIds(
   seasonId?: string | null
 ): Promise<string[]> {
   if (stack === 'season' && seasonId) {
-    const { data } = await sb
-      .from('app_season_picks')
-      .select('user_id')
-      .eq('season_id', seasonId)
-      .eq('gw', gw);
-    return [...new Set((data || []).map((p: any) => p.user_id).filter(Boolean))];
+    const fromSubmissions = await fetchDistinctUserIds(sb, 'app_season_submissions', (q) =>
+      q.eq('season_id', seasonId).eq('gw', gw).not('submitted_at', 'is', null)
+    );
+    if (fromSubmissions.length > 0) return fromSubmissions;
+    return fetchDistinctUserIds(sb, 'app_season_picks', (q) => q.eq('season_id', seasonId).eq('gw', gw));
   }
 
-  const { data } = await sb.from('app_picks').select('user_id').eq('gw', gw);
-  return [...new Set((data || []).map((p: any) => p.user_id).filter(Boolean))];
+  const fromSubmissions = await fetchDistinctUserIds(sb, 'app_gw_submissions', (q) =>
+    q.eq('gw', gw).not('submitted_at', 'is', null)
+  );
+  if (fromSubmissions.length > 0) return fromSubmissions;
+  return fetchDistinctUserIds(sb, 'app_picks', (q) => q.eq('gw', gw));
 }

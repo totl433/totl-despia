@@ -196,3 +196,25 @@ export async function batchClaimIdempotencyLocks(
   return results;
 }
 
+/**
+ * How many send-log rows exist for this event (any result).
+ */
+export async function countNotificationEventSends(
+  notificationKey: string,
+  eventId: string
+): Promise<number> {
+  const supabase = getSupabase();
+  const environment = getEnvironment();
+  const { count, error } = await supabase
+    .from('notification_send_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('environment', environment)
+    .eq('notification_key', notificationKey)
+    .eq('event_id', eventId);
+  if (error) {
+    console.error('[idempotency] Error counting event send log:', error);
+    return 0;
+  }
+  return count ?? 0;
+}
+
