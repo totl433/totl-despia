@@ -12,6 +12,7 @@ import {
   isGwAllFinished,
   type FinishedResultRow,
   type PollFixture,
+  type ResolvedRuntime,
 } from './lib/seasonStackPoll';
 import { sendGameweekCompleteNotification } from './lib/notifications/scoreHelpers';
 import { countNotificationEventSends } from './lib/notifications/idempotency';
@@ -96,6 +97,44 @@ async function fetchMatchScore(apiMatchId: number): Promise<any> {
   return await response.json();
 }
 
+async function maybeBackfillSeasonGameweekComplete(runtime: ResolvedRuntime) {
+  if (!runtime.seasonId || runtime.seasonGw == null) return;
+
+  const seasonFinished = await isGwAllFinished(
+    supabase,
+    'season',
+    runtime.seasonGw,
+    runtime.seasonId
+  );
+  if (!seasonFinished) return;
+
+  const eventId = buildGameweekCompleteEventId(runtime.seasonGw, runtime.seasonId);
+  const gwUserIds = await fetchGwPickerUserIds(
+    supabase,
+    'season',
+    runtime.seasonGw,
+    runtime.seasonId
+  );
+  if (gwUserIds.length === 0) {
+    console.warn(
+      `[pollLiveScores] Season GW ${runtime.seasonGw} is finished but no pickers found`
+    );
+    return;
+  }
+
+  const alreadySent = await countNotificationEventSends('gameweek-complete', eventId);
+  if (alreadySent >= gwUserIds.length) return;
+
+  const result = await sendGameweekCompleteNotification(
+    gwUserIds,
+    runtime.seasonGw,
+    runtime.seasonId
+  );
+  console.log(
+    `[pollLiveScores] Gameweek complete backfill (season GW ${runtime.seasonGw}): ${result.results.accepted} sent (${alreadySent} already logged / ${gwUserIds.length} pickers)`
+  );
+}
+
 async function pollAllLiveScores() {
   try {
     // Dual-stack: poll both legacy (app_meta + app_fixtures) and Pile B
@@ -123,6 +162,11 @@ async function pollAllLiveScores() {
 
     if (allFixtures.length === 0) {
       console.log('[pollLiveScores] No fixtures with api_match_id found on either stack');
+      try {
+        await maybeBackfillSeasonGameweekComplete(runtime);
+      } catch (e) {
+        console.error('[pollLiveScores] Gameweek complete backfill failed:', e);
+      }
       return;
     }
 
@@ -196,6 +240,12 @@ async function pollAllLiveScores() {
 
     if (fixturesToPoll.length === 0) {
       console.log('[pollLiveScores] No fixtures currently eligible for polling');
+      // Last FT can miss the webhook; still send GW-complete once games are done.
+      try {
+        await maybeBackfillSeasonGameweekComplete(runtime);
+      } catch (e) {
+        console.error('[pollLiveScores] Gameweek complete backfill failed:', e);
+      }
       return;
     }
 
@@ -470,40 +520,7 @@ async function pollAllLiveScores() {
     // If the last FT arrived without a webhook fullTime transition, still send
     // season GW-complete (idempotent via notification_send_log).
     try {
-      if (runtime.seasonId && runtime.seasonGw != null) {
-        const seasonFinished = await isGwAllFinished(
-          supabase,
-          'season',
-          runtime.seasonGw,
-          runtime.seasonId
-        );
-        if (seasonFinished) {
-          const eventId = buildGameweekCompleteEventId(runtime.seasonGw, runtime.seasonId);
-          const gwUserIds = await fetchGwPickerUserIds(
-            supabase,
-            'season',
-            runtime.seasonGw,
-            runtime.seasonId
-          );
-          if (gwUserIds.length === 0) {
-            console.warn(
-              `[pollLiveScores] Season GW ${runtime.seasonGw} is finished but no pickers found`
-            );
-          } else {
-            const alreadySent = await countNotificationEventSends('gameweek-complete', eventId);
-            if (alreadySent < gwUserIds.length) {
-              const result = await sendGameweekCompleteNotification(
-                gwUserIds,
-                runtime.seasonGw,
-                runtime.seasonId
-              );
-              console.log(
-                `[pollLiveScores] Gameweek complete backfill (season GW ${runtime.seasonGw}): ${result.results.accepted} sent (${alreadySent} already logged / ${gwUserIds.length} pickers)`
-              );
-            }
-          }
-        }
-      }
+      await maybeBackfillSeasonGameweekComplete(runtime);
     } catch (e) {
       console.error('[pollLiveScores] Gameweek complete backfill failed:', e);
     }

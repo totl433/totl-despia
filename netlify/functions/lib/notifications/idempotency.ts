@@ -55,7 +55,7 @@ export async function claimIdempotencyLock(
   // First, check if entry already exists
   const query = supabase
     .from('notification_send_log')
-    .select('id, result')
+    .select('id, result, created_at')
     .eq('environment', environment)
     .eq('notification_key', notificationKey)
     .eq('event_id', eventId);
@@ -73,7 +73,17 @@ export async function claimIdempotencyLock(
   }
   
   if (existing) {
-    // Lock already exists
+    // Webhook/poll timeouts leave result='pending' with the lock held, so the
+    // rest of the audience never gets a retry. Reclaim stale pending rows.
+    const STALE_PENDING_MS = 2 * 60 * 1000;
+    const createdAt = existing.created_at ? new Date(existing.created_at).getTime() : 0;
+    const isStalePending =
+      existing.result === 'pending' &&
+      createdAt > 0 &&
+      Date.now() - createdAt > STALE_PENDING_MS;
+    if (isStalePending) {
+      return { claimed: true, log_id: existing.id };
+    }
     return { 
       claimed: false, 
       existing_result: existing.result as NotificationResult 
