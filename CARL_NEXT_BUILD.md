@@ -1,24 +1,38 @@
-# Next App Store / TestFlight push
+# Next TestFlight (after live **2.0.25** / iOS **49**)
 
-Already in the live store: **2.0.25**, including signup keyboard + confirm-email in the app.
+Bump the build. Branch: `expo-ui-carl`.
 
-## To include in the next build
+## In this binary
 
-1. **Prediction swipe — draws are less jumpy**
-   - Rushed diagonal flicks were saving as draws instead of home/away (Will Middleton GW1).
-   - Draw now needs a clearer downward swipe: 140px (was 110) and the same 1.2 direction lock as home/away.
-   - File: `apps/mobile/src/components/predictions/PredictionsSwipeDeck.tsx`
+1. Draw swipes less jumpy (rushed diagonals were saving as draws)
+2. Mini-league Predictions = this GW only
+3. Notif toggle: **New Gameweeks & TOTL Updates** (new GW + occasional all-user messages)
+4. Overall + August tick live with the scores (red dots while games are on)
+5. Mini-league pick chips sit under H / D / A
+6. Forgot password on sign in
+7. How To Play: monthly comps, not 5/10-week form
+8. GW round-up is **26/27** (winners, results heading, auto-open). Player of the Month only at month-end (August = after GW2)
+9. Round-up no longer freezes the app — if already stuck, kill and reopen (⌘R is not enough)
 
-2. **Mini-league Predictions — current GW only**
-   - Removed the leftover “2026/27 · fixtures out…” bar and season switcher.
-   - Predictions always show this gameweek; you cannot jump season or GW from that tab.
-   - File: `apps/mobile/src/screens/LeagueDetailScreen.tsx`
+## TestFlight / App Store notes
 
-3. **Notification Centre copy — New Gameweek**
-   - Description now says this toggle also covers all-user announcements (the send itself is already gated on the server).
-   - File: `apps/mobile/src/screens/profile/NotificationCentreScreen.tsx`
+- Draw predictions are less likely to save by accident
+- Mini-league Predictions always show this gameweek
+- Overall and monthly tables update while games are live
+- Gameweek round-up uses the 2026/27 season
+- Forgot password on sign in
+- How to Play explains monthly competitions
 
-## Not an app change (already live on the server)
+## Not an app change (already on the server)
 
-- Mini-league join window resets at the start of each season (existing leagues open through GW4 of 26/27). Invite join uses the Netlify function; no binary needed.
-- All-user OneSignal blasts honour **New Gameweek Published** (on by default). Opt-outs are skipped.
+- Mini-league join window open through GW4 of 26/27
+- All-user pushes honour the **New Gameweeks & TOTL Updates** toggle
+- End-of-GW push backfill is live on Netlify (`a205c3d`) — no binary needed
+
+## Quick check
+
+- After GW1: round-up auto-opens, **26/27** winners (not last season), results say **2026/27 Season**, no Player of the Month
+- Home still tappable after dismissing the round-up
+- Live Overall / August move during a game
+- Mini-league Predictions = this GW; chips under H/D/A
+- Sign in → Forgot password

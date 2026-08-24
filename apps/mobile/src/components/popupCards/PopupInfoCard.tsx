@@ -29,7 +29,15 @@ import {
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
-import { getMonthForGw, SEASON_2026_27_LABEL, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
+import { getMonthForGw, resolveLeaderboardSeasonKey, SEASON_2025_26_LABEL, SEASON_2026_27_LABEL, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
+import { isHiddenFromLeaderboards } from '../../lib/leaderboardVisibility';
+import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../../lib/leagueSeasonPile';
+import {
+  formatLeaderboardSeasonPill,
+  parsePersonalWinnerTypeFromEventKey,
+  parseSeasonLabelFromEventKey,
+} from '../../lib/popupRoundUpKeys';
+import { useViewerSeason } from '../../lib/useViewerSeason';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
@@ -57,6 +65,7 @@ type WinnersCardPayload = {
   gw: number;
   gwWinningPoints: number;
   gwWinners: WinnerEntry[];
+  leaderboardSeasonLabel: string;
   monthly:
     | {
         label: string;
@@ -621,6 +630,7 @@ function buildSimulatorWinnersPayload(variant: SimulatorWinnersVariant, currentU
     gw: 25,
     gwWinningPoints: 5,
     gwWinners,
+    leaderboardSeasonLabel: formatLeaderboardSeasonPill('2026/27'),
     monthly:
       variant === '11plus' || variant === '20each'
         ? {
@@ -685,67 +695,106 @@ function eventKeyWantsLegacyPile(eventKey: string | undefined): boolean {
   return /:legacy(?::|$)/i.test(eventKey) || eventKey.includes(':pileA') || eventKey.includes(':2025/26');
 }
 
-function parsePersonalWinnerTypeFromEventKey(eventKey: string | undefined): 'gameweek' | 'monthly' {
-  return eventKey?.includes(':monthly:') || eventKey?.endsWith(':monthly') ? 'monthly' : 'gameweek';
+function resultsSeasonHeading(
+  eventKey: string | undefined,
+  viewer: { useSeasonStack: boolean; seasonLabel: string }
+): string {
+  const fromKey = parseSeasonLabelFromEventKey(eventKey);
+  if (fromKey) return `${fromKey} Season`;
+  if (eventKeyWantsLegacyPile(eventKey) || !viewer.useSeasonStack) {
+    return `${SEASON_2025_26_LABEL} Season`;
+  }
+  return `${viewer.seasonLabel || SEASON_2026_27_LABEL} Season`;
 }
 
 function fallbackName(userId: string): string {
   return `Player ${userId.slice(0, 6).toUpperCase()}`;
 }
 
-async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentUserId: string | null): Promise<PersonalWinnerCardPayload | null> {
+async function fetchLatestResultsGw(opts: {
+  legacy: boolean;
+  seasonId: string | null;
+}): Promise<number | null> {
+  const resultsTable = opts.legacy ? LEGACY_PILE_TABLES.results : SEASON_PILE_TABLES.results;
+  let q = (supabase as any).from(resultsTable).select('gw').order('gw', { ascending: false }).limit(1);
+  if (!opts.legacy && opts.seasonId) q = q.eq('season_id', opts.seasonId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  return typeof data?.gw === 'number' ? data.gw : null;
+}
+
+async function fetchPersonalWinnerPayload(
+  eventKey: string | undefined,
+  currentUserId: string | null,
+  pile?: { legacy: boolean; seasonId: string | null; seasonLabel: string }
+): Promise<PersonalWinnerCardPayload | null> {
   if (!currentUserId) return null;
   const victoryType = parsePersonalWinnerTypeFromEventKey(eventKey);
   const uidNorm = String(currentUserId).trim().toLowerCase();
+  const fromKey = parseSeasonLabelFromEventKey(eventKey);
+  const legacyPile = pile?.legacy ?? eventKeyWantsLegacyPile(eventKey);
+  const seasonId = pile?.seasonId ?? null;
+  const seasonKey = resolveLeaderboardSeasonKey({
+    seasonLabel: fromKey ?? pile?.seasonLabel,
+    useSeasonStack: !legacyPile,
+  });
+  const pointsTable = legacyPile ? LEGACY_PILE_TABLES.gwPoints : SEASON_PILE_TABLES.gwPoints;
 
   let gw = parseGwFromEventKey(eventKey);
   if (!gw) {
-    const { data: latestGwRow, error: latestGwErr } = await supabase
-      .from('app_gw_results')
-      .select('gw')
-      .order('gw', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const resultsTable = legacyPile ? LEGACY_PILE_TABLES.results : SEASON_PILE_TABLES.results;
+    let latestQ = (supabase as any).from(resultsTable).select('gw').order('gw', { ascending: false }).limit(1);
+    if (!legacyPile && seasonId) latestQ = latestQ.eq('season_id', seasonId);
+    const { data: latestGwRow, error: latestGwErr } = await latestQ.maybeSingle();
     if (latestGwErr) throw latestGwErr;
     gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
   }
   if (!gw) return null;
 
+  const fetchPoints = (gwFrom: number, gwTo: number) =>
+    fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+      let q = (supabase as any)
+        .from(pointsTable)
+        .select('user_id, gw, points')
+        .gte('gw', gwFrom)
+        .lte('gw', gwTo)
+        .order('gw', { ascending: true })
+        .order('user_id', { ascending: true })
+        .range(from, to);
+      if (!legacyPile && seasonId) q = q.eq('season_id', seasonId);
+      return q;
+    });
+
   if (victoryType === 'gameweek') {
-    try {
-      const live = await api.getGlobalGwLiveTable(gw);
-      const liveRows = live?.rows ?? [];
-      if (liveRows.length > 0) {
-        const scores = liveRows.map((row: { user_id?: string; score?: number | null }) => ({
-          user_id: String(row.user_id ?? '').toLowerCase(),
-          score: Number(row.score ?? 0),
-        }));
-        const top = Math.max(...scores.map((r) => r.score));
-        const winnerIds = scores.filter((r) => r.score === top).map((r) => r.user_id);
-        if (winnerIds.includes(uidNorm)) {
-          return {
-            gw,
-            victoryType,
-            label: `Gameweek ${gw}`,
-            points: top,
-            winnerCount: winnerIds.length,
-            joint: winnerIds.length > 1,
-          };
+    if (!legacyPile) {
+      try {
+        const live = await api.getGlobalGwLiveTable(gw);
+        const liveRows = (live?.rows ?? []).filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
+        if (liveRows.length > 0) {
+          const scores = liveRows.map((row: { user_id?: string; score?: number | null }) => ({
+            user_id: String(row.user_id ?? '').toLowerCase(),
+            score: Number(row.score ?? 0),
+          }));
+          const top = Math.max(...scores.map((r) => r.score));
+          const winnerIds = scores.filter((r) => r.score === top).map((r) => r.user_id);
+          if (winnerIds.includes(uidNorm)) {
+            return {
+              gw,
+              victoryType,
+              label: `Gameweek ${gw}`,
+              points: top,
+              winnerCount: winnerIds.length,
+              joint: winnerIds.length > 1,
+            };
+          }
+          return null;
         }
-        return null;
+      } catch {
+        // Fall through to view-backed points when live table is unavailable.
       }
-    } catch {
-      // Fall through to view-backed points when live table is unavailable.
     }
 
-    const gwRowsOnly = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-      supabase
-        .from('app_v_gw_points')
-        .select('user_id, gw, points')
-        .eq('gw', gw)
-        .order('user_id', { ascending: true })
-        .range(from, to)
-    );
+    const gwRowsOnly = (await fetchPoints(gw, gw)).filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
     if (!gwRowsOnly.length) return null;
 
     const gwWinningPoints = Math.max(...gwRowsOnly.map((row) => Number(row.points ?? 0)));
@@ -763,18 +812,11 @@ async function fetchPersonalWinnerPayload(eventKey: string | undefined, currentU
     };
   }
 
-  const month = getMonthForGw(gw);
+  const month = getMonthForGw(gw, seasonKey);
   if (!month || gw !== month.endGw) return null;
 
-  const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-    supabase
-      .from('app_v_gw_points')
-      .select('user_id, gw, points')
-      .gte('gw', month.startGw)
-      .lte('gw', month.endGw)
-      .order('gw', { ascending: true })
-      .order('user_id', { ascending: true })
-      .range(from, to)
+  const monthRows = (await fetchPoints(month.startGw, month.endGw)).filter(
+    (row) => !isHiddenFromLeaderboards(String(row.user_id))
   );
   if (!monthRows.length) return null;
 
@@ -1385,14 +1427,8 @@ function ResultsScoreSheetCardBody({ eventKey }: { eventKey?: string }) {
 
       let gw = parseGwFromEventKey(eventKey);
       if (!gw) {
-        const { data: latestGwRow, error: latestGwErr } = await supabase
-          .from('app_gw_results')
-          .select('gw')
-          .order('gw', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestGwErr) throw latestGwErr;
-        gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
+        const legacy = eventKeyWantsLegacyPile(eventKey);
+        gw = await fetchLatestResultsGw({ legacy, seasonId: null });
       }
       if (!gw) return null;
       const legacy = eventKeyWantsLegacyPile(eventKey);
@@ -1504,6 +1540,8 @@ function ResultsCardBody({
   onClose?: () => void;
   isShareAsset?: boolean;
 }) {
+  const { useSeasonStack, seasonLabel } = useViewerSeason();
+  const seasonHeading = resultsSeasonHeading(eventKey, { useSeasonStack, seasonLabel });
   const { data, isLoading } = useQuery({
     queryKey: ['popup-card', 'results', eventKey ?? 'none'],
     staleTime: 60_000,
@@ -1520,14 +1558,10 @@ function ResultsCardBody({
 
       let gw = parseGwFromEventKey(eventKey);
       if (!gw) {
-        const { data: latestGwRow, error: latestGwErr } = await supabase
-          .from('app_gw_results')
-          .select('gw')
-          .order('gw', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (latestGwErr) throw latestGwErr;
-        gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
+        gw = await fetchLatestResultsGw({
+          legacy: eventKeyWantsLegacyPile(eventKey),
+          seasonId: null,
+        });
       }
       if (!gw) return null;
       return { gw, results: await api.getGwResults(gw) };
@@ -1599,7 +1633,7 @@ function ResultsCardBody({
       </View>
 
       <View style={{ marginTop: 6 }}>
-        <ResultsSectionTitle title="2025/26 Season" badge={SEASON_RANK_BADGE} />
+        <ResultsSectionTitle title={seasonHeading} badge={SEASON_RANK_BADGE} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: titleToContentGap }}>
           <RankAchievementMetric label="Overall" rank={results.leaderboardChanges.overall.after} change={results.leaderboardChanges.overall.change} />
           <RankAchievementMetric
@@ -2010,7 +2044,7 @@ function getWelcomeCardCopy(kind: PopupCardKind | undefined): WelcomeCardCopy {
         eyebrow: 'Global tables',
         title: 'Compete with everyone.',
         body:
-          "Don't worry if you joined the season late - there's a new leaderboard every month. Climb the global 2025/26 tables, unlock trophies, and earn bragging rights all season long.",
+          "Don't worry if you joined the season late - there's a new leaderboard every month. Climb the global tables, unlock trophies, and earn bragging rights all season long.",
         icon: 'earth',
         gradient: ['#2563EB', '#7C3AED', '#0F172A'],
       };
@@ -2321,10 +2355,21 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
     staleTime: 60_000,
   });
   const currentUserId = authUser?.id ? String(authUser.id) : null;
+  const { useSeasonStack, seasonId, seasonLabel, loading: seasonLoading } = useViewerSeason();
+  const fromKey = parseSeasonLabelFromEventKey(eventKey);
+  const legacyPile = eventKeyWantsLegacyPile(eventKey) || (!fromKey && !useSeasonStack);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['popup-card', 'winners', eventKey ?? 'none', currentUserId ?? 'anonymous'],
-    enabled: true,
+    queryKey: [
+      'popup-card',
+      'winners',
+      eventKey ?? 'none',
+      currentUserId ?? 'anonymous',
+      legacyPile ? 'pileA' : 'pileB',
+      seasonId ?? 'none',
+      fromKey ?? seasonLabel,
+    ],
+    enabled: !seasonLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<WinnersCardPayload | null> => {
       if (eventKey === 'simulator:winners:example-single') {
@@ -2345,53 +2390,86 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
 
       let gw = parseGwFromEventKey(eventKey);
       if (!gw) {
-        const { data: latestGwRow, error: latestGwErr } = await supabase
-          .from('app_gw_results')
-          .select('gw')
-          .order('gw', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const resultsTable = legacyPile ? LEGACY_PILE_TABLES.results : SEASON_PILE_TABLES.results;
+        let latestQ = (supabase as any).from(resultsTable).select('gw').order('gw', { ascending: false }).limit(1);
+        if (!legacyPile && seasonId) latestQ = latestQ.eq('season_id', seasonId);
+        const { data: latestGwRow, error: latestGwErr } = await latestQ.maybeSingle();
         if (latestGwErr) throw latestGwErr;
         gw = typeof latestGwRow?.gw === 'number' ? latestGwRow.gw : null;
       }
       if (!gw) return null;
 
-      const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-        supabase
-          .from('app_v_gw_points')
-          .select('user_id, gw, points')
-          .eq('gw', gw)
-          .order('user_id', { ascending: true })
-          .range(from, to)
+      const seasonKey = resolveLeaderboardSeasonKey({
+        seasonLabel: fromKey || seasonLabel,
+        useSeasonStack: !legacyPile,
+      });
+      const leaderboardSeasonLabel = formatLeaderboardSeasonPill(
+        fromKey || (legacyPile ? '2025/26' : seasonLabel || SEASON_2026_27_LABEL)
       );
-      if (!gwRows.length) return null;
 
-      const gwWinningPoints = Math.max(...gwRows.map((row) => Number(row.points ?? 0)));
-      const gwWinnerIds = gwRows
-        .filter((row) => Number(row.points ?? 0) === gwWinningPoints)
-        .map((row) => String(row.user_id));
+      let gwWinningPoints = 0;
+      let gwWinnerIds: string[] = [];
 
-      const month = getMonthForGw(gw);
+      if (!legacyPile) {
+        try {
+          const live = await api.getGlobalGwLiveTable(gw);
+          const liveRows = (live?.rows ?? []).filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
+          if (liveRows.length > 0) {
+            gwWinningPoints = Math.max(...liveRows.map((row) => Number(row.score ?? 0)));
+            gwWinnerIds = liveRows
+              .filter((row) => Number(row.score ?? 0) === gwWinningPoints)
+              .map((row) => String(row.user_id));
+          }
+        } catch {
+          // Fall through to season points view.
+        }
+      }
+
+      if (!gwWinnerIds.length) {
+        const pointsTable = legacyPile ? LEGACY_PILE_TABLES.gwPoints : SEASON_PILE_TABLES.gwPoints;
+        const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+          let q = (supabase as any)
+            .from(pointsTable)
+            .select('user_id, gw, points')
+            .eq('gw', gw)
+            .order('user_id', { ascending: true })
+            .range(from, to);
+          if (!legacyPile && seasonId) q = q.eq('season_id', seasonId);
+          return q;
+        });
+        const visibleGwRows = gwRows.filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
+        if (!visibleGwRows.length) return null;
+        gwWinningPoints = Math.max(...visibleGwRows.map((row) => Number(row.points ?? 0)));
+        gwWinnerIds = visibleGwRows
+          .filter((row) => Number(row.points ?? 0) === gwWinningPoints)
+          .map((row) => String(row.user_id));
+      }
+
+      const month = getMonthForGw(gw, seasonKey);
       let monthlyData: WinnersCardPayload['monthly'] = null;
       let monthlyWinnerIds: string[] = [];
       if (month && gw === month.endGw) {
-        const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-          supabase
-            .from('app_v_gw_points')
+        const pointsTable = legacyPile ? LEGACY_PILE_TABLES.gwPoints : SEASON_PILE_TABLES.gwPoints;
+        const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+          let q = (supabase as any)
+            .from(pointsTable)
             .select('user_id, gw, points')
             .gte('gw', month.startGw)
             .lte('gw', month.endGw)
             .order('gw', { ascending: true })
             .order('user_id', { ascending: true })
-            .range(from, to)
-        );
+            .range(from, to);
+          if (!legacyPile && seasonId) q = q.eq('season_id', seasonId);
+          return q;
+        });
         if (monthRows.length) {
           const monthlyTotalsByUser = new Map<string, number>();
           monthRows.forEach((row) => {
+            if (isHiddenFromLeaderboards(String(row.user_id))) return;
             const userId = String(row.user_id);
             monthlyTotalsByUser.set(userId, (monthlyTotalsByUser.get(userId) ?? 0) + Number(row.points ?? 0));
           });
-          const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
+          const monthlyTop = Math.max(0, ...Array.from(monthlyTotalsByUser.values()));
           monthlyWinnerIds = Array.from(monthlyTotalsByUser.entries())
             .filter(([, score]) => score === monthlyTop)
             .map(([userId]) => userId);
@@ -2442,12 +2520,13 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
         gw,
         gwWinningPoints,
         gwWinners,
+        leaderboardSeasonLabel,
         monthly: monthlyData,
       };
     },
   });
 
-  if (isLoading) {
+  if (isLoading || seasonLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}>
         <TotlText style={{ color: '#334155', textAlign: 'center', fontSize: 14, lineHeight: 18 }}>
@@ -2521,7 +2600,7 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
             }}
           >
             <TotlText style={{ color: '#1C8376', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontSize: 12, lineHeight: 15, fontWeight: '900' }}>
-              25/26 Leaderboard
+              {data.leaderboardSeasonLabel}
             </TotlText>
           </View>
           <TotlText style={{ color: '#0F172A', textAlign: 'center', marginTop: copyGap + 2, marginBottom: titleToContentGap, fontSize: 14, lineHeight: 19, fontWeight: '800' }}>
@@ -2543,7 +2622,7 @@ function WinnersCardBody({ eventKey }: { eventKey?: string }) {
         </TotlText>
         <View style={{ width: '100%', marginTop: titleToContentGap, alignItems: 'center' }}>
           <TotlText style={{ color: '#475569', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontSize: 13, lineHeight: 17, fontWeight: '900' }}>
-            25/26 Leaderboard
+            {data.leaderboardSeasonLabel}
           </TotlText>
           <TotlText style={{ color: '#0F172A', textAlign: 'center', marginTop: copyGap, marginBottom: titleToContentGap, fontSize: 13, lineHeight: 17, fontWeight: '700' }}>
             {gwJoint
@@ -2689,15 +2768,30 @@ function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
     staleTime: 60_000,
   });
   const currentUserId = authUser?.id ? String(authUser.id) : null;
+  const { useSeasonStack, seasonId, seasonLabel, loading: seasonLoading } = useViewerSeason();
+  const fromKey = parseSeasonLabelFromEventKey(eventKey);
+  const legacyPile = eventKeyWantsLegacyPile(eventKey) || (!fromKey && !useSeasonStack);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['popup-card', 'personalWinner', eventKey ?? 'none', currentUserId ?? 'anonymous'],
-    enabled: true,
+    queryKey: [
+      'popup-card',
+      'personalWinner',
+      eventKey ?? 'none',
+      currentUserId ?? 'anonymous',
+      legacyPile ? 'pileA' : 'pileB',
+      seasonId ?? 'none',
+      fromKey ?? seasonLabel,
+    ],
+    enabled: !seasonLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<PersonalWinnerCardPayload | null> => {
       if (eventKey === 'simulator:personalWinner:gw') return buildSimulatorPersonalWinnerPayload('gameweek');
       if (eventKey === 'simulator:personalWinner:monthly') return buildSimulatorPersonalWinnerPayload('monthly');
-      return fetchPersonalWinnerPayload(eventKey, currentUserId);
+      return fetchPersonalWinnerPayload(eventKey, currentUserId, {
+        legacy: legacyPile,
+        seasonId,
+        seasonLabel,
+      });
     },
   });
   const { data: profileSummary } = useQuery<ProfileSummary>({
@@ -2706,7 +2800,7 @@ function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
     staleTime: 60_000,
   });
 
-  if (isLoading) {
+  if (isLoading || seasonLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
         <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
@@ -2883,14 +2977,18 @@ function ResultsEmeraldBorder() {
 function parseChampionMiniLeagueEventKey(eventKey?: string | null): { leagueId: string; gw: number } | null {
   if (!eventKey) return null;
   if (eventKey === 'simulator:championMiniLeague') return { leagueId: '__sim__', gw: SEASON_LAST_GW };
-  const m = /^championMiniLeague:([^:]+):gw(\d+)$/.exec(eventKey);
+  const m = /^championMiniLeague:([^:]+):gw(\d+)(?::\d{4}\/\d{2})?$/.exec(eventKey);
   if (!m) return null;
   return { leagueId: m[1], gw: Number(m[2]) };
 }
 
 function parseChampionOverallEventKey(eventKey?: string | null): boolean {
   if (!eventKey) return false;
-  return eventKey === 'simulator:championOverall' || /^championOverall:gw\d+$/.test(eventKey);
+  return eventKey === 'simulator:championOverall' || /^championOverall:gw\d+(?::\d{4}\/\d{2})?$/.test(eventKey);
+}
+
+function championSeasonFaceLabel(eventKey?: string): string {
+  return parseSeasonLabelFromEventKey(eventKey) ?? SEASON_2025_26_LABEL;
 }
 
 function buildSimulatorMiniLeagueChampionPayload(): MiniLeagueChampionSummary {
@@ -3879,7 +3977,7 @@ function ChampionMiniLeagueCardBody({
               marginTop: 6,
             }}
           >
-            2025/26
+            {championSeasonFaceLabel(eventKey)}
           </TotlText>
           <TotlText
             style={{
@@ -4047,7 +4145,7 @@ function ChampionOverallCardBody({
               marginTop: 6,
             }}
           >
-            2025/26
+            {championSeasonFaceLabel(eventKey)}
           </TotlText>
           <TotlText
             style={{

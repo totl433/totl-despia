@@ -39,8 +39,8 @@ export const GameNotifications: Story = {
     options: [
       {
         id: 'new-gameweek',
-        label: 'New Gameweek Published',
-        description: 'Get notified when a new gameweek is published and ready for predictions',
+        label: 'New Gameweeks & TOTL Updates',
+        description: 'When a new gameweek is ready, plus occasional messages we send to everyone.',
         enabled: true,
       },
       {

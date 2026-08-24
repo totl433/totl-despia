@@ -2,7 +2,7 @@ import React from 'react';
 import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Screen, TotlText, useTokens } from '@totl/ui';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Reanimated, { LinearTransition } from 'react-native-reanimated';
 import type { Fixture, LiveStatus, Pick } from '@totl/domain';
@@ -18,7 +18,7 @@ import PageHeader from '../../components/PageHeader';
 import { api } from '../../lib/api';
 import { countRedCardsForTeam } from '../../lib/goalEvents';
 import { fetchTeamPositionsWithFallback } from '../../lib/teamPositions';
-import usePopupCards from '../../hooks/usePopupCards';
+import { setSuppressPopupAutoOpen } from '../../lib/popupAutoOpenGate';
 import MiniFixtureCard from '../../components/home/MiniFixtureCard';
 import ExpandedFixtureCard from '../../components/home/ExpandedFixtureCard';
 import SectionHeaderRow from '../../components/home/SectionHeaderRow';
@@ -34,6 +34,7 @@ import {
 } from '../../lib/homeFixtureUi';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 import { useThemePreference, type ThemePreference } from '../../context/ThemePreferenceContext';
+import usePopupCards from '../../hooks/usePopupCards';
 
 type SimGameState = 'GW_OPEN' | 'GW_PREDICTED' | 'DEADLINE_PASSED' | 'LIVE' | 'RESULTS_PRE_GW';
 type SimFixtureStatus = 'SCHEDULED' | 'IN_PLAY' | 'PAUSED' | 'FINISHED';
@@ -194,6 +195,7 @@ export default function AdminHomeSimulatorScreen() {
   const { effectiveTheme, setPreference } = useThemePreference();
   const {
     hasActivePopupStack,
+    dismissAutoOpenedStack,
     openMainSimulatorStack,
     openPostGwReturnSimulatorStack,
     openSimulatorCard,
@@ -204,6 +206,15 @@ export default function AdminHomeSimulatorScreen() {
     openManualResultsScoreSheetShare,
     openWelcomeSimulatorStack,
   } = usePopupCards();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setSuppressPopupAutoOpen(true);
+      dismissAutoOpenedStack();
+      return () => setSuppressPopupAutoOpen(false);
+    }, [dismissAutoOpenedStack])
+  );
+
   const scrollRef = React.useRef<Animated.ScrollView | null>(null);
   const scrollYRef = React.useRef(0);
   const fixtureNodeRefs = React.useRef<Record<string, View | null>>({});

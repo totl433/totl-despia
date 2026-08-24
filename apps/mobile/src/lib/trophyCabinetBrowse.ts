@@ -1,20 +1,22 @@
-import { getMonthAllocations } from './leaderboardMonths';
+import { getMonthAllocations, type LeaderboardSeasonKey } from './leaderboardMonths';
 import type { GwPointsRow } from './profileStreakRows';
 
 /**
- * Month-end GWs where the user tied or led the monthly points table (same ranges as BFF `LEADERBOARD_MONTH_BUCKETS`).
+ * Month-end GWs where the user tied or led the monthly points table.
+ * Pass `seasonKey: '2026/27'` so August ends at GW2 (not last season’s GW3).
  * Only months with `lastCompletedGw >= endGw` are eligible. Sorted newest-first (`endGw` descending).
  */
 export function computeMonthlyWinnerEndGwsDescending(opts: {
   gwPointsRows: GwPointsRow[];
   userId: string;
   lastCompletedGw: number;
+  seasonKey?: LeaderboardSeasonKey;
 }): number[] {
   const uid = String(opts.userId).toLowerCase();
   const lc = opts.lastCompletedGw;
   const wins: number[] = [];
 
-  for (const m of getMonthAllocations()) {
+  for (const m of getMonthAllocations(opts.seasonKey ?? '2025/26')) {
     if (lc < m.endGw) continue;
     const playedMonth = opts.gwPointsRows.some(
       (r) => String(r.user_id).toLowerCase() === uid && r.gw >= m.startGw && r.gw <= m.endGw

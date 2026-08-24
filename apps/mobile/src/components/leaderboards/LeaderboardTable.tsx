@@ -33,6 +33,20 @@ function formatScore(value: number | null | undefined): string {
   return typeof value === 'number' ? String(value) : '—';
 }
 
+function LiveColumnDot() {
+  return (
+    <View
+      style={{
+        width: 5,
+        height: 5,
+        borderRadius: 999,
+        backgroundColor: '#EF4444',
+        marginRight: 4,
+      }}
+    />
+  );
+}
+
 function truncateName(value: string, maxChars: number | null): string {
   const trimmed = value.trim();
   if (!trimmed || !maxChars || trimmed.length <= maxChars) return trimmed;
@@ -42,7 +56,9 @@ function truncateName(value: string, maxChars: number | null): string {
 export default function LeaderboardTable({
   rows,
   valueLabel,
+  valueIsLive = false,
   secondaryValueLabel,
+  secondaryValueIsLive = false,
   compactValueLabels,
   compactLiveValueLabel,
   highlightUserId,
@@ -53,7 +69,9 @@ export default function LeaderboardTable({
 }: {
   rows: LeaderboardRow[];
   valueLabel: string;
+  valueIsLive?: boolean;
   secondaryValueLabel?: string;
+  secondaryValueIsLive?: boolean;
   compactValueLabels?: string[];
   compactLiveValueLabel?: string;
   highlightUserId?: string | null;
@@ -329,17 +347,7 @@ export default function LeaderboardTable({
                 key={label}
                 style={{ width: compactColumnWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
               >
-                {compactLiveValueLabel === label ? (
-                  <View
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: 999,
-                      backgroundColor: '#EF4444',
-                      marginRight: 4,
-                    }}
-                  />
-                ) : null}
+                {compactLiveValueLabel === label ? <LiveColumnDot /> : null}
                 <TotlText
                   variant="caption"
                   style={{
@@ -355,13 +363,19 @@ export default function LeaderboardTable({
             ))
           : null}
         {secondaryValueLabel ? (
-          <TotlText variant="caption" style={{ color: t.color.muted, width: 62, textAlign: 'center', fontFamily: t.font.medium }}>
-            {secondaryValueLabel}
-          </TotlText>
+          <View style={{ width: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            {secondaryValueIsLive ? <LiveColumnDot /> : null}
+            <TotlText variant="caption" style={{ color: t.color.muted, textAlign: 'center', fontFamily: t.font.medium }}>
+              {secondaryValueLabel}
+            </TotlText>
+          </View>
         ) : null}
-        <TotlText variant="caption" style={{ color: t.color.muted, width: valueColumnWidth, textAlign: 'center', fontFamily: t.font.medium }}>
-          {valueLabel}
-        </TotlText>
+        <View style={{ width: valueColumnWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          {valueIsLive ? <LiveColumnDot /> : null}
+          <TotlText variant="caption" style={{ color: t.color.muted, textAlign: 'center', fontFamily: t.font.medium }}>
+            {valueLabel}
+          </TotlText>
+        </View>
       </View>
       {wouldUseSplit ? (
         <>

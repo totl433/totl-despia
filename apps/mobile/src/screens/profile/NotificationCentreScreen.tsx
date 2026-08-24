@@ -205,8 +205,8 @@ export default function NotificationCentreScreen() {
           options={[
             {
               id: 'new-gameweek',
-              label: 'New Gameweek Published',
-              description: 'Gameweek announcements and all-user updates, including when a new gameweek is ready',
+              label: 'New Gameweeks & TOTL Updates',
+              description: 'When a new gameweek is ready, plus occasional messages we send to everyone.',
             },
             {
               id: 'prediction-reminder',

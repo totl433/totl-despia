@@ -89,4 +89,29 @@ describe('computeMonthlyWinnerEndGwsDescending', () => {
     });
     expect(wins).toEqual([]);
   });
+
+  it('uses 2026/27 August (GW1–2), not last season’s GW1–3', () => {
+    const rows = [
+      { user_id: uid, gw: 1, points: 10 },
+      { user_id: other, gw: 1, points: 8 },
+      { user_id: uid, gw: 2, points: 10 },
+      { user_id: other, gw: 2, points: 8 },
+    ];
+    expect(
+      computeMonthlyWinnerEndGwsDescending({
+        gwPointsRows: rows,
+        userId: uid,
+        lastCompletedGw: 2,
+        seasonKey: '2026/27',
+      })
+    ).toEqual([2]);
+    expect(
+      computeMonthlyWinnerEndGwsDescending({
+        gwPointsRows: rows,
+        userId: uid,
+        lastCompletedGw: 2,
+        seasonKey: '2025/26',
+      })
+    ).toEqual([]);
+  });
 });

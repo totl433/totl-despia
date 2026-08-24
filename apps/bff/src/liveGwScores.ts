@@ -80,7 +80,8 @@ function buildScoresForSingleGw(
   const seasonFixtureIndexes = new Set<number>();
   fixtures.forEach((f: any) => {
     if (typeof f.fixture_index === 'number') seasonFixtureIndexes.add(Number(f.fixture_index));
-    if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
+    const apiMatchId = Number(f.api_match_id);
+    if (Number.isFinite(apiMatchId)) apiMatchIdToFixtureIndex.set(apiMatchId, f.fixture_index);
   });
 
   liveScoresRows
@@ -91,16 +92,17 @@ function buildScoresForSingleGw(
       if (!started) return;
 
       let fixtureIndex: number | undefined;
+      const liveApiMatchId = Number(ls.api_match_id);
       if (pileBLiveMatch) {
-        if (typeof ls.api_match_id === 'number') fixtureIndex = apiMatchIdToFixtureIndex.get(ls.api_match_id);
+        if (Number.isFinite(liveApiMatchId)) fixtureIndex = apiMatchIdToFixtureIndex.get(liveApiMatchId);
         if (fixtureIndex === undefined) return;
         if (!seasonFixtureIndexes.has(fixtureIndex)) return;
       } else {
         fixtureIndex =
           typeof ls.fixture_index === 'number'
             ? ls.fixture_index
-            : typeof ls.api_match_id === 'number'
-              ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+            : Number.isFinite(liveApiMatchId)
+              ? apiMatchIdToFixtureIndex.get(liveApiMatchId)
               : undefined;
       }
       if (fixtureIndex === undefined) return;

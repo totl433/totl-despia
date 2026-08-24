@@ -1,5 +1,5 @@
 import React from 'react';
-import { InteractionManager, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { InteractionManager, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -16,6 +16,7 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { TotlText } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { parsePersonalWinnerTypeFromEventKey } from '../../lib/popupRoundUpKeys';
 import PopupInfoCard from './PopupInfoCard';
 import PopupCardShareTray from './PopupCardShareTray';
 import type { PopupCardDescriptor } from './types';
@@ -316,18 +317,21 @@ export default function PopupCardStack({
   const dismissProgress = useSharedValue(0);
 
   React.useEffect(() => {
-    if (!visible) {
-      overlayProgress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) }, (finished) => {
-        if (!finished) return;
-        runOnJS(setShouldRender)(false);
-      });
+    if (!visible || cards.length === 0) {
+      setShouldRender(false);
+      setClosingCardId(null);
+      setShareCard(null);
+      setConfettiShot(null);
+      stackProgress.value = 0;
+      overlayProgress.value = 0;
+      dismissProgress.value = 0;
       return;
     }
 
     setShouldRender(true);
     stackProgress.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) });
     overlayProgress.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-  }, [dismissProgress, overlayProgress, stackProgress, visible]);
+  }, [cards.length, dismissProgress, overlayProgress, stackProgress, visible]);
 
   React.useEffect(() => {
     if (visible) return;
@@ -394,7 +398,7 @@ export default function PopupCardStack({
         setConfettiShot({
           key: Date.now(),
           cardId: topCard.id,
-          monthly: champion ? false : (topCard.eventKey?.includes(':monthly:') ?? false),
+          monthly: champion ? false : parsePersonalWinnerTypeFromEventKey(topCard.eventKey) === 'monthly',
           champion,
           championKind: champion
             ? topCard.kind === 'championOverall'
@@ -460,7 +464,15 @@ export default function PopupCardStack({
   }, [visibleCards]);
 
   const dismissTop = React.useCallback(() => {
-    if (!cards.length || closingCardId) return;
+    if (!cards.length) {
+      onCloseAll();
+      return;
+    }
+    if (closingCardId) {
+      setClosingCardId(null);
+      onDismissTop();
+      return;
+    }
     const topCard = cards[0];
     setConfettiShot(null);
     setClosingCardId(topCard.id);
@@ -469,20 +481,28 @@ export default function PopupCardStack({
       if (!finished) return;
       runOnJS(onDismissTop)();
     });
-  }, [cards, closingCardId, dismissProgress, onDismissTop]);
+  }, [cards, closingCardId, dismissProgress, onCloseAll, onDismissTop]);
 
   const dismissTopAfterSwipe = React.useCallback(() => {
-    if (!cards.length || closingCardId) return;
+    if (!cards.length) {
+      onCloseAll();
+      return;
+    }
     setConfettiShot(null);
+    setClosingCardId(null);
     onDismissTop();
-  }, [cards.length, closingCardId, onDismissTop]);
+  }, [cards.length, onCloseAll, onDismissTop]);
 
-  if (!shouldRender) return null;
+  if (!visible || cards.length === 0) return null;
 
   return (
-    <Modal transparent visible={shouldRender} animationType="none" statusBarTranslucent>
-      <View style={{ flex: 1, justifyContent: 'center' }}>
+    <View
+      pointerEvents="box-none"
+      style={[StyleSheet.absoluteFillObject, { zIndex: 10000, elevation: 10000 }]}
+    >
+      <View style={{ flex: 1, justifyContent: 'center' }} pointerEvents="box-none">
         <Animated.View
+          pointerEvents="none"
           style={[
             {
               position: 'absolute',
@@ -496,26 +516,29 @@ export default function PopupCardStack({
           ]}
         />
 
-        {visible ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Dismiss popup" onPress={dismissTop} style={{ flex: 1 }} />
-        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss popup"
+          onPress={onCloseAll}
+          style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
+        />
 
-        {visible && cards.length ? (
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              bottom: 0,
-              left: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingHorizontal: 20,
-              paddingTop: insets.top + 16,
-              paddingBottom: insets.bottom + 20,
-            }}
-          >
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 20,
+            paddingTop: insets.top + 16,
+            paddingBottom: insets.bottom + 20,
+            zIndex: 2,
+          }}
+        >
             <View style={{ minHeight: STACK_META_HEIGHT, marginBottom: 14, justifyContent: 'center' }}>
               <TotlText
                 style={{
@@ -621,7 +644,6 @@ export default function PopupCardStack({
               ) : null}
             </View>
           </View>
-        ) : null}
 
         {shareCard ? <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} /> : null}
         {confettiShot ? (
@@ -660,6 +682,6 @@ export default function PopupCardStack({
           </View>
         ) : null}
       </View>
-    </Modal>
+    </View>
   );
 }

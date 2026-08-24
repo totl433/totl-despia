@@ -206,40 +206,70 @@ export default function LeaguePickChipsRow({
     return p === outcome ? 'rgba(34,197,94,0.75)' : 'rgba(239,68,68,0.70)';
   };
 
-  const renderBucket = (pick: LeaguePick, align: 'flex-start' | 'center' | 'flex-end') => {
+  const chipSize = compact ? 22 : 28;
+  const preferredOverlap = compact ? -12 : -14;
+  const colFlex = compact ? ([1, 1, 1] as const) : ([37, 26, 37] as const);
+  const [colPx, setColPx] = React.useState<[number, number, number]>([0, 0, 0]);
+
+  const overlapFor = (count: number, colIndex: number) => {
+    if (count <= 1) return 0;
+    const peek =
+      count >= 8 ? (compact ? 5 : 6)
+      : count >= 7 ? (compact ? 6 : 7)
+      : count <= 4 ? (compact ? 14 : 18)
+      : chipSize + preferredOverlap;
+    const width = colPx[colIndex];
+    if (width <= 0) return peek - chipSize;
+    const maxPeek = Math.max(4, (width - chipSize) / (count - 1));
+    return Math.min(peek, maxPeek) - chipSize;
+  };
+
+  const renderBucket = (pick: LeaguePick, colIndex: 0 | 1 | 2) => {
     const arr = byPick.get(pick) ?? [];
-    if (!arr.length) return <View style={{ height: 28 }} />;
-    const everyonePickedThis = members.length > 0 && arr.length === members.length;
-    const stackedOverlap = compact ? -19 : -20;
-    const defaultOverlap = compact ? -10 : -8;
-    const chipSize = everyonePickedThis ? (compact ? 22 : 30) : compact ? 22 : 34;
+    const overlap = overlapFor(arr.length, colIndex);
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: align, maxWidth: '100%' }}>
-        {arr.map((u, idx) => (
-          <Chip
-            key={u.id}
-            name={u.name}
-            avatarUri={u.avatar_url ?? null}
-            avatarBgColor={u.avatar_bg_color ?? null}
-            ring={ringFor(pick)}
-            isMe={!!currentUserId && u.id === currentUserId}
-            overlap={idx === 0 ? 0 : everyonePickedThis ? stackedOverlap : defaultOverlap}
-            shiny={!!outcome && pick === outcome}
-            size={chipSize}
-            compactSV={compactSV}
-            expandedSize={chipSize}
-          />
-        ))}
+      <View
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          setColPx((prev) => (prev[colIndex] === w ? prev : ([...prev.slice(0, colIndex), w, ...prev.slice(colIndex + 1)] as [number, number, number])));
+        }}
+        style={{
+          flex: colFlex[colIndex],
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: chipSize,
+          overflow: 'visible',
+        }}
+      >
+        {arr.length ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            {arr.map((u, idx) => (
+              <Chip
+                key={u.id}
+                name={u.name}
+                avatarUri={u.avatar_url ?? null}
+                avatarBgColor={u.avatar_bg_color ?? null}
+                ring={ringFor(pick)}
+                isMe={!!currentUserId && u.id === currentUserId}
+                overlap={idx === 0 ? 0 : overlap}
+                shiny={!!outcome && pick === outcome}
+                size={chipSize}
+                compactSV={compactSV}
+                expandedSize={chipSize}
+              />
+            ))}
+          </View>
+        ) : null}
       </View>
     );
   };
 
   return (
-    <View style={{ paddingHorizontal: compact ? 2 : 8, paddingBottom: compact ? 2 : 12, paddingTop: compact ? 0 : 2 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('H', 'center')}</View>
-        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('D', 'center')}</View>
-        <View style={{ flex: 1, alignItems: 'center' }}>{renderBucket('A', 'center')}</View>
+    <View style={{ width: '100%', paddingHorizontal: 0, paddingBottom: compact ? 2 : 10, paddingTop: compact ? 0 : 2 }}>
+      <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center' }}>
+        {renderBucket('H', 0)}
+        {renderBucket('D', 1)}
+        {renderBucket('A', 2)}
       </View>
     </View>
   );

@@ -23,34 +23,22 @@ export function isDevFakeLeagueId(leagueId: string): boolean {
   return __DEV__ && String(leagueId) === DEV_FAKE_LEAGUE_ID;
 }
 
-export function buildDevFixturePicks(memberIds: string[], fixtureIndex: number): Record<string, LeaguePick> {
+export function buildDevFixturePicks(
+  memberIds: string[],
+  displayOrder: number,
+  isLast = false
+): Record<string, LeaguePick> {
   const picks: Record<string, LeaguePick> = {};
-  const mode = Math.abs(Number(fixtureIndex)) % 4;
-
-  if (mode === 0) {
-    memberIds.forEach((id) => {
-      picks[id] = 'H';
+  if (isLast) {
+    memberIds.forEach((id, idx) => {
+      picks[id] = idx < 3 ? 'H' : idx < 5 ? 'D' : 'A';
     });
     return picks;
   }
-
-  if (mode === 1) {
-    memberIds.forEach((id) => {
-      picks[id] = 'A';
-    });
-    return picks;
-  }
-
-  if (mode === 2) {
-    memberIds.forEach((id) => {
-      picks[id] = 'D';
-    });
-    return picks;
-  }
-
-  const cycle: LeaguePick[] = ['H', 'D', 'A', 'H', 'A', 'D', 'H', 'A'];
+  const drawCount = Math.max(0, Math.min(memberIds.length, Math.floor(displayOrder)));
+  const homeCount = memberIds.length - drawCount;
   memberIds.forEach((id, idx) => {
-    picks[id] = cycle[idx % cycle.length] ?? 'D';
+    picks[id] = idx < homeCount ? 'H' : 'D';
   });
   return picks;
 }

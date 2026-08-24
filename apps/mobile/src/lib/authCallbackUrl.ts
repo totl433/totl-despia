@@ -9,3 +9,7 @@ export function isAuthCallbackUrl(rawUrl: string): boolean {
   }
   return false;
 }
+
+export function isPasswordRecoveryUrl(rawUrl: string): boolean {
+  return /(?:[?&#]|^)type=recovery(?:&|#|$)/i.test(String(rawUrl ?? ''));
+}

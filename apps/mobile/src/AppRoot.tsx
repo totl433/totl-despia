@@ -15,6 +15,7 @@ import { queryClient, queryPersister } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
 import { consumeAuthCallbackUrl } from './lib/authCallback';
+import { isPasswordRecoveryUrl } from './lib/authCallbackUrl';
 import { initPushSdk, registerForPushNotifications, resetPushSessionState, updateHeartbeat } from './lib/push';
 import { configurePurchases, loginPurchases, logoutPurchases } from './lib/purchases';
 import { ConfettiProvider } from './lib/confetti';
@@ -35,6 +36,7 @@ export default function AppRoot() {
   const [sessionReady, setSessionReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [pendingPasswordReset, setPendingPasswordReset] = useState(false);
 
   useEffect(() => {
     initSentry().catch(() => {});
@@ -72,9 +74,17 @@ export default function AppRoot() {
     let alive = true;
     const handleAuthUrl = (url: string | null) => {
       if (!alive || !url) return;
-      void consumeAuthCallbackUrl(url).catch((error) => {
-        console.error('[AppRoot] Auth callback failed:', error);
-      });
+      const recovery = isPasswordRecoveryUrl(url);
+      if (recovery) setPendingPasswordReset(true);
+      void consumeAuthCallbackUrl(url)
+        .then((consumed) => {
+          if (!alive) return;
+          if (recovery && !consumed) setPendingPasswordReset(false);
+        })
+        .catch((error) => {
+          console.error('[AppRoot] Auth callback failed:', error);
+          if (alive && recovery) setPendingPasswordReset(false);
+        });
     };
     void Linking.getInitialURL().then(handleAuthUrl);
     const linkSub = Linking.addEventListener('url', ({ url }) => handleAuthUrl(url));
@@ -85,9 +95,11 @@ export default function AppRoot() {
       setSessionUserId(data.session?.user?.id ?? null);
       setSessionReady(true);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthed(!!session);
       setSessionUserId(session?.user?.id ?? null);
+      if (event === 'PASSWORD_RECOVERY') setPendingPasswordReset(true);
+      if (event === 'SIGNED_OUT') setPendingPasswordReset(false);
     });
     return () => {
       alive = false;
@@ -182,14 +194,26 @@ export default function AppRoot() {
     <SafeAreaProvider>
       <DeepLinkProvider>
         <ThemePreferenceProvider>
-          <ThemedApp authed={authed} />
+          <ThemedApp
+            authed={authed}
+            pendingPasswordReset={pendingPasswordReset}
+            onPasswordResetComplete={() => setPendingPasswordReset(false)}
+          />
         </ThemePreferenceProvider>
       </DeepLinkProvider>
     </SafeAreaProvider>
   );
 }
 
-function ThemedApp({ authed }: { authed: boolean }) {
+function ThemedApp({
+  authed,
+  pendingPasswordReset,
+  onPasswordResetComplete,
+}: {
+  authed: boolean;
+  pendingPasswordReset: boolean;
+  onPasswordResetComplete: () => void;
+}) {
   const { isDark } = useThemePreference();
   const [profileReady, setProfileReady] = useState(!authed);
   const [needsUsername, setNeedsUsername] = useState(false);
@@ -250,6 +274,8 @@ function ThemedApp({ authed }: { authed: boolean }) {
             </TotlText>
             <Button title="Close and reopen the app" onPress={() => {}} variant="secondary" />
           </Screen>
+        ) : pendingPasswordReset ? (
+          <AuthScreen initialMode="setNew" onPasswordResetComplete={onPasswordResetComplete} />
         ) : authed && !profileReady ? null : authed && needsUsername ? (
           <ChooseUsernameScreen onComplete={() => setNeedsUsername(false)} />
         ) : authed ? (

@@ -29,8 +29,8 @@ export default function NotificationCentre() {
  const [gameNotifications, setGameNotifications] = useState<NotificationOption[]>([
  {
  id: 'new-gameweek',
- label: 'New Gameweek Published',
- description: 'Get notified when a new gameweek is published and ready for predictions',
+ label: 'New Gameweeks & TOTL Updates',
+ description: 'When a new gameweek is ready, plus occasional messages we send to everyone.',
  enabled: true,
  },
  {
@@ -149,8 +149,8 @@ export default function NotificationCentre() {
  setGameNotifications([
  {
  id: 'new-gameweek',
- label: 'New Gameweek Published',
- description: 'Get notified when a new gameweek is published and ready for predictions',
+ label: 'New Gameweeks & TOTL Updates',
+ description: 'When a new gameweek is ready, plus occasional messages we send to everyone.',
  enabled: prefs['new-gameweek'] !== false,
  },
  {

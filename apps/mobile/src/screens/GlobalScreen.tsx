@@ -23,6 +23,10 @@ import {
   type MonthAllocation,
 } from '../lib/leaderboardMonths';
 import { useViewerSeason } from '../lib/useViewerSeason';
+import {
+  filterHiddenLeaderboardRows,
+  isHiddenFromLeaderboards,
+} from '../lib/leaderboardVisibility';
 import { type LeaderboardsScope } from '../components/leaderboards/LeaderboardsScopeToggle';
 import LeaderboardTable, { type LeaderboardRow } from '../components/leaderboards/LeaderboardTable';
 import LeaderboardPlayerPicksPopup from '../components/leaderboards/LeaderboardPlayerPicksPopup';
@@ -377,7 +381,7 @@ export default function GlobalScreen() {
         );
         // Pre-results: season OCP is empty. Seed the full field from last season’s
         // overall roster so Overall/GW show everyone at 0 (or GW dash), not “no data”.
-        if (seasonRows.length > 0) return seasonRows;
+        if (seasonRows.length > 0) return filterHiddenLeaderboardRows(seasonRows);
         const roster = await fetchAllSupabaseRows<OverallRow>((from, to) =>
           supabase
             .from('app_v_ocp_overall')
@@ -385,14 +389,18 @@ export default function GlobalScreen() {
             .order('user_id', { ascending: true })
             .range(from, to)
         );
-        return roster.map((r) => ({
-          user_id: r.user_id,
-          name: r.name ?? 'User',
-          ocp: 0,
-        }));
+        return filterHiddenLeaderboardRows(
+          roster.map((r) => ({
+            user_id: r.user_id,
+            name: r.name ?? 'User',
+            ocp: 0,
+          }))
+        );
       }
-      return fetchAllSupabaseRows<OverallRow>((from, to) =>
-        supabase.from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
+      return filterHiddenLeaderboardRows(
+        await fetchAllSupabaseRows<OverallRow>((from, to) =>
+          supabase.from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
+        )
       );
     },
   });
@@ -440,7 +448,7 @@ export default function GlobalScreen() {
     enabled: typeof activeLeaderboardGw === 'number',
     queryKey: ['leaderboards', 'gwLiveTable', activeLeaderboardGw, useSeasonStack ? 'pileB' : 'pileA'],
     queryFn: () => api.getGlobalGwLiveTable(activeLeaderboardGw as number),
-    refetchInterval: tab === 'gw' || tab === 'overall' ? 10_000 : false,
+    refetchInterval: tab === 'gw' || tab === 'overall' || tab === 'monthly' ? 10_000 : false,
   });
   const { data: gwLiveFallbackScores, refetch: refetchGwLiveFallbackScores } = useQuery<{
     scores: Record<string, number>;
@@ -539,8 +547,9 @@ export default function GlobalScreen() {
       const seasonFixtureIndexes = new Set<number>();
       (fixturesRes.data ?? []).forEach((f: any) => {
         if (typeof f?.fixture_index === 'number') seasonFixtureIndexes.add(f.fixture_index);
-        if (typeof f?.api_match_id === 'number' && typeof f?.fixture_index === 'number') {
-          apiMatchIdToFixture.set(f.api_match_id, f.fixture_index);
+        const apiMatchId = Number(f?.api_match_id);
+        if (Number.isFinite(apiMatchId) && typeof f?.fixture_index === 'number') {
+          apiMatchIdToFixture.set(apiMatchId, f.fixture_index);
         }
       });
       let hasActiveLiveGames = false;
@@ -551,8 +560,9 @@ export default function GlobalScreen() {
         // For pile B: only scores that map to this season's fixtures via api_match_id
         // (never trust fixture_index alone — GW1 indexes collide across seasons).
         let fixtureIndex: number | undefined;
+        const liveApiMatchId = Number(ls?.api_match_id);
         if (pileB) {
-          if (typeof ls?.api_match_id === 'number') fixtureIndex = apiMatchIdToFixture.get(ls.api_match_id);
+          if (Number.isFinite(liveApiMatchId)) fixtureIndex = apiMatchIdToFixture.get(liveApiMatchId);
           if (fixtureIndex == null) return;
         } else {
           if (started) hasGwKickoffStarted = true;
@@ -561,8 +571,8 @@ export default function GlobalScreen() {
           fixtureIndex =
             typeof ls?.fixture_index === 'number'
               ? ls.fixture_index
-              : typeof ls?.api_match_id === 'number'
-                ? apiMatchIdToFixture.get(ls.api_match_id)
+              : Number.isFinite(liveApiMatchId)
+                ? apiMatchIdToFixture.get(liveApiMatchId)
                 : undefined;
         }
         if (typeof fixtureIndex !== 'number') return;
@@ -643,7 +653,12 @@ export default function GlobalScreen() {
     return tableScores.length > 0 ? tableScores : fallbackScores;
   }, [gwLiveFallbackScores?.scores, gwLiveTable?.rows]);
   const liveGwByUser = React.useMemo(
-    () => new Map(liveGwScores.map((row) => [row.user_id, row.score])),
+    () =>
+      new Map(
+        liveGwScores
+          .filter((row) => !isHiddenFromLeaderboards(row.user_id))
+          .map((row) => [row.user_id, row.score])
+      ),
     [liveGwScores]
   );
   const liveGwRank = React.useMemo(() => {
@@ -747,12 +762,13 @@ export default function GlobalScreen() {
 
   const filterScope = React.useCallback(
     (rows: LeaderboardRow[]) => {
-      if (scope !== 'friends') return rows;
+      const visible = rows.filter((r) => !isHiddenFromLeaderboards(r.user_id));
+      if (scope !== 'friends') return visible;
       // Avoid swapping from "all" -> "friends" mid-scroll while ids are still loading.
       if (!friendIds) return [];
       const set = friendIds;
       if (!set.size) return [];
-      return rows.filter((r) => set.has(r.user_id));
+      return visible.filter((r) => set.has(r.user_id));
     },
     [friendIds, scope]
   );
@@ -907,6 +923,15 @@ export default function GlobalScreen() {
         });
       }
 
+      const playedThisMonth = new Set<string>();
+      pts.forEach((p) => {
+        if (p.gw < month.startGw || p.gw > month.endGw) return;
+        playedThisMonth.add(String(p.user_id));
+      });
+      if (activeGwInMonth) {
+        liveGwByUser.forEach((_score, userId) => playedThisMonth.add(String(userId)));
+      }
+
       const monthGws = Array.from({ length: month.endGw - month.startGw + 1 }, (_, index) => month.startGw + index);
       const compactValuesByUser = new Map<string, Array<number | null>>();
       monthGws.forEach((gw) => {
@@ -926,7 +951,7 @@ export default function GlobalScreen() {
       });
 
       return Array.from(byUser.entries())
-        .filter(([, v]) => v.sum > 0)
+        .filter(([id, v]) => v.sum > 0 || playedThisMonth.has(String(id)))
         .map(([id, v]) => ({
           user_id: id,
           name: v.name,
@@ -980,8 +1005,9 @@ export default function GlobalScreen() {
       );
     }
 
-    // Pile B 2026/27: zero OCP; GW scores only for submitters (else dash).
-    if (isNewSeasonFresh) {
+    // Pile B 2026/27: keep a zeroed table only before kickoff.
+    // Once LIVE, overall OCP = live GW points (no completed GWs yet) and monthly uses live rows.
+    if (isNewSeasonFresh && !currentGwIsLive && !hasActiveGwScores) {
       if (tab === 'gw') {
         if (!gw) return [];
         const r = overall
@@ -1028,7 +1054,8 @@ export default function GlobalScreen() {
 
     if (tab === 'overall') {
       const liveBaseOcpByUser = new Map<string, number>();
-      if (hasActiveGwScores && gw) {
+      const foldLiveIntoOcp = currentGwIsLive || hasActiveGwScores;
+      if (foldLiveIntoOcp && gw) {
         gwPoints
           .filter((p) => p.gw < gw)
           .forEach((p) => {
@@ -1039,10 +1066,9 @@ export default function GlobalScreen() {
         .map((o) => ({
           user_id: o.user_id,
           name: o.name ?? 'User',
-          value:
-            hasActiveGwScores
-              ? (liveBaseOcpByUser.get(o.user_id) ?? 0) + (liveGwByUser.get(o.user_id) ?? 0)
-              : Math.round(Number(o.ocp ?? 0)),
+          value: foldLiveIntoOcp
+            ? (liveBaseOcpByUser.get(o.user_id) ?? 0) + (liveGwByUser.get(o.user_id) ?? 0)
+            : Math.round(Number(o.ocp ?? 0)),
           secondaryValue: gw ? gwScoreFor(o.user_id) : undefined,
         }))
         .sort(byValueThenName);
@@ -1136,7 +1162,7 @@ export default function GlobalScreen() {
     const gw = activeLeaderboardGw ?? null;
     if (!overall || !gwPoints) return out;
 
-    if (isNewSeasonFresh) {
+    if (isNewSeasonFresh && !currentGwIsLive && liveGwByUser.size === 0) {
       const ranked = overall
         .map((o) => ({
           user_id: String(o.user_id),
@@ -1184,7 +1210,7 @@ export default function GlobalScreen() {
     });
 
     return out;
-  }, [activeLeaderboardGw, gwPoints, isNewSeasonFresh, liveGwByUser, overall]);
+  }, [activeLeaderboardGw, currentGwIsLive, gwPoints, isNewSeasonFresh, liveGwByUser, overall]);
 
   const subtitle = React.useMemo(() => {
     const who = scope === 'friends' ? 'Mini League Friends' : 'All Players';
@@ -1192,7 +1218,7 @@ export default function GlobalScreen() {
       return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
     }
     if (tab === 'overall' && formScope === 'none') {
-      if (isNewSeasonFresh) return `${who} • ${seasonLabel} (season just started)`;
+      if (isNewSeasonFresh && !currentGwIsLive) return `${who} • ${seasonLabel} (season just started)`;
       if (useSeasonStack) return `${who} • ${seasonLabel}`;
       return `${who} • ${SEASON_2025_26_LABEL} final rankings`;
     }
@@ -1565,9 +1591,11 @@ export default function GlobalScreen() {
             <LeaderboardTable
             rows={rows}
             valueLabel={valueLabel}
+            valueIsLive={currentGwIsLive && (tab === 'overall' || tab === 'monthly' || tab === 'gw')}
             compactValueLabels={monthlyCompactValueLabels}
             compactLiveValueLabel={monthlyLiveValueLabel}
             secondaryValueLabel={secondaryValueLabel}
+            secondaryValueIsLive={currentGwIsLive && tab === 'overall' && formScope === 'none'}
             highlightUserId={userId}
             winnerUserIds={tab === 'monthly' ? monthlyWinnerUserIds : undefined}
             listRef={listRef}

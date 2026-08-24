@@ -1,3 +1,4 @@
+import { roundUpEventKey } from '../../lib/popupRoundUpKeys';
 import type { PopupCardDescriptor, PopupCardKind } from './types';
 
 function buildTitle(kind: PopupCardKind): string {
@@ -19,7 +20,7 @@ function buildTitle(kind: PopupCardKind): string {
     case 'championMiniLeague':
       return 'Champion';
     case 'championOverall':
-      return '2025/26 Overall Champion';
+      return 'Overall Champion';
     case 'welcome1':
       return 'Welcome 1';
     case 'welcome2':
@@ -54,6 +55,7 @@ export function createMainPopupStack({
   includePersonalMonthlyWinner = false,
   includeWinners = true,
   includeNewGameweek = true,
+  seasonScope,
 }: {
   resultsGw: number;
   newGameweekGw?: number | null;
@@ -62,31 +64,62 @@ export function createMainPopupStack({
   includePersonalMonthlyWinner?: boolean;
   includeWinners?: boolean;
   includeNewGameweek?: boolean;
+  /** e.g. "2026/27" so GW1 is not last season’s already-seen `winners:gw1`. */
+  seasonScope?: string | null;
 }): PopupCardDescriptor[] {
   const cards: PopupCardDescriptor[] = [];
+  const scopedKey = (kind: string, gw: number) =>
+    seasonScope ? roundUpEventKey(kind, gw, seasonScope) : `${kind}:gw${gw}`;
+  const scopedId = (prefix: string, gw: number) =>
+    seasonScope ? `${prefix}-gw${gw}-${seasonScope.replace(/\//g, '-')}` : `${prefix}-gw${gw}`;
 
   if (includePersonalGameweekWinner) {
-    cards.push(createPopupCard('personalWinner', { id: `personal-winner-gameweek-gw${resultsGw}`, eventKey: `personalWinner:gameweek:gw${resultsGw}` }));
+    cards.push(
+      createPopupCard('personalWinner', {
+        id: scopedId('personal-winner-gameweek', resultsGw),
+        eventKey: scopedKey('personalWinner:gameweek', resultsGw),
+      })
+    );
   }
 
   if (includePersonalMonthlyWinner) {
-    cards.push(createPopupCard('personalWinner', { id: `personal-winner-monthly-gw${resultsGw}`, eventKey: `personalWinner:monthly:gw${resultsGw}` }));
+    cards.push(
+      createPopupCard('personalWinner', {
+        id: scopedId('personal-winner-monthly', resultsGw),
+        eventKey: scopedKey('personalWinner:monthly', resultsGw),
+      })
+    );
   }
 
   if (includeResults) {
-    cards.push(createPopupCard('resultsScoreSheet', { id: `results-score-sheet-gw${resultsGw}`, eventKey: `resultsScoreSheet:gw${resultsGw}` }));
-    cards.push(createPopupCard('results', { id: `results-gw${resultsGw}`, eventKey: `results:gw${resultsGw}` }));
+    cards.push(
+      createPopupCard('resultsScoreSheet', {
+        id: scopedId('results-score-sheet', resultsGw),
+        eventKey: scopedKey('resultsScoreSheet', resultsGw),
+      })
+    );
+    cards.push(
+      createPopupCard('results', {
+        id: scopedId('results', resultsGw),
+        eventKey: scopedKey('results', resultsGw),
+      })
+    );
   }
 
   if (includeWinners) {
-    cards.push(createPopupCard('winners', { id: `winners-gw${resultsGw}`, eventKey: `winners:gw${resultsGw}` }));
+    cards.push(
+      createPopupCard('winners', {
+        id: scopedId('winners', resultsGw),
+        eventKey: scopedKey('winners', resultsGw),
+      })
+    );
   }
 
   if (includeNewGameweek && typeof newGameweekGw === 'number') {
     cards.push(
       createPopupCard('newGameweek', {
-        id: `new-gameweek-gw${newGameweekGw}`,
-        eventKey: `newGameweek:gw${newGameweekGw}`,
+        id: scopedId('new-gameweek', newGameweekGw),
+        eventKey: scopedKey('newGameweek', newGameweekGw),
       })
     );
   }

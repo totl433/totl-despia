@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 
 type ConfettiConfig = {
@@ -57,18 +57,16 @@ export function ConfettiProvider({ children }: { children: React.ReactNode }) {
       <View style={{ flex: 1 }}>
         {children as any}
         {shot ? (
-          <Modal transparent visible animationType="none" statusBarTranslucent presentationStyle="overFullScreen">
-            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 9999, elevation: 9999 }]}>
-              <ConfettiCannon
-                key={shot.key}
-                count={shot.cfg.count}
-                origin={shot.cfg.origin}
-                explosionSpeed={shot.cfg.explosionSpeed}
-                fallSpeed={shot.cfg.fallSpeed}
-                fadeOut={shot.cfg.fadeOut}
-              />
-            </View>
-          </Modal>
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 9999, elevation: 9999 }]}>
+            <ConfettiCannon
+              key={shot.key}
+              count={shot.cfg.count}
+              origin={shot.cfg.origin}
+              explosionSpeed={shot.cfg.explosionSpeed}
+              fallSpeed={shot.cfg.fallSpeed}
+              fadeOut={shot.cfg.fadeOut}
+            />
+          </View>
         ) : null}
       </View>
     </ConfettiContext.Provider>

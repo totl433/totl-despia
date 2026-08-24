@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState, Linking, type AppStateStatus } from 'react-native';
+import { AppState, Linking, View, type AppStateStatus } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { HomeSnapshot } from '@totl/domain';
 
@@ -10,8 +10,13 @@ import {
   fetchSeasonChampionBundle,
   type SeasonChampionBundle,
 } from '../../lib/championEligibility';
-import { getMonthForGw, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
+import { getMonthForGw, resolveLeaderboardSeasonKey, SEASON_2025_26_LABEL, SEASON_LAST_GW } from '../../lib/leaderboardMonths';
+import { isHiddenFromLeaderboards } from '../../lib/leaderboardVisibility';
+import { isPopupAutoOpenSuppressed } from '../../lib/popupAutoOpenGate';
+import { roundUpEventKey, roundUpSeasonScope } from '../../lib/popupRoundUpKeys';
 import { hasSeenPopupCard, markPopupCardSeen, markPopupCardsSeen } from '../../lib/popupCardsStorage';
+import { useViewerSeason } from '../../lib/useViewerSeason';
+import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../../lib/leagueSeasonPile';
 import { createMainPopupStack, createPopupCard, createWelcomePopupStack } from './popupCardsCatalog';
 import PopupCardStack from './PopupCardStack';
 import type { PopupCardDescriptor, PopupCardKind } from './types';
@@ -28,6 +33,8 @@ type GwPointsRow = { user_id: string; gw: number; points: number };
 
 type PopupCardsContextValue = {
   hasActivePopupStack: boolean;
+  /** Closes a live auto-opened round-up without touching simulator-opened cards. */
+  dismissAutoOpenedStack: () => void;
   openSimulatorCard: (kind: PopupCardKind) => void;
   openSimulatorResultsExample: (variant: 'wins' | 'noWinsInLeagues' | 'noLeagues') => void;
   openSimulatorPersonalWinnerExample: (variant: 'gw' | 'monthly') => void;
@@ -43,7 +50,11 @@ type PopupCardsContextValue = {
   openManualRoundUpStack: (gw: number, options?: { newGameweekGw?: number | null; includeResults?: boolean }) => void;
   openSimulatorDoPredictionsCard: () => void;
   /** Opens stacked personal winner cards (most recent GW/month first). */
-  openTrophyCabinetPersonalWinners: (kind: 'gameweek' | 'monthly', gwsDescending: number[]) => void;
+  openTrophyCabinetPersonalWinners: (
+    kind: 'gameweek' | 'monthly',
+    gwsDescending: number[],
+    options?: { seasonScope?: string }
+  ) => void;
   /** Opens stacked season champion cards (mini-leagues then overall), same stack as end-of-season popups. */
   openTrophyCabinetChampionCards: () => void | Promise<void>;
 };
@@ -70,13 +81,17 @@ function championCabinetQueryKey(userId: string, currentGwMeta: number | null) {
   return ['championTrophyCabinet', userId, currentGwMeta] as const;
 }
 
-function buildSeasonChampionPopupDescriptorsFromBundle(bundle: SeasonChampionBundle): PopupCardDescriptor[] {
+function buildSeasonChampionPopupDescriptorsFromBundle(
+  bundle: SeasonChampionBundle,
+  seasonScope: string = SEASON_2025_26_LABEL
+): PopupCardDescriptor[] {
   const cards: PopupCardDescriptor[] = [];
+  const scopeSuffix = `:${seasonScope}`;
   for (const s of bundle.miniLeague) {
     cards.push(
       createPopupCard('championMiniLeague', {
-        id: `champion-ml-${s.leagueId}-gw${SEASON_LAST_GW}`,
-        eventKey: `championMiniLeague:${s.leagueId}:gw${SEASON_LAST_GW}`,
+        id: `champion-ml-${s.leagueId}-gw${SEASON_LAST_GW}-${seasonScope.replace(/\//g, '-')}`,
+        eventKey: `championMiniLeague:${s.leagueId}:gw${SEASON_LAST_GW}${scopeSuffix}`,
         payload: s,
       })
     );
@@ -84,8 +99,8 @@ function buildSeasonChampionPopupDescriptorsFromBundle(bundle: SeasonChampionBun
   if (bundle.overall) {
     cards.push(
       createPopupCard('championOverall', {
-        id: `champion-overall-gw${SEASON_LAST_GW}`,
-        eventKey: `championOverall:gw${SEASON_LAST_GW}`,
+        id: `champion-overall-gw${SEASON_LAST_GW}-${seasonScope.replace(/\//g, '-')}`,
+        eventKey: `championOverall:gw${SEASON_LAST_GW}${scopeSuffix}`,
         payload: bundle.overall,
       })
     );
@@ -93,42 +108,102 @@ function buildSeasonChampionPopupDescriptorsFromBundle(bundle: SeasonChampionBun
   return cards;
 }
 
-async function getPersonalWinnerCardsForGw(userId: string, gw: number): Promise<{ gameweek: boolean; monthly: boolean }> {
-  const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-    supabase
-      .from('app_v_gw_points')
+async function getPersonalWinnerCardsForGw(
+  userId: string,
+  gw: number,
+  opts: { useSeasonStack: boolean; seasonId: string | null; seasonLabel: string }
+): Promise<{ gameweek: boolean; monthly: boolean }> {
+  const uidNorm = String(userId).toLowerCase();
+  const pileB = opts.useSeasonStack && !!opts.seasonId;
+  const pointsTable = pileB ? SEASON_PILE_TABLES.gwPoints : LEGACY_PILE_TABLES.gwPoints;
+  const seasonKey = resolveLeaderboardSeasonKey({
+    seasonLabel: opts.seasonLabel,
+    useSeasonStack: opts.useSeasonStack,
+  });
+
+  if (pileB) {
+    try {
+      const live = await api.getGlobalGwLiveTable(gw);
+      const liveRows = (live?.rows ?? []).filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
+      if (liveRows.length > 0) {
+        const top = Math.max(...liveRows.map((row) => Number(row.score ?? 0)));
+        const gameweek = liveRows.some(
+          (row) => String(row.user_id).toLowerCase() === uidNorm && Number(row.score ?? 0) === top
+        );
+        const month = getMonthForGw(gw, seasonKey);
+        if (!month || gw !== month.endGw) return { gameweek, monthly: false };
+        // Fall through to monthly from season points below, keeping gameweek from live table.
+        const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+          let q = (supabase as any)
+            .from(pointsTable)
+            .select('user_id, gw, points')
+            .gte('gw', month.startGw)
+            .lte('gw', month.endGw)
+            .order('gw', { ascending: true })
+            .order('user_id', { ascending: true })
+            .range(from, to);
+          if (opts.seasonId) q = q.eq('season_id', opts.seasonId);
+          return q;
+        });
+        if (!monthRows.length) return { gameweek, monthly: false };
+        const monthlyTotalsByUser = new Map<string, number>();
+        monthRows.forEach((row) => {
+          if (isHiddenFromLeaderboards(String(row.user_id))) return;
+          const rowUserId = String(row.user_id).toLowerCase();
+          monthlyTotalsByUser.set(rowUserId, (monthlyTotalsByUser.get(rowUserId) ?? 0) + Number(row.points ?? 0));
+        });
+        const monthlyTop = Math.max(0, ...Array.from(monthlyTotalsByUser.values()));
+        const monthly = (monthlyTotalsByUser.get(uidNorm) ?? Number.NEGATIVE_INFINITY) === monthlyTop;
+        return { gameweek, monthly };
+      }
+    } catch {
+      // Fall through to view-backed points.
+    }
+  }
+
+  const gwRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+    let q = (supabase as any)
+      .from(pointsTable)
       .select('user_id, gw, points')
       .eq('gw', gw)
       .order('user_id', { ascending: true })
-      .range(from, to)
+      .range(from, to);
+    if (pileB && opts.seasonId) q = q.eq('season_id', opts.seasonId);
+    return q;
+  });
+  const visibleGwRows = gwRows.filter((row) => !isHiddenFromLeaderboards(String(row.user_id)));
+  if (!visibleGwRows.length) return { gameweek: false, monthly: false };
+
+  const gwWinningPoints = Math.max(...visibleGwRows.map((row) => Number(row.points ?? 0)));
+  const gameweek = visibleGwRows.some(
+    (row) => String(row.user_id).toLowerCase() === uidNorm && Number(row.points ?? 0) === gwWinningPoints
   );
-  if (!gwRows.length) return { gameweek: false, monthly: false };
 
-  const gwWinningPoints = Math.max(...gwRows.map((row) => Number(row.points ?? 0)));
-  const gameweek = gwRows.some((row) => String(row.user_id) === userId && Number(row.points ?? 0) === gwWinningPoints);
-
-  const month = getMonthForGw(gw);
+  const month = getMonthForGw(gw, seasonKey);
   if (!month || gw !== month.endGw) return { gameweek, monthly: false };
 
-  const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) =>
-    supabase
-      .from('app_v_gw_points')
+  const monthRows = await fetchAllSupabaseRows<GwPointsRow>((from, to) => {
+    let q = (supabase as any)
+      .from(pointsTable)
       .select('user_id, gw, points')
       .gte('gw', month.startGw)
       .lte('gw', month.endGw)
       .order('gw', { ascending: true })
       .order('user_id', { ascending: true })
-      .range(from, to)
-  );
+      .range(from, to);
+    if (pileB && opts.seasonId) q = q.eq('season_id', opts.seasonId);
+    return q;
+  });
   if (!monthRows.length) return { gameweek, monthly: false };
 
   const monthlyTotalsByUser = new Map<string, number>();
   monthRows.forEach((row) => {
-    const rowUserId = String(row.user_id);
+    if (isHiddenFromLeaderboards(String(row.user_id))) return;
+    const rowUserId = String(row.user_id).toLowerCase();
     monthlyTotalsByUser.set(rowUserId, (monthlyTotalsByUser.get(rowUserId) ?? 0) + Number(row.points ?? 0));
   });
-  const monthlyTop = Math.max(...Array.from(monthlyTotalsByUser.values()));
-  const monthly = (monthlyTotalsByUser.get(userId) ?? Number.NEGATIVE_INFINITY) === monthlyTop;
+  const monthlyTop = Math.max(0, ...Array.from(monthlyTotalsByUser.values()));
+  const monthly = (monthlyTotalsByUser.get(uidNorm) ?? Number.NEGATIVE_INFINITY) === monthlyTop;
   return { gameweek, monthly };
 }
 
@@ -172,6 +247,13 @@ export default function PopupCardsProvider({ children }: { children: React.React
   });
 
   const userId = authUser?.id ? String(authUser.id) : null;
+  const {
+    useSeasonStack,
+    seasonId,
+    seasonLabel,
+    loading: seasonLoading,
+  } = useViewerSeason();
+  const roundUpScope = roundUpSeasonScope({ useSeasonStack, seasonLabel });
 
   React.useEffect(() => {
     sessionDismissedEventKeysRef.current = new Set();
@@ -404,7 +486,11 @@ export default function PopupCardsProvider({ children }: { children: React.React
         let personalWinnerCards = { gameweek: false, monthly: false };
         if (userId && options?.includeResults !== false) {
           try {
-            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, gw);
+            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, gw, {
+              useSeasonStack,
+              seasonId,
+              seasonLabel,
+            });
           } catch (error) {
             console.error('[PopupCardsProvider] Failed to check manual round-up winner eligibility:', error);
           }
@@ -419,6 +505,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
             includePersonalMonthlyWinner: personalWinnerCards.monthly,
             includeWinners: true,
             includeNewGameweek: typeof options?.newGameweekGw === 'number',
+            seasonScope: roundUpScope,
           }),
           false
         );
@@ -426,24 +513,25 @@ export default function PopupCardsProvider({ children }: { children: React.React
 
       void run();
     },
-    [openStack, userId]
+    [openStack, userId, useSeasonStack, seasonId, seasonLabel, roundUpScope]
   );
 
   const openTrophyCabinetPersonalWinners = React.useCallback(
-    (kind: 'gameweek' | 'monthly', gwsDescending: number[]) => {
+    (kind: 'gameweek' | 'monthly', gwsDescending: number[], options?: { seasonScope?: string }) => {
       const uniq = [...new Set(gwsDescending)].filter((gw) => typeof gw === 'number' && gw > 0);
       if (!uniq.length) return;
       uniq.sort((a, b) => b - a);
       const variant = kind === 'gameweek' ? 'gameweek' : 'monthly';
+      const scope = options?.seasonScope ?? roundUpScope;
       const cards = uniq.map((gw) =>
         createPopupCard('personalWinner', {
-          id: `trophy-cabinet-${variant}-gw${gw}`,
-          eventKey: `personalWinner:${variant}:gw${gw}`,
+          id: `trophy-cabinet-${variant}-gw${gw}-${scope.replace(/\//g, '-')}`,
+          eventKey: roundUpEventKey(`personalWinner:${variant}`, gw, scope),
         })
       );
       openStack(cards, false);
     },
-    [openStack]
+    [openStack, roundUpScope]
   );
 
   const openTrophyCabinetChampionCards = React.useCallback(async () => {
@@ -557,10 +645,18 @@ export default function PopupCardsProvider({ children }: { children: React.React
     });
   }, [userId]);
 
+  const dismissAutoOpenedStack = React.useCallback(() => {
+    setActiveStack((current) => {
+      if (!current?.persistSeen) return current;
+      return null;
+    });
+  }, []);
+
   React.useEffect(() => {
-    if (!initialUrlChecked || !userId || !home) return;
+    if (!initialUrlChecked || !userId || !home || seasonLoading) return;
     if (activeStack || autoOpenInFlightRef.current) return;
     if (suppressSessionAutoOpenRef.current) return;
+    if (isPopupAutoOpenSuppressed()) return;
 
     const run = async () => {
       autoOpenInFlightRef.current = true;
@@ -619,7 +715,11 @@ export default function PopupCardsProvider({ children }: { children: React.React
         let personalWinnerCards = { gameweek: false, monthly: false };
         if (gameweekState === 'RESULTS_PRE_GW' && !!home.hasSubmittedViewingGw) {
           try {
-            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, viewingGw);
+            personalWinnerCards = await getPersonalWinnerCardsForGw(userId, viewingGw, {
+              useSeasonStack,
+              seasonId,
+              seasonLabel,
+            });
           } catch (error) {
             console.error('[PopupCardsProvider] Failed to check personal winner popup eligibility:', error);
           }
@@ -633,6 +733,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
           includePersonalMonthlyWinner: personalWinnerCards.monthly,
           includeWinners: gameweekState === 'RESULTS_PRE_GW',
           includeNewGameweek: newGameweekEligible,
+          seasonScope: roundUpScope,
         });
 
         let championCards: PopupCardDescriptor[] = [];
@@ -675,11 +776,26 @@ export default function PopupCardsProvider({ children }: { children: React.React
     };
 
     void run();
-  }, [activeStack, authUser?.created_at, foregroundReturnCount, home, initialUrlChecked, openStack, queryClient, userId]);
+  }, [
+    activeStack,
+    authUser?.created_at,
+    foregroundReturnCount,
+    home,
+    initialUrlChecked,
+    openStack,
+    queryClient,
+    userId,
+    seasonLoading,
+    useSeasonStack,
+    seasonId,
+    seasonLabel,
+    roundUpScope,
+  ]);
 
   const contextValue = React.useMemo<PopupCardsContextValue>(
     () => ({
       hasActivePopupStack: !!activeStack,
+      dismissAutoOpenedStack,
       openSimulatorCard,
       openSimulatorResultsExample,
       openSimulatorPersonalWinnerExample,
@@ -698,6 +814,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
     }),
     [
       activeStack,
+      dismissAutoOpenedStack,
       openMainSimulatorStack,
       openSimulatorDoPredictionsCard,
       openManualResultsRecall,
@@ -718,15 +835,17 @@ export default function PopupCardsProvider({ children }: { children: React.React
 
   return (
     <PopupCardsContext.Provider value={contextValue}>
-      {children}
-      <PopupCardStack
-        cards={activeStack?.cards ?? []}
-        visible={!!activeStack}
-        initialShareCardId={activeStack?.initialShareCardId}
-        closeStackOnShareClose={!!activeStack?.closeStackOnShareClose}
-        onDismissTop={dismissTop}
-        onCloseAll={closeAll}
-      />
+      <View style={{ flex: 1 }}>
+        {children}
+        <PopupCardStack
+          cards={activeStack?.cards ?? []}
+          visible={!!activeStack}
+          initialShareCardId={activeStack?.initialShareCardId}
+          closeStackOnShareClose={!!activeStack?.closeStackOnShareClose}
+          onDismissTop={dismissTop}
+          onCloseAll={closeAll}
+        />
+      </View>
     </PopupCardsContext.Provider>
   );
 }

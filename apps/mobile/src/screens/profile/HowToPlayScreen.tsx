@@ -67,26 +67,31 @@ export default function HowToPlayScreen() {
       callouts: [
         {
           title: 'Simple rule',
-          body: 'The more correct predictions you make, the higher you climb. No extra points, no tie-break complexity.',
+          body: 'The more correct predictions you make, the higher you climb. There is an Overall table for the season, a Gameweek table for this week, and a Monthly table that resets each month.',
         },
       ],
     },
     {
-      title: 'Form Leaderboards',
-      icon: '⚡',
-      intro: 'Form tables focus on current performance, not just season totals.',
+      title: 'Monthly comps',
+      icon: '📅',
+      intro:
+        'The Monthly table is a fresh race each calendar month. Same scoring as everything else: 1 point per correct Prediction, added up across that month’s Gameweeks.',
       callouts: [
         {
-          title: '5-Week Form',
-          body: 'Your short-term hot streak view.',
+          title: 'Joined late?',
+          body: 'You can still win the month. Each month starts from zero, so you don’t need a season’s worth of weeks behind you.',
         },
         {
-          title: '10-Week Form',
-          body: 'A wider rolling view that rewards consistency and momentum.',
+          title: 'How you get on the table',
+          body: 'Submit for a Gameweek in that month and you’re in, even if you’re still on 0.',
         },
         {
-          title: 'How they work',
-          body: 'Both update weekly. To appear on 10-Week form, you need to have played 10 gameweeks in a row.',
+          title: 'Winning the month',
+          body: 'When the last Gameweek of the month is finished, whoever has the most points that month wins. Ties share first — everyone on the top score gets the month.',
+        },
+        {
+          title: 'Trophies',
+          body: 'A monthly win (or a tie for first) goes in your trophy cabinet, alongside Gameweek wins.',
         },
       ],
     },
@@ -94,7 +99,7 @@ export default function HowToPlayScreen() {
       title: "That's It",
       icon: '🎉',
       intro:
-        'Predict each week, beat your mates, and climb the tables. Stay sharp and see who is truly Top of the League.',
+        'Predict each week. Beat your mates. Climb Overall — or win the month. Stay sharp and see who is truly Top of the League.',
     },
   ];
 

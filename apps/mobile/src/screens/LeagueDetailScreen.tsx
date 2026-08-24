@@ -898,6 +898,7 @@ export default function LeagueDetailScreen() {
       seasonId,
       browsingArchive,
       members.map((m: any) => String(m.id)).join(','),
+      isDevFakeLeague ? 'devPicks-visual-last-3-2-3' : 'live',
     ],
     queryFn: async () => {
       const gw = picksGw as number;
@@ -906,9 +907,6 @@ export default function LeagueDetailScreen() {
         const memberIds = DEV_FAKE_LEAGUE_MEMBERS.map((m) => String(m.id));
         const submittedUserIds = [...memberIds];
         const picksByFixtureIndex: Record<string, Record<string, LeaguePick>> = {};
-        fixtures.forEach((f) => {
-          picksByFixtureIndex[String(f.fixture_index)] = buildDevFixturePicks(memberIds, Number(f.fixture_index));
-        });
         const fmt = (iso?: string | null) => {
           if (!iso) return 'Fixtures';
           const d = new Date(iso);
@@ -930,6 +928,14 @@ export default function LeagueDetailScreen() {
         const sections = Array.from(buckets.values())
           .sort((a, b) => a.key - b.key || a.minFixtureIndex - b.minFixtureIndex)
           .map((b) => ({ label: b.label, fixtures: [...b.fixtures].sort((a, b) => a.fixture_index - b.fixture_index) }));
+        const visualFixtures = sections.flatMap((s) => s.fixtures);
+        visualFixtures.forEach((f, displayOrder) => {
+          picksByFixtureIndex[String(f.fixture_index)] = buildDevFixturePicks(
+            memberIds,
+            displayOrder,
+            displayOrder === visualFixtures.length - 1
+          );
+        });
         return {
           picksGw: gw,
           deadlinePassed: true,

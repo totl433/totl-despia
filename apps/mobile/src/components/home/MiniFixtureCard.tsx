@@ -480,11 +480,11 @@ export default function MiniFixtureCard({
           </Reanimated.View>
         ) : null}
         {footerWithExpandState ? (
-          <View style={{ paddingHorizontal: isMiniExpanded ? 8 : 6, paddingTop: isMiniExpanded ? 4 : 2, paddingBottom: isMiniExpanded ? 2 : 4 }}>
+          <View style={{ paddingHorizontal: 5, paddingTop: isMiniExpanded ? 4 : 2, paddingBottom: isMiniExpanded ? 2 : 4 }}>
             {footerWithExpandState({ isExpanded: isMiniExpanded })}
           </View>
         ) : !isMiniExpanded && footerInside ? (
-          <View style={{ paddingHorizontal: 6, paddingTop: 2, paddingBottom: 4 }}>{footerInside}</View>
+          <View style={{ paddingHorizontal: 5, paddingTop: 2, paddingBottom: 4 }}>{footerInside}</View>
         ) : null}
       </Reanimated.View>
     </Pressable>

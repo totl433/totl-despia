@@ -574,6 +574,7 @@ export default function ProfileStatsScreen() {
       gwPointsRows: gwPointsQ.data,
       userId,
       lastCompletedGw: statsLcResolved,
+      seasonKey: '2025/26',
     });
   }, [gwPointsQ.data, statsLcResolved, userId]);
 
@@ -594,7 +595,9 @@ export default function ProfileStatsScreen() {
       Alert.alert('Not available', 'Could not resolve monthly trophy periods yet. Pull down to refresh.');
       return;
     }
-    openTrophyCabinetPersonalWinners('monthly', monthlyWinnerEndGwsDesc);
+    openTrophyCabinetPersonalWinners('monthly', monthlyWinnerEndGwsDesc, {
+      seasonScope: SEASON_2025_26_LABEL,
+    });
   }, [monthlyWinnerEndGwsDesc, openTrophyCabinetPersonalWinners]);
 
   const handleSeasonTrophyPress = React.useCallback(() => {
