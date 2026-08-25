@@ -321,6 +321,8 @@ const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
+import ChooseUsername from "./features/auth/ChooseUsername";
+import { resolveProfileStatus } from "./lib/userProfile";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useSeasonStack } from "./hooks/useSeasonStack";
@@ -381,13 +383,38 @@ function maybeLoadGoogleAnalytics() {
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <div className="p-6">Loading…</div>;
+  const [profileStatus, setProfileStatus] = useState<'checking' | 'ready' | 'needs-username'>(
+    user ? 'checking' : 'ready'
+  );
+
+  useEffect(() => {
+    if (!user?.id) {
+      setProfileStatus('ready');
+      return;
+    }
+    let alive = true;
+    setProfileStatus('checking');
+    resolveProfileStatus(user.id)
+      .then((status) => {
+        if (alive) setProfileStatus(status);
+      })
+      .catch(() => {
+        if (alive) setProfileStatus('needs-username');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [user?.id]);
+
+  if (loading || (user && profileStatus === 'checking')) return <div className="p-6">Loading…</div>;
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
-  // Remount route state when accounts change so picks and other in-memory
-  // values from the previous user can never paint the next user's screen.
-  return user
-    ? <React.Fragment key={user.id}>{children}</React.Fragment>
-    : <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  if (!user) {
+    return <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
+  if (profileStatus === 'needs-username') {
+    return <ChooseUsername userId={user.id} onComplete={() => setProfileStatus('ready')} />;
+  }
+  return <React.Fragment key={user.id}>{children}</React.Fragment>;
 }
 
 function AppShell() {
@@ -900,6 +927,7 @@ function AppContent() {
           {!isFullScreenPage &&
             location.pathname !== '/auth' &&
             location.pathname !== '/support' &&
+            location.pathname !== '/api-admin' &&
             !location.pathname.startsWith('/league/') &&
             location.pathname !== '/predictions' &&
             location.pathname !== '/global' && (
