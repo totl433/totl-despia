@@ -69,6 +69,20 @@ type Body = {
   userId?: string;
   useSeasonStack?: boolean;
   viewingGw?: number;
+  fixtures?: Array<{
+    fixture_index?: number;
+    api_match_id: number;
+    home_team: string;
+    away_team: string;
+    home_code?: string | null;
+    away_code?: string | null;
+    home_name?: string | null;
+    away_name?: string | null;
+    home_crest?: string | null;
+    away_crest?: string | null;
+    kickoff_time: string;
+    status?: string | null;
+  }>;
 };
 
 function adminClient(): SupabaseClient {
@@ -349,6 +363,55 @@ export const handler: Handler = async (event) => {
         gw: body.gw,
         fixtureCount: rows.length,
         fixtures: inserted,
+        legacyUntouched: true,
+      });
+    }
+
+    if (action === 'saveSelected') {
+      if (!body.gw || body.gw < 1 || body.gw > 40) {
+        return json(400, { error: 'saveSelected requires gw (1–40)' });
+      }
+      const selected = body.fixtures || [];
+      if (selected.length === 0) {
+        return json(400, { error: 'saveSelected requires fixtures' });
+      }
+      const season = await resolveSeason(sb, body);
+      const { error: delErr } = await sb
+        .from('app_season_fixtures')
+        .delete()
+        .eq('season_id', season.id)
+        .eq('gw', body.gw);
+      if (delErr) throw delErr;
+
+      const rows = selected.map((f, index) => ({
+        season_id: season.id,
+        gw: body.gw,
+        fixture_index: f.fixture_index ?? index,
+        home_team: f.home_team,
+        away_team: f.away_team,
+        home_code: f.home_code || null,
+        away_code: f.away_code || null,
+        home_name: f.home_name || null,
+        away_name: f.away_name || null,
+        home_crest: f.home_crest || null,
+        away_crest: f.away_crest || null,
+        kickoff_time: f.kickoff_time,
+        api_match_id: f.api_match_id,
+        status: f.status || null,
+      }));
+      const { data: inserted, error: insErr } = await sb
+        .from('app_season_fixtures')
+        .insert(rows)
+        .select('fixture_index, home_team, away_team, home_code, away_code, kickoff_time, api_match_id, status');
+      if (insErr) throw insErr;
+
+      return json(200, {
+        success: true,
+        season: { id: season.id, label: season.label },
+        gw: body.gw,
+        fixtureCount: rows.length,
+        fixtures: inserted,
+        published: false,
         legacyUntouched: true,
       });
     }

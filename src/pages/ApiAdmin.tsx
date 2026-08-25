@@ -230,12 +230,12 @@ export default function ApiAdmin() {
  };
 
  const season2627 = seasons.find((s) => s.label === NEW_SEASON_LABEL) || null;
+ const season2627IsLive =
+ !!season2627 && seasonRuntime?.current_season_id === season2627.id;
  const season2627Ready =
  !!season2627 && newSeasonFixtures.length >= 10;
  const season2627Launched =
- !!season2627 &&
- seasonRuntime?.current_season_id === season2627.id &&
- seasonRuntime?.current_gw === NEW_SEASON_GW;
+ season2627IsLive && seasonRuntime?.current_gw === NEW_SEASON_GW;
 
  const loadNewSeasonGw1 = async () => {
  setSeasonsBusy(true);
@@ -307,37 +307,50 @@ export default function ApiAdmin() {
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [isAdmin]);
 
- // Load next GW from app_meta
+ // Load current / next GW from the live 2026/27 season folder when it's active,
+ // not leftover last-season app_meta (which still sits on GW38 → "GW39").
  useEffect(() => {
  if (!isAdmin) return;
  
  let alive = true;
  (async () => {
  try {
- const { data, error } = await supabase
- .from("app_meta")
- .select("current_gw")
+ const [{ data: meta, error: metaErr }, { data: runtime, error: runtimeErr }] =
+ await Promise.all([
+ supabase.from("app_meta").select("current_gw").eq("id", 1).maybeSingle(),
+ supabase
+ .from("app_season_runtime")
+ .select("current_season_id, current_gw")
  .eq("id", 1)
- .maybeSingle();
+ .maybeSingle(),
+ ]);
  
- if (error) throw error;
- 
- if (alive && data) {
- const currentGwValue = data.current_gw || 13;
+ if (metaErr) throw metaErr;
+ if (runtimeErr) throw runtimeErr;
+ if (!alive) return;
+
+ const legacyGw = meta?.current_gw || 13;
+ const seasonLive = !!runtime?.current_season_id;
+ const currentGwValue = seasonLive ? (runtime?.current_gw ?? 1) : legacyGw;
  setCurrentGw(currentGwValue);
  const next = currentGwValue + 1;
  setNextGw(next);
  
- // Check if current GW is finished
  setCheckingFinished(true);
  const finished = await isGameweekFinished(currentGwValue);
  if (alive) {
  setCurrentGwFinished(finished);
  setCheckingFinished(false);
  }
- 
- // Load existing fixtures for next GW if they exist
- const { data: existingFixtures } = await supabase
+
+ const { data: existingFixtures } = seasonLive && runtime?.current_season_id
+ ? await supabase
+ .from("app_season_fixtures")
+ .select("*")
+ .eq("season_id", runtime.current_season_id)
+ .eq("gw", next)
+ .order("fixture_index", { ascending: true })
+ : await supabase
  .from("app_fixtures")
  .select("*")
  .eq("gw", next)
@@ -361,7 +374,6 @@ export default function ApiAdmin() {
  });
  });
  setSelectedFixtures(fixturesMap);
- }
  }
  } catch (error) {
  console.error("Error loading next GW:", error);
@@ -470,18 +482,20 @@ export default function ApiAdmin() {
  }
 
  try {
+ const params = new URLSearchParams({
+ competition: "PL",
+ matchday: String(nextGw),
+ });
+
+ if (nextGw <= 38) {
+ params.set("season", String(NEW_SEASON_FD_YEAR));
+ } else {
  const today = new Date();
  const nextWeek = new Date(today);
  nextWeek.setDate(today.getDate() + 7);
- 
- const dateFrom = today.toISOString().split('T')[0];
- const dateTo = nextWeek.toISOString().split('T')[0];
- 
- const params = new URLSearchParams({
- competition: "PL", // Premier League only
- dateFrom: dateFrom,
- dateTo: dateTo,
- });
+ params.set("dateFrom", today.toISOString().split('T')[0]);
+ params.set("dateTo", nextWeek.toISOString().split('T')[0]);
+ }
 
  const functionUrl = getFunctionUrl();
  const url = `${functionUrl}?${params.toString()}`;
@@ -505,7 +519,6 @@ export default function ApiAdmin() {
  return null;
  }
 
- // Filter matches by matchday (which corresponds to our Gameweek)
  const allMatches = result.data.matches || [];
  const filteredMatches = allMatches.filter((match: ApiMatch) => match.matchday === nextGw);
 
@@ -608,7 +621,6 @@ export default function ApiAdmin() {
  setOk("");
 
  try {
- // Prepare fixtures to save to app_fixtures
  const fixturesToInsert = Array.from(selectedFixtures.entries()).map(([fixture_index, f]) => ({
  gw: nextGw,
  fixture_index,
@@ -624,10 +636,21 @@ export default function ApiAdmin() {
  kickoff_time: f.kickoff_time,
  }));
 
- // API Admin ONLY saves to app_fixtures (App table)
- // Web users get fixtures from Web Admin page (saves to fixtures table)
- // Mirroring triggers handle copying user data (picks/submissions), not fixtures
- 
+ if (season2627IsLive && season2627) {
+ console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to 2026/27 GW ${nextGw}...`);
+ await callSeasonAdmin({
+ action: "saveSelected",
+ seasonId: season2627.id,
+ gw: nextGw,
+ fixtures: fixturesToInsert,
+ });
+ await callSeasonAdmin({
+ action: "open",
+ seasonId: season2627.id,
+ gw: nextGw,
+ });
+ setCurrentGw(nextGw);
+ } else {
  console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}...`);
  
  const { data: insertedData, error: insertError } = await supabase
@@ -640,54 +663,20 @@ export default function ApiAdmin() {
 
  if (insertError) {
  console.error('[ApiAdmin] ❌ Error upserting fixtures to app_fixtures:', insertError);
- console.error('[ApiAdmin] Error details:', JSON.stringify(insertError, null, 2));
  throw insertError;
  }
 
- const savedCount = insertedData?.length || fixturesToInsert.length;
- console.log(`[ApiAdmin] ✅ Successfully saved ${savedCount} fixtures to app_fixtures for GW ${nextGw}`);
- 
- // Verify the save worked by checking the database
- const { data: verifyData, error: verifyError } = await supabase
- .from("app_fixtures")
- .select("fixture_index")
- .eq("gw", nextGw);
- 
- if (verifyError) {
- console.warn('[ApiAdmin] ⚠️ Could not verify fixtures were saved:', verifyError);
- } else {
- console.log(`[ApiAdmin] ✅ Verified: ${verifyData?.length || 0} fixtures exist in app_fixtures for GW ${nextGw}`);
- if ((verifyData?.length || 0) !== savedCount) {
- console.warn(`[ApiAdmin] ⚠️ Mismatch: Expected ${savedCount} fixtures but found ${verifyData?.length || 0} in database`);
- }
- }
+ console.log(`[ApiAdmin] ✅ Successfully saved ${insertedData?.length || fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}`);
 
- // CRITICAL: Update app_meta.current_gw to the saved GW
- // This triggers the notification and makes the GW live
  console.log(`[ApiAdmin] ⚠️ PUBLISHING: Updating app_meta.current_gw to ${nextGw}...`);
  const { error: metaError } = await supabase
  .from("app_meta")
  .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' });
 
  if (metaError) {
- console.error('[ApiAdmin] ❌ CRITICAL ERROR updating app_meta:', metaError);
  throw new Error(`Failed to publish: Could not update current_gw to ${nextGw}. ${metaError.message}`);
- } else {
- console.log(`[ApiAdmin] ✅ Successfully published: app_meta.current_gw = ${nextGw}`);
- setCurrentGw(nextGw); // Update local state
- 
- // Verify the update
- const { data: verifyMeta, error: verifyMetaError } = await supabase
- .from("app_meta")
- .select("current_gw")
- .eq("id", 1)
- .single();
- 
- if (verifyMetaError) {
- console.warn('[ApiAdmin] ⚠️ Could not verify app_meta update:', verifyMetaError);
- } else {
- console.log(`[ApiAdmin] ✅ Verified: app_meta.current_gw = ${verifyMeta?.current_gw}`);
  }
+ setCurrentGw(nextGw);
  }
 
  // Fetch and store team forms for this gameweek (automatic)
@@ -771,13 +760,21 @@ export default function ApiAdmin() {
  try {
  const previousGw = currentGw - 1;
  console.log(`[ApiAdmin] Recalling GW ${nextGw}, setting current_gw to ${previousGw}...`);
- 
+
+ if (season2627IsLive && season2627) {
+ await callSeasonAdmin({
+ action: "open",
+ seasonId: season2627.id,
+ gw: previousGw,
+ });
+ } else {
  const { error: metaError } = await supabase
  .from("app_meta")
  .upsert({ id: 1, current_gw: previousGw }, { onConflict: 'id' });
 
  if (metaError) {
  throw new Error(`Failed to recall: ${metaError.message}`);
+ }
  }
 
  setCurrentGw(previousGw);
@@ -812,8 +809,12 @@ export default function ApiAdmin() {
  <div className="bg-white border-2 border-teal-600 rounded-lg p-4 mb-6">
  <div className="flex items-center justify-between gap-3 mb-3">
  <div>
- <div className="text-sm text-slate-600">New season</div>
- <div className="text-2xl font-bold text-slate-900">{NEW_SEASON_LABEL} · GW {NEW_SEASON_GW}</div>
+ <div className="text-sm text-slate-600">{NEW_SEASON_LABEL}</div>
+ <div className="text-2xl font-bold text-slate-900">
+ {season2627IsLive
+ ? `Live GW ${seasonRuntime?.current_gw ?? currentGw} · next GW ${nextGw ?? "…"}`
+ : `GW ${NEW_SEASON_GW}`}
+ </div>
  </div>
  <button
  type="button"
@@ -839,6 +840,10 @@ export default function ApiAdmin() {
  <div className="mb-4">
  {seasonsLoading ? (
  <span className="text-sm text-slate-500">Checking fixtures…</span>
+ ) : season2627IsLive ? (
+ <span className="text-sm font-medium text-emerald-700">
+ ✅ {NEW_SEASON_LABEL} is live — load GW {nextGw} below, publish when you’re ready
+ </span>
  ) : season2627Launched ? (
  <span className="text-sm font-medium text-emerald-700">
  ✅ {NEW_SEASON_LABEL} GW {NEW_SEASON_GW} is live
@@ -855,6 +860,7 @@ export default function ApiAdmin() {
  )}
  </div>
 
+ {!season2627IsLive && (
  <div className="flex flex-col sm:flex-row gap-3 mb-4">
  <button
  type="button"
@@ -866,25 +872,26 @@ export default function ApiAdmin() {
  </button>
  <button
  type="button"
- disabled={seasonsBusy || !season2627Ready || season2627Launched}
+ disabled={seasonsBusy || !season2627Ready || season2627IsLive}
  onClick={() => setShowLaunchSeasonConfirm(true)}
  className="flex-1 px-4 py-3 bg-amber-700 text-white rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
  title={
  !season2627Ready
  ? "Load fixtures first"
- : season2627Launched
+ : season2627IsLive
  ? "Already launched"
  : `Launch ${NEW_SEASON_LABEL}`
  }
  >
- {season2627Launched
+ {season2627IsLive
  ? "LAUNCHED"
  : `LAUNCH ${NEW_SEASON_LABEL} GW ${NEW_SEASON_GW}`}
  </button>
  </div>
+ )}
 
  {/* Match list — same idea as old Load Matches list */}
- {newSeasonFixtures.length > 0 && (
+ {newSeasonFixtures.length > 0 && !season2627IsLive && (
  <div className="mb-4">
  <div className="flex items-center justify-between mb-3">
  <h3 className="text-lg font-semibold text-slate-800">
@@ -1031,7 +1038,7 @@ export default function ApiAdmin() {
 
  {/* Current GW Status — normal mid-season publish flow */}
  <div className="bg-white border-2 border-slate-300 rounded-lg p-4 mb-6">
- {currentGw != null && currentGw >= 38 && (
+ {currentGw != null && currentGw >= 38 && !season2627IsLive && (
  <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">
  Season finished (GW {currentGw}). For <strong>2026/27</strong>, use the panel above — not “next GW {nextGw}” below.
  </div>
@@ -1304,7 +1311,7 @@ export default function ApiAdmin() {
  <p className="font-semibold">This will:</p>
  <ul className="list-disc list-inside space-y-2 ml-2">
  <li>Save {selectedFixtures.size} fixture{selectedFixtures.size === 1 ? '' : 's'} to the database</li>
- <li><strong className="text-red-600">Set current_gw to {nextGw}</strong> (makes it live)</li>
+ <li><strong className="text-red-600">Set {season2627IsLive ? `${NEW_SEASON_LABEL} ` : ''}current GW to {nextGw}</strong> (makes it live)</li>
  <li><strong className="text-red-600">Send push notification to ALL users</strong></li>
  <li>Make this gameweek visible to all users</li>
  <li>Lock editing (you'll need to RECALL to make changes)</li>
