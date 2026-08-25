@@ -1,10 +1,8 @@
 import React from 'react';
-import { Share, View, useWindowDimensions } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
-import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgUri } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
@@ -14,6 +12,7 @@ import ShareActionsFooter, { type ShareTarget } from '../share/ShareActionsFoote
 import ShareAssetTray from '../share/ShareAssetTray';
 import PopupInfoCard from './PopupInfoCard';
 import type { PopupCardDescriptor } from './types';
+import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
 
 function getPopupShareMessage(card: PopupCardDescriptor): string {
   switch (card.kind) {
@@ -41,11 +40,6 @@ function getPopupShareMessage(card: PopupCardDescriptor): string {
 function getPopupShareTitle(card: PopupCardDescriptor, target: ShareTarget): string {
   const prefix = target === 'instagram' ? 'Share to Instagram' : target === 'whatsapp' ? 'Share to WhatsApp' : 'Share';
   return `${prefix}: ${card.title}`;
-}
-
-function isShareCancelled(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return /cancel|dismiss|did not share/i.test(message);
 }
 
 function PopupCardSharePreview({
@@ -209,8 +203,8 @@ export default function PopupCardShareTray({
   const shareMessage = getPopupShareMessage(card);
 
   const buildShareImageFile = React.useCallback(async () => {
-    // Give async card queries and animations a beat to paint before capture.
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    // Let the on-screen card (and its async score-sheet query) paint before capture.
+    await new Promise((resolve) => setTimeout(resolve, 350));
     const uri: string | undefined = await shareShotRef.current?.capture?.();
     if (!uri) return null;
 
@@ -223,73 +217,29 @@ export default function PopupCardShareTray({
     return dest;
   }, [card.kind]);
 
-  const shareImage = React.useCallback(
-    async (target: ShareTarget) => {
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
-        await Share.share({ message: shareMessage });
-        return;
-      }
-
-      const imageFile = await buildShareImageFile();
-      if (!imageFile) {
-        await Share.share({ message: shareMessage });
-        return;
-      }
-
-      await Sharing.shareAsync(imageFile, {
-        mimeType: 'image/png',
-        UTI: 'public.png',
-        dialogTitle: getPopupShareTitle(card, target),
-      });
-    },
-    [buildShareImageFile, card, shareMessage]
-  );
-
-  const shareToWhatsApp = React.useCallback(async () => {
-    const imageFile = await buildShareImageFile();
-    if (!imageFile) {
-      await shareImage('whatsapp');
-      return;
-    }
-
-    await shareImage('whatsapp');
-  }, [buildShareImageFile, card, shareImage, shareMessage]);
-
-  const shareToInstagram = React.useCallback(async () => {
-    await Clipboard.setStringAsync(shareMessage);
-    const imageFile = await buildShareImageFile();
-    if (!imageFile) {
-      await shareImage('instagram');
-      return;
-    }
-
-    await shareImage('instagram');
-  }, [buildShareImageFile, card, shareImage, shareMessage]);
-
   const handleShare = React.useCallback(
     async (target: ShareTarget) => {
       if (sharing) return;
       setSharing(true);
       try {
-        if (target === 'whatsapp') {
-          await shareToWhatsApp();
-          return;
-        }
-        if (target === 'instagram') {
-          await shareToInstagram();
-          return;
-        }
-        await shareImage(target);
+        const imageFile = await buildShareImageFile();
+        await shareCapturedImage({
+          filePath: imageFile,
+          target,
+          message: shareMessage,
+          title: getPopupShareTitle(card, target),
+        });
+      } catch (error) {
+        if (isShareCancelled(error)) return;
       } finally {
         setSharing(false);
       }
     },
-    [shareImage, shareToInstagram, shareToWhatsApp, sharing]
+    [buildShareImageFile, card, shareMessage, sharing]
   );
 
   return (
-    <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+    <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 30 }}>
       <ShareAssetTray
         topGapPx={topGapPx}
         footerReserved={footerReserved}
@@ -302,35 +252,28 @@ export default function PopupCardShareTray({
           style={{
             width: shareCanvasWidth * previewScale,
             height: shareCanvasHeight * previewScale,
+            overflow: 'hidden',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <View style={{ width: shareCanvasWidth, height: shareCanvasHeight, transform: [{ scale: previewScale }] }}>
-            <BrandedPopupShareAsset
-              card={card}
-              cardWidth={cardWidth}
-              cardHeight={cardHeight}
-              canvasWidth={shareCanvasWidth}
-              canvasHeight={shareCanvasHeight}
-            />
+            <ViewShot
+              ref={shareShotRef}
+              options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+              style={{ width: shareCanvasWidth, height: shareCanvasHeight, backgroundColor: '#EEF3F2' }}
+            >
+              <BrandedPopupShareAsset
+                card={card}
+                cardWidth={cardWidth}
+                cardHeight={cardHeight}
+                canvasWidth={shareCanvasWidth}
+                canvasHeight={shareCanvasHeight}
+              />
+            </ViewShot>
           </View>
         </View>
       </ShareAssetTray>
-
-      <ViewShot
-        ref={shareShotRef}
-        options={{ format: 'png', quality: 1, result: 'tmpfile' }}
-        style={{ position: 'absolute', left: -9999, top: 0, width: shareCanvasWidth, height: shareCanvasHeight, backgroundColor: '#F7FBFA' }}
-      >
-        <BrandedPopupShareAsset
-          card={card}
-          cardWidth={cardWidth}
-          cardHeight={cardHeight}
-          canvasWidth={shareCanvasWidth}
-          canvasHeight={shareCanvasHeight}
-        />
-      </ViewShot>
     </View>
   );
 }

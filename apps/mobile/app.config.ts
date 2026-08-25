@@ -81,7 +81,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const existingQuerySchemes = Array.isArray(existingInfoPlist.LSApplicationQueriesSchemes)
     ? (existingInfoPlist.LSApplicationQueriesSchemes as string[])
     : [];
-  const nextQuerySchemes = Array.from(new Set([...existingQuerySchemes, 'instagram', 'instagram-stories', 'whatsapp']));
+  const nextQuerySchemes = Array.from(
+    new Set([...existingQuerySchemes, 'instagram', 'instagram-stories', 'whatsapp', 'whatsapp-messenger'])
+  );
 
   return {
     ...config,
@@ -101,6 +103,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       infoPlist: {
         ...existingInfoPlist,
         LSApplicationQueriesSchemes: nextQuerySchemes,
+        NSPhotoLibraryUsageDescription:
+          'Top of the League uses your photo library so you can choose a profile picture, upload mini-league images, and share score sheets to Instagram.',
+        NSPhotoLibraryAddUsageDescription:
+          'Top of the League saves your share image to Photos so Instagram can open it.',
       },
       entitlements: {
         ...existingIosEntitlements,

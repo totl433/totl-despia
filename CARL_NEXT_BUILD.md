@@ -1,6 +1,8 @@
-# Next TestFlight (after live **2.0.25** / iOS **49**)
+# Next TestFlight (after last night’s TestFlight — **not** App Store)
 
-Bump the build. Branch: `expo-ui-carl`.
+Last night’s TestFlight is already out. This is a **second TestFlight only** — do not submit to the App Store.
+
+Bump the iOS build (50 → **51**, or whatever is next). Branch: `expo-ui-carl`.
 
 ## In this binary
 
@@ -13,6 +15,7 @@ Bump the build. Branch: `expo-ui-carl`.
 7. How To Play: monthly comps, not 5/10-week form
 8. GW round-up is **26/27** (winners, results heading, auto-open). Player of the Month only at month-end (August = after GW2)
 9. Round-up no longer freezes the app — if already stuck, kill and reopen (⌘R is not enough)
+10. **Home SCORE share** — one score-sheet card (not a stacked pile). Instagram / WhatsApp open the apps with the image. First Instagram tap asks for Photos (required). Caption: *Check out my TOTL score sheet.*
 
 ## TestFlight / App Store notes
 
@@ -22,6 +25,7 @@ Bump the build. Branch: `expo-ui-carl`.
 - Gameweek round-up uses the 2026/27 season
 - Forgot password on sign in
 - How to Play explains monthly competitions
+- Sharing a score sheet to Instagram/WhatsApp works again (Photos permission on first Instagram share)
 
 ## Not an app change (already on the server)
 
@@ -36,3 +40,4 @@ Bump the build. Branch: `expo-ui-carl`.
 - Live Overall / August move during a game
 - Mini-league Predictions = this GW; chips under H/D/A
 - Sign in → Forgot password
+- Home **SCORE** → one card in the share tray (not stacked) → Instagram / WhatsApp on a phone with those apps installed

@@ -1,15 +1,13 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Asset } from 'expo-asset';
-import * as Clipboard from 'expo-clipboard';
 import type { GwResults, HomeSnapshot, Pick, ProfileSummary } from '@totl/domain';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SvgUri } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
@@ -23,6 +21,7 @@ import PageHeader from '../components/PageHeader';
 import CenteredSpinner from '../components/CenteredSpinner';
 import ShareResultsTray from '../components/results/ShareResultsTray';
 import ShareActionsFooter, { type ShareTarget } from '../components/share/ShareActionsFooter';
+import { isShareCancelled, shareCapturedImage } from '../lib/shareToSocial';
 
 type Route = {
   key: string;
@@ -37,11 +36,6 @@ function ordinalSuffix(rank: number): string {
   if (j === 2 && k !== 12) return 'nd';
   if (j === 3 && k !== 13) return 'rd';
   return 'th';
-}
-
-function isShareCancelled(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error ?? '');
-  return /cancel|dismiss|did not share/i.test(message);
 }
 
 function ShareCaptureCard({
@@ -565,90 +559,32 @@ export default function GameweekResultsModalScreen() {
     return dest;
   }, [effectiveShareSnapshot, gw]);
 
-  const shareImageSheet = React.useCallback(
-    async (dialogTitle: string) => {
-      if (!results || typeof gw !== 'number') return;
-      const available = await Sharing.isAvailableAsync();
-      if (!available) {
-        await Share.share({ message: `TOTL — Gameweek ${gw}\n${results.score}/${results.totalFixtures}` });
-        return;
-      }
-      const dest = await buildShareImageFile();
-      if (!dest) {
-        await Share.share({ message: shareSummaryText });
-        return;
-      }
-      await Sharing.shareAsync(dest, {
-        mimeType: 'image/png',
-        UTI: 'public.png',
-        dialogTitle,
-      });
-    },
-    [buildShareImageFile, gw, results, shareSummaryText]
-  );
-
-  const handleShare = React.useCallback(async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
-    } finally {
-      setSharing(false);
-    }
-  }, [gw, shareImageSheet, sharing]);
-
-  const handleShareInstagram = React.useCallback(async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      await Clipboard.setStringAsync(shareSummaryText);
-      const imageFile = await buildShareImageFile();
-      if (imageFile) {
-        await shareImageSheet('Share to Instagram');
-        return;
-      }
-      await shareImageSheet('Share to Instagram');
-    } catch (error) {
-      if (!isShareCancelled(error)) {
-        await shareImageSheet('Share to Instagram');
-      }
-    } finally {
-      setSharing(false);
-    }
-  }, [buildShareImageFile, shareImageSheet, shareSummaryText, sharing]);
-
-  const handleShareWhatsApp = React.useCallback(async () => {
-    if (sharing) return;
-    setSharing(true);
-    try {
-      const imageFile = await buildShareImageFile();
-      if (imageFile) {
-        await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
-        return;
-      }
-      await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
-    } catch (error) {
-      if (!isShareCancelled(error)) {
-        await shareImageSheet(typeof gw === 'number' ? `Share GW${gw} results` : 'Share results');
-      }
-    } finally {
-      setSharing(false);
-    }
-  }, [buildShareImageFile, gw, shareImageSheet, shareSummaryText, sharing]);
-
   const handleShareTarget = React.useCallback(
-    (target: ShareTarget) => {
-      if (target === 'instagram') {
-        void handleShareInstagram();
-        return;
+    async (target: ShareTarget) => {
+      if (sharing) return;
+      setSharing(true);
+      try {
+        const imageFile = await buildShareImageFile();
+        await shareCapturedImage({
+          filePath: imageFile,
+          target,
+          message: shareSummaryText,
+          title:
+            target === 'instagram'
+              ? 'Share to Instagram'
+              : target === 'whatsapp'
+                ? 'Share to WhatsApp'
+                : typeof gw === 'number'
+                  ? `Share GW${gw} results`
+                  : 'Share results',
+        });
+      } catch (error) {
+        if (isShareCancelled(error)) return;
+      } finally {
+        setSharing(false);
       }
-      if (target === 'whatsapp') {
-        void handleShareWhatsApp();
-        return;
-      }
-      void handleShare();
     },
-    [handleShare, handleShareInstagram, handleShareWhatsApp]
+    [buildShareImageFile, gw, shareSummaryText, sharing]
   );
 
   const closeScreen = React.useCallback(() => {
@@ -1201,7 +1137,7 @@ export default function GameweekResultsModalScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Share results"
-                onPress={handleShare}
+                onPress={() => void handleShareTarget('more')}
                 disabled={sharing}
                 style={({ pressed }) => ({
                   flexDirection: 'row',

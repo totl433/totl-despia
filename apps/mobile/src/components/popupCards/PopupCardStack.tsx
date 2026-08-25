@@ -523,6 +523,7 @@ export default function PopupCardStack({
           style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
         />
 
+        {!shareCard ? (
         <View
           pointerEvents="box-none"
           style={{
@@ -644,8 +645,13 @@ export default function PopupCardStack({
               ) : null}
             </View>
           </View>
+        ) : null}
 
-        {shareCard ? <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} /> : null}
+        {shareCard ? (
+          <View pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 2000, elevation: 2000 }]}>
+            <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} />
+          </View>
+        ) : null}
         {confettiShot ? (
           <View
             pointerEvents="none"

@@ -22,7 +22,8 @@
         "CFBundleName": "Top of the League",
         "ITSAppUsesNonExemptEncryption": false,
         "OneSignal_suppress_launch_urls": true,
-        "NSPhotoLibraryUsageDescription": "Top of the League uses your photo library so you can choose a profile picture and upload images for mini-league badges and chat group icons.",
+        "NSPhotoLibraryUsageDescription": "Top of the League uses your photo library so you can choose a profile picture, upload mini-league images, and share score sheets to Instagram.",
+        "NSPhotoLibraryAddUsageDescription": "Top of the League saves your share image to Photos so Instagram can open it.",
         "NSLocationWhenInUseUsageDescription": "TOTL does not use your location for core features. This permission may be requested by an included library, but the app does not use your location to track you."
       }
     },
@@ -45,7 +46,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Top of the League uses your photo library so you can choose a profile picture and upload images for mini-league badges and chat group icons.",
+          "photosPermission": "Top of the League uses your photo library so you can choose a profile picture, upload mini-league images, and share score sheets to Instagram.",
           "cameraPermission": false,
           "microphonePermission": false
         }
