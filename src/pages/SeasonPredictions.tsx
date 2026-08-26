@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -50,6 +50,7 @@ export default function SeasonPredictionsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missingTable, setMissingTable] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   const deadlinePassed = isSeasonPredictionsDeadlinePassed();
   const canPlay = isSeasonPredictionsPlayer(user?.id);
@@ -159,6 +160,11 @@ export default function SeasonPredictionsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!error) return;
+    errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
 
   useEffect(() => {
     if (!submittedAt || showPicks || previewLobby) return;
@@ -305,8 +311,11 @@ export default function SeasonPredictionsPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl p-4 text-sm text-rose-700 dark:text-rose-200">
+      {error && (showPicks || showLobby) && (
+        <div
+          ref={errorRef}
+          className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl p-4 text-sm text-rose-700 dark:text-rose-200"
+        >
           {error}
         </div>
       )}
@@ -321,6 +330,15 @@ export default function SeasonPredictionsPage() {
       {!showPicks && !showLobby && (
         <>
           <SeasonPredictionsForm picks={picks} locked={locked} onChange={setPicks} />
+
+          {error && (
+            <div
+              ref={errorRef}
+              className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl p-4 text-sm text-rose-700 dark:text-rose-200"
+            >
+              {error}
+            </div>
+          )}
 
           {!locked && (
             <div className="flex flex-col sm:flex-row gap-3">
