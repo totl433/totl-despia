@@ -219,8 +219,16 @@ export function isSeasonPredictionsDeadlinePassed(now: Date = new Date()): boole
   return now.getTime() >= SEASON_PREDICTIONS_DEADLINE.getTime();
 }
 
+export function formatSeasonPredictionsDeadlineDate(): string {
+  return 'Tuesday 1 September 2026';
+}
+
+export function formatSeasonPredictionsDeadlineTime(): string {
+  return '10pm UK';
+}
+
 export function formatSeasonPredictionsDeadline(): string {
-  return '10pm UK, 1 September 2026';
+  return `${formatSeasonPredictionsDeadlineDate()}, ${formatSeasonPredictionsDeadlineTime()}`;
 }
 
 export function normalizePlayerName(value: string | null | undefined): string {

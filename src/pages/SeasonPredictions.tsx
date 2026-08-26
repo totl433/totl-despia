@@ -8,10 +8,10 @@ import { PageHeader } from '../components/PageHeader';
 import SeasonPredictionsForm from '../components/seasonPredictions/SeasonPredictionsForm';
 import SeasonPredictionsBoard from '../components/seasonPredictions/SeasonPredictionsBoard';
 import SeasonPredictionsLobby from '../components/seasonPredictions/SeasonPredictionsLobby';
+import SeasonPredictionsDeadline from '../components/seasonPredictions/SeasonPredictionsDeadline';
 import {
   allPlayersSubmitted,
   emptySeasonPredictionPicks,
-  formatSeasonPredictionsDeadline,
   isSeasonPredictionsDeadlinePassed,
   isSeasonPredictionsPlayer,
   isSeasonPredictionsResultsEditor,
@@ -288,15 +288,17 @@ export default function SeasonPredictionsPage() {
 
   return (
     <Shell>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
-        {showPicks
-          ? boardResults
+      {showPicks ? (
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {boardResults
             ? 'Official results are in. Points are on each pick.'
-            : 'Everyone’s submitted picks. Scores arrive at the end of the season, once official results are entered.'
-          : showLobby
-            ? `Your picks are locked. Deadline ${formatSeasonPredictionsDeadline()}.`
-            : `Deadline ${formatSeasonPredictionsDeadline()}. Save a draft as you go, then Submit once — that locks it. Picks stay hidden until everyone has submitted.`}
-      </p>
+            : 'Everyone’s submitted picks. Scores arrive at the end of the season, once official results are entered.'}
+        </p>
+      ) : (
+        <SeasonPredictionsDeadline
+          variant={deadlinePassed ? 'passed' : submittedAt ? 'locked' : 'open'}
+        />
+      )}
 
       {previewLobby && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-200">
@@ -314,7 +316,7 @@ export default function SeasonPredictionsPage() {
 
       {deadlinePassed && !previewReveal && !previewLobby && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-200">
-          Deadline has passed. {hasResultsRow && picksHaveResults(results)
+          {hasResultsRow && picksHaveResults(results)
             ? 'Scores are using the official results.'
             : 'Official results have not been entered yet.'}
         </div>
