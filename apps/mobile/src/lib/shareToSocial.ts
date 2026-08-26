@@ -1,18 +1,11 @@
-import { Linking, Platform, Share } from 'react-native';
+import { Platform, Share } from 'react-native';
+import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Sharing from 'expo-sharing';
 import RNShare, { Social } from 'react-native-share';
 
-type MediaLibraryModule = typeof import('expo-media-library');
-
-async function loadMediaLibrary(): Promise<MediaLibraryModule | null> {
-  try {
-    return await import('expo-media-library');
-  } catch {
-    return null;
-  }
-}
+import { canOpenInApp, openInInstagram, openInWhatsApp } from 'totl-social-share';
 
 export type SocialShareTarget = 'instagram' | 'whatsapp' | 'more';
 
@@ -41,20 +34,23 @@ async function toJpegFile(filePath: string): Promise<string> {
   return result.uri;
 }
 
-async function shareViaSystemSheet(
-  fileUrl: string,
-  message: string,
-  title: string,
-  options?: { dataUrl?: string; mimeType?: 'image/png' | 'image/jpeg'; filename?: string }
-): Promise<void> {
-  const mimeType = options?.mimeType ?? 'image/png';
-  const filename = options?.filename ?? (mimeType === 'image/jpeg' ? 'totl-share.jpg' : 'totl-share.png');
+async function ensureImageFileUrl(filePath: string, extension: 'png' | 'jpg'): Promise<string> {
+  const fileUrl = toFileUrl(filePath);
+  if (/\.(png|jpe?g|gif)$/i.test(fileUrl)) return fileUrl;
 
+  const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!baseDir) return fileUrl;
+  const dest = `${baseDir}totl-share-${Date.now()}.${extension}`;
+  await FileSystem.copyAsync({ from: fileUrl, to: dest });
+  return toFileUrl(dest);
+}
+
+async function shareViaSystemSheet(fileUrl: string, message: string, title: string): Promise<void> {
   try {
     await RNShare.open({
-      url: options?.dataUrl ?? fileUrl,
-      type: mimeType,
-      filename,
+      url: fileUrl,
+      type: 'image/png',
+      filename: 'totl-share.png',
       message,
       title,
       failOnCancel: false,
@@ -68,8 +64,8 @@ async function shareViaSystemSheet(
     const available = await Sharing.isAvailableAsync();
     if (available) {
       await Sharing.shareAsync(fileUrl, {
-        mimeType,
-        UTI: mimeType === 'image/jpeg' ? 'public.jpeg' : 'public.png',
+        mimeType: 'image/png',
+        UTI: 'public.png',
         dialogTitle: title,
       });
       return;
@@ -82,35 +78,43 @@ async function shareViaSystemSheet(
 }
 
 /**
- * Instagram's iOS share picker (Story / Feed / Messages) loads a Photos asset
- * by local identifier. react-native-share passes an unencoded placeholder id,
- * which Instagram opens then fails with "Something went wrong."
+ * Prefer Instagram's share extension (Reel / Post / Story / Message), which is
+ * the same flow as More → Instagram. Fall back to Stories pasteboard.
  */
-async function shareToInstagramIos(filePath: string, message: string, title: string): Promise<void> {
+async function shareToInstagramIos(filePath: string): Promise<void> {
   const jpegUri = await toJpegFile(filePath);
   const jpegUrl = toFileUrl(jpegUri);
-  const jpegDataUrl = await fileToDataUrl(jpegUri, 'image/jpeg');
 
-  const MediaLibrary = await loadMediaLibrary();
-  const permission = MediaLibrary ? await MediaLibrary.requestPermissionsAsync(true) : { granted: false };
-  if (MediaLibrary && permission.granted) {
+  if (canOpenInApp()) {
     try {
-      const asset = await MediaLibrary.createAssetAsync(jpegUri);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      const canOpen = await Linking.canOpenURL('instagram://app');
-      if (canOpen && asset.id) {
-        await Linking.openURL(`instagram://library?LocalIdentifier=${encodeURIComponent(asset.id)}`);
-        return;
-      }
+      const opened = await openInInstagram(jpegUrl);
+      if (opened) return;
     } catch (error) {
-      if (isShareCancelled(error)) return;
+      console.warn('[shareToSocial] Instagram share extension failed, falling back to Stories', error);
     }
   }
 
-  await shareViaSystemSheet(jpegUrl, message, title, {
-    dataUrl: jpegDataUrl,
-    mimeType: 'image/jpeg',
-    filename: 'totl-share.jpg',
+  await RNShare.shareSingle({
+    social: Social.InstagramStories,
+    backgroundImage: jpegUrl,
+    appId: Application.applicationId ?? 'com.jmiddleton.totldev',
+  });
+}
+
+async function shareToWhatsapp(filePath: string, message: string): Promise<void> {
+  if (Platform.OS === 'ios' && canOpenInApp()) {
+    const jpegUri = await toJpegFile(filePath);
+    const opened = await openInWhatsApp(toFileUrl(jpegUri));
+    if (opened) return;
+  }
+
+  const fileUrl = await ensureImageFileUrl(filePath, 'png');
+  await RNShare.shareSingle({
+    social: Social.Whatsapp,
+    url: fileUrl,
+    type: 'image/png',
+    filename: 'totl-share.png',
+    message: message.trim() ? message : ' ',
   });
 }
 
@@ -137,37 +141,19 @@ export async function shareCapturedImage({
 
   if (target === 'instagram') {
     if (Platform.OS === 'ios') {
-      await shareToInstagramIos(filePath, message, title);
+      await shareToInstagramIos(filePath);
       return;
     }
-
-    try {
-      await RNShare.shareSingle({
-        social: Social.Instagram,
-        url: await fileToDataUrl(fileUrl, 'image/png'),
-        type: 'image/png',
-      });
-      return;
-    } catch (error) {
-      if (isShareCancelled(error)) return;
-    }
-    await shareViaSystemSheet(fileUrl, message, title);
+    await RNShare.shareSingle({
+      social: Social.Instagram,
+      url: await fileToDataUrl(fileUrl, 'image/jpeg'),
+      type: 'image/jpeg',
+    });
     return;
   }
 
   if (target === 'whatsapp') {
-    try {
-      await RNShare.shareSingle({
-        social: Social.Whatsapp,
-        url: await fileToDataUrl(fileUrl, 'image/png'),
-        type: 'image/png',
-        message,
-      });
-      return;
-    } catch (error) {
-      if (isShareCancelled(error)) return;
-    }
-    await shareViaSystemSheet(fileUrl, message, title);
+    await shareToWhatsapp(filePath, message);
     return;
   }
 

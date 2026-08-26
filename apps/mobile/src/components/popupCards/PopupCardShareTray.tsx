@@ -231,6 +231,7 @@ export default function PopupCardShareTray({
         });
       } catch (error) {
         if (isShareCancelled(error)) return;
+        console.error('[PopupCardShareTray] Share failed', target, error);
       } finally {
         setSharing(false);
       }

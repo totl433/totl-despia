@@ -580,6 +580,7 @@ export default function GameweekResultsModalScreen() {
         });
       } catch (error) {
         if (isShareCancelled(error)) return;
+        console.error('[GameweekResultsModalScreen] Share failed', target, error);
       } finally {
         setSharing(false);
       }

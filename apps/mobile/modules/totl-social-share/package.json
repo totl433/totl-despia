@@ -1,0 +1,15 @@
+{
+  "name": "totl-social-share",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "description": "Open Instagram or WhatsApp with a local image file.",
+  "license": "UNLICENSED",
+  "author": "TOTL",
+  "homepage": "https://playtotl.com",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
