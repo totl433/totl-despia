@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isWebBrowser } from '../lib/platform';
+import { isSeasonPredictionsPlayer, isSeasonPredictionsResultsEditor } from '../lib/seasonPredictions';
 
 export default function AdminDataPage() {
   const { user } = useAuth();
   const isAdmin =
     user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' ||
     user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
+  const canOpenSeasonPredictions = isSeasonPredictionsPlayer(user?.id) && isWebBrowser();
+  const canOpenSeasonPredictionsResults = isSeasonPredictionsResultsEditor(user?.id) && isWebBrowser();
 
   if (!user) {
     return (
@@ -18,7 +22,7 @@ export default function AdminDataPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !canOpenSeasonPredictions) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
         <div className="text-center">
@@ -44,12 +48,32 @@ export default function AdminDataPage() {
           <p className="text-sm text-slate-500 mb-6">
             We can add tools back here if we need them.
           </p>
-          <Link
-            to="/api-admin"
-            className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
-          >
-            Create New Gameweek
-          </Link>
+          <div className="space-y-3">
+            {isAdmin && (
+              <Link
+                to="/api-admin"
+                className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
+              >
+                Create New Gameweek
+              </Link>
+            )}
+            {canOpenSeasonPredictions && (
+              <Link
+                to="/season-predictions"
+                className="block w-full py-3 bg-white border-2 border-[#1C8376] text-[#1C8376] font-semibold rounded-xl text-center"
+              >
+                Season Predictions
+              </Link>
+            )}
+            {canOpenSeasonPredictionsResults && (
+              <Link
+                to="/season-predictions/results"
+                className="block w-full py-3 bg-white border border-slate-300 text-slate-700 font-semibold rounded-xl text-center"
+              >
+                Season Predictions results
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -318,6 +318,8 @@ const TermsAndConditionsPage = lazy(() => import("./pages/TermsAndConditions"));
 const HomeExperimental = lazy(() => import("./pages/HomeExperimental"));
 const SupportPage = lazy(() => import("./pages/Support"));
 const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
+const SeasonPredictionsPage = lazy(() => import("./pages/SeasonPredictions"));
+const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPredictionsResults"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -958,6 +960,8 @@ function AppContent() {
                 <Route path="/delete-data" element={<DeleteDataPage />} />
                 <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
                 <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
+                <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
+                <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />
                 <Route path="/admin/leaderboards/new" element={<RequireAuth><RequireAdmin><AdminLeaderboardForm /></RequireAdmin></RequireAuth>} />
                 <Route path="/admin/leaderboards/:id" element={<RequireAuth><RequireAdmin><AdminLeaderboardDetail /></RequireAdmin></RequireAuth>} />

@@ -10,6 +10,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import { isWebBrowser } from '../lib/platform';
 import { ensureActiveSeasonCtx } from '../lib/activeSeasonCtx';
 import { getSeasonTables, withSeasonId } from '../lib/seasonStack';
+import { isSeasonPredictionsPlayer } from '../lib/seasonPredictions';
 
 interface UserStats {
   ocp: number;
@@ -31,6 +32,7 @@ export default function Profile() {
   
   // Admin check
   const isAdmin = user?.id === '4542c037-5b38-40d0-b189-847b8f17c222' || user?.id === '36f31625-6d6c-4aa4-815a-1493a812841b';
+  const showSeasonPredictions = isSeasonPredictionsPlayer(user?.id) && isWebBrowser();
 
   useEffect(() => {
     fetchUserStats();
@@ -251,14 +253,24 @@ export default function Profile() {
         />
 
         {/* Admin Link - Separate section */}
-          {isAdmin && (
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6">
+          {(isAdmin || showSeasonPredictions) && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-md p-6 mt-6 space-y-3">
+                {isAdmin && (
                 <Link
               to="/admin-data"
                   className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
                 >
               Admin Data
                 </Link>
+                )}
+                {showSeasonPredictions && (
+                <Link
+              to="/season-predictions"
+                  className="block w-full py-3 bg-white dark:bg-slate-800 border-2 border-[#1C8376] text-[#1C8376] font-semibold rounded-xl text-center"
+                >
+              Season Predictions
+                </Link>
+                )}
             </div>
           )}
 
