@@ -18,6 +18,8 @@ export type SeasonCtx = {
   currentGw: number;
   /** Preferencing viewing GW when set */
   viewingGw: number | null;
+  /** False until this season folder has at least one completed result. */
+  hasCompletedResults?: boolean | null;
 };
 
 export type SeasonTables = {
@@ -66,6 +68,25 @@ export function shouldDefaultNewUserToSeasonStack(
   return Number.isFinite(createdAtMs) && createdAtMs >= NEW_USER_SEASON_STACK_CUTOFF_MS;
 }
 
+/**
+ * Prefer the public profile timestamp, then the auth user timestamp.
+ * Expo signups can exist in auth.users without a public.users row.
+ */
+async function resolveAccountCreatedAt(
+  supa: SupabaseClient,
+  userId: string,
+  profileCreatedAt: string | null | undefined
+): Promise<string | null> {
+  if (typeof profileCreatedAt === 'string' && profileCreatedAt.trim()) {
+    return profileCreatedAt;
+  }
+  const { data } = await supa.auth.getUser();
+  if (data.user?.id === userId && data.user.created_at) {
+    return data.user.created_at;
+  }
+  return null;
+}
+
 export function getSeasonTables(ctx: Pick<SeasonCtx, 'useSeasonStack'>): SeasonTables {
   return ctx.useSeasonStack ? SEASON_TABLES : LEGACY_TABLES;
 }
@@ -100,7 +121,8 @@ export async function resolveSeasonCtx(
       .maybeSingle();
     if (profileErr) throw profileErr;
 
-    if (shouldDefaultNewUserToSeasonStack(profile?.created_at, false)) {
+    const createdAt = await resolveAccountCreatedAt(supa, userId, profile?.created_at);
+    if (shouldDefaultNewUserToSeasonStack(createdAt, false)) {
       const { data: runtimeData, error: runtimeErr } = await (supa as any)
         .from('app_season_runtime')
         .select('current_season_id, current_gw')
@@ -149,6 +171,7 @@ export async function resolveSeasonCtx(
       seasonLabel: null,
       currentGw,
       viewingGw: viewingGwPref,
+      hasCompletedResults: null,
     };
   }
 
@@ -193,12 +216,24 @@ export async function resolveSeasonCtx(
     currentGw = viewingGwPref ?? 1;
   }
 
+  let hasCompletedResults = false;
+  if (seasonId) {
+    const { data: anyResult } = await (supa as any)
+      .from('app_season_results')
+      .select('gw')
+      .eq('season_id', seasonId)
+      .limit(1)
+      .maybeSingle();
+    hasCompletedResults = !!anyResult;
+  }
+
   return {
     useSeasonStack: true,
     seasonId,
     seasonLabel,
     currentGw,
     viewingGw: viewingGwPref,
+    hasCompletedResults,
   };
 }
 
@@ -209,11 +244,17 @@ export function seasonDisplayGw(ctx: SeasonCtx, queryGw?: number | null): number
   return ctx.currentGw;
 }
 
-/** True for fresh 2026/27 (or later) season folder — leaderboards start empty until results. */
-export function isNewSeasonFresh(ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonLabel'> | null | undefined): boolean {
+/**
+ * True when the active season folder has no completed results yet.
+ * Not a permanent "it's 2026" flag — once GW1 lands, leaderboards unfreeze.
+ */
+export function isNewSeasonFresh(
+  ctx: Pick<SeasonCtx, 'useSeasonStack' | 'seasonId' | 'hasCompletedResults'> | null | undefined
+): boolean {
   if (!ctx?.useSeasonStack) return false;
-  const label = (ctx.seasonLabel ?? '').trim();
-  return label === '2026/27' || label.startsWith('2026');
+  if (!ctx.seasonId) return true;
+  if (typeof ctx.hasCompletedResults === 'boolean') return !ctx.hasCompletedResults;
+  return false;
 }
 
 /** Attach .eq('season_id', ...) when on stack and we have an id */

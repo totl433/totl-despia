@@ -327,6 +327,7 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
       seasonLabel: seasonCtx.seasonLabel,
       currentGw: seasonCtx.currentGw,
       viewingGw: seasonCtx.viewingGw,
+      hasCompletedResults: seasonCtx.hasCompletedResults ?? null,
     },
     CACHE_TTL.HOME
   );
@@ -746,7 +747,10 @@ export async function loadInitialData(userId: string): Promise<InitialData> {
         // Calculate league start GWs (used to bound picks fetch)
         const leagueStartGws = new Map<string, number>();
         const leagueStartGwPromises = leagues.map(async (league) => {
-          const leagueStartGw = await resolveLeagueStartGw(league, currentGw);
+          const leagueStartGw = await resolveLeagueStartGw(league, currentGw, {
+            useSeasonStack: !!seasonCtx.useSeasonStack,
+            seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+          });
           return { leagueId: league.id, leagueStartGw };
         });
         const leagueStartGwResults = await Promise.all(leagueStartGwPromises);

@@ -15,6 +15,7 @@ const defaultCtx = (): SeasonCtx => ({
   seasonLabel: null,
   currentGw: 1,
   viewingGw: null,
+  hasCompletedResults: null,
 });
 
 /**

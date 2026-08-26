@@ -66,7 +66,7 @@ async function resolveLeagueSeason(userId: string | undefined): Promise<{
 
 function mltCacheKey(leagueId: string, seasonCtx: SeasonCtx | null | undefined): string {
   if (seasonCtx?.useSeasonStack) {
-    return `league:mltRows:v2:${seasonCtx.seasonId ?? 'stack'}:${leagueId}`;
+    return `league:mltRows:v3:${seasonCtx.seasonId ?? 'stack'}:${leagueId}`;
   }
   return `league:mltRows:${leagueId}`;
 }
@@ -459,7 +459,8 @@ ${shareUrl}`;
         // Calculate league start GW
         const leagueStartGw = await getLeagueStartGw(
           { id: league.id, name: league.name, created_at: league.created_at },
-          currentGw
+          currentGw,
+          { useSeasonStack: seasonStack.useSeasonStack, seasonId: seasonStack.seasonId }
         );
 
         // Check if league has been running for 4+ gameweeks
@@ -525,7 +526,7 @@ ${shareUrl}`;
     } finally {
       setJoining(false);
     }
-  }, [league?.id, league?.name, league?.created_at, user?.id, members.length, hookCurrentGw]);
+  }, [league?.id, league?.name, league?.created_at, user?.id, members.length, hookCurrentGw, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   const removeMember = useCallback(async () => {
     if (!memberToRemove || !league?.id || !user?.id) return;
@@ -1175,12 +1176,21 @@ ${shareUrl}`;
       // Season-stack testers: never hydrate 25/26 season points from unscoped cache
       const seasonSnap =
         (user?.id
-          ? getCached<{ useSeasonStack?: boolean; seasonId?: string | null; seasonLabel?: string | null }>(
-              `season:ctx:${user.id}`
-            )
+          ? getCached<{
+              useSeasonStack?: boolean;
+              seasonId?: string | null;
+              seasonLabel?: string | null;
+              hasCompletedResults?: boolean | null;
+            }>(`season:ctx:${user.id}`)
           : null) ?? null;
       if (seasonSnap?.useSeasonStack) {
-        if (isNewSeasonFresh({ useSeasonStack: true, seasonLabel: seasonSnap.seasonLabel ?? null })) {
+        if (
+          isNewSeasonFresh({
+            useSeasonStack: true,
+            seasonId: seasonSnap.seasonId ?? null,
+            hasCompletedResults: seasonSnap.hasCompletedResults ?? null,
+          })
+        ) {
           return [];
         }
         // Only accept season-scoped key below
@@ -1251,7 +1261,8 @@ ${shareUrl}`;
     const cacheKey = mltCacheKey(league.id, seasonCtxSnap);
     const cached = getCached<MltRow[]>(cacheKey);
     const filteredCached = cached ? filterHiddenLeaderboardRows(cached) : [];
-    if (filteredCached.length > 0 && mltRows.length === 0) {
+    const cachedHasScores = filteredCached.some((row) => row.mltPts > 0 || row.wins > 0 || row.ocp > 0);
+    if (filteredCached.length > 0 && mltRows.length === 0 && (cachedHasScores || !seasonStack.useSeasonStack)) {
       setMltRows(filteredCached);
     }
   }, [league?.id, seasonStack.useSeasonStack, seasonStack.seasonId, seasonStack.isNewSeasonFresh, mltRows.length]);
@@ -1711,7 +1722,7 @@ ${shareUrl}`;
       const { ctx, tables, fresh } = await resolveLeagueSeason(user?.id);
       if (!alive) return;
 
-      // Fresh 2026/27: zero season table — never sum app_gw_results from 25/26
+      // Fresh season folder with no results yet: zero table — never sum 25/26
       if (fresh) {
         const empty = createEmptyMltRows(members);
         setMltRows(empty);
@@ -1737,7 +1748,10 @@ ${shareUrl}`;
 
       if (!shouldRecalculate && cacheKey) {
         const cached = getCached<MltRow[]>(cacheKey);
-        if (cached && cached.length > 0) {
+        const cachedHasScores =
+          !!cached && cached.some((row) => row.mltPts > 0 || row.wins > 0 || row.ocp > 0);
+        // All-zero season-stack cache is leftover from pre-GW1 freeze — recompute.
+        if (cached && cached.length > 0 && (cachedHasScores || !ctx.useSeasonStack)) {
           setMltRows(filterHiddenLeaderboardRows(cached));
           return;
         }
@@ -1970,7 +1984,8 @@ ${shareUrl}`;
       // Check if league has been running for more than 4 gameweeks
       const leagueStartGw = await getLeagueStartGw(
         { id: league.id, name: league.name, created_at: league.created_at },
-        hookCurrentGw
+        hookCurrentGw,
+        { useSeasonStack: seasonStack.useSeasonStack, seasonId: seasonStack.seasonId }
       );
 
       // Check if league has been running for 4+ gameweeks
@@ -1987,7 +2002,7 @@ ${shareUrl}`;
       console.error('[League] Error checking league lock status:', error);
       setShowInvite(true);
     }
-  }, [league, hookCurrentGw]);
+  }, [league, hookCurrentGw, seasonStack.useSeasonStack, seasonStack.seasonId]);
 
   function InviteMessage() {
     return (
@@ -2440,7 +2455,10 @@ ${shareUrl}`;
     }
 
     // Check if this specific GW should be shown for this league
-    if (!shouldIncludeGwForLeague(league, picksGw, gwDeadlines)) {
+    if (!shouldIncludeGwForLeague(league, picksGw, gwDeadlines, {
+      useSeasonStack: seasonStack.useSeasonStack,
+      seasonId: seasonStack.seasonId,
+    })) {
       return (
         <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">
           <div className="text-center">
@@ -2782,7 +2800,10 @@ ${shareUrl}`;
     }
 
     // Check if this specific GW should be shown for this league
-    if (!shouldIncludeGwForLeague(league, resGw, gwDeadlines)) {
+    if (!shouldIncludeGwForLeague(league, resGw, gwDeadlines, {
+      useSeasonStack: seasonStack.useSeasonStack,
+      seasonId: seasonStack.seasonId,
+    })) {
       return (
         <div className="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-4 text-slate-600 dark:text-slate-400">
           <div className="text-center">
@@ -3871,7 +3892,7 @@ Lose – 0 points
 
 🤝 Ties
 
-If two or more players are tied on Points in the table, the player with the most overall Unicorns in the mini league is ranked higher.${league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
+If two or more players are tied on Points in the table, the player with the most overall Unicorns in the mini league is ranked higher.${!seasonStack.useSeasonStack && league && (['The Bird league'].includes(league.name) || ['gregVjofVcarl', 'Let Down'].includes(league.name)) ? '\n\nNote: This mini league started after GW1, so the "CP" column shows correct predictions since this mini league began.' : ''}`}
       />
 
       {/* Share League Code Tray */}
