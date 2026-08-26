@@ -1,6 +1,6 @@
 # Next TestFlight (after the share-card TestFlight — **not** App Store)
 
-Another TestFlight only. Last build opened Instagram but the photo didn’t attach.
+Another TestFlight only. Includes Instagram share (photo actually attaches) and Mini league Season tables for 2-player leagues after results.
 
 Bump the iOS build (51 → **52**, or whatever is next). Branch: `expo-ui-carl`.
 
@@ -16,6 +16,7 @@ Bump the iOS build (51 → **52**, or whatever is next). Branch: `expo-ui-carl`.
 8. GW round-up is **26/27** (winners, results heading, auto-open). Player of the Month only at month-end (August = after GW2)
 9. Round-up no longer freezes the app — if already stuck, kill and reopen (⌘R is not enough)
 10. **Home SCORE share** — one score-sheet card (not a stacked pile). Instagram / WhatsApp open the apps with the image. First Instagram tap asks for Photos (required). Caption: *Check out my TOTL score sheet.*
+11. After results, Mini leagues cards use the **Season table** (2-player leagues included). Unicorns still only show with 3+ players. Live gameweeks stay on the GW table.
 
 ## TestFlight / App Store notes
 
@@ -41,3 +42,4 @@ Bump the iOS build (51 → **52**, or whatever is next). Branch: `expo-ui-carl`.
 - Mini-league Predictions = this GW; chips under H/D/A
 - Sign in → Forgot password
 - Home **SCORE** → one card in the share tray (not stacked) → Instagram / WhatsApp on a phone with those apps installed
+- Mini leagues after GW1: 2-player cards show Season points (not GW scores)

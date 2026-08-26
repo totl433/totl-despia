@@ -967,7 +967,7 @@ export default function LeaguesScreen() {
                             lineHeight: 22,
                           }}
                         >
-                          Gameweek {viewingGw} {gwState === 'LIVE' ? 'Live ' : ''}Tables
+                          {gwState === 'LIVE' ? `Gameweek ${viewingGw} Live Tables` : 'Season Tables'}
                         </TotlText>
                         <View
                           style={{
@@ -1049,6 +1049,7 @@ export default function LeaguesScreen() {
                               compact={!isExpanded}
                               currentUserId={meId}
                               liveMode={gwState === 'LIVE'}
+                              tableKind={gwState === 'LIVE' ? 'gw' : 'season'}
                               onPress={() =>
                                 navigation.navigate(
                                   'LeagueDetail',

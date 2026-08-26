@@ -637,6 +637,7 @@ export default function HomeScreen() {
           liveLeagueList={liveLeagueList}
           showMiniLeaguesLiveCards={showMiniLeaguesLiveCards}
           viewingGw={viewingGw}
+          tableKind={gwState === 'LIVE' ? 'gw' : 'season'}
           onNavigateLeagues={() => navigation.navigate('Leagues')}
           onNavigateLeagueDetail={(leagueId, name) => navigation.navigate('LeagueDetail', { leagueId, name })}
         />

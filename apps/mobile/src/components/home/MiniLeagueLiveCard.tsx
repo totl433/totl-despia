@@ -1,23 +1,34 @@
 import React from 'react';
 import { Pressable } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { computeWebParityMiniLeagueSeasonRows } from '@totl/domain';
 
 import MiniLeagueCard, { type MiniLeagueTableRowWithAvatar } from '../MiniLeagueCard';
 import { api } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { DEV_FAKE_LEAGUE_MEMBERS, isDevFakeLeagueId } from '../../lib/devFakeLeague';
 import { getLeagueActivationAt, resolveLeagueStartGw } from '../../lib/leagueStart';
+import { resolveLeaguePileTables } from '../../lib/leagueSeasonPile';
 import { useViewerSeason } from '../../lib/useViewerSeason';
 
 type LeagueTableResponse = Awaited<ReturnType<typeof api.getLeagueGwTable>>;
 type LeagueMembersResponse = Awaited<ReturnType<typeof api.getLeague>>;
+type SeasonTableRow = {
+  user_id: string;
+  name: string;
+  mltPts: number;
+  ocp: number;
+  unicorns: number;
+};
+
+export type MiniLeagueCardTableKind = 'gw' | 'season';
 
 /**
- * Home mini-leagues LIVE mode card.
+ * Mini-league table card for Home / Mini leagues.
  *
- * Uses the existing designed `MiniLeagueCard` UI and backs it with the BFF
- * active-live table (`/v1/leagues/:leagueId/gw/:gw/table`).
- * Shows all members; unsubmitted ones are greyed out.
+ * `gw`: live or in-play gameweek scores (unsubmitted rows greyed out).
+ * `season`: mini-league table points after results (same scoring as the Season tab).
  */
 export default function MiniLeagueLiveCard({
   leagueId,
@@ -30,6 +41,7 @@ export default function MiniLeagueLiveCard({
   compact = false,
   currentUserId = null,
   liveMode = false,
+  tableKind = 'gw',
 }: {
   leagueId: string;
   leagueName: string;
@@ -41,9 +53,11 @@ export default function MiniLeagueLiveCard({
   compact?: boolean;
   currentUserId?: string | null;
   liveMode?: boolean;
+  tableKind?: MiniLeagueCardTableKind;
 }) {
   const isDevFakeLeague = isDevFakeLeagueId(leagueId);
-  const { useSeasonStack, seasonId } = useViewerSeason();
+  const showSeasonTable = tableKind === 'season';
+  const { useSeasonStack, seasonId, isNewSeasonFresh } = useViewerSeason();
   const { data: leagueData } = useQuery<LeagueMembersResponse>({
     enabled: enabled && typeof gw === 'number' && !isDevFakeLeague,
     queryKey: ['leagueMembers', leagueId],
@@ -81,8 +95,12 @@ export default function MiniLeagueLiveCard({
     staleTime: 5 * 60_000,
   });
   const leagueStartsInFuture = typeof resolvedLeagueStartGw === 'number' && resolvedLeagueStartGw > gw;
-  const { data: tableData, isLoading, isError } = useQuery<LeagueTableResponse>({
+  const seasonStartGwResolved = typeof resolvedLeagueStartGw === 'number';
+  const browsingLiveNewSeason = isNewSeasonFresh && showSeasonTable;
+
+  const { data: tableData, isLoading: gwLoading, isError: gwError } = useQuery<LeagueTableResponse>({
     enabled:
+      !showSeasonTable &&
       enabled &&
       typeof gw === 'number' &&
       !isDevFakeLeague &&
@@ -95,15 +113,98 @@ export default function MiniLeagueLiveCard({
     refetchInterval: liveMode ? 10_000 : false,
     refetchIntervalInBackground: liveMode,
   });
+
+  const { data: seasonRows, isLoading: seasonLoading, isError: seasonError } = useQuery<SeasonTableRow[]>({
+    enabled:
+      showSeasonTable &&
+      enabled &&
+      !isDevFakeLeague &&
+      !isDormantLeague &&
+      members.length >= 2 &&
+      seasonStartGwResolved,
+    queryKey: [
+      'leagueSeasonTable',
+      'v29',
+      leagueId,
+      resolvedLeagueStartGw,
+      browsingLiveNewSeason,
+      useSeasonStack ? 'pileB' : 'pileA',
+      seasonId ?? '',
+    ],
+    queryFn: async () => {
+      if (browsingLiveNewSeason) {
+        return members
+          .filter((m: { id?: string }) => m?.id)
+          .map((m: { id?: string; name?: string }) => ({
+            user_id: String(m.id),
+            name: String(m.name ?? 'User'),
+            mltPts: 0,
+            ocp: 0,
+            unicorns: 0,
+          }));
+      }
+      const pile = resolveLeaguePileTables({
+        useSeasonStack,
+        seasonId,
+        viewingArchive2025_26: false,
+      });
+      const preload = {
+        members: members
+          .filter((m: { id?: string }) => m?.id)
+          .map((m: { id?: string; name?: string; created_at?: string | null }) => ({
+            id: String(m.id),
+            name: String(m.name ?? 'User'),
+            created_at: typeof m.created_at === 'string' ? m.created_at : null,
+          })),
+        league: leagueMeta
+          ? {
+              id: leagueId,
+              name: leagueMeta.name ?? null,
+              created_at: typeof leagueMeta.created_at === 'string' ? leagueMeta.created_at : null,
+            }
+          : null,
+      };
+      try {
+        const rows = (await computeWebParityMiniLeagueSeasonRows(supabase as any, leagueId, preload, {
+          leagueStartGw: resolvedLeagueStartGw as number,
+          currentGw: gw,
+          seasonId: pile.seasonIdFilter,
+          tables: {
+            fixtures: pile.tables.fixtures,
+            picks: pile.tables.picks,
+            results: pile.tables.results,
+          },
+        })) as SeasonTableRow[];
+        if (rows.length > 0) return rows;
+      } catch {
+        // Fall through to BFF.
+      }
+      try {
+        const res = await api.getLeagueSeasonTable(leagueId);
+        if (Array.isArray(res.rows) && res.rows.length > 0) {
+          return res.rows as SeasonTableRow[];
+        }
+      } catch {
+        // ignore
+      }
+      return [];
+    },
+    staleTime: 30_000,
+  });
+
   const table = tableData;
+  const isLoading = showSeasonTable ? seasonLoading : gwLoading;
+  const isError = showSeasonTable ? seasonError : gwError;
   const submittedUserIds = React.useMemo(
     () =>
       isDevFakeLeague
         ? DEV_FAKE_LEAGUE_MEMBERS.map((m) => String(m.id))
-        : Array.isArray((table as any)?.submittedUserIds)
-          ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
-          : [],
-    [table, isDevFakeLeague]
+        : showSeasonTable
+          ? []
+          : Array.isArray((table as any)?.submittedUserIds)
+            ? ((table as any).submittedUserIds as unknown[]).map((x) => String(x))
+            : [],
+    [table, isDevFakeLeague, showSeasonTable]
   );
 
   const rows: MiniLeagueTableRowWithAvatar[] = React.useMemo(() => {
@@ -111,11 +212,29 @@ export default function MiniLeagueLiveCard({
       return DEV_FAKE_LEAGUE_MEMBERS.map((m, i) => ({
         user_id: String(m.id),
         name: m.name,
-        score: 8 - i,
+        score: showSeasonTable ? Math.max(0, 9 - i * 3) : 8 - i,
         unicorns: i === 0 ? 1 : 0,
         avatar_url: m.avatar_url,
       }));
     }
+
+    const avatarByUserId = new Map(
+      members.map((m: { id?: string; avatar_url?: string | null }) => [
+        String(m.id ?? ''),
+        typeof m.avatar_url === 'string' && m.avatar_url.startsWith('http') ? m.avatar_url : null,
+      ])
+    );
+
+    if (showSeasonTable) {
+      return (seasonRows ?? []).map((r) => ({
+        user_id: String(r.user_id),
+        name: String(r.name ?? 'User'),
+        score: Number(r.mltPts ?? 0),
+        unicorns: Number(r.unicorns ?? 0),
+        avatar_url: avatarByUserId.get(String(r.user_id)) ?? null,
+      }));
+    }
+
     const tbl = table as { rows?: Array<{ user_id: string; name?: string; score?: number; unicorns?: number; avatar_url?: string | null }> } | null | undefined;
     if (!tbl?.rows || !members.length) {
       return (tbl?.rows ?? []).map((r) => ({
@@ -160,7 +279,7 @@ export default function MiniLeagueLiveCard({
       return a.name.localeCompare(b.name);
     });
     return result;
-  }, [table, members, submittedUserIds, isDevFakeLeague]);
+  }, [table, members, submittedUserIds, isDevFakeLeague, showSeasonTable, seasonRows]);
 
   const myRank = React.useMemo(() => {
     if (!currentUserId || !rows.length) return null;
@@ -169,16 +288,18 @@ export default function MiniLeagueLiveCard({
   }, [rows, currentUserId]);
 
   const submittedCount = React.useMemo(() => {
+    if (showSeasonTable) return null;
     if (isDevFakeLeague) return 8;
     const tbl = table as { submittedCount?: number } | null | undefined;
     return typeof tbl?.submittedCount === 'number' && Number.isFinite(tbl.submittedCount) ? tbl.submittedCount : null;
-  }, [table, isDevFakeLeague]);
+  }, [table, isDevFakeLeague, showSeasonTable]);
 
   const totalMembers = React.useMemo(() => {
     if (isDevFakeLeague) return 8;
+    if (showSeasonTable) return members.length || null;
     const tbl = table as { totalMembers?: number } | null | undefined;
     return typeof tbl?.totalMembers === 'number' && Number.isFinite(tbl.totalMembers) ? tbl.totalMembers : null;
-  }, [table, isDevFakeLeague]);
+  }, [table, isDevFakeLeague, showSeasonTable, members.length]);
   const showUnicorns = (totalMembers ?? members.length) >= 3;
 
   return (
@@ -194,7 +315,7 @@ export default function MiniLeagueLiveCard({
       <MiniLeagueCard
         title={leagueName}
         avatarUri={resolveLeagueAvatarUri(typeof leagueAvatar === 'string' ? leagueAvatar : null)}
-        gwIsLive
+        gwIsLive={!showSeasonTable}
         winnerChip={null}
         rows={rows}
         submittedUserIds={submittedUserIds}
@@ -222,4 +343,3 @@ export default function MiniLeagueLiveCard({
     </Pressable>
   );
 }
-

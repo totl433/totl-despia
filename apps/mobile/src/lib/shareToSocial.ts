@@ -1,9 +1,18 @@
 import { Linking, Platform, Share } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import RNShare, { Social } from 'react-native-share';
+
+type MediaLibraryModule = typeof import('expo-media-library');
+
+async function loadMediaLibrary(): Promise<MediaLibraryModule | null> {
+  try {
+    return await import('expo-media-library');
+  } catch {
+    return null;
+  }
+}
 
 export type SocialShareTarget = 'instagram' | 'whatsapp' | 'more';
 
@@ -82,8 +91,9 @@ async function shareToInstagramIos(filePath: string, message: string, title: str
   const jpegUrl = toFileUrl(jpegUri);
   const jpegDataUrl = await fileToDataUrl(jpegUri, 'image/jpeg');
 
-  const permission = await MediaLibrary.requestPermissionsAsync(true);
-  if (permission.granted) {
+  const MediaLibrary = await loadMediaLibrary();
+  const permission = MediaLibrary ? await MediaLibrary.requestPermissionsAsync(true) : { granted: false };
+  if (MediaLibrary && permission.granted) {
     try {
       const asset = await MediaLibrary.createAssetAsync(jpegUri);
       await new Promise((resolve) => setTimeout(resolve, 400));

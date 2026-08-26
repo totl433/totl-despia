@@ -29,6 +29,7 @@ export interface HomeMiniLeaguesSectionProps {
   liveLeagueList: LeagueSummary[];
   showMiniLeaguesLiveCards: boolean;
   viewingGw: number | null;
+  tableKind?: 'gw' | 'season';
   onNavigateLeagues: () => void;
   onNavigateLeagueDetail: (leagueId: string, name: string) => void;
 }
@@ -45,6 +46,7 @@ export default function HomeMiniLeaguesSection({
   liveLeagueList,
   showMiniLeaguesLiveCards,
   viewingGw,
+  tableKind = 'gw',
   onNavigateLeagues,
   onNavigateLeagueDetail,
 }: HomeMiniLeaguesSectionProps) {
@@ -157,6 +159,8 @@ export default function HomeMiniLeaguesSection({
                     gw={viewingGw as number}
                     width={mlCardWidth}
                     enabled={enabled}
+                    tableKind={tableKind}
+                    liveMode={tableKind === 'gw'}
                     onPress={() => onNavigateLeagueDetail(leagueId, String(league.name ?? ''))}
                   />
                 </CarouselFocusShell>
