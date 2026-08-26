@@ -1,8 +1,8 @@
-# Next TestFlight (after last night’s TestFlight — **not** App Store)
+# Next TestFlight (after the share-card TestFlight — **not** App Store)
 
-Last night’s TestFlight is already out. This is a **second TestFlight only** — do not submit to the App Store.
+Another TestFlight only. Last build opened Instagram but the photo didn’t attach.
 
-Bump the iOS build (50 → **51**, or whatever is next). Branch: `expo-ui-carl`.
+Bump the iOS build (51 → **52**, or whatever is next). Branch: `expo-ui-carl`.
 
 ## In this binary
 
