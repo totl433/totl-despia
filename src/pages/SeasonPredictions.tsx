@@ -47,6 +47,7 @@ export default function SeasonPredictionsPage() {
   const [entries, setEntries] = useState<NamedSeasonPicks[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [draftJustSaved, setDraftJustSaved] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missingTable, setMissingTable] = useState(false);
@@ -162,9 +163,15 @@ export default function SeasonPredictionsPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!error) return;
+    if (!error && !message) return;
     errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [error]);
+  }, [error, message]);
+
+  useEffect(() => {
+    if (!draftJustSaved) return;
+    const timeout = window.setTimeout(() => setDraftJustSaved(false), 2500);
+    return () => window.clearTimeout(timeout);
+  }, [draftJustSaved]);
 
   useEffect(() => {
     if (!submittedAt || showPicks || previewLobby) return;
@@ -190,6 +197,7 @@ export default function SeasonPredictionsPage() {
     if (!user || locked) return;
     setError(null);
     setMessage(null);
+    setDraftJustSaved(false);
 
     if (mode === 'submit') {
       const errors = validateSeasonPredictionPicks(picks);
@@ -217,7 +225,8 @@ export default function SeasonPredictionsPage() {
         fireConfettiCannon();
         await load({ silent: true });
       } else {
-        setMessage('Draft saved. Submit before the deadline to lock it in.');
+        setDraftJustSaved(true);
+        setMessage('Draft saved. Submit when you’re happy — that locks it.');
       }
     } catch (saveError) {
       console.error('[SeasonPredictions] Save error:', saveError);
@@ -319,11 +328,6 @@ export default function SeasonPredictionsPage() {
           {error}
         </div>
       )}
-      {message && (
-        <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-200">
-          {message}
-        </div>
-      )}
 
       {showLobby && <SeasonPredictionsLobby players={lobbyPlayers} />}
 
@@ -339,6 +343,14 @@ export default function SeasonPredictionsPage() {
               {error}
             </div>
           )}
+          {message && (
+            <div
+              ref={errorRef}
+              className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-sm text-emerald-800 dark:text-emerald-200"
+            >
+              {message}
+            </div>
+          )}
 
           {!locked && (
             <div className="flex flex-col sm:flex-row gap-3">
@@ -346,9 +358,13 @@ export default function SeasonPredictionsPage() {
                 type="button"
                 onClick={() => savePicks('draft')}
                 disabled={saving}
-                className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 font-semibold text-slate-700 dark:text-slate-200"
+                className={`flex-1 py-3 rounded-xl font-semibold ${
+                  draftJustSaved
+                    ? 'bg-[#1C8376] text-white'
+                    : 'border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'
+                }`}
               >
-                {saving ? 'Saving…' : 'Save draft'}
+                {saving ? 'Saving…' : draftJustSaved ? 'Saved' : 'Save draft'}
               </button>
               <button
                 type="button"
