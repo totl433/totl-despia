@@ -151,7 +151,7 @@ export async function loadHomePageData(
   // Check cache first
   const basicCacheKey = `home:basic:v2:${seasonCacheKey}:${userId}`;
   const fixturesCacheKey = `home:fixtures:v2:${seasonCacheKey}:${userId}:${currentGw}`;
-  const leagueDataCacheKey = `home:leagueData:v7:${seasonCacheKey}:${userId}:${currentGw}`; // v7: season-aware
+  const leagueDataCacheKey = `home:leagueData:v8:${seasonCacheKey}:${userId}:${currentGw}`; // v8: pass season stack into league start GW
   
   const cachedBasic = getCached<{
     currentGw: number;
@@ -190,10 +190,21 @@ export async function loadHomePageData(
   const hasNewFields = cachedLeagueData?.leaguePicks !== undefined && 
                        cachedLeagueData?.leagueSubmissionsSet !== undefined &&
                        cachedLeagueData?.leagueRows !== undefined;
+  // Empty picks + all-zero rows is a known bad cache (wrong league-start bound on Pile B).
+  const cachedPicksEmpty =
+    !!cachedLeagueData?.leaguePicks &&
+    Object.values(cachedLeagueData.leaguePicks).every((picks) => !Array.isArray(picks) || picks.length === 0);
+  const cachedRowsAllZero =
+    !!cachedLeagueData?.leagueRows &&
+    Object.values(cachedLeagueData.leagueRows).some((rows) => Array.isArray(rows) && rows.length > 0) &&
+    Object.values(cachedLeagueData.leagueRows).every(
+      (rows) => !Array.isArray(rows) || rows.every((r) => Number(r?.score ?? 0) === 0)
+    );
+  const hasCorruptZeroTableCache = cachedPicksEmpty && cachedRowsAllZero;
   
   // If cache is fresh but missing new fields, treat as stale to force fetch
   // This ensures picks/submissions/rows data loads on first use of new code
-  const effectiveLeagueCacheFresh = isLeagueCacheFresh && hasNewFields;
+  const effectiveLeagueCacheFresh = isLeagueCacheFresh && hasNewFields && !hasCorruptZeroTableCache;
   
   // If all caches are fresh AND have new fields, return cached data
   if (isBasicCacheFresh && isFixturesCacheFresh && effectiveLeagueCacheFresh && 
@@ -438,7 +449,10 @@ export async function loadHomePageData(
   // Calculate league start GWs (used to bound picks query)
   const leagueStartGws = new Map<string, number>();
   const leagueStartGwPromises = leagues.map(async (league) => {
-    const leagueStartGw = await resolveLeagueStartGw(league, gw);
+    const leagueStartGw = await resolveLeagueStartGw(league, gw, {
+      useSeasonStack: !!seasonCtx.useSeasonStack,
+      seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+    });
     return { leagueId: league.id, leagueStartGw };
   });
   const leagueStartGwResults = await Promise.all(leagueStartGwPromises);

@@ -216,13 +216,13 @@ export default function HomePage() {
           // Error loading fixtures from cache (non-critical)
         }
         
-        // Load league data from cache
+        // Load league data from cache (must match loadHomePageData key)
         let leagueData: Record<string, LeagueDataInternal> = {};
         let leagueSubmissions: Record<string, { allSubmitted: boolean; submittedCount: number; totalCount: number }> = {};
         let leaguePicks: Record<string, LeaguePickRow[]> = {};
         let leagueSubmissionsSet: Record<string, Set<string>> = {};
         let leagueRows: Record<string, Array<{ user_id: string; name: string; score: number; unicorns: number }>> = {};
-        const leagueDataCacheKey = `home:leagueData:v6:${userId}:${cached.currentGw}`; // v6: Ensure HP ordering matches /tables
+        const leagueDataCacheKey = `home:leagueData:v8:${seasonCacheKey}:${userId}:${gwToDisplay}`;
         
         try {
           const leagueDataCached = getCached<{
@@ -343,6 +343,7 @@ export default function HomePage() {
   
   const logoContainerRef = useRef<HTMLDivElement>(null);
   const hasRefreshedOnMountRef = useRef(false);
+  const staleZeroLeagueRowsRefetchRef = useRef(false);
   const [gwResultsVersion, setGwResultsVersion] = useState(0);
   
   // Determine if we have cache (check if fixtures are loaded from cache)
@@ -981,16 +982,28 @@ export default function HomePage() {
     // Check if leagueRows has any non-empty arrays (not just keys)
     const hasLeagueRows = Object.values(leagueRows).some(rows => Array.isArray(rows) && rows.length > 0);
     const hasLeagueRowsKeys = Object.keys(leagueRows).length > 0;
+    // After GW finish, all-zero rows are often a stale mid-GW cache — refetch once.
+    const allLeagueScoresZero =
+      hasLeagueRows &&
+      Object.values(leagueRows).every(
+        (rows) => Array.isArray(rows) && rows.every((r) => Number(r?.score ?? 0) === 0)
+      );
+    const shouldRefetchStaleZeroRows =
+      allLeagueScoresZero &&
+      effectiveGameState === 'RESULTS_PRE_GW' &&
+      !staleZeroLeagueRowsRefetchRef.current;
     
     console.log('[Home] Checking cache state:', {
       fixturesCount: fixtures.length,
       leagueRowsKeys: Object.keys(leagueRows).length,
       hasLeagueRows,
       hasLeagueRowsKeys,
+      allLeagueScoresZero,
+      shouldRefetchStaleZeroRows,
       leagueRowsSample: Object.entries(leagueRows).slice(0, 2).map(([id, rows]) => ({ id, rowsCount: Array.isArray(rows) ? rows.length : 0 }))
     });
     
-    if (fixtures.length > 0 && hasLeagueRows) {
+    if (fixtures.length > 0 && hasLeagueRows && !shouldRefetchStaleZeroRows) {
       // Pile B: never trust a paint that only hydrated from legacy 25/26 cache keys
       const seasonCtxSnap = user?.id
         ? getCached<{ useSeasonStack?: boolean; seasonId?: string | null }>(`season:ctx:${user.id}`)
@@ -1011,11 +1024,15 @@ export default function HomePage() {
       console.log('[Home] Stack user missing season fixtures cache — refetching (avoid 25/26 paint)');
     }
     
-    // If we have fixtures but no leagueRows (or empty leagueRows), we need to load data to calculate rows
-    if (fixtures.length > 0 && !hasLeagueRows) {
-      console.log('[Home] Have fixtures but no leagueRows (or empty rows), loading data...', {
+    // If we have fixtures but no leagueRows (or stale zero rows after finish), load data
+    if (fixtures.length > 0 && (!hasLeagueRows || shouldRefetchStaleZeroRows)) {
+      if (shouldRefetchStaleZeroRows) {
+        staleZeroLeagueRowsRefetchRef.current = true;
+      }
+      console.log('[Home] Have fixtures but no/stale-zero leagueRows, loading data...', {
         leaguesCount: leagues.length,
-        leagueRowsKeysCount: Object.keys(leagueRows).length
+        leagueRowsKeysCount: Object.keys(leagueRows).length,
+        shouldRefetchStaleZeroRows
       });
       // Continue to load data below
     }
@@ -1087,7 +1104,7 @@ export default function HomePage() {
     
     // No cleanup needed - we use ref to track in-progress state instead of alive flag
     // This prevents race conditions where effect re-runs discard valid data
-  }, [user?.id, gw, fixtures.length, leagues.length, leaguesLoading, hasLeaguesCache]);
+  }, [user?.id, gw, fixtures.length, leagues.length, leaguesLoading, hasLeaguesCache, effectiveGameState]);
 
   // Background refresh is now handled by loadHomePageData (checks cache freshness internally)
 
@@ -1788,27 +1805,39 @@ export default function HomePage() {
     return effectiveGameState === 'RESULTS_PRE_GW' && hasUserResults;
   }, [gw, user?.id, effectiveGameState, hasSubmittedCurrentGw, userPicks]);
 
-  // During LIVE, compute mini-league GW table rows using live scores (same outcome rule as LeaguePage)
+  // LIVE + RESULTS_PRE_GW: recompute mini-league GW scores from outcomes.
+  // RESULTS_PRE_GW must not reuse stale leagueRows (often all zeros if cached mid-GW).
   const leagueRowsForDisplay = useMemo(() => {
-    if (effectiveGameState !== 'LIVE') return leagueRows;
+    if (effectiveGameState !== 'LIVE' && effectiveGameState !== 'RESULTS_PRE_GW') return leagueRows;
     if (!fixtures.length) return leagueRows;
 
     const outcomes = new Map<number, "H" | "D" | "A">();
-    for (const f of fixtures) {
-      const ls = liveScores[f.fixture_index];
-      if (!ls) continue;
-      const status = ls.status;
-      const isStarted = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
-      if (!isStarted) continue;
 
-      if (ls.result === 'H' || ls.result === 'D' || ls.result === 'A') {
-        outcomes.set(f.fixture_index, ls.result);
-        continue;
+    // Final results first (authoritative once written)
+    Object.entries(gwResults).forEach(([idx, result]) => {
+      if (result === 'H' || result === 'D' || result === 'A') {
+        outcomes.set(Number(idx), result);
       }
+    });
 
-      if (ls.homeScore > ls.awayScore) outcomes.set(f.fixture_index, 'H');
-      else if (ls.awayScore > ls.homeScore) outcomes.set(f.fixture_index, 'A');
-      else outcomes.set(f.fixture_index, 'D');
+    // During LIVE, fill/override from live scores for fixtures that have started
+    if (effectiveGameState === 'LIVE') {
+      for (const f of fixtures) {
+        const ls = liveScores[f.fixture_index];
+        if (!ls) continue;
+        const status = ls.status;
+        const isStarted = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
+        if (!isStarted) continue;
+
+        if (ls.result === 'H' || ls.result === 'D' || ls.result === 'A') {
+          outcomes.set(f.fixture_index, ls.result);
+          continue;
+        }
+
+        if (ls.homeScore > ls.awayScore) outcomes.set(f.fixture_index, 'H');
+        else if (ls.awayScore > ls.homeScore) outcomes.set(f.fixture_index, 'A');
+        else outcomes.set(f.fixture_index, 'D');
+      }
     }
 
     if (outcomes.size === 0) return leagueRows;
@@ -1824,9 +1853,16 @@ export default function HomePage() {
         .filter((m) => submissions.has(m.id))
         .map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }));
 
+      // If submissions set is empty but we have picks, still score from picks
+      // (avoids 0-0 when submission cache is incomplete after GW finish).
+      const usePicksWithoutSubmissionFilter = rows.length === 0 && picks.length > 0;
+      const scoringRows = usePicksWithoutSubmissionFilter
+        ? members.map((m) => ({ user_id: m.id, name: m.name, score: 0, unicorns: 0 }))
+        : rows;
+
       const picksByFixture = new Map<number, Array<{ user_id: string; pick: "H" | "D" | "A" }>>();
       for (const p of picks) {
-        if (!submissions.has(p.user_id)) continue;
+        if (!usePicksWithoutSubmissionFilter && !submissions.has(p.user_id)) continue;
         const arr = picksByFixture.get(p.fixture_index) ?? [];
         arr.push({ user_id: p.user_id, pick: p.pick });
         picksByFixture.set(p.fixture_index, arr);
@@ -1837,23 +1873,30 @@ export default function HomePage() {
         const correctIds = thesePicks.filter(p => p.pick === outcome).map(p => p.user_id);
 
         correctIds.forEach((uid) => {
-          const r = rows.find(x => x.user_id === uid);
+          const r = scoringRows.find(x => x.user_id === uid);
           if (r) r.score += 1;
         });
 
         // Unicorns: only one person got it right AND at least 3 members submitted
-        if (correctIds.length === 1 && submissions.size >= 3) {
-          const r = rows.find(x => x.user_id === correctIds[0]);
+        const submittedCount = usePicksWithoutSubmissionFilter
+          ? new Set(picks.map((p) => p.user_id)).size
+          : submissions.size;
+        if (correctIds.length === 1 && submittedCount >= 3) {
+          const r = scoringRows.find(x => x.user_id === correctIds[0]);
           if (r) r.unicorns += 1;
         }
       });
 
-      rows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
-      next[leagueId] = rows;
+      const displayRows = usePicksWithoutSubmissionFilter
+        ? scoringRows.filter((r) => picks.some((p) => p.user_id === r.user_id))
+        : scoringRows;
+
+      displayRows.sort((a, b) => b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name));
+      next[leagueId] = displayRows;
     }
 
     return next;
-  }, [effectiveGameState, fixtures, liveScores, leagueRows, leagues, leagueData, leaguePicks, leagueSubmissionsSet]);
+  }, [effectiveGameState, fixtures, liveScores, gwResults, leagueRows, leagues, leagueData, leaguePicks, leagueSubmissionsSet]);
 
   // Only show loading if cache is completely missing (not stale)
   if (isLoading) {
