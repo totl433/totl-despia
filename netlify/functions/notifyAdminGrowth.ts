@@ -69,16 +69,6 @@ export const handler: Handler = async (event) => {
         return json(200, { ok: true, skipped: true, reason: 'Missing user id or name' });
       }
 
-      const { data: excluded, error: excludeError } = await supabase.rpc(
-        'is_global_leaderboard_excluded',
-        { p_user_id: userId }
-      );
-      if (excludeError) {
-        console.warn('[notifyAdminGrowth] exclude check failed:', excludeError.message);
-      } else if (excluded === true) {
-        return json(200, { ok: true, skipped: true, reason: 'Test account excluded' });
-      }
-
       const copy = formatNewUserNotification(name);
       const eventId =
         formatEventId('admin-new-user', { user_id: userId }) || `admin_new_user:${userId}`;
