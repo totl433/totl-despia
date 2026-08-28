@@ -3,10 +3,18 @@ import { createClient } from '@supabase/supabase-js';
 import { buildOneSignalAuthorization } from './lib/onesignalAuth';
 import { resolveDualStackRuntime } from './lib/seasonStackPoll';
 import { filterEligiblePlayerIds, loadUserNotificationPreferences } from './utils/notificationHelpers';
-import { claimIdempotencyLock, updateSendLog } from './lib/notifications/idempotency';
+import { claimIdempotencyLock, updateSendLog, getEnvironment } from './lib/notifications/idempotency';
 
 function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+}
+
+/** OneSignal collapse_id max 64 bytes — keep season-scoped but short. */
+function buildPredictionReminderCollapseId(gw: number, seasonId: string | null): string {
+  if (seasonId) {
+    return `pred_rem_${seasonId.slice(0, 8)}_gw${gw}`;
+  }
+  return `prediction_reminder_gw${gw}`;
 }
 
 /** ±20 min so a every-15-min cron reliably hits the 5h-before-deadline mark */
@@ -131,20 +139,48 @@ export const handler: Handler = async (event) => {
       });
     }
 
-    if (now > reminderWindowEnd) {
-      console.log(`[sendPredictionReminder] Too late - reminder window ended at ${reminderWindowEnd.toISOString()}`);
+    if (now > deadlineTime) {
+      console.log(`[sendPredictionReminder] Too late - deadline passed at ${deadlineTime.toISOString()}`);
       return json(200, { 
         ok: true, 
-        message: 'Reminder window has passed',
+        message: 'Deadline has passed',
         stack: useSeasonStack ? 'season' : 'legacy',
         sentTo: 0 
       });
     }
 
-    // Season-scoped event id so GW1/GW2 don't collide across seasons, and legacy gw38 lock is unused
+    // Season-scoped event id so GW numbers don't collide across seasons
     const eventId = seasonId
       ? `prediction_reminder_season_${seasonId}_gw${currentGw}`
       : `prediction_reminder_gw${currentGw}`;
+    const collapseId = buildPredictionReminderCollapseId(currentGw, seasonId);
+
+    // Allow retry until deadline if a prior batch send failed (e.g. bad collapse_id)
+    const environment = getEnvironment();
+    const { data: priorBatch } = await admin
+      .from('notification_send_log')
+      .select('id, result')
+      .eq('environment', environment)
+      .eq('notification_key', 'prediction-reminder')
+      .eq('event_id', eventId)
+      .is('user_id', null)
+      .maybeSingle();
+
+    if (priorBatch?.result === 'accepted') {
+      console.log(`[sendPredictionReminder] Already sent reminders for GW ${currentGw} (event_id: ${eventId})`);
+      return json(200, {
+        ok: true,
+        message: 'Reminders already sent for this GW',
+        sentTo: 0,
+        event_id: eventId,
+      });
+    }
+
+    if (priorBatch?.result === 'failed') {
+      console.log(`[sendPredictionReminder] Clearing failed batch lock ${priorBatch.id} for retry`);
+      await admin.from('notification_send_log').delete().eq('id', priorBatch.id);
+    }
+
     const idempotencyCheck = await claimIdempotencyLock('prediction-reminder', eventId, null);
     
     if (!idempotencyCheck.claimed) {
@@ -289,7 +325,7 @@ export const handler: Handler = async (event) => {
       include_subscription_ids: eligiblePlayerIds,
       headings: { en: `Gameweek ${currentGw} Predictions Due Soon!` },
       contents: { en: reminderMessage },
-      collapse_id: eventId, // Use same event_id for collapse_id
+      collapse_id: collapseId,
       thread_id: 'totl_predictions',
       android_group: 'totl_predictions',
       web_url: predictionsUrl, // Deep link URL (must be absolute for OneSignal)
