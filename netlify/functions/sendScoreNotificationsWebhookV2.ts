@@ -40,6 +40,14 @@ import {
   resolveKickoffHalf,
   resolveMatchTransitions,
 } from './lib/notifications/scoreTransitionGuards';
+import {
+  decideGoalDisallowedCandidate,
+  findRemovedGoals,
+  isSuspiciousGoalsWipe,
+  listPendingGoalDisallowedCandidates,
+  recordGoalDisallowedCandidate,
+  resolveGoalDisallowedCandidate,
+} from './lib/notifications/goalDisallowedConfirm';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -268,54 +276,112 @@ export const handler: Handler = async (event, context) => {
 
     let totalSent = 0;
 
-    // 1. Handle goal disallowed (score went down)
-    if (scoreWentDown) {
+    // 1. Goal disallowed — never push on the first score dip.
+    // Feeds often retract a goal during VAR; if it stands, score/goals snap back.
+    // We record a candidate, then confirm on a later poll if the goal stays missing.
+    const pendingDisallowed = await listPendingGoalDisallowedCandidates(apiMatchId);
+    if (pendingDisallowed.length > 0) {
       const picksData = await fetchUserIdsWithPicks(fixture);
-      const userIds = [...new Set(picksData.map(p => p.userId))];
+      const userIds = [...new Set(picksData.map((p) => p.userId))];
 
-      if (userIds.length > 0) {
-        // Find which goal was disallowed by comparing oldGoals vs new goals
-        // A goal was disallowed if it exists in oldGoals but not in new goals
-        const normalizeGoalKey = (g: any): string => {
-          if (!g || typeof g !== 'object') return '';
-          const scorer = (g.scorer || '').toString().trim().toLowerCase();
-          const goalMinute = g.minute !== null && g.minute !== undefined ? String(g.minute) : '';
-          return `${scorer}|${goalMinute}`;
-        };
+      for (const pending of pendingDisallowed) {
+        const decision = decideGoalDisallowedCandidate({
+          candidateCreatedAt: pending.created_at,
+          goals,
+          candidate: pending.candidate,
+          scoreWentDownThisUpdate: scoreWentDown,
+        });
 
-        const newGoalKeys = new Set(goals.map(normalizeGoalKey));
-        const disallowedGoals = oldGoals.filter((g: any) => !newGoalKeys.has(normalizeGoalKey(g)));
+        if (decision.action === 'cancel') {
+          await resolveGoalDisallowedCandidate(pending.id, 'suppressed_duplicate');
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Cancelled goal-disallowed candidate (${decision.reason}): ${pending.candidate.scorer} ${pending.candidate.minute}'`
+          );
+          continue;
+        }
 
-        if (disallowedGoals.length > 0) {
-          // Use the most recent disallowed goal (highest minute)
-          const disallowedGoal = disallowedGoals.sort((a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0))[0];
-          const scorer = disallowedGoal.scorer || 'Unknown';
-          const goalMinute = disallowedGoal.minute ?? 0;
-          const { isHomeTeam, teamName } = determineScoringTeam(disallowedGoal, liveHomeTeam, liveAwayTeam, homeTeamId, awayTeamId);
-
+        if (decision.action === 'confirm' && userIds.length > 0) {
+          const c = pending.candidate;
           const result = await sendGoalDisallowedNotification(userIds, {
-            apiMatchId, fixtureIndex: fixture_index, gw,
-            scorer, minute: goalMinute, teamName,
-            homeTeam: liveHomeTeam, awayTeam: liveAwayTeam,  // Use team names from live_scores
-            homeScore, awayScore,
+            apiMatchId,
+            fixtureIndex: fixture_index,
+            gw,
+            scorer: c.scorer,
+            minute: c.minute,
+            teamName: c.teamName,
+            homeTeam: liveHomeTeam || c.homeTeam,
+            awayTeam: liveAwayTeam || c.awayTeam,
+            homeScore,
+            awayScore,
           });
           totalSent += result.results.accepted;
-          console.log(`[scoreWebhookV2] [${requestId}] Goal disallowed ${goalMinute}' (${scorer}): ${result.results.accepted} sent`);
+          await resolveGoalDisallowedCandidate(pending.id, 'accepted');
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Confirmed goal disallowed ${c.minute}' (${c.scorer}): ${result.results.accepted} sent`
+          );
+        }
+      }
+    }
+
+    if (scoreWentDown) {
+      const scoreDrop =
+        oldHomeScore + oldAwayScore - homeScore - awayScore;
+      const disallowedGoals = findRemovedGoals(oldGoals, goals);
+
+      if (isSuspiciousGoalsWipe(oldGoals, goals, scoreDrop)) {
+        console.log(
+          `[scoreWebhookV2] [${requestId}] Skipping goal-disallowed candidate: suspicious goals wipe (old=${oldGoals.length}, new=${goals.length}, scoreDrop=${scoreDrop})`
+        );
+      } else if (disallowedGoals.length === 0) {
+        console.log(
+          `[scoreWebhookV2] [${requestId}] Skipping goal-disallowed candidate: score dropped but no identifiable removed goal`
+        );
+      } else {
+        const disallowedGoal = disallowedGoals.sort(
+          (a: any, b: any) => (b.minute ?? 0) - (a.minute ?? 0)
+        )[0];
+        const scorer = disallowedGoal.scorer || 'Unknown';
+        const goalMinute = disallowedGoal.minute ?? 0;
+        const { teamName } = determineScoringTeam(
+          disallowedGoal,
+          liveHomeTeam,
+          liveAwayTeam,
+          homeTeamId,
+          awayTeamId
+        );
+
+        if (scorer === 'Unknown') {
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Skipping goal-disallowed candidate: removed goal has no scorer`
+          );
         } else {
-          // Fallback if we can't identify the goal (shouldn't happen, but be safe)
-          const result = await sendGoalDisallowedNotification(userIds, {
-            apiMatchId, fixtureIndex: fixture_index, gw,
-            scorer: 'Unknown', minute: minute || 0,
-            teamName: homeScore < oldHomeScore ? home_team : away_team,
-            homeTeam: home_team, awayTeam: away_team,
-            homeScore, awayScore,
+          const { recorded, eventId } = await recordGoalDisallowedCandidate({
+            apiMatchId,
+            scorer,
+            minute: goalMinute,
+            teamName,
+            fromHome: oldHomeScore,
+            fromAway: oldAwayScore,
+            toHome: homeScore,
+            toAway: awayScore,
+            homeTeam: liveHomeTeam,
+            awayTeam: liveAwayTeam,
           });
-          totalSent += result.results.accepted;
-          console.log(`[scoreWebhookV2] [${requestId}] Goal disallowed (fallback): ${result.results.accepted} sent`);
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Goal-disallowed candidate ${recorded ? 'recorded' : 'already pending'} ${goalMinute}' (${scorer}) event=${eventId}`
+          );
         }
       }
 
-      return { statusCode: 200, headers, body: JSON.stringify({ message: 'Goal disallowed notification sent', sentTo: totalSent }) };
+      // Do not process "new goals" on a score-down transition.
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          message: 'Goal disallowed candidate recorded (awaiting confirmation)',
+          sentTo: totalSent,
+        }),
+      };
     }
 
     // 2. Handle new goals (never for stale historical re-polls)

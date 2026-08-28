@@ -325,15 +325,33 @@ async function pollAllLiveScores() {
       // For live games, use current if available, otherwise use fullTime (API updates fullTime even for live games)
       let homeScore: number;
       let awayScore: number;
+
+      const currentHome = matchData.score?.current?.home;
+      const currentAway = matchData.score?.current?.away;
+      const fullTimeHome = matchData.score?.fullTime?.home;
+      const fullTimeAway = matchData.score?.fullTime?.away;
       
       if (isLive) {
+        // Incomplete live payloads (all null) used to fall through to 0-0 and
+        // falsely trigger "goal disallowed" pushes. Skip the match this poll.
+        if (
+          currentHome == null &&
+          currentAway == null &&
+          fullTimeHome == null &&
+          fullTimeAway == null
+        ) {
+          console.warn(
+            `[pollLiveScores] Skipping match ${apiMatchId}: live payload has no score fields`
+          );
+          continue;
+        }
         // Live games: prefer current, but use fullTime if current is null
-        homeScore = matchData.score?.current?.home ?? matchData.score?.fullTime?.home ?? 0;
-        awayScore = matchData.score?.current?.away ?? matchData.score?.fullTime?.away ?? 0;
+        homeScore = currentHome ?? fullTimeHome ?? 0;
+        awayScore = currentAway ?? fullTimeAway ?? 0;
       } else {
         // Finished games: use fullTime
-        homeScore = matchData.score?.fullTime?.home ?? 0;
-        awayScore = matchData.score?.fullTime?.away ?? 0;
+        homeScore = fullTimeHome ?? 0;
+        awayScore = fullTimeAway ?? 0;
       }
       
       // Try multiple possible locations for minute in API response
@@ -437,6 +455,28 @@ async function pollAllLiveScores() {
         .in('api_match_id', apiMatchIds);
       
       const existingMap = new Map((existingRecords || []).map((r: any) => [r.api_match_id, r]));
+
+      // Don't wipe a populated goals list when the API returns [] but the score
+      // did not drop — that glitch looks like every goal was disallowed.
+      for (const update of updates) {
+        const existing = existingMap.get(update.api_match_id) as
+          | { home_score?: number; away_score?: number; goals?: any[] }
+          | undefined;
+        if (!existing?.goals || !Array.isArray(existing.goals) || existing.goals.length === 0) {
+          continue;
+        }
+        const newGoalsEmpty = !update.goals || (Array.isArray(update.goals) && update.goals.length === 0);
+        if (!newGoalsEmpty) continue;
+
+        const existingTotal = (existing.home_score ?? 0) + (existing.away_score ?? 0);
+        const newTotal = (update.home_score ?? 0) + (update.away_score ?? 0);
+        if (newTotal >= existingTotal) {
+          console.warn(
+            `[pollLiveScores] Preserving goals for match ${update.api_match_id}: API returned empty goals without a score drop`
+          );
+          update.goals = existing.goals;
+        }
+      }
 
       const { error: upsertError } = await supabase
         .from('live_scores')

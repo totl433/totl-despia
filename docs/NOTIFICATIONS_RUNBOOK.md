@@ -15,7 +15,7 @@ This runbook helps diagnose and investigate push notification issues in the TOTL
 | Key | Trigger | Preference Key |
 |-----|---------|----------------|
 | `goal-scored` | Score update webhook | `score-updates` |
-| `goal-disallowed` | Score decreased | `score-updates` |
+| `goal-disallowed` | Score decreased + goal still missing after ~90s confirm | `score-updates` |
 | `kickoff` | Status → IN_PLAY | `score-updates` |
 | `half-time` | Status → PAUSED | (none) |
 | `final-whistle` | Status → FINISHED | `final-whistle` |
