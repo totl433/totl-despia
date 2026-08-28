@@ -295,6 +295,7 @@ const LeaguePage = lazy(() => import("./pages/League"));
 const JoinMiniLeaguePage = lazy(() => import("./pages/JoinMiniLeague"));
 const AdminPage = lazy(() => import("./pages/Admin"));
 const AdminDataPage = lazy(() => import("./pages/AdminData"));
+const AdminGwStatsPage = lazy(() => import("./pages/AdminGwStats"));
 import { RequireAdmin } from "./components/RequireAdmin";
 import { RequireHostOrAdmin } from "./components/RequireHostOrAdmin";
 const AdminLeaderboards = lazy(() => import("./pages/admin/AdminLeaderboards"));
@@ -960,6 +961,7 @@ function AppContent() {
                 <Route path="/delete-data" element={<DeleteDataPage />} />
                 <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
                 <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
+                <Route path="/admin/gw-stats" element={<RequireAuth><AdminGwStatsPage /></RequireAuth>} />
                 <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
                 <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />

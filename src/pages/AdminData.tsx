@@ -57,6 +57,14 @@ export default function AdminDataPage() {
                 Create New Gameweek
               </Link>
             )}
+            {isAdmin && isWebBrowser() && (
+              <Link
+                to="/admin/gw-stats"
+                className="block w-full py-3 bg-white border-2 border-[#1C8376] text-[#1C8376] font-semibold rounded-xl text-center"
+              >
+                GW Stats
+              </Link>
+            )}
             {canOpenSeasonPredictions && (
               <Link
                 to="/season-predictions"
