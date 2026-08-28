@@ -1,6 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import { buildOneSignalAuthorization } from './lib/onesignalAuth';
+import { resolveDualStackRuntime } from './lib/seasonStackPoll';
 import { filterEligiblePlayerIds, loadUserNotificationPreferences } from './utils/notificationHelpers';
 import { claimIdempotencyLock, updateSendLog } from './lib/notifications/idempotency';
 
@@ -8,11 +9,17 @@ function json(statusCode: number, body: unknown) {
   return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
+/** ±20 min so a every-15-min cron reliably hits the 5h-before-deadline mark */
+const REMINDER_WINDOW_MS = 20 * 60 * 1000;
+
 /**
- * Sends prediction reminder notifications to users 5 hours before the deadline
- * Deadline is 75 minutes before first kickoff, so reminder is 5 hours 75 minutes before first kickoff
- * 
- * This function should be called on a schedule (e.g., every 15-30 minutes) to check if it's time to send reminders
+ * Sends prediction reminder notifications to users 5 hours before the deadline.
+ * Deadline is 75 minutes before first kickoff, so reminder is ~5h75m before first kickoff.
+ *
+ * Prefers season stack (2026/27+): app_season_runtime / fixtures / submissions.
+ * Falls back to legacy app_meta / app_fixtures / app_gw_submissions.
+ *
+ * Scheduled every 15 minutes (netlify.toml).
  */
 export const handler: Handler = async (event) => {
   console.log('[sendPredictionReminder] Function invoked');
@@ -56,26 +63,31 @@ export const handler: Handler = async (event) => {
       auth: { persistSession: false },
     });
 
-    // Get current gameweek
-    const { data: meta, error: metaError } = await admin
-      .from('app_meta')
-      .select('current_gw')
-      .eq('id', 1)
-      .maybeSingle();
+    const runtime = await resolveDualStackRuntime(admin);
+    const useSeasonStack =
+      typeof runtime.seasonGw === 'number' && typeof runtime.seasonId === 'string' && runtime.seasonId.length > 0;
 
-    if (metaError || !meta?.current_gw) {
-      console.error('[sendPredictionReminder] Failed to get current GW:', metaError);
+    const currentGw = useSeasonStack ? runtime.seasonGw! : runtime.legacyGw;
+    if (typeof currentGw !== 'number') {
+      console.error('[sendPredictionReminder] No current GW on season or legacy runtime', runtime);
       return json(500, { error: 'Failed to get current gameweek' });
     }
 
-    const currentGw = meta.current_gw;
-    console.log(`[sendPredictionReminder] Current GW: ${currentGw}`);
+    const seasonId = useSeasonStack ? runtime.seasonId! : null;
+    console.log(
+      `[sendPredictionReminder] Current GW: ${currentGw} (stack=${useSeasonStack ? 'season' : 'legacy'}${seasonId ? `, season=${seasonId}` : ''})`
+    );
 
     // Get first kickoff time for current GW
-    const { data: fixtures, error: fixturesError } = await admin
-      .from('app_fixtures')
-      .select('kickoff_time')
-      .eq('gw', currentGw)
+    let fixturesQuery = useSeasonStack
+      ? admin
+          .from('app_season_fixtures')
+          .select('kickoff_time')
+          .eq('season_id', seasonId!)
+          .eq('gw', currentGw)
+      : admin.from('app_fixtures').select('kickoff_time').eq('gw', currentGw);
+
+    const { data: fixtures, error: fixturesError } = await fixturesQuery
       .order('kickoff_time', { ascending: true })
       .limit(1);
 
@@ -84,6 +96,7 @@ export const handler: Handler = async (event) => {
       return json(200, { 
         ok: true, 
         message: 'No fixtures found for current GW',
+        stack: useSeasonStack ? 'season' : 'legacy',
         sentTo: 0 
       });
     }
@@ -103,10 +116,9 @@ export const handler: Handler = async (event) => {
     const hoursUntilDeadline = Math.floor(timeUntilDeadline / (60 * 60 * 1000));
     const minutesUntilDeadline = Math.floor((timeUntilDeadline % (60 * 60 * 1000)) / (60 * 1000));
 
-    // Check if we're within the reminder window (5 minutes before or after reminder time)
-    // This ensures we only send when very close to the exact 5-hour mark
-    const reminderWindowStart = new Date(reminderTime.getTime() - (5 * 60 * 1000));
-    const reminderWindowEnd = new Date(reminderTime.getTime() + (5 * 60 * 1000));
+    // Window wide enough that */15 schedule always overlaps the 5h mark
+    const reminderWindowStart = new Date(reminderTime.getTime() - REMINDER_WINDOW_MS);
+    const reminderWindowEnd = new Date(reminderTime.getTime() + REMINDER_WINDOW_MS);
 
     if (now < reminderWindowStart) {
       console.log(`[sendPredictionReminder] Too early - reminder window starts at ${reminderWindowStart.toISOString()}`);
@@ -114,6 +126,7 @@ export const handler: Handler = async (event) => {
         ok: true, 
         message: 'Too early for reminder',
         reminderTime: reminderTime.toISOString(),
+        stack: useSeasonStack ? 'season' : 'legacy',
         sentTo: 0 
       });
     }
@@ -123,13 +136,15 @@ export const handler: Handler = async (event) => {
       return json(200, { 
         ok: true, 
         message: 'Reminder window has passed',
+        stack: useSeasonStack ? 'season' : 'legacy',
         sentTo: 0 
       });
     }
 
-    // Check if we've already sent reminders for this GW (prevent duplicates)
-    // Use idempotency system with global event_id (user_id = null)
-    const eventId = `prediction_reminder_gw${currentGw}`;
+    // Season-scoped event id so GW1/GW2 don't collide across seasons, and legacy gw38 lock is unused
+    const eventId = seasonId
+      ? `prediction_reminder_season_${seasonId}_gw${currentGw}`
+      : `prediction_reminder_gw${currentGw}`;
     const idempotencyCheck = await claimIdempotencyLock('prediction-reminder', eventId, null);
     
     if (!idempotencyCheck.claimed) {
@@ -144,14 +159,26 @@ export const handler: Handler = async (event) => {
 
     console.log(`[sendPredictionReminder] Claimed idempotency lock for GW ${currentGw} (log_id: ${idempotencyCheck.log_id})`);
 
-    // Get all users who have submitted predictions for this GW (we don't want to remind them)
-    const { data: submittedUsers, error: submittedError } = await admin
-      .from('app_gw_submissions')
-      .select('user_id')
-      .eq('gw', currentGw)
-      .not('submitted_at', 'is', null);
+    // Users who already submitted this GW (skip reminders)
+    let submittedQuery = useSeasonStack
+      ? admin
+          .from('app_season_submissions')
+          .select('user_id')
+          .eq('season_id', seasonId!)
+          .eq('gw', currentGw)
+      : admin.from('app_gw_submissions').select('user_id').eq('gw', currentGw);
 
-    const submittedUserIds = new Set((submittedUsers || []).map((s: any) => s.user_id));
+    const { data: submittedUsers, error: submittedError } = await submittedQuery.not(
+      'submitted_at',
+      'is',
+      null
+    );
+
+    if (submittedError) {
+      console.error('[sendPredictionReminder] Failed to load submissions:', submittedError);
+    }
+
+    const submittedUserIds = new Set((submittedUsers || []).map((s: { user_id: string }) => s.user_id));
     console.log(`[sendPredictionReminder] Found ${submittedUserIds.size} users who have already submitted`);
 
     // Get all users with push subscriptions
@@ -174,7 +201,7 @@ export const handler: Handler = async (event) => {
     const playerIdsByUser = new Map<string, string[]>();
     const allUserIds = new Set<string>();
 
-    allSubs.forEach((sub: any) => {
+    allSubs.forEach((sub: { user_id: string; player_id: string | null }) => {
       if (!sub.player_id) return;
       const userId = sub.user_id;
       allUserIds.add(userId);
@@ -269,6 +296,7 @@ export const handler: Handler = async (event) => {
       data: {
         type: 'prediction-reminder',
         gw: currentGw,
+        ...(seasonId ? { season_id: seasonId } : {}),
         deadline: deadlineTime.toISOString(),
         url: predictionsUrl // Also include in data for app to use
       },
@@ -331,6 +359,8 @@ export const handler: Handler = async (event) => {
       ok: true,
       sentTo: eligiblePlayerIds.length,
       gw: currentGw,
+      stack: useSeasonStack ? 'season' : 'legacy',
+      season_id: seasonId,
       reminderTime: reminderTime.toISOString(),
       deadline: deadlineTime.toISOString(),
       message: reminderMessage,
