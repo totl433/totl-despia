@@ -186,6 +186,38 @@ const catalogData = {
     "onesignal": { "collapse_id_format": "prediction_reminder_gw{gw}", "thread_id_format": "totl_predictions", "android_group_format": "totl_predictions" },
     "deep_links": { "url_format": "/predictions" },
     "rollout": { "enabled": true, "percentage": 100 }
+  },
+  "admin-new-user": {
+    "notification_key": "admin-new-user",
+    "owner": "admin-growth-webhook",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "admin_recipients",
+    "source": "supabase_webhook",
+    "trigger": { "name": "users_first_display_name", "event_id_format": "admin_new_user:{user_id}" },
+    "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 86400 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": null, "default": true },
+    "onesignal": { "collapse_id_format": "admin_new_user:{user_id}", "thread_id_format": "totl_admin", "android_group_format": "totl_admin" },
+    "deep_links": { "url_format": "/admin/gw-stats" },
+    "rollout": { "enabled": true, "percentage": 100 }
+  },
+  "admin-new-league": {
+    "notification_key": "admin-new-league",
+    "owner": "admin-growth-webhook",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "admin_recipients",
+    "source": "supabase_webhook",
+    "trigger": { "name": "leagues_insert", "event_id_format": "admin_new_league:{league_id}" },
+    "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 86400 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": null, "default": true },
+    "onesignal": { "collapse_id_format": "admin_new_league:{league_id}", "thread_id_format": "totl_admin", "android_group_format": "totl_admin" },
+    "deep_links": { "url_format": "/league/{leagueCode}" },
+    "rollout": { "enabled": true, "percentage": 100 }
   }
 };
 
