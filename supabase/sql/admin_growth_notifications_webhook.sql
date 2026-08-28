@@ -50,9 +50,10 @@ BEGIN
 
   BEGIN
     SELECT net.http_post(
-      webhook_url::text,
-      jsonb_build_object('Content-Type', 'application/json'),
-      payload::text
+      url := webhook_url,
+      body := payload,
+      headers := jsonb_build_object('Content-Type', 'application/json'),
+      timeout_milliseconds := 10000
     ) INTO request_id;
   EXCEPTION
     WHEN undefined_function THEN
