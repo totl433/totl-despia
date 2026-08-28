@@ -520,7 +520,10 @@ export default function TablesPage() {
         // Use resolveLeagueStartGw which queries fixtures table (same as League page)
         const leagueStartGwMap = new Map<string, number>();
         const leagueStartGwPromises = leagues.map(async (league) => {
-          const leagueStartGw = await resolveLeagueStartGw(league, dbCurrentGw);
+          const leagueStartGw = await resolveLeagueStartGw(league, dbCurrentGw, {
+            useSeasonStack: !!seasonCtx.useSeasonStack,
+            seasonId: seasonCtx.useSeasonStack ? seasonCtx.seasonId : null,
+          });
           return { leagueId: league.id, leagueStartGw };
         });
         const leagueStartGwResults = await Promise.all(leagueStartGwPromises);
@@ -1100,7 +1103,14 @@ export default function TablesPage() {
         // Calculate league start GW
         const leagueStartGw = await resolveLeagueStartGw(
           { id: data.id, name: data.name, created_at: data.created_at },
-          currentGw
+          currentGw,
+          (() => {
+            const seasonCtx = getActiveSeasonCtx();
+            return {
+              useSeasonStack: !!seasonCtx?.useSeasonStack,
+              seasonId: seasonCtx?.useSeasonStack ? seasonCtx.seasonId : null,
+            };
+          })()
         );
 
         // Check if league has been running for 4+ gameweeks

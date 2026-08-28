@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { resolveSeasonCtx } from '../../lib/seasonStack';
+import { checkDisplayNameAvailable, saveUsername } from '../../lib/userProfile';
 
 export type AuthGateStatus = 'checking' | 'authed' | 'guest';
 
@@ -290,29 +291,12 @@ export async function signUpWithPassword(
   // However, this is normal for new signups too, so we can't block based on this alone
   // The serverless function check above should have caught duplicates
   
-  // Upsert profile (note: users table doesn't have email column, only name)
   const user = data.user ?? (await supabase.auth.getUser()).data.user;
-  if (user) {
-    const { error: upsertError } = await supabase.from('users').upsert({ 
-      id: user.id, 
-      name: trimmedName
-      // Note: email column doesn't exist in users table - email is stored in auth.users only
-    });
-    if (upsertError) {
-      const msg = (upsertError.message || '').toLowerCase();
-      if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('already exists')) {
-        throw new Error('Username already taken. Please choose a different name.');
-      }
-      throw upsertError;
-    }
-
-    // Initialize the season preference before the first authenticated page
-    // loads so a fresh account cannot inherit legacy GW or stale browser data.
-    if (data.session) {
-      await resolveSeasonCtx(supabase as any, user.id);
-    }
+  if (user && data.session) {
+    await saveUsername(user.id, trimmedName);
+    await resolveSeasonCtx(supabase as any, user.id);
   }
-  
+
   return data;
 }
 
@@ -324,74 +308,6 @@ function hasSqlLikeWildcards(input: string): boolean {
   // We rely on ILIKE for case-insensitive comparison; disallow wildcard characters
   // so the check is an exact match, not a pattern match.
   return input.includes('%') || input.includes('_');
-}
-
-async function checkDisplayNameAvailable(displayName: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-  const isLocalhost =
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-  const fetchCheck = async (url: string) => {
-    return await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName }),
-      signal: controller.signal,
-    });
-  };
-
-  const clientFallback = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id')
-      .ilike('name', displayName)
-      .limit(1);
-    if (error) throw error;
-    return !(data && data.length > 0);
-  };
-
-  try {
-    const localUrl = '/.netlify/functions/checkDisplayNameAvailable';
-    let response: Response;
-    try {
-      response = await fetchCheck(localUrl);
-    } catch (localError: any) {
-      if (localError?.name === 'TypeError' || localError?.name === 'AbortError') {
-        response = await fetchCheck(
-          'https://totl-staging.netlify.app/.netlify/functions/checkDisplayNameAvailable'
-        );
-      } else {
-        throw localError;
-      }
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (response.status === 404 && isLocalhost) {
-      return await clientFallback();
-    }
-
-    if (!response.ok) {
-      if (!isLocalhost) {
-        throw new Error('Unable to verify display name availability. Please try again.');
-      }
-      return await clientFallback();
-    }
-
-    const result = (await response.json()) as { available?: boolean };
-    return result.available !== false;
-  } catch (err: any) {
-    if (!isLocalhost) {
-      if (err?.name === 'AbortError') {
-        throw new Error('Unable to verify display name availability. Please try again.');
-      }
-      throw err;
-    }
-    return await clientFallback();
-  }
 }
 
 export async function resetPasswordForEmail(email: string) {

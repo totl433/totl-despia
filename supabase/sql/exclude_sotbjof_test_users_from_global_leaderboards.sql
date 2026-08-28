@@ -1,5 +1,5 @@
 -- Keep test accounts out of global leaderboards without affecting mini leagues,
--- picks, submissions, profiles, or the HomeWins account.
+-- picks, submissions, profiles, the HomeWins account, or Jof.
 
 BEGIN;
 
@@ -21,7 +21,8 @@ AS $$
         'f9428ad5-4185-48e5-b47c-6a8c79107a17',
         '799fd573-debb-4ea4-8fcb-5048cb00e42d',
         '0c8cb8e7-2790-43c4-b72c-4719e2296e72',
-        '97ee8429-7af6-4d37-a3fa-acb9bc40e5b6'
+        '97ee8429-7af6-4d37-a3fa-acb9bc40e5b6',
+        '1047b535-7fbf-4a49-b797-8193dcdde084'
       ]::uuid[]
     )
     OR EXISTS (
@@ -29,8 +30,19 @@ AS $$
       FROM auth.users AS auth_user
       LEFT JOIN public.users AS profile ON profile.id = auth_user.id
       WHERE auth_user.id = p_user_id
-        AND lower(COALESCE(auth_user.email, '')) LIKE 'sotbjof%'
-        AND lower(trim(COALESCE(profile.name, ''))) <> 'homewins'
+        AND (
+          (
+            lower(COALESCE(auth_user.email, '')) LIKE 'sotbjof%'
+            AND lower(trim(COALESCE(profile.name, ''))) <> 'homewins'
+          )
+          OR (
+            (
+              lower(COALESCE(auth_user.email, '')) LIKE 'jof.middleton%'
+              OR lower(COALESCE(auth_user.email, '')) LIKE 'jof.middlton%'
+            )
+            AND lower(trim(COALESCE(profile.name, ''))) <> 'jof'
+          )
+        )
     );
 $$;
 

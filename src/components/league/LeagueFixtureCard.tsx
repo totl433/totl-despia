@@ -50,7 +50,16 @@ function formatMinuteDisplay(status: string, minute: number | null | undefined):
   return 'LIVE';
 }
 
-// Helper function to get initials
+function pickChipOverlapPx(count: number, chipSize = 36): number {
+  if (count <= 1) return 0;
+  const peek =
+    count >= 8 ? Math.round(chipSize * (6 / 28))
+    : count >= 7 ? Math.round(chipSize * (7 / 28))
+    : count <= 4 ? Math.round(chipSize * (18 / 28))
+    : Math.round(chipSize * (14 / 28));
+  return chipSize - peek;
+}
+
 function initials(name: string) {
   const parts = (name || "?").trim().split(/\s+/);
   if (!parts.length) return "?";
@@ -111,56 +120,40 @@ export default function LeagueFixtureCard({
   // Render chips for a specific pick type (H/D/A)
   const toChips = (want: "H" | "D" | "A") => {
     const filtered = picks.filter((p) => p.pick === want);
-    
-    // Group chips into rows of maximum 4
-    const chipsPerRow = 4;
-    const rows = [];
-    
-    for (let i = 0; i < filtered.length; i += chipsPerRow) {
-      const rowChips = filtered.slice(i, i + chipsPerRow);
-      rows.push(rowChips);
-    }
-    
-    // Overlap amount for larger avatars (36px)
-    const overlapAmount = 12;
-    
+    const overlapAmount = pickChipOverlapPx(filtered.length);
+
     return (
-      <div className="flex flex-col gap-1">
-        {rows.map((row, rowIdx) => (
-          <div key={rowIdx} className="flex items-center justify-center">
-            {row.map((p, idx) => {
-              const m = members.find((mm) => mm.id === p.user_id);
-              const letter = initials(m?.name ?? "?");
-              const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
-              const isCorrect = actualResult && actualResult === want ? true : null;
-              
-              // Always apply overlapping effect
-              return (
-                <span 
-                  key={p.user_id}
-                  className="inline-block"
-                  style={{
-                    marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
-                    position: 'relative',
-                    zIndex: idx
-                  }}
-                >
-                  <PickChip 
-                    letter={letter}
-                    userId={p.user_id}
-                    userName={m?.name}
-                    correct={isCorrect} 
-                    unicorn={isCorrect === true} 
-                    hasSubmitted={hasSubmitted} 
-                    isLive={isLive} 
-                    isOngoing={isOngoing} 
-                    isFinished={isFinished} 
-                  />
-                </span>
-              );
-            })}
-          </div>
-        ))}
+      <div className="flex items-center justify-center">
+        {filtered.map((p, idx) => {
+          const m = members.find((mm) => mm.id === p.user_id);
+          const letter = initials(m?.name ?? "?");
+          const hasSubmitted = submittedMap.has(`${p.user_id}:${picksGw}`);
+          const isCorrect = actualResult && actualResult === want ? true : null;
+
+          return (
+            <span
+              key={p.user_id}
+              className="inline-block"
+              style={{
+                marginLeft: idx > 0 ? `-${overlapAmount}px` : '0',
+                position: 'relative',
+                zIndex: idx,
+              }}
+            >
+              <PickChip
+                letter={letter}
+                userId={p.user_id}
+                userName={m?.name}
+                correct={isCorrect}
+                unicorn={isCorrect === true}
+                hasSubmitted={hasSubmitted}
+                isLive={isLive}
+                isOngoing={isOngoing}
+                isFinished={isFinished}
+              />
+            </span>
+          );
+        })}
       </div>
     );
   };

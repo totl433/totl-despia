@@ -90,6 +90,6 @@ export default function AuthGate() {
     return null;
   }
 
-  // Guest user - show auth flow
-  return <AuthFlow initialStep={isRecovery ? 'reset' : 'onboarding'} onAuthSuccess={handleAuthSuccess} />;
+  // Guest: show auth flow
+  return <AuthFlow onAuthSuccess={handleAuthSuccess} />;
 }

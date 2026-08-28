@@ -5,6 +5,7 @@ import { useGameweekState } from "../hooks/useGameweekState";
 import { useCurrentGameweek } from "../hooks/useCurrentGameweek";
 import { useDisplayGameweek } from "../hooks/useDisplayGameweek";
 import { getCached, removeCached } from "../lib/cache";
+import { formatDeadlineBannerText } from "../lib/kickoffDisplay";
 import GameweekBanner from "./ComingSoonBanner";
 import { hasNextGameweek, SEASON_LAST_GW } from "../lib/season";
 import { getActiveSeasonCtx } from "../lib/activeSeasonCtx";
@@ -225,14 +226,7 @@ export default function PredictionsBanner() {
                 new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime()
               )[0];
               if (firstFixture.kickoff_time) {
-                const firstKickoff = new Date(firstFixture.kickoff_time);
-                const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-                const weekday = deadlineTime.toLocaleDateString(undefined, { weekday: 'short' });
-                const month = deadlineTime.toLocaleDateString(undefined, { month: 'short' });
-                const day = deadlineTime.toLocaleDateString(undefined, { day: 'numeric' });
-                const hour = String(deadlineTime.getUTCHours()).padStart(2, '0');
-                const minute = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
-                deadlineFormatted = `${weekday}, ${month} ${day}, ${hour}:${minute}`;
+                deadlineFormatted = formatDeadlineBannerText(firstFixture.kickoff_time);
               }
             }
           } catch (e) {
@@ -254,14 +248,7 @@ export default function PredictionsBanner() {
             })();
             
             if (fixtures && fixtures.length > 0 && fixtures[0].kickoff_time) {
-              const firstKickoff = new Date(fixtures[0].kickoff_time);
-              const deadlineTime = new Date(firstKickoff.getTime() - (75 * 60 * 1000));
-              const weekday = deadlineTime.toLocaleDateString(undefined, { weekday: 'short' });
-              const month = deadlineTime.toLocaleDateString(undefined, { month: 'short' });
-              const day = deadlineTime.toLocaleDateString(undefined, { day: 'numeric' });
-              const hour = String(deadlineTime.getUTCHours()).padStart(2, '0');
-              const minute = String(deadlineTime.getUTCMinutes()).padStart(2, '0');
-              deadlineFormatted = `${weekday}, ${month} ${day}, ${hour}:${minute}`;
+              deadlineFormatted = formatDeadlineBannerText(fixtures[0].kickoff_time);
             }
           }
           

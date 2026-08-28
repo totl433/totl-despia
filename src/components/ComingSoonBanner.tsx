@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
+import { parseDeadlineBannerTextUk } from '../lib/kickoffDisplay';
 
 export type GameweekBannerProps = {
  gameweek: number;
@@ -12,57 +13,17 @@ export type GameweekBannerProps = {
 /**
  * Calculate countdown string from deadline text
  * Returns format like "2d 6h 45m" or null if deadline is in the past
- * Deadline format: "Mon, Dec 2, 18:15" (UTC time)
+ * Deadline format: "Mon, Dec 2, 18:15" (UK local time)
  */
 function calculateCountdown(deadlineText: string | null): string | null {
  if (!deadlineText) return null;
- 
+
+ const deadline = parseDeadlineBannerTextUk(deadlineText);
+ if (!deadline) return null;
+
  try {
- // Parse deadline text like "Mon, Dec 2, 18:15"
- const parts = deadlineText.split(', ');
- if (parts.length < 3) return null;
- 
- const datePart = parts[1]; // "Dec 2"
- const timePart = parts[2]; // "18:15"
- const [hours, minutes] = timePart.split(':').map(Number);
- 
- if (isNaN(hours) || isNaN(minutes)) return null;
- 
- // Get current year and construct full date in UTC
  const now = new Date();
- const year = now.getUTCFullYear();
- const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
- const monthMatch = datePart.match(/(\w+)\s+(\d+)/);
- if (!monthMatch) return null;
- 
- const monthName = monthMatch[1];
- const day = parseInt(monthMatch[2], 10);
- const monthIndex = monthNames.indexOf(monthName);
- if (monthIndex === -1) return null;
- 
- // Create deadline date in UTC
- const deadline = new Date(Date.UTC(year, monthIndex, day, hours, minutes));
- 
- // If the deadline is in the past, try next year
- if (deadline <= now) {
- const nextYearDeadline = new Date(Date.UTC(year + 1, monthIndex, day, hours, minutes));
- if (nextYearDeadline <= now) return null;
- // Use next year's deadline
- const diff = nextYearDeadline.getTime() - now.getTime();
- const days = Math.floor(diff / (1000 * 60 * 60 * 24));
- const hoursRemaining = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
- const minutesRemaining = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
- 
- if (days > 0) {
- return `${days}d ${hoursRemaining}h ${minutesRemaining}m`;
- } else if (hoursRemaining > 0) {
- return `${hoursRemaining}h ${minutesRemaining}m`;
- } else {
- return `${minutesRemaining}m`;
- }
- }
- 
- // Calculate difference
+ if (deadline <= now) return null;
  const diff = deadline.getTime() - now.getTime();
  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
  const hoursRemaining = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));

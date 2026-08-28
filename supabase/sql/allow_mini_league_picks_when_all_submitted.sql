@@ -1,54 +1,8 @@
--- Emergency server-side protection for prediction secrecy.
---
--- Existing app builds query pick tables directly, so this must be enforced by
--- RLS rather than relying on a client-side deadline check.
+-- Allow mini-league members to see each other's picks before the deadline
+-- only when every member of a shared league has submitted for that GW.
+-- Global / other-league picks stay hidden until the deadline.
 
 BEGIN;
-
-CREATE OR REPLACE FUNCTION public.can_reveal_legacy_gw_picks(p_gw integer)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT COALESCE(
-    now() >= (
-      SELECT min(f.kickoff_time) - interval '75 minutes'
-      FROM public.app_fixtures AS f
-      WHERE f.gw = p_gw
-        AND f.kickoff_time IS NOT NULL
-    ),
-    false
-  );
-$$;
-
-CREATE OR REPLACE FUNCTION public.can_reveal_season_gw_picks(
-  p_season_id uuid,
-  p_gw integer
-)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-  SELECT COALESCE(
-    now() >= (
-      SELECT min(f.kickoff_time) - interval '75 minutes'
-      FROM public.app_season_fixtures AS f
-      WHERE f.season_id = p_season_id
-        AND f.gw = p_gw
-        AND f.kickoff_time IS NOT NULL
-    ),
-    false
-  );
-$$;
-
-REVOKE ALL ON FUNCTION public.can_reveal_legacy_gw_picks(integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.can_reveal_season_gw_picks(uuid, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.can_reveal_legacy_gw_picks(integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.can_reveal_season_gw_picks(uuid, integer) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.can_reveal_legacy_picks_in_completed_mini_league(
   p_viewer uuid,
@@ -139,9 +93,6 @@ REVOKE ALL ON FUNCTION public.can_reveal_legacy_picks_in_completed_mini_league(u
 REVOKE ALL ON FUNCTION public.can_reveal_season_picks_in_completed_mini_league(uuid, uuid, uuid, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.can_reveal_legacy_picks_in_completed_mini_league(uuid, uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.can_reveal_season_picks_in_completed_mini_league(uuid, uuid, uuid, integer) TO authenticated;
-
-ALTER TABLE public.app_picks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.app_season_picks ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Hide opponent picks until legacy GW deadline" ON public.app_picks;
 CREATE POLICY "Hide opponent picks until legacy GW deadline"
