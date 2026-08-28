@@ -1,5 +1,6 @@
 import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isWebBrowser } from '../lib/platform';
 
 const navItems = [
  {
@@ -110,6 +111,14 @@ export default function DesktopNav() {
 
  {/* Sign Out button on the right */}
  <div className="flex items-center gap-3 flex-shrink-0">
+ {isWebBrowser() && (
+   <Link
+     to="/app"
+     className="px-4 py-2 text-sm font-medium text-[#1C8376]"
+   >
+     Get the app
+   </Link>
+ )}
  <button
  onClick={async () => {
  await signOut();

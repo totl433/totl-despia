@@ -289,6 +289,7 @@ import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";
 import GlobalPage from "./pages/Global";
 import PredictionsPage from "./pages/Predictions";
+import GetAppPage from "./pages/GetApp";
 
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
@@ -326,6 +327,7 @@ const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPrediction
 import { AuthGate } from "./features/auth";
 import ChooseUsername from "./features/auth/ChooseUsername";
 import { resolveProfileStatus } from "./lib/userProfile";
+import { prefersPlayOnline } from "./lib/playOnlinePreference";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useSeasonStack } from "./hooks/useSeasonStack";
@@ -427,6 +429,20 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   // Remount route state when accounts change so picks and other in-memory
   // values from the previous user can never paint the next user's screen.
   return <React.Fragment key={user.id}>{children}</React.Fragment>;
+}
+
+/** `/` is download-first unless the visitor chose Play online in the last 30 days. */
+function HomeOrGetApp() {
+  if (prefersPlayOnline()) {
+    return (
+      <RequireAuth>
+        <ErrorBoundary>
+          <HomePage />
+        </ErrorBoundary>
+      </RequireAuth>
+    );
+  }
+  return <GetAppPage />;
 }
 
 function AppShell() {
@@ -894,16 +910,29 @@ function AppContent() {
   
   // Show loading screen if "load everything first" is enabled and data is still loading
   // But allow logged out users through (don't block auth flow)
+  // Also skip for the download-first landing so logged-in visitors still see Get the App immediately.
+  const showGetAppLanding =
+    location.pathname === '/app' ||
+    (location.pathname === '/' && !prefersPlayOnline());
   const isLoggedOut = !authLoading && !user;
-  if (loadEverythingFirst && !maxLoadingTimeout && !isLoggedOut && (authLoading || initialDataLoading || !initialDataLoaded)) {
+  if (
+    loadEverythingFirst &&
+    !showGetAppLanding &&
+    !maxLoadingTimeout &&
+    !isLoggedOut &&
+    (authLoading || initialDataLoading || !initialDataLoaded)
+  ) {
     return <LoadingScreen />;
   }
-  
-  const showDesktopNav = location.pathname !== '/auth' && 
-    location.pathname !== '/api-admin' && 
+
+  const showDesktopNav =
+    !showGetAppLanding &&
+    location.pathname !== '/auth' &&
+    location.pathname !== '/api-admin' &&
     location.pathname !== '/swipe-card-preview';
 
   const showBottomNav =
+    !showGetAppLanding &&
     location.pathname !== '/auth' &&
     location.pathname !== '/support' &&
     location.pathname !== '/predictions/swipe' &&
@@ -930,13 +959,14 @@ function AppContent() {
           {isNativeApp && <div style={{ height: 'var(--safe-area-top)' }} />}
           <ScrollToTop />
 
-          {location.pathname === '/' && (
+          {location.pathname === '/' && !showGetAppLanding && (
             <div className="lg:hidden">
               <FloatingProfile />
             </div>
           )}
 
           {!isFullScreenPage &&
+            !showGetAppLanding &&
             location.pathname !== '/auth' &&
             location.pathname !== '/support' &&
             location.pathname !== '/api-admin' &&
@@ -972,10 +1002,11 @@ function AppContent() {
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/auth" element={<AuthGate />} />
+                <Route path="/app" element={<GetAppPage />} />
                 <Route path="/support" element={<SupportPage />} />
                 <Route path="/api-admin" element={<RequireAuth><ApiAdmin /></RequireAuth>} />
                 <Route path="/swipe-card-preview" element={<RequireAuth><SwipeCardPreview /></RequireAuth>} />
-                <Route path="/" element={<RequireAuth><ErrorBoundary><HomePage /></ErrorBoundary></RequireAuth>} />
+                <Route path="/" element={<HomeOrGetApp />} />
                 <Route path="/tables" element={<RequireAuth><TablesPage /></RequireAuth>} />
                 <Route path="/leagues" element={<Navigate to="/tables" replace />} />
                 <Route path="/league/:code" element={<RequireAuth><LeaguePage /></RequireAuth>} />
