@@ -1,4 +1,4 @@
--- Admin growth push alerts (Jof-only by default via Netlify handler).
+-- Admin growth push alerts (Jof + Carl by default via Netlify handler).
 -- Fires pg_net webhooks to notifyAdminGrowth when:
 --   1) A user gets a display name for the first time (users INSERT or first-name UPDATE)
 --   2) A new mini league is created (leagues INSERT)

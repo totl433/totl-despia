@@ -1,11 +1,12 @@
 /**
  * Admin-only growth alerts (new sign-ups + new mini-leagues).
- * Recipients are configured via ADMIN_GROWTH_NOTIFY_USER_IDS (defaults to Jof).
+ * Recipients are configured via ADMIN_GROWTH_NOTIFY_USER_IDS (defaults to Jof + Carl).
  */
 
 const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
+const CARL_USER_ID = 'f8a1669e-2512-4edf-9c21-b9f87b3efbe2'; // Prem predictions Carl
 
-export const DEFAULT_ADMIN_GROWTH_NOTIFY_USER_IDS = [JOF_USER_ID];
+export const DEFAULT_ADMIN_GROWTH_NOTIFY_USER_IDS = [JOF_USER_ID, CARL_USER_ID];
 
 export function getAdminGrowthNotifyUserIds(): string[] {
   const raw = (process.env.ADMIN_GROWTH_NOTIFY_USER_IDS || '').trim();

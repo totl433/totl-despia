@@ -3,7 +3,7 @@
  * - New user got a display name (users INSERT / first-time name UPDATE)
  * - New mini league created (leagues INSERT)
  *
- * Sends push to ADMIN_GROWTH_NOTIFY_USER_IDS only (defaults to Jof).
+ * Sends push to ADMIN_GROWTH_NOTIFY_USER_IDS (defaults to Jof and Carl).
  */
 
 import type { Handler } from '@netlify/functions';

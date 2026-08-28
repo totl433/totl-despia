@@ -16,10 +16,11 @@ describe('adminGrowthNotifications', () => {
     }
   });
 
-  it('defaults recipients to Jof only', () => {
+  it('defaults recipients to Jof and Carl', () => {
     delete process.env.ADMIN_GROWTH_NOTIFY_USER_IDS;
     expect(getAdminGrowthNotifyUserIds()).toEqual([
       '4542c037-5b38-40d0-b189-847b8f17c222',
+      'f8a1669e-2512-4edf-9c21-b9f87b3efbe2',
     ]);
   });
 
