@@ -1,0 +1,20 @@
+---
+description: TOTL platforms are web and Expo only — never Despia
+alwaysApply: true
+---
+
+# Platforms: web + Expo only
+
+TOTL ships on two surfaces only:
+
+1. **Web** — playtotl.com (browser)
+2. **Expo native app** — iOS/Android via the Expo mobile workspace
+
+**Despia is deprecated and gone.** It was an old web-to-app wrapper that turned the staging site into a native shell. Do not:
+
+- Reference Despia in product, admin, analytics, or engineering discussion
+- Frame features as “Despia vs web” or “build for Despia”
+- Treat Despia/OneSignal-via-Despia as the current native path
+- Suggest Despia rebuilds, TestFlight via Despia, or Despia-specific APIs as current work
+
+When talking about “where users sign up” or “native vs web”, use **web** vs **Expo app** only.

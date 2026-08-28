@@ -16,11 +16,22 @@ type GwWindow = {
   endLabel: string;
 };
 
+type SignupRow = {
+  id: string;
+  name: string;
+  createdAt: string;
+  submittedSelectedGw: boolean;
+  leagues: string[];
+};
+
 type GwStats = {
   submissions: number;
   signups: number;
   miniLeagues: number;
+  chatMessages: number;
+  chatLeagues: number;
   window: GwWindow;
+  signupRows: SignupRow[];
 };
 
 function formatShort(iso: string): string {
@@ -38,23 +49,29 @@ function formatShort(iso: string): string {
 function buildWindow(
   selectedGw: number,
   firstKickoffByGw: Map<number, string>,
-  nowIso: string
+  nowIso: string,
+  currentGw: number | null
 ): GwWindow {
   const thisKickoff = firstKickoffByGw.get(selectedGw) ?? nowIso;
   const prevKickoff = firstKickoffByGw.get(selectedGw - 1);
-  const nextKickoff = firstKickoffByGw.get(selectedGw + 1);
 
-  // GW cycle: after previous GW kicked off (or 14d before GW1) → next GW kickoff (or now).
+  // Non-overlapping cycles: (prev KO | 14d before GW1) → this GW first KO.
+  // For the live published GW after its kickoff, extend to now so new arrivals still show.
   const startIso = prevKickoff
     ? prevKickoff
     : new Date(new Date(thisKickoff).getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const endIso = nextKickoff ?? nowIso;
+
+  const thisMs = new Date(thisKickoff).getTime();
+  const nowMs = new Date(nowIso).getTime();
+  const isLiveCurrent =
+    currentGw != null && selectedGw === currentGw && nowMs >= thisMs;
+  const endIso = isLiveCurrent ? nowIso : thisKickoff;
 
   return {
     startIso,
     endIso,
     startLabel: formatShort(startIso),
-    endLabel: nextKickoff ? formatShort(endIso) : `${formatShort(endIso)} (now)`,
+    endLabel: isLiveCurrent ? `${formatShort(endIso)} (now)` : formatShort(endIso),
   };
 }
 
@@ -76,6 +93,7 @@ export default function AdminGwStatsPage() {
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingStats, setLoadingStats] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupsOpen, setSignupsOpen] = useState(false);
 
   const loadMeta = useCallback(async () => {
     setLoadingMeta(true);
@@ -137,14 +155,19 @@ export default function AdminGwStatsPage() {
   }, []);
 
   const loadStats = useCallback(
-    async (gw: number, sid: string, kickoffs: Map<number, string>) => {
+    async (
+      gw: number,
+      sid: string,
+      kickoffs: Map<number, string>,
+      publishedGw: number | null
+    ) => {
       setLoadingStats(true);
       setError(null);
       try {
         const nowIso = new Date().toISOString();
-        const window = buildWindow(gw, kickoffs, nowIso);
+        const window = buildWindow(gw, kickoffs, nowIso, publishedGw);
 
-        const [subRes, signupRes, mlRes] = await Promise.all([
+        const [subRes, signupRes, mlRes, chatRes] = await Promise.all([
           (supabase as any)
             .from('app_season_submissions')
             .select('*', { count: 'exact', head: true })
@@ -153,12 +176,18 @@ export default function AdminGwStatsPage() {
             .not('submitted_at', 'is', null),
           (supabase as any)
             .from('users')
+            .select('id, name, created_at')
+            .gte('created_at', window.startIso)
+            .lt('created_at', window.endIso)
+            .order('created_at', { ascending: false }),
+          (supabase as any)
+            .from('leagues')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', window.startIso)
             .lt('created_at', window.endIso),
           (supabase as any)
-            .from('leagues')
-            .select('*', { count: 'exact', head: true })
+            .from('league_messages')
+            .select('league_id')
             .gte('created_at', window.startIso)
             .lt('created_at', window.endIso),
         ]);
@@ -166,13 +195,94 @@ export default function AdminGwStatsPage() {
         if (subRes.error) throw subRes.error;
         if (signupRes.error) throw signupRes.error;
         if (mlRes.error) throw mlRes.error;
+        if (chatRes.error) throw chatRes.error;
+
+        // Paginate chat if over default page size
+        let chatRows: Array<{ league_id: string }> = chatRes.data ?? [];
+        if (chatRows.length >= 1000) {
+          let from = 1000;
+          while (true) {
+            const { data, error } = await (supabase as any)
+              .from('league_messages')
+              .select('league_id')
+              .gte('created_at', window.startIso)
+              .lt('created_at', window.endIso)
+              .range(from, from + 999);
+            if (error) throw error;
+            if (!data?.length) break;
+            chatRows = chatRows.concat(data);
+            if (data.length < 1000) break;
+            from += 1000;
+          }
+        }
+
+        const chatLeagueIds = new Set(
+          chatRows.map((r) => r.league_id).filter((id): id is string => typeof id === 'string')
+        );
+
+        const signupUsers: Array<{ id: string; name: string | null; created_at: string }> =
+          signupRes.data ?? [];
+        const signupIds = signupUsers.map((u) => u.id);
+
+        let submittedIds = new Set<string>();
+        const leaguesByUser = new Map<string, string[]>();
+
+        if (signupIds.length > 0) {
+          const [submittedRes, membersRes] = await Promise.all([
+            (supabase as any)
+              .from('app_season_submissions')
+              .select('user_id')
+              .eq('season_id', sid)
+              .eq('gw', gw)
+              .in('user_id', signupIds)
+              .not('submitted_at', 'is', null),
+            (supabase as any)
+              .from('league_members')
+              .select('user_id, leagues(name)')
+              .in('user_id', signupIds),
+          ]);
+
+          if (submittedRes.error) throw submittedRes.error;
+          if (membersRes.error) throw membersRes.error;
+
+          submittedIds = new Set(
+            ((submittedRes.data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)
+          );
+
+          for (const row of membersRes.data ?? []) {
+            const userId = typeof row.user_id === 'string' ? row.user_id : null;
+            if (!userId) continue;
+            const leagueName =
+              row.leagues && typeof row.leagues === 'object' && !Array.isArray(row.leagues)
+                ? (row.leagues as { name?: string | null }).name
+                : Array.isArray(row.leagues)
+                  ? (row.leagues[0] as { name?: string | null } | undefined)?.name
+                  : null;
+            if (!leagueName) continue;
+            const list = leaguesByUser.get(userId) ?? [];
+            if (!list.includes(leagueName)) list.push(leagueName);
+            leaguesByUser.set(userId, list);
+          }
+        }
+
+        const signupRows: SignupRow[] = signupUsers.map((u) => ({
+          id: u.id,
+          name: (u.name && String(u.name).trim()) || 'Unnamed',
+          createdAt: u.created_at,
+          submittedSelectedGw: submittedIds.has(u.id),
+          leagues: leaguesByUser.get(u.id) ?? [],
+        }));
 
         setStats({
           submissions: typeof subRes.count === 'number' ? subRes.count : 0,
-          signups: typeof signupRes.count === 'number' ? signupRes.count : 0,
+          signups: signupRows.length,
           miniLeagues: typeof mlRes.count === 'number' ? mlRes.count : 0,
+          chatMessages: chatRows.length,
+          chatLeagues: chatLeagueIds.size,
           window,
+          signupRows,
         });
+        setSignupsOpen(false);
       } catch (e: any) {
         console.error('[AdminGwStats] stats error:', e);
         setError(e?.message || 'Failed to load stats.');
@@ -190,8 +300,8 @@ export default function AdminGwStatsPage() {
 
   useEffect(() => {
     if (!seasonId || selectedGw == null) return;
-    void loadStats(selectedGw, seasonId, firstKickoffByGw);
-  }, [seasonId, selectedGw, firstKickoffByGw, loadStats]);
+    void loadStats(selectedGw, seasonId, firstKickoffByGw, currentGw);
+  }, [seasonId, selectedGw, firstKickoffByGw, currentGw, loadStats]);
 
   const isCurrent = useMemo(
     () => selectedGw != null && currentGw != null && selectedGw === currentGw,
@@ -271,7 +381,7 @@ export default function AdminGwStatsPage() {
                   type="button"
                   onClick={() => {
                     if (seasonId && selectedGw != null) {
-                      void loadStats(selectedGw, seasonId, firstKickoffByGw);
+                      void loadStats(selectedGw, seasonId, firstKickoffByGw, currentGw);
                     }
                   }}
                   className="px-3 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
@@ -304,24 +414,104 @@ export default function AdminGwStatsPage() {
                       value={stats.submissions}
                       hint={`Players who submitted GW ${selectedGw}`}
                     />
-                    <StatCard
-                      label="New sign-ups"
-                      value={stats.signups}
-                      hint="Accounts created in this GW cycle"
-                    />
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-4 text-left hover:bg-slate-100/70 transition-colors"
+                        onClick={() => setSignupsOpen((o) => !o)}
+                        aria-expanded={signupsOpen}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              New sign-ups
+                            </div>
+                            <div className="mt-1 text-3xl font-bold tabular-nums text-[#1C8376]">
+                              {stats.signups.toLocaleString()}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              Accounts created in this GW cycle
+                              {stats.signups > 0 ? ' · tap to view who' : ''}
+                            </div>
+                          </div>
+                          {stats.signups > 0 && (
+                            <svg
+                              className={`w-5 h-5 text-slate-400 mt-1 shrink-0 transition-transform ${
+                                signupsOpen ? 'rotate-180' : ''
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                      {signupsOpen && stats.signups > 0 && (
+                        <div className="border-t border-slate-200 bg-white px-3 py-2 max-h-80 overflow-y-auto">
+                          <ul className="divide-y divide-slate-100">
+                            {stats.signupRows.map((row) => (
+                              <li key={row.id} className="py-3 px-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="font-medium text-slate-800 truncate">{row.name}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5">
+                                      Joined {formatShort(row.createdAt)}
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-0.5">
+                                      {row.leagues.length
+                                        ? `Leagues: ${row.leagues.join(', ')}`
+                                        : 'No mini league yet'}
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                      row.submittedSelectedGw
+                                        ? 'bg-emerald-50 text-emerald-700'
+                                        : 'bg-amber-50 text-amber-700'
+                                    }`}
+                                  >
+                                    {row.submittedSelectedGw
+                                      ? `GW${selectedGw} submitted`
+                                      : `GW${selectedGw} missing`}
+                                  </span>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                     <StatCard
                       label="New mini leagues"
                       value={stats.miniLeagues}
                       hint="Leagues created in this GW cycle"
                     />
+                    <StatCard
+                      label="Chat messages"
+                      value={stats.chatMessages}
+                      hint={
+                        stats.chatLeagues === 0
+                          ? 'No chat activity in this GW cycle'
+                          : `Across ${stats.chatLeagues.toLocaleString()} mini league${
+                              stats.chatLeagues === 1 ? '' : 's'
+                            }`
+                      }
+                    />
                   </div>
                   <p className="mt-5 text-xs text-slate-500 leading-relaxed">
-                    Sign-ups and mini leagues use the cycle window from the previous GW’s first kickoff
-                    {selectedGw === 1 ? ' (or 14 days before GW1)' : ''} through{' '}
-                    {availableGws.includes((selectedGw ?? 0) + 1)
-                      ? 'the next GW’s first kickoff'
-                      : 'now'}
-                    : {stats.window.startLabel} → {stats.window.endLabel}.
+                    Sign-ups, mini leagues, and chat use non-overlapping cycle windows: from the previous
+                    GW’s first kickoff
+                    {selectedGw === 1 ? ' (or 14 days before GW1)' : ''} through this GW’s first kickoff
+                    {selectedGw === currentGw ? ' (or now, while this GW is live)' : ''}:{' '}
+                    {stats.window.startLabel} → {stats.window.endLabel}.
                   </p>
                 </>
               ) : (

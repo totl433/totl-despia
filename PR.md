@@ -10,12 +10,12 @@
 
 4. **Debug Yourself**: When debugging UI issues, investigate the code, add logging, and analyze the logic yourself. Never ask the user to check the console - you can add console.log statements and analyze the code flow yourself.
 
-5. **Platform-Aware Development**: The app serves both web browsers and Despia native app. Always consider platform differences:
-    - Use `isNativeApp()` / `isWebBrowser()` from `src/lib/platform.ts` for platform detection (planned - see `PLATFORM_DIFFERENTIATION_PLAN.md`)
-    - Push notifications only work in native app - hide UI on web
+5. **Platform-Aware Development**: The app serves web browsers and the Expo native app only (Despia is deprecated). Always consider platform differences:
+    - Use `isNativeApp()` / `isWebBrowser()` from `src/lib/platform.ts` for platform detection
+    - Push notifications primarily on the Expo native app - hide/adjust UI on web as needed
     - Cookie consent required on web only (GDPR/CCPA compliance)
     - Some features may differ between platforms (see Platform Differentiation in `PROJECT_CONTEXT.md`)
-    - Until platform detection utility is implemented, use `isDespiaAvailable()` from `src/lib/pushNotificationsV2.ts`
+    - Prefer `isNativeApp()` / `isWebBrowser()`; do not use Despia-era helpers as the product model
 
 6. **Ask for Clarification**: If a request is ambiguous or could have multiple interpretations, ask for clarification before implementing.
 
