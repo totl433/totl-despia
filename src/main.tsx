@@ -327,7 +327,6 @@ const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPrediction
 import { AuthGate } from "./features/auth";
 import ChooseUsername from "./features/auth/ChooseUsername";
 import { resolveProfileStatus } from "./lib/userProfile";
-import { prefersPlayOnline } from "./lib/playOnlinePreference";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useSeasonStack } from "./hooks/useSeasonStack";
@@ -431,18 +430,15 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <React.Fragment key={user.id}>{children}</React.Fragment>;
 }
 
-/** `/` is download-first unless the visitor chose Play online in the last 30 days. */
+/** `/` stays the normal game home until we flip download-first live. Share landing at `/app`. */
 function HomeOrGetApp() {
-  if (prefersPlayOnline()) {
-    return (
-      <RequireAuth>
-        <ErrorBoundary>
-          <HomePage />
-        </ErrorBoundary>
-      </RequireAuth>
-    );
-  }
-  return <GetAppPage />;
+  return (
+    <RequireAuth>
+      <ErrorBoundary>
+        <HomePage />
+      </ErrorBoundary>
+    </RequireAuth>
+  );
 }
 
 function AppShell() {
@@ -908,12 +904,8 @@ function AppContent() {
     }
   }, [loadEverythingFirst, initialDataLoaded]);
   
-  // Show loading screen if "load everything first" is enabled and data is still loading
-  // But allow logged out users through (don't block auth flow)
-  // Also skip for the download-first landing so logged-in visitors still see Get the App immediately.
-  const showGetAppLanding =
-    location.pathname === '/app' ||
-    (location.pathname === '/' && !prefersPlayOnline());
+  // Marketing landing is only at /app for now (share with Carl). `/` stays the game.
+  const showGetAppLanding = location.pathname === '/app';
   const isLoggedOut = !authLoading && !user;
   if (
     loadEverythingFirst &&
@@ -925,14 +917,24 @@ function AppContent() {
     return <LoadingScreen />;
   }
 
+  // Full-viewport marketing page — keep it outside .app-shell so mobile/desktop
+  // layout isn't fighting the game chrome (nav, scroll pane, shell background).
+  if (showGetAppLanding) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <GetAppPage />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   const showDesktopNav =
-    !showGetAppLanding &&
     location.pathname !== '/auth' &&
     location.pathname !== '/api-admin' &&
     location.pathname !== '/swipe-card-preview';
 
   const showBottomNav =
-    !showGetAppLanding &&
     location.pathname !== '/auth' &&
     location.pathname !== '/support' &&
     location.pathname !== '/predictions/swipe' &&

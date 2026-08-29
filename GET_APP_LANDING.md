@@ -1,7 +1,7 @@
 # TotL web — download-first landing (handoff)
 
 > For Carl — product rules, what’s built, and design notes.
-> Last updated: 28 Aug 2026
+> Last updated: 29 Aug 2026
 
 ## Goal
 
@@ -9,50 +9,41 @@ Most users should land on a **Get the App** page, not the game. Ads / physical Q
 
 ## What’s built
 
-- New download-first marketing page
-- Routes wired in the web app
-- 30-day preference cookie
+- Download-first marketing page with **horizontal swipe** (5 slides)
+- Same column layout on mobile + desktop (max ~430px, centred on wide screens)
+- Routes + 30-day preference cookie
 - Persistent **Get the app** entry points inside the logged-in product (web only)
-- Simple layout + App Store copy — Carl to snazz later
+- Feature art = Carl’s phone screenshots in `public/assets/get-app/*.jpg`; copy is HTML
 
-**Local:** `http://localhost:5173/` and `http://localhost:5173/app`  
+**Local:** `http://localhost:5173/app` or `http://localhost:5174/app`  
 **Prod URLs (once deployed):** `https://playtotl.com/` and `https://playtotl.com/app`
 
-> Note: as of handoff, this may still be local-only — confirm deploy before pointing ads/QR at `/app`.
-
-## Behaviour rules
+## Behaviour rules (current)
 
 | Rule | Detail |
 |------|--------|
-| Default landing | `playtotl.com` shows the **download page for everyone** (including already logged-in users) |
-| Exception | If they chose **Play online** in the last **30 days**, `/` opens the normal web game instead |
-| Ads / QR URL | `playtotl.com/app` **always** shows the download page (ignores the 30-day cookie) |
-| Play online | Sets cookie → if logged in, go to game; if not, existing `/auth` login/signup, then game |
-| Cookie lifetime | **30 days**, then show the download page again on `/` |
-| In-product | Small **Get the app** link in **Profile** and **Desktop nav** (web only) → goes to `/app` |
-| Platforms | Web + Expo only. Despia is deprecated. Don’t push this landing at Expo users; Get the app links are web-only |
+| Homepage `/` | **Still the normal web game** (download-first not flipped yet) |
+| Share / ads URL | `playtotl.com/app` **always** shows the download landing |
+| Play online | Sets cookie for later when `/` becomes download-first; for now still useful from `/app` |
+| In-product | **Get the app** in Profile + Desktop nav → `/app` |
+| Platforms | Web + Expo only. Despia is deprecated. |
 
 ### Store CTAs
 
 - **iOS:** [App Store — TotL](https://apps.apple.com/gb/app/totl-top-of-the-league/id6754661450)
 - **Android:** **Coming soon** (disabled button for now)
 
-## Page structure (one scroll on mobile)
+## Slide structure (swipe — 5 pages)
 
-Kept simple on purpose — same vibe/copy as the App Store listing:
+1. **Crowd splash** — TotL logo, “Gamify your gameday”, Download / Coming soon / Play online  
+2. **Predict every gameweek** — HTML copy + `predict.jpg`  
+3. **Climb the global leaderboard** — HTML copy + `leaderboard.jpg`  
+4. **Mini leagues get personal** — HTML copy + `leagues.jpg`  
+5. **Start anytime and still compete** — HTML copy + `form.jpg` (+ Continue in browser)
 
-1. **Hero** — TotL logo, “Gamify your gameday”, short supporting line, Download / Coming soon / Play online
-2. **Predict every gameweek**
-3. **Climb the global leaderboard**
-4. **Mini leagues get personal**
-5. **Start anytime and still compete**
-6. Footer repeat CTAs
+Layout: always a **max 430px full-height column** (full-bleed on phones; centred on wide screens). No separate phone-shell breakpoint.
 
-Hero is a **dark green stadium-style placeholder** (gradient). **Carl: swap in the real App Store stadium asset when ready.**
-
-Mobile layout is deliberately **tight above the fold** (logo near the top, less empty air) so CTAs + start of the first section show without much scrolling.
-
-### App Store–aligned copy (current)
+Assets live in `public/assets/get-app/`.
 
 | Section | Body |
 |---------|------|
@@ -63,40 +54,22 @@ Mobile layout is deliberately **tight above the fold** (logo near the top, less 
 
 ## Design notes for Carl
 
-- Brand green / dark forest vibe (avoid purple gradients / cream AI-default looks)
-- Brand-first: TotL is the hero signal
-- One composition on first viewport — not a dashboard
-- No fancy screenshot carousels yet — web-native + App Store copy; polish/visuals are yours
-- Android can become a real Play Store button when you have the listing
+- Brand green `#1C8376` / deep navy `#0a1224` / Gramatika
+- Brand-first splash; one job per slide
+- **Do not** paste full App Store marketing screens (text baked into image)
+- Ideal handoff: export **phone UI / illustration only** PNGs @2x from Figma (nothing selected → no purple chrome), drop into `public/assets/get-app/`, wire in `GetApp.tsx`
+- Crowd hero: `crowd.jpg` is a stand-in — replace when ready
+- Android → real Play Store button when listing exists
+- Desktop: centred column on crowd backdrop (not a separate phone-shell mode)
 
-## Product intent (why 30 days)
-
-We want app install as the main path. Play online is an escape hatch, not a permanent “never show the ad again.” After 30 days they see the download page on `/` again; `/app` always stays the campaign URL.
-
-## Key code (for engineers)
+## Key code
 
 | Piece | Location |
 |-------|----------|
 | Landing page | `src/pages/GetApp.tsx` |
-| Preference cookie helpers | `src/lib/playOnlinePreference.ts` |
-| Route gate (`/` vs download) | `src/main.tsx` (`HomeOrGetApp`, `/app`) |
+| Preference cookie | `src/lib/playOnlinePreference.ts` |
+| Route gate | `src/main.tsx` (`HomeOrGetApp`, `/app`) |
 | In-product links | `src/pages/Profile.tsx`, `src/components/DesktopNav.tsx` |
 | Storybook | `src/pages/GetApp.stories.tsx` |
 
-Cookie name: `totl_prefer_play_online` (max-age 30 days, `SameSite=Lax`).
-
-## Open for Carl
-
-1. Real hero / marketing imagery (replace gradient placeholder)
-2. Visual polish / motion if wanted
-3. Android store link when ready
-4. Optional App Store screenshot-style mockups later
-
-## Related recent web ship (not this landing)
-
-Already on / going to production separately:
-
-- Username required if profile has no display name
-- Unique usernames in DB
-- UK deadline time display fix
-- Despia auth handoff removed
+Cookie: `totl_prefer_play_online` (30 days, `SameSite=Lax`).
