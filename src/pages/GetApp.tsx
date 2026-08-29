@@ -73,19 +73,31 @@ function AppStoreBadge({ className = '', imgClassName = 'h-11 w-auto' }: { class
   );
 }
 
+function GooglePlaySoon({ tone = 'splash' }: { tone?: 'splash' | 'light' }) {
+  const isSplash = tone === 'splash';
+  return (
+    <button
+      type="button"
+      disabled
+      className={`flex h-14 w-full cursor-not-allowed flex-col items-center justify-center gap-0.5 rounded-xl border px-3 text-center text-[13px] font-medium leading-tight tracking-tight sm:h-16 sm:text-[14px] ${
+        isSplash
+          ? 'border-white/25 text-white/45'
+          : 'border-black/15 text-black/35'
+      }`}
+      aria-disabled="true"
+    >
+      <span>Google Play</span>
+      <span>Coming soon</span>
+    </button>
+  );
+}
+
 function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <div className="inline-flex w-fit flex-col items-stretch gap-4">
         <AppStoreBadge imgClassName="h-14 w-auto sm:h-16" />
-        <button
-          type="button"
-          disabled
-          className="cursor-not-allowed rounded-xl border border-white/25 py-3 text-[15px] font-medium text-white/45"
-          aria-disabled="true"
-        >
-          Google Play — Coming soon
-        </button>
+        <GooglePlaySoon tone="splash" />
       </div>
       <button
         type="button"
@@ -271,14 +283,7 @@ export default function GetAppPage() {
                     </p>
                     <div className="mt-8 inline-flex w-fit flex-col items-stretch gap-3">
                       <AppStoreBadge imgClassName="h-14 w-auto" />
-                      <button
-                        type="button"
-                        disabled
-                        className="cursor-not-allowed rounded-xl border border-black/15 py-3 text-[15px] font-medium text-black/35"
-                        aria-disabled="true"
-                      >
-                        Google Play — Coming soon
-                      </button>
+                      <GooglePlaySoon tone="light" />
                     </div>
                     <button
                       type="button"
