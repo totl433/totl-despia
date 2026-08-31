@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useGameweekState } from '../hooks/useGameweekState';
 import { getLeagueAvatarUrl, getDefaultMlAvatar } from '../lib/leagueAvatars';
+import { assignCompetitionRanks, formatCompetitionRank } from '../lib/competitionRanks';
 import type { Fixture } from './FixtureCard';
 
 export interface MiniLeagueGwTableCardProps {
@@ -58,6 +59,14 @@ export default function MiniLeagueGwTableCard({
 }: MiniLeagueGwTableCardProps) {
   const displayGw = mockData?.displayGw ?? currentGw;
   const displayRows = mockData?.rows ?? rows;
+  const ranked = useMemo(
+    () =>
+      assignCompetitionRanks(
+        displayRows,
+        (a, b) => a.score === b.score && a.unicorns === b.unicorns
+      ),
+    [displayRows]
+  );
   
   // Determine if GW is live
   const { state: currentGwState } = useGameweekState(currentGw);
@@ -172,7 +181,7 @@ export default function MiniLeagueGwTableCard({
                       ? '#334155' 
                       : undefined
                   }}>
-                    <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide bg-white dark:bg-slate-800 w-6 pl-2 pr-1 text-[#1C8376]"></th>
+                    <th className="py-2 text-left font-semibold text-xs uppercase tracking-wide bg-white dark:bg-slate-800 w-8 pl-2 pr-1 text-[#1C8376]"></th>
                     <th className="py-2 text-left font-semibold text-xs text-slate-300 dark:text-slate-400 bg-white dark:bg-slate-800 pl-2 pr-2">
                       Player
                     </th>
@@ -184,6 +193,7 @@ export default function MiniLeagueGwTableCard({
                 </thead>
                 <tbody>
                   {displayRows.map((r, i) => {
+                    const standing = ranked[i] ?? { rank: null, tied: false };
                     return (
                       <tr 
                         key={r.user_id} 
@@ -200,8 +210,8 @@ export default function MiniLeagueGwTableCard({
                           } : {})
                         }}
                       >
-                        <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white dark:bg-slate-800 w-6 pl-2 pr-1 text-xs dark:text-slate-200">
-                          {i + 1}
+                        <td className="py-2 text-left tabular-nums whitespace-nowrap bg-white dark:bg-slate-800 w-8 pl-2 pr-1 text-xs dark:text-slate-200">
+                          {formatCompetitionRank(standing.rank, standing.tied)}
                         </td>
                         <td className="py-2 truncate whitespace-nowrap bg-white dark:bg-slate-800 pl-2 pr-2 text-xs dark:text-slate-200">
                           <span className="inline-flex items-center gap-1 min-w-0">
