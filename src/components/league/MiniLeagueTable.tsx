@@ -1,5 +1,6 @@
 import FormDisplay from './FormDisplay';
 import UserAvatar from '../UserAvatar';
+import { assignCompetitionRanks, formatCompetitionRank } from '../../lib/competitionRanks';
 
 export type MltRow = {
   user_id: string;
@@ -24,6 +25,7 @@ export interface MiniLeagueTableProps {
 /**
  * MiniLeagueTable - Displays the mini league standings table
  * Shows either Points view (W/D/OCP/Unicorns/PTS) or Form view (last 5 results)
+ * Spacing/chrome matched to ResultsTable (GW table).
  */
 export default function MiniLeagueTable({
   rows,
@@ -33,73 +35,39 @@ export default function MiniLeagueTable({
   loading,
   isLateStartingLeague,
 }: MiniLeagueTableProps) {
+  const ranked = assignCompetitionRanks(
+    rows,
+    (a, b) => a.mltPts === b.mltPts && a.unicorns === b.unicorns && a.ocp === b.ocp
+  );
+
   return (
-    <div className="pt-4">
-      <style>{`
-        .mlt-table tbody tr:last-child {
-          border-bottom: none !important;
-          border: none !important;
-        }
-        .mlt-table tbody tr:last-child td {
-          border-bottom: none !important;
-          border: none !important;
-        }
-        .mlt-table tbody tr:last-child th {
-          border-bottom: none !important;
-          border: none !important;
-        }
-        .mlt-table {
-          border-bottom: none !important;
-        }
-        .mlt-table tbody {
-          border-bottom: none !important;
-        }
-        .mlt-table-container {
-          border-bottom: none !important;
-        }
-        .mlt-table-container table {
-          border-bottom: none !important;
-        }
-        .mlt-table-container tbody {
-          border-bottom: none !important;
-        }
-        .mlt-table-container tbody tr:last-child {
-          border-bottom: none !important;
-          border: none !important;
-        }
-        .mlt-table-container tbody tr:last-child td {
-          border-bottom: none !important;
-          border: none !important;
-        }
-      `}</style>
-      <div 
-        className="mlt-table-container overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x bg-slate-50 dark:bg-slate-900"
-        style={{ 
-          backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc',
-          borderBottom: 'none',
-          boxShadow: 'none'
+    <div>
+      <div
+        className="overflow-y-auto overflow-x-hidden -mx-4 sm:mx-0 rounded-none sm:rounded-2xl border-x-0 sm:border-x border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 shadow-sm"
+        style={{
+          backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc'
         }}
       >
-        <table className="mlt-table w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc', border: 'none', borderBottom: 'none' }}>
-          <thead className="sticky top-0" style={{ 
-            position: 'sticky', 
-            top: 0, 
-            zIndex: 25, 
-            backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', 
+        <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed', backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>
+          <thead className="sticky top-0" style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 25,
+            backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc',
             display: 'table-header-group'
           } as any}>
             <tr style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', borderBottom: 'none' }}>
-              <th className="py-3 text-left font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>#</th>
-              <th className="py-3 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>Player</th>
+              <th className="pt-3 pb-2 text-left font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>#</th>
+              <th className="pt-3 pb-2 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>Player</th>
               {showForm ? (
-                <th className="px-4 py-3 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>Form</th>
+                <th className="px-4 pt-3 pb-2 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>Form</th>
               ) : (
                 <>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>W</th>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>D</th>
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
-                  {members.length >= 3 && <th className="py-3 text-center font-normal text-base" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>🦄</th>}
-                  <th className="py-3 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>PTS</th>
+                  <th className="pt-3 pb-2 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>W</th>
+                  <th className="pt-3 pb-2 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>D</th>
+                  <th className="pt-3 pb-2 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>{isLateStartingLeague ? 'CP' : 'OCP'}</th>
+                  {members.length >= 3 && <th className="pt-3 pb-2 text-center font-normal text-base" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>🦄</th>}
+                  <th className="pt-3 pb-2 text-center font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '40px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>PTS</th>
                 </>
               )}
             </tr>
@@ -108,9 +76,10 @@ export default function MiniLeagueTable({
             {rows.map((r, i) => {
               const isMe = r.user_id === currentUserId;
               const isLastRow = i === rows.length - 1;
+              const standing = ranked[i] ?? { rank: null, tied: false };
               return (
-                <tr 
-                  key={r.user_id} 
+                <tr
+                  key={r.user_id}
                   className={isMe ? 'flash-user-row' : ''}
                   style={{
                     position: 'relative',
@@ -118,15 +87,15 @@ export default function MiniLeagueTable({
                     ...(isLastRow ? {} : { borderBottom: document.documentElement.classList.contains('dark') ? '1px solid #334155' : '1px solid #e2e8f0' })
                   }}
                 >
-                  <td className="py-4 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{ 
-                    paddingLeft: '0.5rem', 
+                  <td className="pt-2.5 pb-3 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{
+                    paddingLeft: '0.5rem',
                     paddingRight: '0.25rem',
                     backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc',
                     width: '35px'
                   }}>
-                    {i + 1}
+                    {formatCompetitionRank(standing.rank, standing.tied)}
                   </td>
-                  <td className="py-4 bg-slate-50 dark:bg-slate-900 pl-0 pr-4" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>
+                  <td className="pt-2.5 pb-3" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
                     <div className="flex items-center gap-1.5">
                       <div className="flex-shrink-0">
                         <UserAvatar
@@ -143,16 +112,16 @@ export default function MiniLeagueTable({
                     </div>
                   </td>
                   {showForm ? (
-                    <td className="px-4 py-4 bg-slate-50 dark:bg-slate-900">
+                    <td className="px-4 pt-2.5 pb-3" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>
                       <FormDisplay form={r.form} />
                     </td>
                   ) : (
                     <>
-                      <td className="py-4 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1">{r.wins}</td>
-                      <td className="py-4 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1">{r.draws}</td>
-                      <td className="py-4 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-10 pl-1 pr-1">{r.ocp}</td>
-                      {members.length >= 3 && <td className="py-4 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1">{r.unicorns}</td>}
-                      <td className="py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 dark:bg-slate-900 w-10 pl-1 pr-1">{r.mltPts}</td>
+                      <td className="pt-2.5 pb-3 text-center tabular-nums text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>{r.wins}</td>
+                      <td className="pt-2.5 pb-3 text-center tabular-nums text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>{r.draws}</td>
+                      <td className="pt-2.5 pb-3 text-center tabular-nums text-slate-900 dark:text-slate-100 w-10 pl-1 pr-1" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>{r.ocp}</td>
+                      {members.length >= 3 && <td className="pt-2.5 pb-3 text-center tabular-nums text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>{r.unicorns}</td>}
+                      <td className="pt-2.5 pb-3 text-center tabular-nums font-bold text-[#1C8376] w-10 pl-1 pr-1" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc' }}>{r.mltPts}</td>
                     </>
                   )}
                 </tr>
@@ -178,4 +147,3 @@ export default function MiniLeagueTable({
     </div>
   );
 }
-

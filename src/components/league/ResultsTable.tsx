@@ -1,4 +1,5 @@
 import UserAvatar from '../UserAvatar';
+import { assignCompetitionRanks, formatCompetitionRank } from '../../lib/competitionRanks';
 
 export type ResultRow = {
   user_id: string;
@@ -36,6 +37,11 @@ export default function ResultsTable({
   allFixturesFinished,
   resGw,
 }: ResultsTableProps) {
+  const ranked = assignCompetitionRanks(
+    rows,
+    (a, b) => a.score === b.score && a.unicorns === b.unicorns
+  );
+
   return (
     <div>
       <style>{`
@@ -112,8 +118,8 @@ export default function ResultsTable({
             display: 'table-header-group'
           } as any}>
             <tr style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', borderBottom: 'none' }}>
-              <th className="py-4 text-left font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>#</th>
-              <th className="py-4 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>
+              <th className="pt-3 pb-2 text-left font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.5rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>#</th>
+              <th className="pt-3 pb-2 text-left font-normal text-xs" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8', paddingLeft: '0.5rem', paddingRight: '1rem', width: 'auto' }}>
                 <div className="flex items-center gap-2">
                   Player
                   {isApiTestLeague && hasLiveFixtures && (
@@ -134,8 +140,8 @@ export default function ResultsTable({
                   )}
                 </div>
               </th>
-              <th className="py-4 text-center font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>Score</th>
-              {members.length >= 3 && <th className="py-4 text-center font-normal text-base" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>🦄</th>}
+              <th className="pt-3 pb-2 text-center font-normal" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '50px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>Score</th>
+              {members.length >= 3 && <th className="pt-3 pb-2 text-center font-normal text-base" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#1e293b' : '#f8fafc', width: '35px', paddingLeft: '0.25rem', paddingRight: '0.25rem', color: document.documentElement.classList.contains('dark') ? '#cbd5e1' : '#94a3b8' }}>🦄</th>}
             </tr>
           </thead>
           <tbody>
@@ -143,6 +149,7 @@ export default function ResultsTable({
               const isMe = r.user_id === currentUserId;
               const isLastRow = i === rows.length - 1;
               const hasPositionChanged = positionChangeKeys.has(r.user_id);
+              const standing = ranked[i] ?? { rank: null, tied: false };
               return (
                 <tr 
                   key={r.user_id} 
@@ -153,15 +160,15 @@ export default function ResultsTable({
                     ...(isLastRow ? {} : { borderBottom: document.documentElement.classList.contains('dark') ? '1px solid #334155' : '1px solid #e2e8f0' })
                   }}
                 >
-                  <td className="py-4 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{ 
+                  <td className="pt-2.5 pb-3 text-left tabular-nums whitespace-nowrap relative text-slate-900 dark:text-slate-100" style={{ 
                     paddingLeft: '0.5rem', 
                     paddingRight: '0.25rem',
                     backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc',
                     width: '35px'
                   }}>
-                    {i + 1}
+                    {formatCompetitionRank(standing.rank, standing.tied)}
                   </td>
-                  <td className="py-4" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
+                  <td className="pt-2.5 pb-3" style={{ backgroundColor: document.documentElement.classList.contains('dark') ? '#0f172a' : '#f8fafc', paddingLeft: '0.5rem', paddingRight: '1rem' }}>
                     <div className="flex items-center gap-1.5">
                       {isApiTestLeague && hasLiveFixtures && (
                         <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse flex-shrink-0" style={{ minWidth: '8px', minHeight: '8px' }}></div>
@@ -185,8 +192,8 @@ export default function ResultsTable({
                       </span>
                     </div>
                   </td>
-                  <td className={`py-4 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 dark:bg-slate-900 w-[50px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.score}</td>
-                  {members.length >= 3 && <td className={`py-4 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
+                  <td className={`pt-2.5 pb-3 text-center tabular-nums font-bold text-[#1C8376] bg-slate-50 dark:bg-slate-900 w-[50px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.score}</td>
+                  {members.length >= 3 && <td className={`pt-2.5 pb-3 text-center tabular-nums bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-[35px] pl-1 pr-1 ${isApiTestLeague && hasLiveFixtures ? 'pulse-live-score' : ''}`}>{r.unicorns}</td>}
                 </tr>
               );
             })}

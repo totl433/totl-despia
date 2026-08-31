@@ -2388,7 +2388,7 @@ ${shareUrl}`;
     }
 
     return (
-      <div className="pt-4">
+      <div>
         <MiniLeagueTable
           rows={rows}
           members={members}
