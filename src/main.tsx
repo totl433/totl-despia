@@ -350,6 +350,7 @@ import ScrollToTop from "./components/ScrollToTop";
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
+import { prefersPlayOnline } from "./lib/playOnlinePreference";
 import { supabase } from "./lib/supabase";
 import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
 import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
@@ -430,7 +431,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <React.Fragment key={user.id}>{children}</React.Fragment>;
 }
 
-/** `/` stays the normal game home until we flip download-first live. Share landing at `/app`. */
+/** `/` is download-first unless the user chose Play online (30-day cookie). */
 function HomeOrGetApp() {
   return (
     <RequireAuth>
@@ -904,8 +905,10 @@ function AppContent() {
     }
   }, [loadEverythingFirst, initialDataLoaded]);
   
-  // Marketing landing is only at /app for now (share with Carl). `/` stays the game.
-  const showGetAppLanding = location.pathname === '/app';
+  // Download-first homepage for web; `/app` always; skip in legacy native wrappers.
+  const showGetAppLanding =
+    location.pathname === '/app' ||
+    (location.pathname === '/' && !isNativeApp && !prefersPlayOnline());
   const isLoggedOut = !authLoading && !user;
   if (
     loadEverythingFirst &&

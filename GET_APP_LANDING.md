@@ -22,11 +22,11 @@ Most users should land on a **Get the App** page, not the game. Ads / physical Q
 
 | Rule | Detail |
 |------|--------|
-| Homepage `/` | **Still the normal web game** (download-first not flipped yet) |
+| Homepage `/` | **Download-first Get App landing** (unless Play online cookie) |
 | Share / ads URL | `playtotl.com/app` **always** shows the download landing |
-| Play online | Sets cookie for later when `/` becomes download-first; for now still useful from `/app` |
+| Play online | Sets `totl_prefer_play_online` for 30 days, then loads the web game at `/` |
 | In-product | **Get the app** in Profile + Desktop nav → `/app` |
-| Platforms | Web + Expo only. Despia is deprecated. |
+| Platforms | Web only for this landing. Expo is the native app. Legacy Despia wrappers skip the landing on `/`. |
 
 ### Store CTAs
 
