@@ -820,6 +820,7 @@ export default function PredictionsScreen() {
               disabled={submitted || deadlineExpired}
               onCommitPick={setPickLocal}
               onCurrentIndexChange={setCardIndex}
+              enableCardFlip={isTestMode}
             />
           ) : (
             <Card style={[FLAT_CARD_STYLE, { width: '100%' }]}>
