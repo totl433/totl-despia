@@ -52,7 +52,7 @@ export const handler: Handler = async (event) => {
 
   const { data: row, error: readError } = await admin
     .from('season_prediction_picks')
-    .select('highest_scorer, most_assists, submitted_at')
+    .select('*')
     .eq('season_key', seasonKey)
     .eq('user_id', userId)
     .maybeSingle();
@@ -64,42 +64,42 @@ export const handler: Handler = async (event) => {
     return json(404, { error: 'No season prediction row found for user' });
   }
 
-  const originalSubmittedAt = row.submitted_at;
+  const before = {
+    highest_scorer: row.highest_scorer,
+    most_assists: row.most_assists,
+  };
 
-  const { error: unlockError } = await admin
+  // Submitted rows are locked by an UPDATE trigger; delete + insert avoids it.
+  const { error: deleteError } = await admin
     .from('season_prediction_picks')
-    .update({ submitted_at: null })
+    .delete()
     .eq('season_key', seasonKey)
     .eq('user_id', userId);
 
-  if (unlockError) {
-    return json(500, { error: 'Failed to unlock row', details: unlockError.message });
+  if (deleteError) {
+    return json(500, { error: 'Failed to delete locked row', details: deleteError.message });
   }
 
-  const { data: updated, error: swapError } = await admin
+  const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...rest } = row;
+  const { data: updated, error: insertError } = await admin
     .from('season_prediction_picks')
-    .update({
+    .insert({
+      ...rest,
       highest_scorer: row.most_assists,
       most_assists: row.highest_scorer,
-      submitted_at: originalSubmittedAt,
     })
-    .eq('season_key', seasonKey)
-    .eq('user_id', userId)
     .select('highest_scorer, most_assists, submitted_at')
     .single();
 
-  if (swapError) {
-    return json(500, { error: 'Failed to swap picks', details: swapError.message });
+  if (insertError) {
+    return json(500, { error: 'Failed to re-insert swapped picks', details: insertError.message });
   }
 
   return json(200, {
     ok: true,
     userId,
     seasonKey,
-    before: {
-      highest_scorer: row.highest_scorer,
-      most_assists: row.most_assists,
-    },
+    before,
     after: {
       highest_scorer: updated.highest_scorer,
       most_assists: updated.most_assists,

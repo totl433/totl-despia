@@ -26,7 +26,7 @@ const admin = createClient(url, key, { auth: { persistSession: false } });
 
 const { data: row, error: readError } = await admin
   .from('season_prediction_picks')
-  .select('highest_scorer, most_assists, submitted_at')
+  .select('*')
   .eq('season_key', SEASON_KEY)
   .eq('user_id', SP_USER_ID)
   .maybeSingle();
@@ -40,35 +40,35 @@ if (!row) {
   process.exit(1);
 }
 
-console.log('Before:', row);
+console.log('Before:', {
+  highest_scorer: row.highest_scorer,
+  most_assists: row.most_assists,
+});
 
-const originalSubmittedAt = row.submitted_at;
-
-const { error: unlockError } = await admin
+const { error: deleteError } = await admin
   .from('season_prediction_picks')
-  .update({ submitted_at: null })
+  .delete()
   .eq('season_key', SEASON_KEY)
   .eq('user_id', SP_USER_ID);
 
-if (unlockError) {
-  console.error('Unlock failed:', unlockError.message);
+if (deleteError) {
+  console.error('Delete failed:', deleteError.message);
   process.exit(1);
 }
 
-const { data: updated, error: swapError } = await admin
+const { id: _id, created_at: _createdAt, updated_at: _updatedAt, ...rest } = row;
+const { data: updated, error: insertError } = await admin
   .from('season_prediction_picks')
-  .update({
+  .insert({
+    ...rest,
     highest_scorer: row.most_assists,
     most_assists: row.highest_scorer,
-    submitted_at: originalSubmittedAt,
   })
-  .eq('season_key', SEASON_KEY)
-  .eq('user_id', SP_USER_ID)
   .select('highest_scorer, most_assists, submitted_at')
   .single();
 
-if (swapError) {
-  console.error('Swap failed:', swapError.message);
+if (insertError) {
+  console.error('Insert failed:', insertError.message);
   process.exit(1);
 }
 
