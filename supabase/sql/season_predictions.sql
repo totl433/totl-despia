@@ -24,13 +24,13 @@ AS $$
   SELECT p_uid = '4542c037-5b38-40d0-b189-847b8f17c222'::uuid;
 $$;
 
--- 10pm UK on 1 Sep 2026 (BST = UTC+1)
+-- 10pm UK on 2 Sep 2026 (BST = UTC+1)
 CREATE OR REPLACE FUNCTION public.season_predictions_deadline()
 RETURNS timestamptz
 LANGUAGE sql
 IMMUTABLE
 AS $$
-  SELECT timestamptz '2026-09-01 21:00:00+00';
+  SELECT timestamptz '2026-09-02 21:00:00+00';
 $$;
 
 CREATE OR REPLACE FUNCTION public.all_season_predictions_submitted(p_season_key text DEFAULT '2026-27')

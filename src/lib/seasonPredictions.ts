@@ -2,8 +2,8 @@
 
 export const SEASON_PREDICTIONS_SEASON_KEY = '2026-27';
 
-/** 10pm UK on 1 Sep 2026. UK is on BST then, so 21:00 UTC. */
-export const SEASON_PREDICTIONS_DEADLINE = new Date('2026-09-01T21:00:00.000Z');
+/** 10pm UK on 2 Sep 2026. UK is on BST then, so 21:00 UTC. */
+export const SEASON_PREDICTIONS_DEADLINE = new Date('2026-09-02T21:00:00.000Z');
 
 export const JOF_USER_ID = '4542c037-5b38-40d0-b189-847b8f17c222';
 
@@ -220,7 +220,7 @@ export function isSeasonPredictionsDeadlinePassed(now: Date = new Date()): boole
 }
 
 export function formatSeasonPredictionsDeadlineDate(): string {
-  return 'Tuesday 1 September 2026';
+  return 'Wednesday 2 September 2026';
 }
 
 export function formatSeasonPredictionsDeadlineTime(): string {

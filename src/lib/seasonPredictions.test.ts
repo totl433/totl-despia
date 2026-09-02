@@ -161,8 +161,8 @@ describe('season prediction scoring', () => {
 });
 
 describe('season prediction helpers', () => {
-  it('treats the deadline as passed at 10pm UK on 1 Sep 2026', () => {
-    expect(isSeasonPredictionsDeadlinePassed(new Date('2026-09-01T20:59:59.000Z'))).toBe(false);
+  it('treats the deadline as passed at 10pm UK on 2 Sep 2026', () => {
+    expect(isSeasonPredictionsDeadlinePassed(new Date('2026-09-02T20:59:59.000Z'))).toBe(false);
     expect(isSeasonPredictionsDeadlinePassed(SEASON_PREDICTIONS_DEADLINE)).toBe(true);
   });
 
