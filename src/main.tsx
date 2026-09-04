@@ -1,7 +1,8 @@
 // src/main.tsx
 import "./output.css";
 import "react-chat-elements/dist/main.css";
-import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "react";
+import React, { Suspense, useState, useEffect, useLayoutEffect } from "react";
+import { lazyWithReload as lazy } from "./lib/lazyWithReload";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 import { isNativeApp } from "./lib/platform";
