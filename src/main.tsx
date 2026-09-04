@@ -322,6 +322,8 @@ const SupportPage = lazy(() => import("./pages/Support"));
 const DeleteDataPage = lazy(() => import("./pages/DeleteData"));
 const SeasonPredictionsPage = lazy(() => import("./pages/SeasonPredictions"));
 const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPredictionsResults"));
+const RetroTotlDailyPage = lazy(() => import("./pages/RetroTotlDaily"));
+const RetroTotlDailyScoreboardPage = lazy(() => import("./pages/RetroTotlDailyScoreboard"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -784,7 +786,7 @@ function AppContent() {
   }, [user?.id, location.pathname]);
   
   // Hide header/banner for full-screen pages
-  const isFullScreenPage = false;
+  const isFullScreenPage = location.pathname.startsWith('/admin/retro-totl-daily');
 
   // Fallback: If OneSignal didn't set URL, check for very recent messages (last 30 seconds)
   // This only runs once per session and only if we're not already on a league page
@@ -906,13 +908,15 @@ function AppContent() {
   const showDesktopNav =
     location.pathname !== '/auth' &&
     location.pathname !== '/api-admin' &&
-    location.pathname !== '/swipe-card-preview';
+    location.pathname !== '/swipe-card-preview' &&
+    !location.pathname.startsWith('/admin/retro-totl-daily');
 
   const showBottomNav =
     location.pathname !== '/auth' &&
     location.pathname !== '/support' &&
     location.pathname !== '/predictions/swipe' &&
-    location.pathname !== '/swipe-card-preview';
+    location.pathname !== '/swipe-card-preview' &&
+    !location.pathname.startsWith('/admin/retro-totl-daily');
 
   return (
     <>
@@ -1005,6 +1009,8 @@ function AppContent() {
                 <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
                 <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
                 <Route path="/admin/gw-stats" element={<RequireAuth><AdminGwStatsPage /></RequireAuth>} />
+                <Route path="/admin/retro-totl-daily" element={<RequireAuth><RetroTotlDailyPage /></RequireAuth>} />
+                <Route path="/admin/retro-totl-daily/scoreboard" element={<RequireAuth><RetroTotlDailyScoreboardPage /></RequireAuth>} />
                 <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
                 <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />
