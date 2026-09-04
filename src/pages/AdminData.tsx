@@ -1,14 +1,21 @@
 import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { isFounderAdmin } from '../lib/adminIds';
 import { isWebBrowser } from '../lib/platform';
 import { isSeasonPredictionsPlayer, isSeasonPredictionsResultsEditor } from '../lib/seasonPredictions';
+import { ensureRetroPixelFont } from '../lib/retroDaily/pixelFont';
 
 export default function AdminDataPage() {
   const { user } = useAuth();
   const isAdmin = isFounderAdmin(user?.id);
   const canOpenSeasonPredictions = isSeasonPredictionsPlayer(user?.id) && isWebBrowser();
   const canOpenSeasonPredictionsResults = isSeasonPredictionsResultsEditor(user?.id) && isWebBrowser();
+
+  // Warm PressStart2P before opening Retro Totl Daily
+  useEffect(() => {
+    if (isAdmin) void ensureRetroPixelFont();
+  }, [isAdmin]);
 
   if (!user) {
     return (

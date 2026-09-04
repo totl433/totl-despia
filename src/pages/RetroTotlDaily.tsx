@@ -30,6 +30,7 @@ import RetroDailySwipeStack, {
   DRAW_THRESHOLD,
   SWIPE_THRESHOLD,
 } from '../components/retroDaily/RetroDailySwipeStack';
+import { ensureRetroPixelFont } from '../lib/retroDaily/pixelFont';
 
 type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
@@ -59,6 +60,7 @@ export default function RetroTotlDailyPage() {
   const [interactive, setInteractive] = useState(true);
   const [cardKey, setCardKey] = useState('intro');
   const [flipKey, setFlipKey] = useState(0);
+  const [pixelFontReady, setPixelFontReady] = useState(false);
 
   const timerEpoch = useRef(0);
   const timerRaf = useRef(0);
@@ -95,6 +97,17 @@ export default function RetroTotlDailyPage() {
   useEffect(() => {
     if (!loading && user && !isAdmin) navigate('/profile');
   }, [loading, user, isAdmin, navigate]);
+
+  // Wait for PressStart2P so the first season card never flashes monospace
+  useEffect(() => {
+    let cancelled = false;
+    ensureRetroPixelFont().then(() => {
+      if (!cancelled) setPixelFontReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const restart = useCallback(() => {
     timerEpoch.current += 1;
@@ -280,7 +293,7 @@ export default function RetroTotlDailyPage() {
     [phase, interactive, fixture]
   );
 
-  if (loading || !user) {
+  if (loading || !user || !pixelFontReady) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: BG }}>
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-white" />
