@@ -93,9 +93,23 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
  * stats can be checked against real H2H / standings. Kept as gw 99 so test picks
  * never collide with real submissions.
  *
+ * Kickoffs are shifted ~7 days ahead of "now" so the shared deadline UI never
+ * locks the test page (test mode also ignores deadlineExpired).
+ *
  * Source: 2026/27 season stack GW3 (`app_season_fixtures`).
  */
-function buildFakeFixtures(): Fixture[] {
+function buildFakeFixtures(nowMs = Date.now()): Fixture[] {
+  const dayMs = 24 * 60 * 60 * 1000;
+  /** Anchor first KO ~7 days out at 19:00 UTC so labels stay in the future. */
+  const first = new Date(nowMs + 7 * dayMs);
+  first.setUTCHours(19, 0, 0, 0);
+
+  const at = (dayOffset: number, hourUtc: number, minuteUtc: number) => {
+    const d = new Date(first.getTime() + dayOffset * dayMs);
+    d.setUTCHours(hourUtc, minuteUtc, 0, 0);
+    return d.toISOString();
+  };
+
   const fixtures: Array<{
     fixture_index: number;
     homeCode: string;
@@ -105,16 +119,16 @@ function buildFakeFixtures(): Fixture[] {
     kickoff_time: string;
     api_match_id: number;
   }> = [
-    { fixture_index: 0, homeCode: 'IPS', homeName: 'Ipswich', awayCode: 'LIV', awayName: 'Liverpool', kickoff_time: '2026-09-04T19:00:00.000Z', api_match_id: 560566 },
-    { fixture_index: 1, homeCode: 'NEW', homeName: 'Newcastle', awayCode: 'BOU', awayName: 'Bournemouth', kickoff_time: '2026-09-05T11:30:00.000Z', api_match_id: 560571 },
-    { fixture_index: 2, homeCode: 'NOT', homeName: 'Nott\'m Forest', awayCode: 'TOT', awayName: 'Tottenham', kickoff_time: '2026-09-05T14:00:00.000Z', api_match_id: 560562 },
-    { fixture_index: 3, homeCode: 'MCI', homeName: 'Man City', awayCode: 'COV', awayName: 'Coventry', kickoff_time: '2026-09-05T14:00:00.000Z', api_match_id: 560563 },
-    { fixture_index: 4, homeCode: 'BHA', homeName: 'Brighton', awayCode: 'LEE', awayName: 'Leeds', kickoff_time: '2026-09-05T14:00:00.000Z', api_match_id: 560564 },
-    { fixture_index: 5, homeCode: 'BRE', homeName: 'Brentford', awayCode: 'SUN', awayName: 'Sunderland', kickoff_time: '2026-09-05T14:00:00.000Z', api_match_id: 560565 },
-    { fixture_index: 6, homeCode: 'FUL', homeName: 'Fulham', awayCode: 'CRY', awayName: 'Crystal Palace', kickoff_time: '2026-09-05T14:00:00.000Z', api_match_id: 560568 },
-    { fixture_index: 7, homeCode: 'HUL', homeName: 'Hull', awayCode: 'AVL', awayName: 'Aston Villa', kickoff_time: '2026-09-05T16:30:00.000Z', api_match_id: 560569 },
-    { fixture_index: 8, homeCode: 'EVE', homeName: 'Everton', awayCode: 'MUN', awayName: 'Man Utd', kickoff_time: '2026-09-06T13:00:00.000Z', api_match_id: 560567 },
-    { fixture_index: 9, homeCode: 'ARS', homeName: 'Arsenal', awayCode: 'CHE', awayName: 'Chelsea', kickoff_time: '2026-09-06T15:30:00.000Z', api_match_id: 560570 },
+    { fixture_index: 0, homeCode: 'IPS', homeName: 'Ipswich', awayCode: 'LIV', awayName: 'Liverpool', kickoff_time: at(0, 19, 0), api_match_id: 560566 },
+    { fixture_index: 1, homeCode: 'NEW', homeName: 'Newcastle', awayCode: 'BOU', awayName: 'Bournemouth', kickoff_time: at(1, 11, 30), api_match_id: 560571 },
+    { fixture_index: 2, homeCode: 'NOT', homeName: 'Nott\'m Forest', awayCode: 'TOT', awayName: 'Tottenham', kickoff_time: at(1, 14, 0), api_match_id: 560562 },
+    { fixture_index: 3, homeCode: 'MCI', homeName: 'Man City', awayCode: 'COV', awayName: 'Coventry', kickoff_time: at(1, 14, 0), api_match_id: 560563 },
+    { fixture_index: 4, homeCode: 'BHA', homeName: 'Brighton', awayCode: 'LEE', awayName: 'Leeds', kickoff_time: at(1, 14, 0), api_match_id: 560564 },
+    { fixture_index: 5, homeCode: 'BRE', homeName: 'Brentford', awayCode: 'SUN', awayName: 'Sunderland', kickoff_time: at(1, 14, 0), api_match_id: 560565 },
+    { fixture_index: 6, homeCode: 'FUL', homeName: 'Fulham', awayCode: 'CRY', awayName: 'Crystal Palace', kickoff_time: at(1, 14, 0), api_match_id: 560568 },
+    { fixture_index: 7, homeCode: 'HUL', homeName: 'Hull', awayCode: 'AVL', awayName: 'Aston Villa', kickoff_time: at(1, 16, 30), api_match_id: 560569 },
+    { fixture_index: 8, homeCode: 'EVE', homeName: 'Everton', awayCode: 'MUN', awayName: 'Man Utd', kickoff_time: at(2, 13, 0), api_match_id: 560567 },
+    { fixture_index: 9, homeCode: 'ARS', homeName: 'Arsenal', awayCode: 'CHE', awayName: 'Chelsea', kickoff_time: at(2, 15, 30), api_match_id: 560570 },
   ];
 
   return fixtures.map((f) => ({
@@ -575,8 +589,12 @@ export default function PredictionsScreen() {
     return { ...serverPicks, ...draftPicks };
   }, [draftPicks, serverPicks, submitted]);
 
-  const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
-  const deadlineExpired = deadline?.expired ?? false;
+  const deadline = React.useMemo(() => {
+    // Admin test flow: never lock on deadline — fixtures are a fixed mirror of a live GW.
+    if (isTestMode) return null;
+    return deadlineCountdown(fixtures, nowMs);
+  }, [fixtures, isTestMode, nowMs]);
+  const deadlineExpired = isTestMode ? false : (deadline?.expired ?? false);
 
   const allPicksMade = React.useMemo(() => {
     if (!fixtures.length) return false;
