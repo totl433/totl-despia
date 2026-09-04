@@ -4,9 +4,9 @@ import type { RetroFixture, RetroPick } from '../../lib/retroDaily/mockPuzzle';
 import { pickLabel } from '../../lib/retroDaily/mockPuzzle';
 import RetroDailyTotlPattern from './RetroDailyTotlPattern';
 
-/** Sit on the loading face before the flip. */
+/** Sit on the loading face before revealing the score. */
 export const RETRO_REVEAL_HOLD_MS = 2000;
-/** Card-flip duration into the score face. */
+/** Transition duration into the score face (kept for parent unlock timing). */
 export const RETRO_REVEAL_FLIP_MS = 720;
 
 export function resultMatchesPick(fixture: RetroFixture, pick: RetroPick | null): boolean {
@@ -48,7 +48,7 @@ function BounceDot({ delayMs }: { delayMs: number }) {
   );
 }
 
-/** Teal hold face: bouncing ball + dots while waiting for the score flip. */
+/** Teal hold face: bouncing ball + dots while waiting for the score. */
 function LoadingFace() {
   return (
     <div className="relative flex h-full flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[#0F766E] px-6 shadow-lg">
@@ -152,7 +152,8 @@ function TeamMini({ code, name }: { code: string; name: string }) {
 }
 
 /**
- * Holds on a loading face, then flips to score + CORRECT / INCORRECT / Too slow!
+ * Holds on loading, then swaps to score.
+ * One face at a time — no CSS 3D (Safari was stacking loading dots on CORRECT).
  */
 export default function RetroDailyRevealCard({
   fixture,
@@ -171,68 +172,42 @@ export default function RetroDailyRevealCard({
   holdMs?: number;
   flipMs?: number;
 }) {
-  const [flipped, setFlipped] = useState(false);
-  const [showLoading, setShowLoading] = useState(true);
+  const [showScore, setShowScore] = useState(false);
 
   useEffect(() => {
-    setFlipped(false);
-    setShowLoading(true);
-    const flipId = window.setTimeout(() => setFlipped(true), holdMs);
-    const doneId = window.setTimeout(() => setShowLoading(false), holdMs + flipMs + 40);
-    return () => {
-      window.clearTimeout(flipId);
-      window.clearTimeout(doneId);
-    };
-  }, [fixture.id, flipKey, holdMs, flipMs]);
-
-  if (!showLoading) {
-    return (
-      <div className="h-full w-full">
-        <ScoreFace
-          fixture={fixture}
-          correct={correct}
-          timedOut={timedOut}
-          showNextHint={showNextHint}
-        />
-      </div>
-    );
-  }
+    setShowScore(false);
+    const id = window.setTimeout(() => setShowScore(true), holdMs);
+    return () => window.clearTimeout(id);
+  }, [fixture.id, flipKey, holdMs]);
 
   return (
-    <div className="h-full w-full [perspective:1200px]">
-      <div
-        className="relative h-full w-full [transform-style:preserve-3d]"
-        style={{
-          transition: `transform ${flipMs}ms cubic-bezier(0.22, 1, 0.36, 1)`,
-          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-        }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
-          }}
-        >
+    <div className="relative h-full w-full overflow-hidden rounded-[28px]">
+      {!showScore ? (
+        <div key={`load-${flipKey}`} className="h-full w-full">
           <LoadingFace />
         </div>
+      ) : (
         <div
-          className="absolute inset-0"
+          key={`score-${flipKey}`}
+          className="h-full w-full"
           style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg) translateZ(0)',
+            animation: `retroRevealIn ${flipMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
           }}
         >
           <ScoreFace
             fixture={fixture}
             correct={correct}
             timedOut={timedOut}
-            showNextHint={showNextHint && flipped}
+            showNextHint={showNextHint}
           />
         </div>
-      </div>
+      )}
+      <style>{`
+        @keyframes retroRevealIn {
+          from { opacity: 0; transform: scale(0.96) rotateY(-18deg); }
+          to { opacity: 1; transform: scale(1) rotateY(0deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -5,14 +5,14 @@ import type { RetroFixture } from '../../lib/retroDaily/mockPuzzle';
 
 /** Brief peek on the under-card face before revealing the fixture. */
 export const RETRO_PROMOTE_FLIP_DELAY_MS = 450;
-/** Card-flip duration into the fixture face. */
+/** Transition duration into the fixture face (kept for parent unlock timing). */
 export const RETRO_PROMOTE_FLIP_MS = 720;
 /** Shorter hold when coming off the 3-2-1 face. */
 export const RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS = 280;
 
 /**
- * Holds on the logo (or custom) back, then flips to the fixture face.
- * After the flip settles we drop the back face so iOS Safari can’t leak it through.
+ * Holds on the logo back, then swaps to the fixture.
+ * One face at a time — avoids Safari stacking both sides of a CSS 3D flip.
  */
 export default function RetroDailyPromoteFlipCard({
   fixture,
@@ -29,59 +29,37 @@ export default function RetroDailyPromoteFlipCard({
   holdMs?: number;
   flipMs?: number;
 }) {
-  const [flipped, setFlipped] = useState(false);
-  const [showBack, setShowBack] = useState(true);
+  const [showFixture, setShowFixture] = useState(false);
 
   useEffect(() => {
-    setFlipped(false);
-    setShowBack(true);
-    const flipId = window.setTimeout(() => setFlipped(true), holdMs);
-    const doneId = window.setTimeout(() => setShowBack(false), holdMs + flipMs + 40);
-    return () => {
-      window.clearTimeout(flipId);
-      window.clearTimeout(doneId);
-    };
-  }, [flipKey, fixture.id, holdMs, flipMs]);
-
-  // Settled: plain fixture only (avoids Safari backface bleed)
-  if (!showBack) {
-    return (
-      <div className="h-full w-full">
-        <RetroDailyFixtureCard fixture={fixture} />
-      </div>
-    );
-  }
+    setShowFixture(false);
+    const id = window.setTimeout(() => setShowFixture(true), holdMs);
+    return () => window.clearTimeout(id);
+  }, [flipKey, fixture.id, holdMs]);
 
   return (
-    <div className="h-full w-full [perspective:1200px]">
-      <div
-        className="relative h-full w-full [transform-style:preserve-3d]"
-        style={{
-          transition: `transform ${flipMs}ms cubic-bezier(0.22, 1, 0.36, 1)`,
-          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-        }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
-          }}
-        >
+    <div className="relative h-full w-full overflow-hidden rounded-[28px]">
+      {!showFixture ? (
+        <div key={`back-${flipKey}`} className="h-full w-full">
           {backFace ?? <RetroDailyLogoBack seasonLabel={seasonLabel} />}
         </div>
+      ) : (
         <div
-          className="absolute inset-0"
+          key={`fix-${flipKey}-${fixture.id}`}
+          className="h-full w-full"
           style={{
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg) translateZ(0)',
+            animation: `retroPromoteIn ${flipMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
           }}
         >
           <RetroDailyFixtureCard fixture={fixture} />
         </div>
-      </div>
+      )}
+      <style>{`
+        @keyframes retroPromoteIn {
+          from { opacity: 0; transform: scale(0.96) rotateY(18deg); }
+          to { opacity: 1; transform: scale(1) rotateY(0deg); }
+        }
+      `}</style>
     </div>
   );
 }
