@@ -169,9 +169,13 @@ export default function RetroDailySwipeStack({
   return (
     <div
       ref={surfaceRef}
-      className="relative mx-auto w-full max-w-[420px] touch-none select-none"
+      className="relative mx-auto h-full max-h-full w-auto max-w-full touch-none select-none"
       style={{
         aspectRatio: '0.75',
+        // Prefer height-limited sizing so buttons stay visible on short iPhone viewports
+        height: '100%',
+        width: 'auto',
+        maxWidth: 'min(100%, 420px)',
         cursor: disabled ? 'default' : 'grab',
       }}
       onPointerDown={onPointerDown}

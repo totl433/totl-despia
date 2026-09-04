@@ -343,9 +343,14 @@ export default function RetroTotlDailyPage() {
     phase === 'playing' && interactive && dragY > 0 && absY >= absX * 1.05 && absY > 30;
 
   return (
-    <div className="flex min-h-screen flex-col text-white" style={{ backgroundColor: BG }}>
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-6 pt-3">
-        <header className="relative mb-2 flex h-10 items-center justify-center">
+    <div
+      className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden text-white"
+      style={{ backgroundColor: BG }}
+    >
+      <div
+        className="mx-auto flex h-full w-full max-w-md min-h-0 flex-1 flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))]"
+      >
+        <header className="relative mb-2 flex h-10 shrink-0 items-center justify-center">
           <button
             type="button"
             aria-label="Close"
@@ -364,7 +369,7 @@ export default function RetroTotlDailyPage() {
           </Link>
         </header>
 
-        <div className="mb-3 flex h-12 flex-col justify-center">
+        <div className="mb-2 flex h-11 shrink-0 flex-col justify-center">
           {playChrome ? (
             <>
               <div className="h-3.5 overflow-hidden rounded-full bg-white/20">
@@ -380,7 +385,7 @@ export default function RetroTotlDailyPage() {
           ) : null}
         </div>
 
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex min-h-0 flex-1 items-center justify-center py-1">
           <RetroDailySwipeStack
             cardKey={cardKey}
             seasonLabel={puzzle.seasonFull}
@@ -407,7 +412,7 @@ export default function RetroTotlDailyPage() {
           </RetroDailySwipeStack>
         </div>
 
-        <div className="mt-4 flex min-h-[108px] flex-col items-center justify-center">
+        <div className="mt-2 flex min-h-[100px] shrink-0 flex-col items-center justify-center pb-1">
           {phase === 'intro' ? (
             <div className="flex flex-col items-center">
               <button
@@ -420,7 +425,7 @@ export default function RetroTotlDailyPage() {
               <Link to="/admin/retro-totl-daily/scoreboard" className="mt-2.5 text-sm font-bold underline">
                 Scoreboard
               </Link>
-              <p className="mt-3 text-xs text-white/50">Swipe the card to start</p>
+              <p className="mt-2 text-xs text-white/50">Swipe the card to start</p>
             </div>
           ) : null}
 

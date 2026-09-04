@@ -905,6 +905,34 @@ function AppContent() {
     );
   }
 
+  // Retro Totl Daily — full-viewport game UI (no app-shell scroll / bottom nav).
+  if (location.pathname.startsWith('/admin/retro-totl-daily')) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route
+              path="/admin/retro-totl-daily"
+              element={
+                <RequireAuth>
+                  <RetroTotlDailyPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/retro-totl-daily/scoreboard"
+              element={
+                <RequireAuth>
+                  <RetroTotlDailyScoreboardPage />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   const showDesktopNav =
     location.pathname !== '/auth' &&
     location.pathname !== '/api-admin' &&
