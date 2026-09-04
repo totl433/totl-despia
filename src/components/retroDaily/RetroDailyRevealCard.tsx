@@ -172,12 +172,31 @@ export default function RetroDailyRevealCard({
   flipMs?: number;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [showLoading, setShowLoading] = useState(true);
 
   useEffect(() => {
     setFlipped(false);
-    const id = window.setTimeout(() => setFlipped(true), holdMs);
-    return () => window.clearTimeout(id);
-  }, [fixture.id, flipKey, holdMs]);
+    setShowLoading(true);
+    const flipId = window.setTimeout(() => setFlipped(true), holdMs);
+    const doneId = window.setTimeout(() => setShowLoading(false), holdMs + flipMs + 40);
+    return () => {
+      window.clearTimeout(flipId);
+      window.clearTimeout(doneId);
+    };
+  }, [fixture.id, flipKey, holdMs, flipMs]);
+
+  if (!showLoading) {
+    return (
+      <div className="h-full w-full">
+        <ScoreFace
+          fixture={fixture}
+          correct={correct}
+          timedOut={timedOut}
+          showNextHint={showNextHint}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full [perspective:1200px]">
@@ -188,10 +207,24 @@ export default function RetroDailyRevealCard({
           transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}
       >
-        <div className="absolute inset-0 [backface-visibility:hidden]">
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+          }}
+        >
           <LoadingFace />
         </div>
-        <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg) translateZ(0)',
+          }}
+        >
           <ScoreFace
             fixture={fixture}
             correct={correct}

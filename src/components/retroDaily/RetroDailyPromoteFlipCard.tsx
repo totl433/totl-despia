@@ -12,7 +12,7 @@ export const RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS = 280;
 
 /**
  * Holds on the logo (or custom) back, then flips to the fixture face.
- * CSS 3D replica of the Expo promote flip.
+ * After the flip settles we drop the back face so iOS Safari can’t leak it through.
  */
 export default function RetroDailyPromoteFlipCard({
   fixture,
@@ -30,12 +30,27 @@ export default function RetroDailyPromoteFlipCard({
   flipMs?: number;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [showBack, setShowBack] = useState(true);
 
   useEffect(() => {
     setFlipped(false);
-    const id = window.setTimeout(() => setFlipped(true), holdMs);
-    return () => window.clearTimeout(id);
-  }, [flipKey, fixture.id, holdMs]);
+    setShowBack(true);
+    const flipId = window.setTimeout(() => setFlipped(true), holdMs);
+    const doneId = window.setTimeout(() => setShowBack(false), holdMs + flipMs + 40);
+    return () => {
+      window.clearTimeout(flipId);
+      window.clearTimeout(doneId);
+    };
+  }, [flipKey, fixture.id, holdMs, flipMs]);
+
+  // Settled: plain fixture only (avoids Safari backface bleed)
+  if (!showBack) {
+    return (
+      <div className="h-full w-full">
+        <RetroDailyFixtureCard fixture={fixture} />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full [perspective:1200px]">
@@ -46,10 +61,24 @@ export default function RetroDailyPromoteFlipCard({
           transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}
       >
-        <div className="absolute inset-0 [backface-visibility:hidden]">
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+          }}
+        >
           {backFace ?? <RetroDailyLogoBack seasonLabel={seasonLabel} />}
         </div>
-        <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+        <div
+          className="absolute inset-0"
+          style={{
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg) translateZ(0)',
+          }}
+        >
           <RetroDailyFixtureCard fixture={fixture} />
         </div>
       </div>
