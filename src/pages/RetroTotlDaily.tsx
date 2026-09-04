@@ -344,7 +344,7 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden text-white"
+      className="flex h-[var(--app-height,100dvh)] max-h-[var(--app-height,100dvh)] flex-col overflow-hidden text-white"
       style={{ backgroundColor: BG }}
     >
       <div

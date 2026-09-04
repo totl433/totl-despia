@@ -5,6 +5,12 @@ import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from "rea
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 import { isNativeApp } from "./lib/platform";
+import { installViewportHeightLock } from "./lib/viewportHeight";
+
+// Pin mobile shell to the visible viewport (fixes intermittent iOS top cut-off / bottom gap).
+if (typeof window !== 'undefined') {
+  installViewportHeightLock();
+}
 
 // Suppress Termly-related network errors (410 Gone) that occur when Termly account is inactive
 // These errors are non-critical and don't affect app functionality

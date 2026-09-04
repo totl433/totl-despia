@@ -6,6 +6,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- Sync --app-height before paint so iOS chrome can’t leave a gap on first load -->
+    <script>
+      (function () {
+        function apply() {
+          var vv = window.visualViewport;
+          var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
+          var t = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
+          document.documentElement.style.setProperty('--app-height', h + 'px');
+          document.documentElement.style.setProperty('--app-offset-top', t + 'px');
+          if (window.scrollY || window.pageYOffset) window.scrollTo(0, 0);
+        }
+        apply();
+        window.addEventListener('resize', apply);
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
+        }
+      })();
+    </script>
     <!-- Preload critical fonts to prevent layout shift -->
     <link rel="preload" href="/Fonts/Gramatika-Regular.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="/Fonts/Gramatika-Medium.ttf" as="font" type="font/ttf" crossorigin>

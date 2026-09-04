@@ -90,24 +90,32 @@ html.dark #root {
 /*
  * Mobile app shell:
  * - Main pane scrolls; bottom nav is a flex sibling (not position:fixed).
- * - Avoids iOS fixed-bar bugs and “endless empty scroll” under content.
+ * - Height comes from --app-height (visualViewport) so iOS chrome can’t leave
+ *   a cut-off top + empty bottom gap. See installViewportHeightLock().
  */
 @media (max-width: 1023.98px) {
   html,
-  body,
+  body {
+    height: var(--app-height, 100dvh);
+    max-height: var(--app-height, 100dvh);
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   #root {
-    height: 100%;
-    height: 100dvh;
-    max-height: 100%;
-    max-height: 100dvh;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--app-offset-top, 0px);
+    width: 100%;
+    height: var(--app-height, 100dvh);
+    max-height: var(--app-height, 100dvh);
     overflow: hidden;
   }
 
   .app-shell {
     height: 100%;
-    height: 100dvh;
     max-height: 100%;
-    max-height: 100dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
