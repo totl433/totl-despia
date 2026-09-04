@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import {
+  trackAppStoreClick,
+  type AppStoreClickPlacement,
+} from '../lib/googleAnalytics';
 import { APP_STORE_URL, setPreferPlayOnline } from '../lib/playOnlinePreference';
 
 /**
@@ -54,12 +58,29 @@ const SLIDES = [
 
 const SLIDE_COUNT = SLIDES.length;
 
-function AppStoreBadge({ className = '', imgClassName = 'h-11 w-auto' }: { className?: string; imgClassName?: string }) {
+function AppStoreBadge({
+  placement,
+  slideId,
+  className = '',
+  imgClassName = 'h-11 w-auto',
+}: {
+  placement: AppStoreClickPlacement;
+  slideId: string;
+  className?: string;
+  imgClassName?: string;
+}) {
   return (
     <a
       href={APP_STORE_URL}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={() => {
+        trackAppStoreClick({
+          placement,
+          slideId,
+          linkUrl: APP_STORE_URL,
+        });
+      }}
       className={`inline-block transition-opacity hover:opacity-90 active:opacity-80 ${className}`}
       aria-label="Download on the App Store"
     >
@@ -96,7 +117,11 @@ function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <div className="inline-flex w-fit flex-col items-stretch gap-4">
-        <AppStoreBadge imgClassName="h-14 w-auto sm:h-16" />
+        <AppStoreBadge
+          placement="splash"
+          slideId="splash"
+          imgClassName="h-14 w-auto sm:h-16"
+        />
         <GooglePlaySoon tone="splash" />
       </div>
       <button
@@ -282,7 +307,11 @@ export default function GetAppPage() {
                       {slide.body}
                     </p>
                     <div className="mt-8 inline-flex w-fit flex-col items-stretch gap-3">
-                      <AppStoreBadge imgClassName="h-14 w-auto" />
+                      <AppStoreBadge
+                        placement="final_cta"
+                        slideId={slide.id}
+                        imgClassName="h-14 w-auto"
+                      />
                       <GooglePlaySoon tone="light" />
                     </div>
                     <button
@@ -328,7 +357,10 @@ export default function GetAppPage() {
         {!onSplash && !onCta && (
           <div className="pointer-events-none absolute inset-x-0 bottom-[calc(2.75rem+env(safe-area-inset-bottom,0px))] z-20 flex h-[4.75rem] items-center justify-center px-5">
             <div className="pointer-events-auto">
-              <AppStoreBadge />
+              <AppStoreBadge
+                placement="feature_slide"
+                slideId={SLIDES[index].id}
+              />
             </div>
           </div>
         )}

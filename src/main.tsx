@@ -354,36 +354,7 @@ import { prefersPlayOnline } from "./lib/playOnlinePreference";
 import { supabase } from "./lib/supabase";
 import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
 import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
-
-function maybeLoadGoogleAnalytics() {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-  // GA/GTM should not load in Despia native app (can cause DNS errors/noise and isn't used there).
-  if (isDespiaAvailable()) return;
-  // Avoid polluting GA with local development traffic.
-  const hostname = window.location.hostname;
-  const isLocalhost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1";
-  if (isLocalhost) return;
-
-  const GA_ID = import.meta.env.VITE_GA_ID || "G-5HWWJWTRRD";
-  const existing = document.querySelector(`script[src*="googletagmanager.com/gtag/js?id=${GA_ID}"]`);
-  if (existing) return;
-
-  // Equivalent to the removed index.html snippet.
-  (window as any).dataLayer = (window as any).dataLayer || [];
-  (window as any).gtag = function gtag(...args: any[]) {
-    (window as any).dataLayer.push(args);
-  };
-  (window as any).gtag("js", new Date());
-  (window as any).gtag("config", GA_ID);
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
-  document.head.appendChild(script);
-}
+import { initializeGoogleAnalytics } from "./lib/googleAnalytics";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -489,7 +460,7 @@ function AppContent() {
     // Delay GA load to give Despia time to inject native bridge globals.
     // This avoids accidental GA/cookie collection during iOS App Review.
     const timeoutId = window.setTimeout(() => {
-      maybeLoadGoogleAnalytics();
+      initializeGoogleAnalytics();
     }, 2500);
     return () => clearTimeout(timeoutId);
   }, []);
