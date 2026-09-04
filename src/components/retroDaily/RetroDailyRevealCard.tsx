@@ -3,6 +3,7 @@ import { retroBadgeUrl } from '../../lib/retroDaily/badges';
 import type { RetroFixture, RetroPick } from '../../lib/retroDaily/mockPuzzle';
 import { pickLabel } from '../../lib/retroDaily/mockPuzzle';
 import RetroDailyTotlPattern from './RetroDailyTotlPattern';
+import RetroDailyFlip from './RetroDailyFlip';
 
 /** Sit on the loading face before revealing the score. */
 export const RETRO_REVEAL_HOLD_MS = 2000;
@@ -152,8 +153,7 @@ function TeamMini({ code, name }: { code: string; name: string }) {
 }
 
 /**
- * Holds on loading, then swaps to score.
- * One face at a time — no CSS 3D (Safari was stacking loading dots on CORRECT).
+ * Holds on loading, then flips to score (Safari-safe midpoint swap).
  */
 export default function RetroDailyRevealCard({
   fixture,
@@ -181,34 +181,20 @@ export default function RetroDailyRevealCard({
   }, [fixture.id, flipKey, holdMs]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-[28px]">
-      {!showScore ? (
-        <div key={`load-${flipKey}`} className="h-full w-full">
-          <LoadingFace />
-        </div>
-      ) : (
-        <div
-          key={`score-${flipKey}`}
-          className="h-full w-full"
-          style={{
-            animation: `retroRevealIn ${flipMs}ms cubic-bezier(0.22, 1, 0.36, 1) both`,
-          }}
-        >
-          <ScoreFace
-            fixture={fixture}
-            correct={correct}
-            timedOut={timedOut}
-            showNextHint={showNextHint}
-          />
-        </div>
-      )}
-      <style>{`
-        @keyframes retroRevealIn {
-          from { opacity: 0; transform: scale(0.96) rotateY(-18deg); }
-          to { opacity: 1; transform: scale(1) rotateY(0deg); }
-        }
-      `}</style>
-    </div>
+    <RetroDailyFlip
+      resetKey={`${flipKey}-${fixture.id}-${correct}-${timedOut}`}
+      showB={showScore}
+      durationMs={flipMs}
+      faceA={<LoadingFace />}
+      faceB={
+        <ScoreFace
+          fixture={fixture}
+          correct={correct}
+          timedOut={timedOut}
+          showNextHint={showNextHint}
+        />
+      }
+    />
   );
 }
 
