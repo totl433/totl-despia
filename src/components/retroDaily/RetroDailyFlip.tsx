@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-
-type Face = 'a' | 'b';
+import { useEffect, useState } from 'react';
 
 /**
- * True card flip that works on iOS Safari.
- * Animates to edge-on (90°), swaps the face, then finishes — never mounts both
- * sides at once (which is what made Safari composite loading dots over CORRECT).
+ * True card flip for iOS Safari.
+ * Rotates to edge-on → swaps content → opens the other way.
+ * Only one face is mounted at a time (avoids Safari stacking both sides).
  */
 export default function RetroDailyFlip({
   showB,
@@ -18,68 +16,73 @@ export default function RetroDailyFlip({
   durationMs: number;
   faceA: React.ReactNode;
   faceB: React.ReactNode;
-  /** Bump to reset back to face A (e.g. fixture / flipKey). */
   resetKey: string | number;
 }) {
-  const [face, setFace] = useState<Face>('a');
+  const [face, setFace] = useState<'a' | 'b'>('a');
   const [rotateY, setRotateY] = useState(0);
   const [animating, setAnimating] = useState(false);
-  const runId = useRef(0);
+  const [settled, setSettled] = useState(false);
 
-  // Reset when a new card starts
   useEffect(() => {
-    runId.current += 1;
     setFace('a');
     setRotateY(0);
     setAnimating(false);
-  }, [resetKey]);
+    setSettled(false);
 
-  useEffect(() => {
-    if (!showB || face === 'b') return;
+    if (!showB) return;
 
-    const id = ++runId.current;
-    const half = Math.max(100, Math.round(durationMs / 2));
+    const half = Math.max(120, Math.round(durationMs / 2));
     const timers: number[] = [];
+    let cancelled = false;
 
-    // Start flip toward edge-on
-    requestAnimationFrame(() => {
-      if (runId.current !== id) return;
-      setAnimating(true);
-      setRotateY(90);
+    // Kick flip after first paint so transition runs from 0 → 90
+    timers.push(
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setAnimating(true);
+        setRotateY(90);
+      }, 30)
+    );
 
-      timers.push(
-        window.setTimeout(() => {
-          if (runId.current !== id) return;
-          // Midpoint: swap face while edge-on, then open the other way
-          setFace('b');
-          setAnimating(false);
-          setRotateY(-90);
-
+    // Midpoint: swap face while edge-on, then open from -90 → 0
+    timers.push(
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setFace('b');
+        setAnimating(false);
+        setRotateY(-90);
+        requestAnimationFrame(() => {
+          if (cancelled) return;
           requestAnimationFrame(() => {
-            if (runId.current !== id) return;
-            requestAnimationFrame(() => {
-              if (runId.current !== id) return;
-              setAnimating(true);
-              setRotateY(0);
-              timers.push(
-                window.setTimeout(() => {
-                  if (runId.current !== id) return;
-                  setAnimating(false);
-                }, half)
-              );
-            });
+            if (cancelled) return;
+            setAnimating(true);
+            setRotateY(0);
           });
-        }, half)
-      );
-    });
+        });
+      }, 30 + half)
+    );
+
+    // Settle: drop transform so we never leave a half-rotated card
+    timers.push(
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setAnimating(false);
+        setRotateY(0);
+        setSettled(true);
+      }, 30 + half * 2 + 40)
+    );
 
     return () => {
-      runId.current += 1;
+      cancelled = true;
       timers.forEach((t) => window.clearTimeout(t));
     };
-  }, [showB, face, durationMs]);
+  }, [resetKey, showB, durationMs]);
 
-  const halfMs = Math.max(100, Math.round(durationMs / 2));
+  const halfMs = Math.max(120, Math.round(durationMs / 2));
+
+  if (settled || (showB && face === 'b' && rotateY === 0 && !animating)) {
+    return <div className="h-full w-full overflow-hidden rounded-[28px]">{faceB}</div>;
+  }
 
   return (
     <div
@@ -91,8 +94,8 @@ export default function RetroDailyFlip({
         style={{
           transform: `rotateY(${rotateY}deg)`,
           transition: animating ? `transform ${halfMs}ms cubic-bezier(0.22, 1, 0.36, 1)` : 'none',
-          transformStyle: 'preserve-3d',
-          WebkitTransformStyle: 'preserve-3d',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
           willChange: animating ? 'transform' : 'auto',
         }}
       >
