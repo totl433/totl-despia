@@ -433,6 +433,24 @@ export default function LeagueDetailScreen() {
   });
 
   const gwTableMergedRows = React.useMemo((): LeagueGwTableRow[] => {
+    const avatarByUserId = new Map(
+      (members as Array<{ id?: string; avatar_url?: string | null; avatar_bg_color?: string | null }>).map((m) => [
+        String(m.id ?? ''),
+        {
+          avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+          avatar_bg_color: typeof m.avatar_bg_color === 'string' ? m.avatar_bg_color : null,
+        },
+      ])
+    );
+    const withAvatar = (row: LeagueGwTableRow): LeagueGwTableRow => {
+      const av = avatarByUserId.get(String(row.user_id));
+      return {
+        ...row,
+        avatar_url: av?.avatar_url ?? row.avatar_url ?? null,
+        avatar_bg_color: av?.avatar_bg_color ?? row.avatar_bg_color ?? null,
+      };
+    };
+
     // Pre-results only: show members with 0 until season has completed fixtures (isNewSeasonFresh).
     // Once live/results exist, BFF season-aware table returns real scores.
     if (browsingLiveNewSeason && members.length) {
@@ -442,12 +460,16 @@ export default function LeagueDetailScreen() {
         // fall through
       } else {
         return members
-          .map((m: { id?: string; name?: string }) => ({
-            user_id: String(m.id ?? ''),
-            name: String(m.name ?? 'User'),
-            score: 0,
-            unicorns: 0,
-          }))
+          .map((m: { id?: string; name?: string; avatar_url?: string | null; avatar_bg_color?: string | null }) =>
+            withAvatar({
+              user_id: String(m.id ?? ''),
+              name: String(m.name ?? 'User'),
+              score: 0,
+              unicorns: 0,
+              avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+              avatar_bg_color: typeof m.avatar_bg_color === 'string' ? m.avatar_bg_color : null,
+            })
+          )
           .sort((a, b) => a.name.localeCompare(b.name));
       }
     }
@@ -455,12 +477,21 @@ export default function LeagueDetailScreen() {
     if (!tbl?.rows || !members.length) return [];
     const rowsByUserId = new Map(tbl.rows.map((r) => [r.user_id, r]));
     const submittedSet = new Set((tbl.submittedUserIds ?? []).map(String));
-    const result: LeagueGwTableRow[] = members.map((m: { id?: string; name?: string }) => {
-      const id = String(m.id ?? '');
-      const row = rowsByUserId.get(id);
-      if (row) return row;
-      return { user_id: id, name: String(m.name ?? 'User'), score: 0, unicorns: 0 };
-    });
+    const result: LeagueGwTableRow[] = members.map(
+      (m: { id?: string; name?: string; avatar_url?: string | null; avatar_bg_color?: string | null }) => {
+        const id = String(m.id ?? '');
+        const row = rowsByUserId.get(id);
+        if (row) return withAvatar(row);
+        return withAvatar({
+          user_id: id,
+          name: String(m.name ?? 'User'),
+          score: 0,
+          unicorns: 0,
+          avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+          avatar_bg_color: typeof m.avatar_bg_color === 'string' ? m.avatar_bg_color : null,
+        });
+      }
+    );
     result.sort((a, b) => {
       const aSub = submittedSet.has(a.user_id);
       const bSub = submittedSet.has(b.user_id);
@@ -857,6 +888,26 @@ export default function LeagueDetailScreen() {
     refetchOnReconnect: true,
     refetchInterval: false,
   });
+
+  const seasonRowsWithAvatars = React.useMemo((): LeagueSeasonRow[] => {
+    const avatarByUserId = new Map(
+      (members as Array<{ id?: string; avatar_url?: string | null; avatar_bg_color?: string | null }>).map((m) => [
+        String(m.id ?? ''),
+        {
+          avatar_url: typeof m.avatar_url === 'string' ? m.avatar_url : null,
+          avatar_bg_color: typeof m.avatar_bg_color === 'string' ? m.avatar_bg_color : null,
+        },
+      ])
+    );
+    return (seasonRows ?? []).map((r) => {
+      const av = avatarByUserId.get(String(r.user_id));
+      return {
+        ...r,
+        avatar_url: av?.avatar_url ?? r.avatar_url ?? null,
+        avatar_bg_color: av?.avatar_bg_color ?? r.avatar_bg_color ?? null,
+      };
+    });
+  }, [seasonRows, members]);
 
   const picksGw = React.useMemo(() => {
     const gw = viewingGw ?? currentGw;
@@ -1362,7 +1413,7 @@ export default function LeagueDetailScreen() {
                 ) : (
                   <>
                     <LeagueSeasonTable
-                      rows={seasonRows ?? []}
+                      rows={seasonRowsWithAvatars}
                       loading={seasonLoading}
                       showForm={seasonShowForm}
                       showUnicorns={seasonShowUnicorns}
