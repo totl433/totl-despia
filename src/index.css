@@ -93,6 +93,8 @@ html.dark #root {
  * - Main pane scrolls; bottom nav is a flex sibling (not position:fixed).
  * - Height comes from --app-height (visualViewport) so iOS chrome can’t leave
  *   a cut-off top + empty bottom gap. See installViewportHeightLock().
+ * - Always top:0 (do not use --app-offset-top) — shifting the shell by
+ *   visualViewport.offsetTop left an intermittent gap under the nav.
  */
 @media (max-width: 1023.98px) {
   html,
@@ -101,17 +103,26 @@ html.dark #root {
     max-height: var(--app-height, 100dvh);
     overflow: hidden;
     overscroll-behavior: none;
+    background-color: #f5f7f6;
+  }
+  html.dark,
+  html.dark body {
+    background-color: #0f172a;
   }
 
   #root {
     position: fixed;
     left: 0;
     right: 0;
-    top: var(--app-offset-top, 0px);
+    top: 0;
     width: 100%;
     height: var(--app-height, 100dvh);
     max-height: var(--app-height, 100dvh);
     overflow: hidden;
+    background-color: #f5f7f6;
+  }
+  html.dark #root {
+    background-color: #0f172a;
   }
 
   .app-shell {
