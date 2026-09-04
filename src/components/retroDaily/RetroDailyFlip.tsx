@@ -31,7 +31,7 @@ export default function RetroDailyFlip({
 
     if (!showB) return;
 
-    const half = Math.max(120, Math.round(durationMs / 2));
+    const half = Math.max(90, Math.round(durationMs / 2));
     const timers: number[] = [];
     let cancelled = false;
 
@@ -78,7 +78,7 @@ export default function RetroDailyFlip({
     };
   }, [resetKey, showB, durationMs]);
 
-  const halfMs = Math.max(120, Math.round(durationMs / 2));
+  const halfMs = Math.max(90, Math.round(durationMs / 2));
 
   if (settled || (showB && face === 'b' && rotateY === 0 && !animating)) {
     return <div className="h-full w-full overflow-hidden rounded-[28px]">{faceB}</div>;

@@ -8,7 +8,7 @@ import RetroDailyFlip from './RetroDailyFlip';
 /** Sit on the loading face before revealing the score. */
 export const RETRO_REVEAL_HOLD_MS = 2000;
 /** Transition duration into the score face (kept for parent unlock timing). */
-export const RETRO_REVEAL_FLIP_MS = 720;
+export const RETRO_REVEAL_FLIP_MS = 420;
 
 export function resultMatchesPick(fixture: RetroFixture, pick: RetroPick | null): boolean {
   return pick != null && pick === fixture.result;

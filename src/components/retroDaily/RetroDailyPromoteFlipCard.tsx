@@ -5,11 +5,11 @@ import RetroDailyFlip from './RetroDailyFlip';
 import type { RetroFixture } from '../../lib/retroDaily/mockPuzzle';
 
 /** Brief peek on the under-card face before revealing the fixture. */
-export const RETRO_PROMOTE_FLIP_DELAY_MS = 450;
+export const RETRO_PROMOTE_FLIP_DELAY_MS = 280;
 /** Card-flip duration into the fixture face. */
-export const RETRO_PROMOTE_FLIP_MS = 720;
+export const RETRO_PROMOTE_FLIP_MS = 420;
 /** Shorter hold when coming off the 3-2-1 face. */
-export const RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS = 280;
+export const RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS = 160;
 
 /**
  * Holds on the logo back, then flips to the fixture (Safari-safe midpoint swap).
