@@ -1,0 +1,319 @@
+{
+  "fetched": [
+    {
+      "code": "BAR",
+      "team": "Barnsley",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/glbmdm1781719675.png"
+    },
+    {
+      "code": "BIR",
+      "team": "Birmingham City",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/wufs551672950865.png"
+    },
+    {
+      "code": "BLA",
+      "team": "Blackburn Rovers",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/rvryut1448810814.png"
+    },
+    {
+      "code": "BLP",
+      "team": "Blackpool",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/utywru1448754934.png"
+    },
+    {
+      "code": "BOL",
+      "team": "Bolton Wanderers",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/yvxxrv1448808301.png"
+    },
+    {
+      "code": "BRD",
+      "team": "Bradford City",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/ebl8zx1781737432.png"
+    },
+    {
+      "code": "CAR",
+      "team": "Cardiff City",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/xtytpt1448808285.png"
+    },
+    {
+      "code": "CHA",
+      "team": "Charlton Athletic",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/o08wvi1635872307.png"
+    },
+    {
+      "code": "DER",
+      "team": "Derby County",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/jioo4z1557155744.png"
+    },
+    {
+      "code": "HUD",
+      "team": "Huddersfield Town",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/y11fin1677527513.png"
+    },
+    {
+      "code": "LEI",
+      "team": "Leicester City",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/xtxwtu1448813356.png"
+    },
+    {
+      "code": "LUT",
+      "team": "Luton Town",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/v977eh1681319466.png"
+    },
+    {
+      "code": "MID",
+      "team": "Middlesbrough",
+      "badge": "https://r2.thesportsdb.com/images/media/team/badge/advjg71780068902.png"
+    }
+  ],
+  "skippedExisting": [
+    "ARS",
+    "AVL",
+    "BHA",
+    "BOU",
+    "BRE",
+    "BUR",
+    "CHE",
+    "COV",
+    "CRY",
+    "EVE",
+    "FUL",
+    "HUL",
+    "IPS",
+    "LEE",
+    "LIV",
+    "MCI"
+  ],
+  "failed": [
+    {
+      "code": "MUN",
+      "reason": "TSDB 429 for Manchester United"
+    },
+    {
+      "code": "NEW",
+      "reason": "TSDB 429 for Newcastle United"
+    },
+    {
+      "code": "NFO",
+      "reason": "TSDB 429 for Nottingham Forest"
+    },
+    {
+      "code": "NOR",
+      "reason": "TSDB 429 for Norwich City"
+    },
+    {
+      "code": "OLD",
+      "reason": "TSDB 429 for Oldham Athletic"
+    },
+    {
+      "code": "POR",
+      "reason": "TSDB 429 for Portsmouth"
+    },
+    {
+      "code": "QPR",
+      "reason": "TSDB 429 for Queens Park Rangers"
+    },
+    {
+      "code": "REA",
+      "reason": "TSDB 429 for Reading"
+    },
+    {
+      "code": "SHU",
+      "reason": "TSDB 429 for Sheffield United"
+    },
+    {
+      "code": "SHW",
+      "reason": "TSDB 429 for Sheffield Wednesday"
+    },
+    {
+      "code": "SOU",
+      "reason": "TSDB 429 for Southampton"
+    },
+    {
+      "code": "STK",
+      "reason": "TSDB 429 for Stoke City"
+    },
+    {
+      "code": "SUN",
+      "reason": "TSDB 429 for Sunderland"
+    },
+    {
+      "code": "SWA",
+      "reason": "TSDB 429 for Swansea City"
+    },
+    {
+      "code": "SWI",
+      "reason": "TSDB 429 for Swindon Town"
+    },
+    {
+      "code": "TOT",
+      "reason": "TSDB 429 for Tottenham Hotspur"
+    },
+    {
+      "code": "WAT",
+      "reason": "TSDB 429 for Watford"
+    },
+    {
+      "code": "WBA",
+      "reason": "TSDB 429 for West Bromwich Albion"
+    },
+    {
+      "code": "WHU",
+      "reason": "TSDB 429 for West Ham United"
+    },
+    {
+      "code": "WIG",
+      "reason": "TSDB 429 for Wigan Athletic"
+    },
+    {
+      "code": "WIM",
+      "reason": "TSDB 429 for AFC Wimbledon"
+    },
+    {
+      "code": "WOL",
+      "reason": "TSDB 429 for Wolverhampton Wanderers"
+    }
+  ],
+  "colours": {
+    "ARS": {
+      "primary": "#EF0107",
+      "secondary": "#FBFFFF",
+      "source": "Arsenal"
+    },
+    "AVL": {
+      "primary": "#490125",
+      "secondary": "#93BDE4",
+      "source": "Aston Villa"
+    },
+    "BAR": {
+      "primary": "#E31C23",
+      "secondary": "#FFFFFF",
+      "source": "Barnsley"
+    },
+    "BHA": {
+      "primary": "#0057B8",
+      "secondary": "#FFFFFF",
+      "source": "Brighton WFC"
+    },
+    "BIR": {
+      "primary": "#0000FF",
+      "secondary": "#FFFFFF",
+      "source": "Birmingham City"
+    },
+    "BLA": {
+      "primary": "#009EE0",
+      "secondary": "#FFFFFF",
+      "source": "Blackburn Rovers"
+    },
+    "BLP": {
+      "primary": "#FF5F00",
+      "secondary": "#FFFFFF",
+      "source": "Blackpool"
+    },
+    "BOL": {
+      "primary": "#FFFFFF",
+      "secondary": "#1A1A1A",
+      "source": "Bolton Wanderers"
+    },
+    "BRD": {
+      "primary": "#7A0001",
+      "secondary": "#F4A300",
+      "source": "Bradford City"
+    },
+    "BRE": {
+      "primary": "#E30613",
+      "secondary": "#FFFFFF",
+      "source": "Brentford"
+    },
+    "BUR": {
+      "primary": "#6C1D45",
+      "secondary": "#99D6EA",
+      "source": "Burnley"
+    },
+    "CAR": {
+      "primary": "#0070B5",
+      "secondary": "#FFFFFF",
+      "source": "Cardiff City"
+    },
+    "CHA": {
+      "primary": "#D4021D",
+      "secondary": "#FFFFFF",
+      "source": "Charlton Athletic"
+    },
+    "CHE": {
+      "primary": "#034694",
+      "secondary": "#FFFFFF",
+      "source": "Chelsea"
+    },
+    "COV": {
+      "primary": "#77BBFF",
+      "secondary": "#FFFFFF",
+      "source": "Coventry City"
+    },
+    "CRY": {
+      "primary": "#1B458F",
+      "secondary": "#C4122E",
+      "source": "Crystal Palace"
+    },
+    "DER": {
+      "primary": "#FFFFFF",
+      "secondary": "#000000",
+      "source": "Derby County"
+    },
+    "EVE": {
+      "primary": "#003399",
+      "secondary": "#FFFFFF",
+      "source": "Everton"
+    },
+    "FUL": {
+      "primary": "#FFFFFF",
+      "secondary": "#000000",
+      "source": "Fulham"
+    },
+    "HUD": {
+      "primary": "#0E63AD",
+      "secondary": "#FFFFFF",
+      "source": "Huddersfield Town"
+    },
+    "HUL": {
+      "primary": "#F5971D",
+      "secondary": "#000000",
+      "source": "Hull City"
+    },
+    "IPS": {
+      "primary": "#3A64A3",
+      "secondary": "#DE2C37",
+      "source": "Ipswich Town"
+    },
+    "LEE": {
+      "primary": "#FFFFFF",
+      "secondary": "#1D428A",
+      "source": "Leeds United"
+    },
+    "LEI": {
+      "primary": "#003090",
+      "secondary": "#FFFFFF",
+      "source": "Leicester City"
+    },
+    "LIV": {
+      "primary": "#C8102E",
+      "secondary": "#FFFFFF",
+      "source": "Liverpool"
+    },
+    "LUT": {
+      "primary": "#F2922F",
+      "secondary": "#1B4695",
+      "source": "Luton Town"
+    },
+    "MCI": {
+      "primary": "#6CABDD",
+      "secondary": "#FFFFFF",
+      "source": "Manchester City"
+    },
+    "MID": {
+      "primary": "#FF0000",
+      "secondary": "#FFFFFF",
+      "source": "Middlesbrough"
+    }
+  }
+}

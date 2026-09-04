@@ -187,60 +187,94 @@ export default function SwipePredictionStatsBack({
               borderBottomColor: '#F1F5F9',
             }}
           >
-            <TotlText
-              style={{
-                marginBottom: 4,
-                textAlign: 'center',
-                fontSize: 13,
-                fontWeight: '800',
-                letterSpacing: 0.4,
-                color: '#0F172A',
-              }}
-            >
-              Head to head
-            </TotlText>
             <View
               style={{
+                marginBottom: h2h.numberOfMatches > 0 ? 4 : 0,
                 flexDirection: 'row',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+                gap: 6,
               }}
             >
-              <ValueColumn
-                value={String(h2h.homeWins)}
-                highlight={h2hHighlight === 'home'}
-                label="Won"
-              />
-              <View style={{ width: VALUE_COL_WIDTH, alignItems: 'center' }}>
-                <View
+              <TotlText
+                style={{
+                  fontSize: 13,
+                  fontWeight: '800',
+                  letterSpacing: 0.4,
+                  color: '#0F172A',
+                }}
+              >
+                Head to head
+              </TotlText>
+              {h2h.numberOfMatches > 0 ? (
+                <TotlText
                   style={{
-                    minWidth: 44,
-                    minHeight: 26,
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: '600',
+                    color: '#94A3B8',
                   }}
                 >
-                  <TotlText
+                  Premier League since 2020
+                </TotlText>
+              ) : null}
+            </View>
+            {h2h.numberOfMatches > 0 ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <ValueColumn
+                  value={String(h2h.homeWins)}
+                  highlight={h2hHighlight === 'home'}
+                  label="Won"
+                />
+                <View style={{ width: VALUE_COL_WIDTH, alignItems: 'center' }}>
+                  <View
                     style={{
-                      fontWeight: '700',
-                      fontSize: 13,
-                      color: '#0F172A',
-                      fontVariant: ['tabular-nums'],
+                      minWidth: 44,
+                      minHeight: 26,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    {h2h.draws}
+                    <TotlText
+                      style={{
+                        fontWeight: '700',
+                        fontSize: 13,
+                        color: '#0F172A',
+                        fontVariant: ['tabular-nums'],
+                      }}
+                    >
+                      {h2h.draws}
+                    </TotlText>
+                  </View>
+                  <TotlText style={{ marginTop: 2, fontSize: 11, color: '#94A3B8', textAlign: 'center' }}>
+                    Drawn
                   </TotlText>
                 </View>
-                <TotlText style={{ marginTop: 2, fontSize: 11, color: '#94A3B8', textAlign: 'center' }}>
-                  Drawn
-                </TotlText>
+                <ValueColumn
+                  value={String(h2h.awayWins)}
+                  highlight={h2hHighlight === 'away'}
+                  label="Won"
+                />
               </View>
-              <ValueColumn
-                value={String(h2h.awayWins)}
-                highlight={h2hHighlight === 'away'}
-                label="Won"
-              />
-            </View>
+            ) : (
+              <TotlText
+                style={{
+                  marginTop: 2,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: '#64748B',
+                }}
+              >
+                First Premier League meeting since 2020
+              </TotlText>
+            )}
           </View>
         ) : (
           <View

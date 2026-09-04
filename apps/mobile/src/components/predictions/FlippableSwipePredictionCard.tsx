@@ -18,6 +18,8 @@ import type { MatchPreviewStats } from '../../lib/matchPreviewStats';
  * Tap handling lives in PredictionsSwipeDeck (composes with pan).
  * Rotates around the card centre; mid-flip scale pops it toward you.
  */
+export const CARD_FLIP_MS = 480;
+
 export default function FlippableSwipePredictionCard({
   fixture,
   homeForm,
@@ -37,7 +39,7 @@ export default function FlippableSwipePredictionCard({
 
   React.useEffect(() => {
     progress.value = withTiming(flipped ? 1 : 0, {
-      duration: 480,
+      duration: CARD_FLIP_MS,
       easing: Easing.bezier(0.22, 1, 0.36, 1),
     });
   }, [flipped, progress]);
