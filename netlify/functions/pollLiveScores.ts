@@ -2,7 +2,6 @@ import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import {
   isKickoffTooOldForPolling,
-  parseKickoffMs,
   shouldRunScheduledPollForSite,
 } from './lib/liveMatchGuards';
 import {
@@ -276,27 +275,7 @@ async function pollAllLiveScores() {
         continue; // Skip if rate limited or error
       }
 
-      let status = matchData.status || 'SCHEDULED';
-      const kickoffIso = fixture.kickoff_time || matchData.utcDate || null;
-      const kickoffMs = parseKickoffMs(kickoffIso);
-      const kickoffPassed = kickoffMs != null && Date.now() >= kickoffMs;
-      const kickoffStillLiveWindow =
-        kickoffIso != null && !isKickoffTooOldForPolling(kickoffIso);
-
-      // Football Data (esp. free/standard plans) often leaves status TIMED for
-      // several minutes after kickoff. Our UI only treats IN_PLAY/PAUSED as live,
-      // so coerce once KO has passed within the live poll window.
-      if (
-        kickoffPassed &&
-        kickoffStillLiveWindow &&
-        (status === 'TIMED' || status === 'SCHEDULED')
-      ) {
-        console.log(
-          `[pollLiveScores] Coercing match ${apiMatchId} ${status} → IN_PLAY (kickoff passed, API lag)`
-        );
-        status = 'IN_PLAY';
-      }
-
+      const status = matchData.status || 'SCHEDULED';
       const isLive = status === 'IN_PLAY' || status === 'PAUSED';
       
       // Extract goals and bookings from API response FIRST
@@ -354,29 +333,21 @@ async function pollAllLiveScores() {
       
       if (isLive) {
         // Incomplete live payloads (all null) used to fall through to 0-0 and
-        // falsely trigger "goal disallowed" pushes. Skip the match this poll —
-        // unless kickoff has passed and FD is still on TIMED with null scores
-        // (coerce path): then 0-0 is the correct live state.
+        // falsely trigger "goal disallowed" pushes. Skip the match this poll.
         if (
           currentHome == null &&
           currentAway == null &&
           fullTimeHome == null &&
           fullTimeAway == null
         ) {
-          if (kickoffPassed && kickoffStillLiveWindow) {
-            homeScore = 0;
-            awayScore = 0;
-          } else {
-            console.warn(
-              `[pollLiveScores] Skipping match ${apiMatchId}: live payload has no score fields`
-            );
-            continue;
-          }
-        } else {
-          // Live games: prefer current, but use fullTime if current is null
-          homeScore = currentHome ?? fullTimeHome ?? 0;
-          awayScore = currentAway ?? fullTimeAway ?? 0;
+          console.warn(
+            `[pollLiveScores] Skipping match ${apiMatchId}: live payload has no score fields`
+          );
+          continue;
         }
+        // Live games: prefer current, but use fullTime if current is null
+        homeScore = currentHome ?? fullTimeHome ?? 0;
+        awayScore = currentAway ?? fullTimeAway ?? 0;
       } else {
         // Finished games: use fullTime
         homeScore = fullTimeHome ?? 0;
