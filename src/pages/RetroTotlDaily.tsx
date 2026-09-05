@@ -66,6 +66,24 @@ export default function RetroTotlDailyPage() {
   const [flyAwayNonce, setFlyAwayNonce] = useState(0);
   const [pixelFontReady, setPixelFontReady] = useState(false);
 
+  // Paint navy behind the shell so iOS link-open can’t flash a white gap under the page.
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.backgroundColor;
+    const prevBody = body.style.backgroundColor;
+    const prevRoot = document.getElementById('root')?.style.backgroundColor ?? '';
+    html.style.backgroundColor = BG;
+    body.style.backgroundColor = BG;
+    const root = document.getElementById('root');
+    if (root) root.style.backgroundColor = BG;
+    return () => {
+      html.style.backgroundColor = prevHtml;
+      body.style.backgroundColor = prevBody;
+      if (root) root.style.backgroundColor = prevRoot;
+    };
+  }, []);
+
   const timerEpoch = useRef(0);
   const timerRaf = useRef(0);
   const phaseRef = useRef(phase);
@@ -403,7 +421,7 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="absolute inset-0 flex flex-col overflow-hidden text-white"
+      className="fixed inset-0 flex flex-col overflow-hidden text-white"
       style={{ backgroundColor: BG }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
