@@ -1,6 +1,7 @@
 import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import {
+  alignGoalsToMatchScore,
   isKickoffTooOldForPolling,
   shouldIgnoreTimedStatusRegression,
   shouldRunScheduledPollForSite,
@@ -385,6 +386,32 @@ async function pollAllLiveScores() {
       console.log(`[pollLiveScores] Match ${apiMatchId} - API minute: ${apiMinute ?? 'null'}, status: ${status}`);
       console.log(`[pollLiveScores] Match ${apiMatchId} - Score from API: ${matchData.score?.current?.home ?? 'null'}-${matchData.score?.current?.away ?? 'null'} (current), ${matchData.score?.fullTime?.home ?? 'null'}-${matchData.score?.fullTime?.away ?? 'null'} (fullTime), using: ${homeScore}-${awayScore}`);
 
+      const homeTeamNormalized =
+        normalizeTeamName(matchData.homeTeam?.name) ||
+        fixture.home_team ||
+        matchData.homeTeam?.name ||
+        null;
+      const awayTeamNormalized =
+        normalizeTeamName(matchData.awayTeam?.name) ||
+        fixture.away_team ||
+        matchData.awayTeam?.name ||
+        null;
+
+      // FD sometimes lists a scorer before the score ticks (or after a disallow).
+      // Never store more goal events than the current score.
+      const alignedGoals = alignGoalsToMatchScore(
+        goals,
+        homeScore,
+        awayScore,
+        homeTeamNormalized,
+        awayTeamNormalized
+      );
+      if (goals.length > 0 && (alignedGoals?.length ?? 0) !== goals.length) {
+        console.warn(
+          `[pollLiveScores] Aligned goals for match ${apiMatchId}: ${goals.length} events -> ${alignedGoals?.length ?? 0} for score ${homeScore}-${awayScore}`
+        );
+      }
+
       // Filter bookings to only include red cards
       // API returns "RED" not "RED_CARD" for red cards
       const redCards = (matchData.bookings || [])
@@ -405,18 +432,10 @@ async function pollAllLiveScores() {
         away_score: awayScore,
         status: status,
         minute: minute,
-        home_team: (() => {
-          const normalized = normalizeTeamName(matchData.homeTeam?.name);
-          console.log(`[pollLiveScores] Home team: API="${matchData.homeTeam?.name}" -> normalized="${normalized}"`);
-          return normalized || fixture.home_team || matchData.homeTeam?.name;
-        })(),
-        away_team: (() => {
-          const normalized = normalizeTeamName(matchData.awayTeam?.name);
-          console.log(`[pollLiveScores] Away team: API="${matchData.awayTeam?.name}" -> normalized="${normalized}"`);
-          return normalized || fixture.away_team || matchData.awayTeam?.name;
-        })(),
+        home_team: homeTeamNormalized,
+        away_team: awayTeamNormalized,
         kickoff_time: fixture.kickoff_time || matchData.utcDate,
-        goals: goals.length > 0 ? goals : null,
+        goals: alignedGoals,
         red_cards: redCards.length > 0 ? redCards : null,
       });
 
@@ -452,7 +471,7 @@ async function pollAllLiveScores() {
         }
       }
 
-      const goalsCount = goals.length;
+      const goalsCount = alignedGoals?.length ?? 0;
       const redCardsCount = redCards.length;
       console.log(`[pollLiveScores] Updated match ${apiMatchId}: ${homeScore}-${awayScore} (${status}) - ${goalsCount} goals, ${redCardsCount} red cards`);
     }
@@ -488,6 +507,18 @@ async function pollAllLiveScores() {
           );
           update.goals = existing.goals;
         }
+      }
+
+      // Final pass: never leave scorers that exceed the stored score
+      // (covers preserved goals + any FD lag).
+      for (const update of updates) {
+        update.goals = alignGoalsToMatchScore(
+          update.goals,
+          update.home_score ?? 0,
+          update.away_score ?? 0,
+          update.home_team,
+          update.away_team
+        );
       }
 
       const { error: upsertError } = await supabase

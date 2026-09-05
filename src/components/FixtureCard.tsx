@@ -450,9 +450,13 @@ export const FixtureCard: React.FC<FixtureCardProps> = ({
       });
     }
     
-    // Select goals for the team we're rendering
-    const teamGoals = isHome ? homeGoalsByName : awayGoalsByName;
-    
+    // Select goals for the team we're rendering.
+    // Cap to the current score so a premature/disallowed scorer never shows under 0-0.
+    const teamScore = isHome ? homeScore : awayScore;
+    const teamGoals = (isHome ? homeGoalsByName : awayGoalsByName)
+      .slice()
+      .sort((a: any, b: any) => (a.minute ?? 0) - (b.minute ?? 0))
+      .slice(0, Math.max(0, teamScore));
 
     // Group goals by scorer, tracking which minutes are own goals
     const goalsByScorer = new Map<string, Array<{ minute: number; isOwnGoal: boolean }>>();
