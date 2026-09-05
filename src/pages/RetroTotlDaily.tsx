@@ -39,7 +39,8 @@ type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 const BG = '#0B1F3A';
 
 /**
- * Admin web prototype: Retro Totl Daily — replica of the Expo admin build.
+ * Retro Totl Daily — public shareable play link.
+ * Anyone with the URL can play; this does not grant admin access.
  */
 export default function RetroTotlDailyPage() {
   const { user, loading } = useAuth();
@@ -98,10 +99,6 @@ export default function RetroTotlDailyPage() {
     phase === 'countdown' ||
     phase === 'playing' ||
     (phase === 'reveal' && !revealLeadsToScore);
-
-  useEffect(() => {
-    if (!loading && user && !isAdmin) navigate('/profile');
-  }, [loading, user, isAdmin, navigate]);
 
   // Wait for PressStart2P so the first season card never flashes monospace
   useEffect(() => {
@@ -330,14 +327,13 @@ export default function RetroTotlDailyPage() {
     [phase, interactive, fixture]
   );
 
-  if (loading || !user || !pixelFontReady) {
+  if (loading || !pixelFontReady) {
     return (
       <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: BG }}>
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-white" />
       </div>
     );
   }
-  if (!isAdmin) return null;
 
   const timerRunning = phase === 'playing' && interactive;
   // During promote flip (before unlock) still show countdown at 10 — skip the white “current” pip flash
@@ -353,10 +349,10 @@ export default function RetroTotlDailyPage() {
       outcomes={outcomes}
       score={score}
       perfect={perfect}
-      userId={user.id}
+      userId={user?.id}
       userNameFallback={
-        (typeof user.user_metadata?.display_name === 'string' && user.user_metadata.display_name) ||
-        user.email?.split('@')[0] ||
+        (typeof user?.user_metadata?.display_name === 'string' && user.user_metadata.display_name) ||
+        user?.email?.split('@')[0] ||
         'Player'
       }
     />
@@ -415,7 +411,7 @@ export default function RetroTotlDailyPage() {
           <button
             type="button"
             aria-label="Close"
-            onClick={() => navigate('/admin-data')}
+            onClick={() => navigate(isAdmin ? '/admin-data' : '/')}
             className="absolute left-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-2xl leading-none hover:bg-white/10"
           >
             ×

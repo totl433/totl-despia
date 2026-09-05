@@ -889,10 +889,12 @@ function AppContent() {
   const showGetAppLanding =
     location.pathname === '/app' ||
     (location.pathname === '/' && !isNativeApp && !prefersPlayOnline());
+  const isRetroDailyPublic = location.pathname.startsWith('/admin/retro-totl-daily');
   const isLoggedOut = !authLoading && !user;
   if (
     loadEverythingFirst &&
     !showGetAppLanding &&
+    !isRetroDailyPublic &&
     !maxLoadingTimeout &&
     !isLoggedOut &&
     (authLoading || initialDataLoading || !initialDataLoaded)
@@ -912,28 +914,14 @@ function AppContent() {
     );
   }
 
-  // Retro Totl Daily — full-viewport game UI (no app-shell scroll / bottom nav).
+  // Retro Totl Daily — public play link (no admin access). Full-viewport, no app shell.
   if (location.pathname.startsWith('/admin/retro-totl-daily')) {
     return (
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route
-              path="/admin/retro-totl-daily"
-              element={
-                <RequireAuth>
-                  <RetroTotlDailyPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/admin/retro-totl-daily/scoreboard"
-              element={
-                <RequireAuth>
-                  <RetroTotlDailyScoreboardPage />
-                </RequireAuth>
-              }
-            />
+            <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
+            <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
@@ -1044,8 +1032,8 @@ function AppContent() {
                 <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
                 <Route path="/admin-data" element={<RequireAuth><AdminDataPage /></RequireAuth>} />
                 <Route path="/admin/gw-stats" element={<RequireAuth><AdminGwStatsPage /></RequireAuth>} />
-                <Route path="/admin/retro-totl-daily" element={<RequireAuth><RetroTotlDailyPage /></RequireAuth>} />
-                <Route path="/admin/retro-totl-daily/scoreboard" element={<RequireAuth><RetroTotlDailyScoreboardPage /></RequireAuth>} />
+                <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
+                <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
                 <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
                 <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />

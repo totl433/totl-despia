@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isFounderAdmin } from '../lib/adminIds';
 import { MOCK_RETRO_SEASON, MOCK_RETRO_SEASON_FULL } from '../lib/retroDaily/mockPuzzle';
 
 const BG = '#0B1F3A';
@@ -33,28 +32,17 @@ const MOCK_ALL_TIME: BoardRow[] = [
   { rank: 10, name: 'NutmegNed', score: 58 },
 ];
 
-/** Full-page RTD scoreboard — Today + All Time (prototype). */
+/** Full-page RTD scoreboard — Today + All Time (public with the play link). */
 export default function RetroTotlDailyScoreboardPage() {
-  const { user, loading } = useAuth();
-  const navigate = useNavigate();
-  const isAdmin = isFounderAdmin(user?.id);
+  const { user } = useAuth();
   const [tab, setTab] = useState<BoardTab>('today');
-
-  useEffect(() => {
-    if (!loading && user && !isAdmin) navigate('/profile');
-  }, [loading, user, isAdmin, navigate]);
-
-  if (loading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: BG }}>
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-white" />
-      </div>
-    );
-  }
-  if (!isAdmin) return null;
 
   const rows = tab === 'today' ? MOCK_TODAY : MOCK_ALL_TIME;
   const scoreHeader = tab === 'today' ? 'Score' : 'Total';
+  const youName =
+    (typeof user?.user_metadata?.display_name === 'string' && user.user_metadata.display_name) ||
+    user?.email?.split('@')[0] ||
+    'You';
 
   return (
     <div className="min-h-screen text-white" style={{ backgroundColor: BG }}>
@@ -85,61 +73,48 @@ export default function RetroTotlDailyScoreboardPage() {
             </p>
           </>
         ) : (
-          <>
-            <p className="text-center text-sm text-teal-300" style={{ fontFamily: "'PressStart2P', monospace" }}>
-              ALL TIME
-            </p>
-            <p className="mt-2 text-center text-sm font-bold text-white/65">
-              Cumulative correct picks across every day
-            </p>
-          </>
+          <p className="text-center text-sm font-bold text-white/65">All-time Retro Totl Daily</p>
         )}
 
-        <div className="mt-5 overflow-hidden rounded-[20px] bg-white py-1.5 text-slate-900">
-          <div className="flex border-b border-slate-200 px-4 py-2.5 text-[11px] font-extrabold text-slate-400">
-            <span className="w-9">#</span>
-            <span className="flex-1">Player</span>
-            <span className="w-14 text-right">{scoreHeader}</span>
+        <div className="mt-5 overflow-hidden rounded-2xl bg-white/5">
+          <div className="grid grid-cols-[48px_1fr_72px] border-b border-white/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white/45">
+            <span>#</span>
+            <span>Player</span>
+            <span className="text-right">{scoreHeader}</span>
           </div>
-          {rows.map((row, i) => (
+          {rows.map((row) => (
             <div
-              key={`${tab}-${row.name}`}
-              className={`flex items-center px-4 py-3.5 ${row.you ? 'bg-teal-50' : ''} ${
-                i < rows.length - 1 ? 'border-b border-slate-100' : ''
-              }`}
+              key={`${tab}-${row.rank}-${row.name}`}
+              className={`grid grid-cols-[48px_1fr_72px] items-center px-4 py-3 text-sm ${
+                row.you ? 'bg-[#1C8376]/25 font-extrabold' : 'font-semibold'
+              } ${row.rank < rows.length ? 'border-b border-white/5' : ''}`}
             >
-              <span
-                className={`w-9 text-sm ${row.rank <= 3 ? 'text-teal-700' : 'text-slate-700'}`}
-                style={{ fontFamily: "'PressStart2P', monospace" }}
-              >
-                {row.rank}
-              </span>
-              <span className={`flex-1 truncate text-[15px] ${row.you ? 'font-black' : 'font-bold'}`}>
-                {row.name}
-                {row.you ? '  · you' : ''}
-              </span>
-              <span className="w-14 text-right text-base" style={{ fontFamily: "'PressStart2P', monospace" }}>
-                {row.score}
-              </span>
+              <span className="tabular-nums text-white/70">{row.rank}</span>
+              <span className="truncate">{row.you ? youName : row.name}</span>
+              <span className="text-right tabular-nums text-teal-300">{row.score}</span>
             </div>
           ))}
         </div>
-
-        <p className="mt-4 text-center text-xs font-semibold text-white/50">
-          Prototype rankings — live boards ship with the real daily seed.
-        </p>
       </div>
     </div>
   );
 }
 
-function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function TabButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`h-10 flex-1 rounded-[11px] text-sm font-extrabold text-white ${
-        active ? 'bg-[#1C8376]' : 'bg-transparent'
+      className={`flex-1 rounded-xl py-2.5 text-sm font-extrabold transition ${
+        active ? 'bg-white text-slate-900 shadow-sm' : 'text-white/70'
       }`}
     >
       {label}
