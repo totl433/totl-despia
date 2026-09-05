@@ -1,74 +1,63 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../hooks/useTheme';
-import { getAppScrollTop, onAppScroll, scrollAppToTop } from '../lib/appScroll';
+import { getAppScrollTop, onAppScroll } from '../lib/appScroll';
 
 export default function ScrollLogo() {
   const { isDark } = useTheme();
   const [hasLoaded, setHasLoaded] = useState(false);
   const logoRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  /** Ignore restored scroll until we’ve forced top after a link-open. */
-  const scrollReady = useRef(false);
-
-  // One-shot top on mount (link-open restore). Do not keep fighting the user.
+  
+  // Handle initial load animation
   useEffect(() => {
-    scrollAppToTop();
-    scrollReady.current = true;
-    setHasLoaded(true);
+    // Trigger spin-in animation after component mounts
+    const timer = setTimeout(() => {
+      setHasLoaded(true);
+    }, 50);
+    return () => clearTimeout(timer);
   }, []);
-
+  
   // Handle scroll for logo animation using requestAnimationFrame
   useEffect(() => {
     let rafId: number;
-
-    const resetLogo = () => {
-      if (!containerRef.current || !logoRef.current) return;
-      containerRef.current.style.transform = 'scaleY(1)';
-      logoRef.current.style.opacity = '1';
-      logoRef.current.style.transform = 'perspective(1000px) rotateY(0deg) scale(1)';
-      const frontFace = logoRef.current.querySelector('[data-face="front"]') as HTMLElement | null;
-      const backFace = logoRef.current.querySelector('[data-face="back"]') as HTMLElement | null;
-      if (frontFace) {
-        frontFace.style.opacity = '1';
-        frontFace.style.visibility = 'visible';
-      }
-      if (backFace) {
-        backFace.style.opacity = '0';
-        backFace.style.visibility = 'hidden';
-      }
-    };
-
+    
     const handleScroll = () => {
       rafId = requestAnimationFrame(() => {
-        if (!scrollReady.current) {
-          scrollAppToTop();
-          resetLogo();
-          return;
-        }
-
+        // Mobile shell scrolls inside .app-shell-scroll, not the window
         const scrollY = getAppScrollTop();
-
+        
         if (containerRef.current && logoRef.current) {
+          // Calculate styles directly without state updates
+          // Speed up rotation: complete 2 full rotations (720deg) in 150px of scroll
           const flipProgress = Math.min(1, scrollY / 150);
-          const rotateY = flipProgress * 720;
+          const rotateY = flipProgress * 720; // 2 full rotations to show back face
           const logoOpacity = Math.max(0, 1 - scrollY / 250);
           const logoScale = Math.max(0.4, 1 - scrollY / 400);
+          
+          // Use transform scaleY to collapse without affecting layout
+          // This prevents scroll jumps by not changing the actual height
           const collapseProgress = Math.min(1, Math.max(0, (scrollY - 350) / 50));
           const scaleY = 1 - collapseProgress;
-
+          
           containerRef.current.style.transform = `scaleY(${scaleY})`;
           containerRef.current.style.transformOrigin = 'top';
-
-          const normalizedAngle = ((rotateY % 360) + 360) % 360;
+          
+          // Calculate which face should be visible based on rotation
+          const normalizedAngle = ((rotateY % 360) + 360) % 360; // Normalize to 0-360
+          // Show back face when rotated between 80-280 degrees (with buffer to prevent overlap)
           const showBackFace = normalizedAngle > 80 && normalizedAngle < 280;
-          const frontFace = logoRef.current.querySelector('[data-face="front"]') as HTMLElement | null;
-          const backFace = logoRef.current.querySelector('[data-face="back"]') as HTMLElement | null;
-
+          
+          // Get face elements
+          const frontFace = logoRef.current?.querySelector('[data-face="front"]') as HTMLElement;
+          const backFace = logoRef.current?.querySelector('[data-face="back"]') as HTMLElement;
+          
+          // Update logo transform and opacity
           if (scrollY > 0) {
             logoRef.current.style.opacity = logoOpacity.toString();
             logoRef.current.style.transform = `perspective(1000px) rotateY(${rotateY}deg) scale(${logoScale})`;
             logoRef.current.style.transition = 'opacity 0.1s ease-out, transform 0.1s ease-out';
-
+            
+            // Control face visibility - instant switch, no transition
             if (frontFace) {
               frontFace.style.transition = 'opacity 0s, visibility 0s';
               frontFace.style.opacity = showBackFace ? '0' : '1';
@@ -82,15 +71,21 @@ export default function ScrollLogo() {
               backFace.style.pointerEvents = showBackFace ? 'auto' : 'none';
             }
           } else {
-            resetLogo();
-            logoRef.current.style.transition =
-              'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)';
+            // Reset to initial state
+            logoRef.current.style.opacity = '1';
+            logoRef.current.style.transform = `perspective(1000px) rotateY(0deg) scale(1)`;
+            logoRef.current.style.transition = 'opacity 0.6s ease-out, transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)';
+            
             if (frontFace) {
               frontFace.style.transition = 'opacity 0s, visibility 0s';
+              frontFace.style.opacity = '1';
+              frontFace.style.visibility = 'visible';
               frontFace.style.pointerEvents = 'auto';
             }
             if (backFace) {
               backFace.style.transition = 'opacity 0s, visibility 0s';
+              backFace.style.opacity = '0';
+              backFace.style.visibility = 'hidden';
               backFace.style.pointerEvents = 'none';
             }
           }
@@ -98,18 +93,14 @@ export default function ScrollLogo() {
       });
     };
 
-    // Clear any restored scroll before listening
-    scrollAppToTop();
-    resetLogo();
-
     const removeScroll = onAppScroll(handleScroll, { passive: true });
     return () => {
       removeScroll();
       cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, []); // No dependencies needed as we use refs
 
-  // Entrance spin only after scroll is known to be at top
+  // Initial spin-in animation (only on first load)
   const initialSpin = hasLoaded ? 0 : -360;
   
   return (

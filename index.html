@@ -6,36 +6,31 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#f5f7f6" />
-    <!-- Set --app-height before paint. Never touch #root or .app-shell-scroll. -->
+    <!-- Sync --app-height before paint so iOS chrome can’t leave a gap on first load -->
     <script>
       (function () {
-        try {
-          if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-        } catch (e) {}
-        var lastH = -1;
-        var startedAt = Date.now();
         function apply() {
-          if (window.scrollY || window.pageYOffset) window.scrollTo(0, 0);
           var vv = window.visualViewport;
-          var h = Math.max(1, Math.round(Math.max((vv && vv.height) || 0, window.innerHeight || 0)));
-          if (Date.now() - startedAt < 5000 && lastH > 0) h = Math.max(h, lastH);
-          if (h === lastH) return;
-          lastH = h;
+          if (window.scrollY || window.pageYOffset) {
+            window.scrollTo(0, 0);
+          }
+          var vvH = (vv && vv.height) || window.innerHeight;
+          var h = Math.max(1, Math.round(Math.min(vvH, window.innerHeight)));
+          var offset = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
           document.documentElement.style.setProperty('--app-height', h + 'px');
-          document.documentElement.style.setProperty('--app-offset-top', '0px');
+          document.documentElement.style.setProperty('--app-offset-top', offset + 'px');
         }
         apply();
         window.addEventListener('resize', apply);
-        window.addEventListener('pageshow', apply);
         window.addEventListener('scroll', apply, { passive: true });
         document.addEventListener('touchend', apply, { passive: true });
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
         }
-        [50, 250, 800, 2000, 4000].forEach(function (ms) { setTimeout(apply, ms); });
-        var poll = setInterval(apply, 250);
-        setTimeout(function () { clearInterval(poll); }, 5000);
+        setTimeout(apply, 50);
+        setTimeout(apply, 300);
+        setTimeout(apply, 1000);
       })();
     </script>
     <!-- Preload critical fonts to prevent layout shift / FOUT -->
