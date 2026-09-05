@@ -6,23 +6,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <!-- Sync --app-height before paint so iOS chrome can’t leave a gap on first load -->
+    <!-- Keep shell at top:0; pin window scroll. Never set --app-offset-top from Safari. -->
     <script>
       (function () {
+        try {
+          if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+        } catch (e) {}
         function apply() {
           var vv = window.visualViewport;
-          if (window.scrollY || window.pageYOffset) {
+          if ((vv && vv.offsetTop > 0) || window.scrollY || window.pageYOffset) {
             window.scrollTo(0, 0);
           }
-          var vvH = (vv && vv.height) || window.innerHeight;
-          var h = Math.max(1, Math.round(Math.min(vvH, window.innerHeight)));
-          var offset = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
+          var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
           document.documentElement.style.setProperty('--app-height', h + 'px');
-          document.documentElement.style.setProperty('--app-offset-top', offset + 'px');
+          document.documentElement.style.setProperty('--app-offset-top', '0px');
         }
         apply();
         window.addEventListener('resize', apply);
         window.addEventListener('scroll', apply, { passive: true });
+        window.addEventListener('pageshow', apply);
         document.addEventListener('touchend', apply, { passive: true });
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', apply);

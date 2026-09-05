@@ -1,13 +1,9 @@
 /**
- * Keep the mobile shell sized to the *visible* viewport.
+ * Keep the mobile shell in the visible Safari viewport.
  *
- * iOS Safari / Chrome intermittently:
- * 1) scrolls the layout viewport (`visualViewport.offsetTop > 0`) → cut-off top (logo clipped)
- * 2) leaves `--app-height` stuck wrong after the URL bar moves → empty gap under the nav
- *
- * Strategy: pin window + app-shell scroll to 0, size `#root` to the visual
- * viewport (top + height together), and remeasure often enough that a missed
- * resize still corrects within a beat.
+ * Cut-off top + gap at bottom = layout scrolled under the chrome.
+ * Fix: pin window scroll to 0, keep #root at top:0, size height from visualViewport.
+ * Never shift #root by offsetTop (that causes the gap). Never touch .app-shell-scroll.
  */
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -15,37 +11,25 @@ export function installViewportHeightLock(): () => void {
   const root = document.documentElement;
   let raf = 0;
   let lastHeight = -1;
-  let lastOffset = -1;
-
-  const pinScroll = () => {
-    // Only pin the *window* layout scroll (iOS visualViewport offset).
-    // Never reset `.app-shell-scroll` here — that is real page scroll.
-    if (window.scrollY !== 0 || window.pageYOffset !== 0) {
-      window.scrollTo(0, 0);
-    }
-  };
 
   const measure = () => {
     const vv = window.visualViewport;
 
-    pinScroll();
+    if ((vv?.offsetTop ?? 0) > 0 || window.scrollY !== 0 || window.pageYOffset !== 0) {
+      window.scrollTo(0, 0);
+    }
 
-    // Prefer visualViewport; clamp to innerHeight so we never size taller than the layout viewport
-    const vvHeight = vv?.height ?? window.innerHeight;
-    const height = Math.max(1, Math.round(Math.min(vvHeight, window.innerHeight)));
-    // If iOS still reports an offset after pinScroll, shift the shell to match the visible area
-    const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
+    const height = Math.max(1, Math.round(vv?.height ?? window.innerHeight));
 
-    if (height === lastHeight && offset === lastOffset) return;
+    root.style.setProperty('--app-offset-top', '0px');
+
+    if (height === lastHeight) return;
     lastHeight = height;
-    lastOffset = offset;
     root.style.setProperty('--app-height', `${height}px`);
-    root.style.setProperty('--app-offset-top', `${offset}px`);
   };
 
   const apply = () => {
     measure();
-    // Safari sometimes applies scrollTo asynchronously — remeasure once more
     measure();
   };
 
@@ -68,55 +52,33 @@ export function installViewportHeightLock(): () => void {
   const onVisibility = () => {
     if (document.visibilityState === 'visible') {
       lastHeight = -1;
-      lastOffset = -1;
       schedule();
     }
   };
   document.addEventListener('visibilitychange', onVisibility);
-
-  // URL-bar / chrome settle often only shows up after a touch
-  document.addEventListener('touchstart', schedule, { passive: true });
   document.addEventListener('touchend', schedule, { passive: true });
 
   const vv = window.visualViewport;
-  if (vv) {
-    vv.addEventListener('resize', schedule);
-    vv.addEventListener('scroll', schedule);
-  }
+  vv?.addEventListener('resize', schedule);
+  vv?.addEventListener('scroll', schedule);
 
-  // Catch late chrome settle after first paint / auth hydrate
-  const t1 = window.setTimeout(schedule, 50);
-  const t2 = window.setTimeout(schedule, 250);
-  const t3 = window.setTimeout(schedule, 800);
-  const t4 = window.setTimeout(schedule, 2000);
-
-  // Aggressive early poll (missed resize on load), then light while visible
-  const earlyPoll = window.setInterval(schedule, 200);
+  const timers = [50, 250, 800, 2000].map((ms) => window.setTimeout(schedule, ms));
+  const earlyPoll = window.setInterval(schedule, 250);
   const stopEarly = window.setTimeout(() => window.clearInterval(earlyPoll), 4000);
-  const slowPoll = window.setInterval(() => {
-    if (document.visibilityState === 'visible') schedule();
-  }, 1500);
 
   return () => {
     cancelAnimationFrame(raf);
-    window.clearTimeout(t1);
-    window.clearTimeout(t2);
-    window.clearTimeout(t3);
-    window.clearTimeout(t4);
+    timers.forEach((id) => window.clearTimeout(id));
     window.clearTimeout(stopEarly);
     window.clearInterval(earlyPoll);
-    window.clearInterval(slowPoll);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
     window.removeEventListener('pageshow', schedule);
     window.removeEventListener('focus', schedule);
     window.removeEventListener('scroll', schedule);
     document.removeEventListener('visibilitychange', onVisibility);
-    document.removeEventListener('touchstart', schedule);
     document.removeEventListener('touchend', schedule);
-    if (vv) {
-      vv.removeEventListener('resize', schedule);
-      vv.removeEventListener('scroll', schedule);
-    }
+    vv?.removeEventListener('resize', schedule);
+    vv?.removeEventListener('scroll', schedule);
   };
 }

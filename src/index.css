@@ -90,11 +90,9 @@ html.dark #root {
 
 /*
  * Mobile app shell:
- * - Main pane scrolls; bottom nav is a flex sibling (not position:fixed).
- * - Height comes from --app-height (visualViewport) so iOS chrome can’t leave
- *   a cut-off top + empty bottom gap. See installViewportHeightLock().
- * - top tracks --app-offset-top when visualViewport is scrolled (logo clip fix);
- *   height is always the visible height so the pair doesn’t leave a nav gap.
+ * - Main pane scrolls; bottom nav is an in-flow flex sibling.
+ * - #root always top:0 — never shift by --app-offset-top (cut-off top + bottom gap).
+ * - Height from --app-height (visualViewport).
  */
 @media (max-width: 1023.98px) {
   html,
@@ -114,7 +112,7 @@ html.dark #root {
     position: fixed;
     left: 0;
     right: 0;
-    top: var(--app-offset-top, 0px);
+    top: 0;
     width: 100%;
     height: var(--app-height, 100dvh);
     max-height: var(--app-height, 100dvh);
