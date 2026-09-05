@@ -16,7 +16,6 @@ import {
   parseSupabaseWebhookPayload,
 } from './lib/adminGrowthNotifications';
 import { dispatchNotification, formatEventId } from './lib/notifications';
-import { buildLeaguePublicUrl } from './lib/notifications/publicLinks';
 
 function json(statusCode: number, body: unknown) {
   return {
@@ -95,7 +94,6 @@ export const handler: Handler = async (event) => {
 
       const leagueId = String(record.id || '');
       const leagueName = String(record.name || '').trim();
-      const leagueCode = String(record.code || '').trim();
       if (!leagueId || !leagueName) {
         return json(200, { ok: true, skipped: true, reason: 'Missing league id or name' });
       }
@@ -127,7 +125,8 @@ export const handler: Handler = async (event) => {
       const eventId =
         formatEventId('admin-new-league', { league_id: leagueId }) ||
         `admin_new_league:${leagueId}`;
-      const leagueUrl = leagueCode ? buildLeaguePublicUrl(leagueCode) : 'https://playtotl.com/tables';
+      // Informational only — never deep-link to /league/{code} (that’s an invite/join path).
+      const adminInfoUrl = 'https://playtotl.com/admin/gw-stats';
 
       const result = await dispatchNotification({
         notification_key: 'admin-new-league',
@@ -135,12 +134,12 @@ export const handler: Handler = async (event) => {
         user_ids: adminUserIds,
         title: copy.title,
         body: copy.body,
-        url: leagueUrl,
+        url: adminInfoUrl,
         data: {
           type: 'admin-new-league',
           league_id: leagueId,
           league_name: leagueName,
-          league_code: leagueCode || undefined,
+          // Intentionally omit league_code so clients can’t treat this as an invite.
         },
         league_id: leagueId,
         skip_preference_check: true,
