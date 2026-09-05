@@ -9,6 +9,8 @@ import RetroDailyFlip from './RetroDailyFlip';
 export const RETRO_REVEAL_HOLD_MS = 2000;
 /** Transition duration into the score face (kept for parent unlock timing). */
 export const RETRO_REVEAL_FLIP_MS = 420;
+/** Seconds shown on the score face before auto-advancing (3 → 2 → 1). */
+export const RETRO_REVEAL_NEXT_BEAT_MS = 900;
 
 export function resultMatchesPick(fixture: RetroFixture, pick: RetroPick | null): boolean {
   return pick != null && pick === fixture.result;
@@ -95,12 +97,16 @@ function ScoreFace({
   fixture,
   correct,
   timedOut,
-  showNextHint,
+  nextCountdown,
+  swipeHint,
 }: {
   fixture: RetroFixture;
   correct: boolean;
   timedOut: boolean;
-  showNextHint: boolean;
+  /** Small 3-2-1 at the bottom when continuing the streak. */
+  nextCountdown: number | null;
+  /** Shown when the run ends — swipe to the score sheet. */
+  swipeHint: boolean;
 }) {
   const statusBg = correct ? '#1C8376' : '#DC2626';
   const statusLabel = timedOut ? 'TOO SLOW!' : correct ? 'CORRECT' : 'INCORRECT';
@@ -122,13 +128,28 @@ function ScoreFace({
           {statusLabel}
         </div>
       </div>
-      <p className="text-center text-sm font-extrabold text-slate-600">
-        {showNextHint
-          ? correct
-            ? 'Swipe to see the next fixture'
-            : 'Swipe to see your score'
-          : ' '}
-      </p>
+      <div className="flex h-14 items-center justify-center">
+        {nextCountdown != null ? (
+          <p
+            key={nextCountdown}
+            className="text-5xl font-black tabular-nums leading-none text-slate-500"
+            style={{
+              fontFamily: "'PressStart2P', monospace",
+              animation: 'retroRevealCount 0.35s ease-out',
+            }}
+          >
+            {nextCountdown}
+          </p>
+        ) : swipeHint ? (
+          <p className="text-center text-sm font-extrabold text-slate-600">Swipe to see your score</p>
+        ) : null}
+      </div>
+      <style>{`
+        @keyframes retroRevealCount {
+          from { transform: scale(0.7); opacity: 0.35; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -153,32 +174,61 @@ function TeamMini({ code, name }: { code: string; name: string }) {
 }
 
 /**
- * Holds on loading, then flips to score (Safari-safe midpoint swap).
+ * Holds on loading, then flips to score.
+ * Streak continues → small 3-2-1 then onAutoAdvance.
+ * Run over (wrong / last) → “Swipe to see your score” (parent unlocks swipe).
  */
 export default function RetroDailyRevealCard({
   fixture,
   correct,
   timedOut,
-  showNextHint = true,
   flipKey = 0,
   holdMs = RETRO_REVEAL_HOLD_MS,
   flipMs = RETRO_REVEAL_FLIP_MS,
+  beatMs = RETRO_REVEAL_NEXT_BEAT_MS,
+  autoContinue = false,
+  swipeReady = false,
+  onAutoAdvance,
 }: {
   fixture: RetroFixture;
   correct: boolean;
   timedOut: boolean;
-  showNextHint?: boolean;
   flipKey?: number;
   holdMs?: number;
   flipMs?: number;
+  beatMs?: number;
+  /** True when the next fixture should auto-appear after 3-2-1. */
+  autoContinue?: boolean;
+  /** Parent has unlocked swipe for the score-sheet path. */
+  swipeReady?: boolean;
+  onAutoAdvance?: () => void;
 }) {
   const [showScore, setShowScore] = useState(false);
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     setShowScore(false);
+    setNextCountdown(null);
     const id = window.setTimeout(() => setShowScore(true), holdMs);
     return () => window.clearTimeout(id);
   }, [fixture.id, flipKey, holdMs]);
+
+  useEffect(() => {
+    if (!showScore || !autoContinue || !onAutoAdvance) return;
+    const timers: number[] = [];
+    timers.push(
+      window.setTimeout(() => setNextCountdown(3), Math.max(0, flipMs + 80))
+    );
+    timers.push(window.setTimeout(() => setNextCountdown(2), flipMs + 80 + beatMs));
+    timers.push(window.setTimeout(() => setNextCountdown(1), flipMs + 80 + beatMs * 2));
+    timers.push(
+      window.setTimeout(() => {
+        setNextCountdown(null);
+        onAutoAdvance();
+      }, flipMs + 80 + beatMs * 3)
+    );
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [showScore, autoContinue, flipMs, beatMs, onAutoAdvance, fixture.id, flipKey]);
 
   return (
     <RetroDailyFlip
@@ -191,7 +241,8 @@ export default function RetroDailyRevealCard({
           fixture={fixture}
           correct={correct}
           timedOut={timedOut}
-          showNextHint={showNextHint}
+          nextCountdown={autoContinue ? nextCountdown : null}
+          swipeHint={!autoContinue && swipeReady}
         />
       }
     />

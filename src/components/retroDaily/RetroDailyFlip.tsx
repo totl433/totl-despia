@@ -38,22 +38,22 @@ export default function RetroDailyFlip({
     const timers: number[] = [];
     let cancelled = false;
 
-    // Kick flip after first paint so transition runs from 0 → EDGE
+    // Kick flip after first paint so transition runs from 0 → -EDGE (other side)
     timers.push(
       window.setTimeout(() => {
         if (cancelled) return;
         setAnimating(true);
-        setRotateY(EDGE_DEG);
+        setRotateY(-EDGE_DEG);
       }, 30)
     );
 
-    // Midpoint: swap while still slightly visible, then open from -EDGE → 0
+    // Midpoint: swap while still slightly visible, then open from +EDGE → 0
     timers.push(
       window.setTimeout(() => {
         if (cancelled) return;
         setFace('b');
         setAnimating(false);
-        setRotateY(-EDGE_DEG);
+        setRotateY(EDGE_DEG);
         requestAnimationFrame(() => {
           if (cancelled) return;
           requestAnimationFrame(() => {

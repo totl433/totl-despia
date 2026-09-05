@@ -17,6 +17,7 @@ import RetroDailyPromoteFlipCard, {
   RETRO_PROMOTE_FLIP_DELAY_MS,
   RETRO_PROMOTE_FLIP_MS,
 } from '../components/retroDaily/RetroDailyPromoteFlipCard';
+import RetroDailyFixtureCard from '../components/retroDaily/RetroDailyFixtureCard';
 import RetroDailyLogoBack from '../components/retroDaily/RetroDailyLogoBack';
 import RetroDailyRevealCard, {
   resultMatchesPick,
@@ -24,12 +25,13 @@ import RetroDailyRevealCard, {
   RETRO_REVEAL_HOLD_MS,
   type RetroRoundOutcome,
 } from '../components/retroDaily/RetroDailyRevealCard';
-import RetroDailyScoreCard from '../components/retroDaily/RetroDailyScoreCard';
+import RetroDailyScoreCard, { retroScoreBlurb } from '../components/retroDaily/RetroDailyScoreCard';
 import RetroDailyRulesModal from '../components/retroDaily/RetroDailyRulesModal';
 import RetroDailySwipeStack, {
   DRAW_THRESHOLD,
   SWIPE_THRESHOLD,
 } from '../components/retroDaily/RetroDailySwipeStack';
+import RetroDailyProgressPips from '../components/retroDaily/RetroDailyProgressPips';
 import { ensureRetroPixelFont } from '../lib/retroDaily/pixelFont';
 
 type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
@@ -60,6 +62,7 @@ export default function RetroTotlDailyPage() {
   const [interactive, setInteractive] = useState(true);
   const [cardKey, setCardKey] = useState('intro');
   const [flipKey, setFlipKey] = useState(0);
+  const [flyAwayNonce, setFlyAwayNonce] = useState(0);
   const [pixelFontReady, setPixelFontReady] = useState(false);
 
   const timerEpoch = useRef(0);
@@ -84,9 +87,11 @@ export default function RetroTotlDailyPage() {
     outcomes.length === fixtures.length &&
     outcomes.every((o) => o.correct);
   const playChrome = phase === 'countdown' || phase === 'playing' || phase === 'reveal';
-  const fromCountdown = cardKey.startsWith('play-0-');
-  const revealLeadsToScore =
-    phase === 'reveal' && !(lastCorrect && index < fixtures.length - 1);
+  const fromCountdown = cardKey.startsWith('play-0-') && !cardKey.includes('-instant-');
+  const fromInstant = cardKey.includes('-instant-');
+  const revealContinues = lastCorrect && index < fixtures.length - 1;
+  const revealLeadsToScore = phase === 'reveal' && !revealContinues;
+  const nextFixture = revealContinues ? fixtures[index + 1] ?? null : null;
   const showNext = phase !== 'score';
   const showQueued =
     phase === 'intro' ||
@@ -166,27 +171,34 @@ export default function RetroTotlDailyPage() {
     setTimerPct(1);
     const hold =
       phase === 'playing'
-        ? (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
-          RETRO_PROMOTE_FLIP_MS
+        ? fromInstant
+          ? 280 // settle after programmatic swipe — no promote flip
+          : (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
+            RETRO_PROMOTE_FLIP_MS
         : RETRO_REVEAL_HOLD_MS + RETRO_REVEAL_FLIP_MS;
     const epoch = ++timerEpoch.current;
     const isPlaying = phase === 'playing';
 
     const unlockId = window.setTimeout(() => {
       if (timerEpoch.current !== epoch) return;
-      setInteractive(true);
-      if (!isPlaying) return;
-
-      const started = performance.now();
-      const tick = (now: number) => {
-        if (timerEpoch.current !== epoch) return;
-        const elapsed = now - started;
-        const left = Math.max(0, 1 - elapsed / RETRO_TIMER_MS);
-        setTimerPct(left);
-        if (left <= 0) return;
+      if (isPlaying) {
+        setInteractive(true);
+        const started = performance.now();
+        const tick = (now: number) => {
+          if (timerEpoch.current !== epoch) return;
+          const elapsed = now - started;
+          const left = Math.max(0, 1 - elapsed / RETRO_TIMER_MS);
+          setTimerPct(left);
+          if (left <= 0) return;
+          timerRaf.current = requestAnimationFrame(tick);
+        };
         timerRaf.current = requestAnimationFrame(tick);
-      };
-      timerRaf.current = requestAnimationFrame(tick);
+        return;
+      }
+      // Reveal → score sheet: unlock swipe. Streak continues via on-card 3-2-1.
+      if (phase === 'reveal' && !(lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1)) {
+        setInteractive(true);
+      }
     }, hold);
 
     const timeoutId = isPlaying
@@ -212,7 +224,7 @@ export default function RetroTotlDailyPage() {
       cancelAnimationFrame(timerRaf.current);
       timerEpoch.current += 1;
     };
-  }, [cardKey, fixtures, fromCountdown, index, phase]);
+  }, [cardKey, fixtures, fromCountdown, fromInstant, index, phase]);
 
   const pickFromSwipe = (dx: number, dy: number): RetroPick => {
     const absX = Math.abs(dx);
@@ -222,6 +234,34 @@ export default function RetroTotlDailyPage() {
     if (absX >= absY) return dx >= 0 ? 'A' : 'H';
     return 'D';
   };
+
+  const advanceFromReveal = useCallback((opts?: { instant?: boolean }) => {
+    timerEpoch.current += 1;
+    setDragX(0);
+    setDragY(0);
+    if (lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1) {
+      const next = indexRef.current + 1;
+      setIndex(next);
+      setPhase('playing');
+      setCardKey(
+        opts?.instant ? `play-${next}-instant-${Date.now()}` : `play-${next}-${Date.now()}`
+      );
+      if (!opts?.instant) setFlipKey((k) => k + 1);
+      setInteractive(false);
+      return;
+    }
+    setPhase('score');
+    setCardKey(`score-${Date.now()}`);
+    setInteractive(true);
+    if (lastCorrectRef.current && indexRef.current === fixturesLenRef.current - 1) {
+      void confetti({ particleCount: 280, spread: 90, origin: { y: 0.3 } });
+    }
+  }, []);
+
+  /** After 3-2-1 on a correct streak — swipe the reveal away onto the next fixture. */
+  const swipeToNextFixture = useCallback(() => {
+    setFlyAwayNonce((n) => n + 1);
+  }, []);
 
   const onSwipeAway = useCallback((dx: number, dy: number) => {
     timerEpoch.current += 1;
@@ -256,14 +296,11 @@ export default function RetroTotlDailyPage() {
 
     if (p === 'reveal') {
       if (lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1) {
-        const next = indexRef.current + 1;
-        setIndex(next);
-        setPhase('playing');
-        setCardKey(`play-${next}-${Date.now()}`);
-        setFlipKey((k) => k + 1);
-        setInteractive(false);
+        // Programmatic (or manual) swipe after 3-2-1 — plant next fixture under the fly-off
+        advanceFromReveal({ instant: true });
         return;
       }
+      // Run over — swipe to score sheet
       setPhase('score');
       setCardKey(`score-${Date.now()}`);
       setInteractive(true);
@@ -271,7 +308,7 @@ export default function RetroTotlDailyPage() {
         void confetti({ particleCount: 280, spread: 90, origin: { y: 0.3 } });
       }
     }
-  }, []);
+  }, [advanceFromReveal]);
 
   const commitPick = useCallback(
     (pick: RetroPick) => {
@@ -302,10 +339,13 @@ export default function RetroTotlDailyPage() {
   }
   if (!isAdmin) return null;
 
-  const p = timerPct;
-  const timerColor = `rgb(${Math.round(59 + (220 - 59) * (1 - p))},${Math.round(130 + (38 - 130) * (1 - p))},${Math.round(246 + (38 - 246) * (1 - p))})`;
+  const timerRunning = phase === 'playing' && interactive;
+  // During promote flip (before unlock) still show countdown at 10 — skip the white “current” pip flash
+  const secondsLeft = timerRunning ? Math.max(1, Math.ceil(timerPct * 10)) : 10;
+  const pipTimerPct = timerRunning ? timerPct : 1;
 
   const logoBack = <RetroDailyLogoBack seasonLabel={puzzle.seasonFull} />;
+  const scoreBlurb = retroScoreBlurb(score, fixtures.length, perfect);
   const scoreFace = (
     <RetroDailyScoreCard
       seasonLabel={puzzle.seasonFull}
@@ -313,6 +353,12 @@ export default function RetroTotlDailyPage() {
       outcomes={outcomes}
       score={score}
       perfect={perfect}
+      userId={user.id}
+      userNameFallback={
+        (typeof user.user_metadata?.display_name === 'string' && user.user_metadata.display_name) ||
+        user.email?.split('@')[0] ||
+        'Player'
+      }
     />
   );
 
@@ -322,7 +368,9 @@ export default function RetroTotlDailyPage() {
   } else if (phase === 'countdown') {
     face = <RetroDailyCountdownCard value={countdown} />;
   } else if (phase === 'playing' && fixture) {
-    face = (
+    face = fromInstant ? (
+      <RetroDailyFixtureCard fixture={fixture} />
+    ) : (
       <RetroDailyPromoteFlipCard
         fixture={fixture}
         flipKey={flipKey}
@@ -336,8 +384,10 @@ export default function RetroTotlDailyPage() {
         fixture={revealFixture}
         correct={lastCorrect}
         timedOut={lastTimedOut}
-        showNextHint={interactive}
         flipKey={flipKey}
+        autoContinue={revealContinues}
+        swipeReady={interactive}
+        onAutoAdvance={swipeToNextFixture}
       />
     );
   } else if (phase === 'score') {
@@ -363,118 +413,159 @@ export default function RetroTotlDailyPage() {
       <div
         className="mx-auto flex h-full w-full max-w-md min-h-0 flex-1 flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))]"
       >
-        <header className="relative mb-2 flex h-10 shrink-0 items-center justify-center">
+        <header className="relative mb-3 flex min-h-14 shrink-0 items-center justify-center py-1">
           <button
             type="button"
             aria-label="Close"
             onClick={() => navigate('/admin-data')}
-            className="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-2xl leading-none hover:bg-white/10"
+            className="absolute left-0 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-2xl leading-none hover:bg-white/10"
           >
             ×
           </button>
-          <h1 className="text-lg font-black">Retro Totl Daily</h1>
+          <div className="flex flex-col items-center px-12">
+            <h1 className="text-base font-black leading-tight">Retro Totl Daily</h1>
+            <p
+              className="mt-1.5 text-2xl leading-none text-white"
+              style={{ fontFamily: "'PressStart2P', monospace" }}
+            >
+              {puzzle.seasonFull}
+            </p>
+          </div>
           <Link
             to="/admin/retro-totl-daily/scoreboard"
-            aria-label="Scoreboard"
-            className="absolute right-0 flex h-9 w-9 items-center justify-center rounded-full text-lg hover:bg-white/10"
+            className="absolute right-0 top-1/2 -translate-y-1/2 text-xs font-extrabold text-white/90 hover:text-white"
           >
-            🏆
+            Scoreboard
           </Link>
         </header>
 
-        <div className="mb-2 flex h-11 shrink-0 flex-col justify-center">
-          {playChrome ? (
-            <>
-              <div className="h-3.5 overflow-hidden rounded-full bg-white/20">
-                <div
-                  className="h-full origin-left rounded-full"
-                  style={{ width: `${Math.max(0.5, timerPct * 100)}%`, backgroundColor: timerColor }}
-                />
-              </div>
-              <p className="mt-1 text-center text-xs font-bold text-white/70">
-                Fixture {Math.min(index + 1, fixtures.length)} / {fixtures.length}
+        {/* Equal spacers pin the card + chrome cluster in the vertical middle */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
+            {phase === 'score' ? (
+              <p className="max-w-[420px] text-center text-sm font-extrabold leading-snug text-white/85">
+                {scoreBlurb}
               </p>
-            </>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
 
-        <div className="flex min-h-0 flex-1 items-center justify-center py-1">
-          <RetroDailySwipeStack
-            cardKey={cardKey}
-            seasonLabel={puzzle.seasonFull}
-            showNext={showNext}
-            showQueued={showQueued}
-            nextFace={
-              phase === 'intro' ? (
-                <RetroDailyCountdownCard value={3} />
-              ) : revealLeadsToScore ? (
-                scoreFace
-              ) : (
-                logoBack
-              )
-            }
-            queuedFace={logoBack}
-            disabled={!interactive || phase === 'countdown' || phase === 'score'}
-            onDrag={(dx, dy) => {
-              setDragX(dx);
-              setDragY(dy);
-            }}
-            onSwipeAway={onSwipeAway}
-          >
-            {face}
-          </RetroDailySwipeStack>
-        </div>
-
-        <div className="mt-2 flex min-h-[100px] shrink-0 flex-col items-center justify-center pb-1">
-          {phase === 'intro' ? (
-            <div className="flex flex-col items-center">
-              <button
-                type="button"
-                onClick={() => setRulesOpen(true)}
-                className="rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
-              >
-                Rules
-              </button>
-              <Link to="/admin/retro-totl-daily/scoreboard" className="mt-2.5 text-sm font-bold underline">
-                Scoreboard
-              </Link>
-              <p className="mt-2 text-xs text-white/50">Swipe the card to start</p>
-            </div>
-          ) : null}
-
-          {playChrome ? (
-            <div className="flex w-full gap-2.5">
-              {(
-                [
-                  ['H', 'Home Win', highlightHome],
-                  ['D', 'Draw', highlightDraw],
-                  ['A', 'Away Win', highlightAway],
-                ] as const
-              ).map(([pick, label, hot]) => (
-                <button
-                  key={pick}
-                  type="button"
-                  disabled={phase !== 'playing' || !interactive}
-                  onClick={() => commitPick(pick)}
-                  className={`h-14 flex-1 rounded-2xl text-sm font-extrabold text-white disabled:opacity-50 ${
-                    hot ? 'bg-[#1C8376] scale-105' : 'bg-white/20'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {phase === 'score' ? (
-            <button
-              type="button"
-              onClick={restart}
-              className="h-14 w-full rounded-2xl bg-[#1C8376] text-base font-extrabold text-white"
+          <div className="flex w-full shrink-0 flex-col items-center">
+            <RetroDailySwipeStack
+              cardKey={cardKey}
+              seasonLabel={puzzle.seasonFull}
+              showNext={showNext}
+              showQueued={showQueued}
+              flyAwayNonce={flyAwayNonce}
+              nextFace={
+                phase === 'intro' ? (
+                  <RetroDailyCountdownCard value={3} />
+                ) : revealLeadsToScore ? (
+                  scoreFace
+                ) : revealContinues && nextFixture ? (
+                  <RetroDailyFixtureCard fixture={nextFixture} />
+                ) : (
+                  logoBack
+                )
+              }
+              queuedFace={logoBack}
+              disabled={
+                !interactive ||
+                phase === 'countdown' ||
+                phase === 'score' ||
+                (phase === 'reveal' && revealContinues)
+              }
+              onDrag={(dx, dy) => {
+                setDragX(dx);
+                setDragY(dy);
+              }}
+              onSwipeAway={onSwipeAway}
             >
-              Play again
-            </button>
-          ) : null}
+              {face}
+            </RetroDailySwipeStack>
+
+            <div className="mt-5 flex w-full flex-col items-center">
+              {phase === 'intro' ? (
+                <div className="flex w-full items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRulesOpen(true)}
+                    className="rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
+                  >
+                    Rules
+                  </button>
+                  <Link
+                    to="/admin/retro-totl-daily/scoreboard"
+                    className="rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
+                  >
+                    Scoreboard
+                  </Link>
+                </div>
+              ) : null}
+
+              {playChrome ? (
+                <div className="flex w-full flex-col items-center gap-3">
+                  <div className="flex w-full gap-2.5">
+                    {(
+                      [
+                        ['H', 'Home Win', highlightHome],
+                        ['D', 'Draw', highlightDraw],
+                        ['A', 'Away Win', highlightAway],
+                      ] as const
+                    ).map(([pick, label, hot]) => (
+                      <button
+                        key={pick}
+                        type="button"
+                        disabled={phase !== 'playing' || !interactive}
+                        onClick={() => commitPick(pick)}
+                        className={`h-14 flex-1 rounded-2xl text-sm font-extrabold text-white disabled:opacity-50 ${
+                          hot ? 'bg-[#1C8376] scale-105' : 'bg-white/20'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-1">
+                    <RetroDailyProgressPips
+                      total={fixtures.length}
+                      completed={outcomes.length}
+                      current={index}
+                      mode={phase === 'playing' ? 'countdown' : 'progress'}
+                      secondsLeft={secondsLeft}
+                      timerPct={pipTimerPct}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {phase === 'score' ? (
+                <div className="flex w-full flex-col items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="h-14 w-full rounded-2xl bg-[#1C8376] text-base font-extrabold text-white"
+                  >
+                    Play again
+                  </button>
+                  <div className="mt-1">
+                    <RetroDailyProgressPips
+                      total={fixtures.length}
+                      completed={outcomes.length}
+                      current={Math.max(0, outcomes.length - 1)}
+                      mode="results"
+                      results={fixtures.map((f) => {
+                        const o = outcomes.find((x) => x.fixture.id === f.id);
+                        if (!o) return 'pending';
+                        return o.correct ? 'correct' : 'wrong';
+                      })}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1" aria-hidden />
         </div>
       </div>
 
