@@ -233,15 +233,16 @@ export default function RetroDailySwipeStack({
   return (
     <div
       ref={surfaceRef}
-      className="relative mx-auto touch-none select-none"
+      className="relative mx-auto min-h-0 touch-none select-none"
       style={{
-        // Width-first: parent cluster is shrink-wrapped (no height), so % height
-        // collapses to 0. Cap at 420×560 like Expo.
-        aspectRatio: '0.75',
+        // Fit inside the flex slot above pinned buttons/pips: width-first, then
+        // max-height shrinks the box (and aspect-ratio reflows width) on short screens.
         width: 'min(100%, 420px)',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        minHeight: 0,
         height: 'auto',
-        maxHeight: '560px',
-        maxWidth: 'min(100%, 420px)',
+        aspectRatio: '0.75',
         cursor: disabled ? 'default' : 'grab',
       }}
       onPointerDown={onPointerDown}

@@ -407,13 +407,17 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="flex h-[var(--app-height,100dvh)] max-h-[var(--app-height,100dvh)] flex-col overflow-hidden text-white"
-      style={{ backgroundColor: BG }}
+      className="fixed inset-0 flex flex-col overflow-hidden text-white"
+      style={{
+        backgroundColor: BG,
+        // Prefer live visual viewport; fall back to locked app height / svh
+        height: 'var(--app-height, 100svh)',
+        maxHeight: 'var(--app-height, 100svh)',
+        top: 'var(--app-offset-top, 0px)',
+      }}
     >
-      <div
-        className="mx-auto flex h-full w-full max-w-md min-h-0 flex-1 flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))]"
-      >
-        <header className="relative mb-3 flex min-h-14 shrink-0 items-center justify-center py-1">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+        <header className="relative mb-2 flex min-h-12 shrink-0 items-center justify-center py-0.5">
           <button
             type="button"
             aria-label="Close"
@@ -423,9 +427,9 @@ export default function RetroTotlDailyPage() {
             ×
           </button>
           <div className="flex flex-col items-center px-12">
-            <h1 className="text-base font-black leading-tight">Retro Totl Daily</h1>
+            <h1 className="text-sm font-black leading-tight sm:text-base">Retro Totl Daily</h1>
             <p
-              className="mt-1.5 text-2xl leading-none text-white"
+              className="mt-1 text-xl leading-none text-white sm:text-2xl"
               style={{ fontFamily: "'PressStart2P', monospace" }}
             >
               {puzzle.seasonFull}
@@ -439,133 +443,124 @@ export default function RetroTotlDailyPage() {
           </Link>
         </header>
 
-        {/* Equal spacers pin the card + chrome cluster in the vertical middle */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2">
-            {phase === 'score' ? (
-              <p className="max-w-[420px] text-center text-sm font-extrabold leading-snug text-white/85">
-                {scoreBlurb}
-              </p>
-            ) : null}
-          </div>
+        {phase === 'score' ? (
+          <p className="mb-2 shrink-0 px-2 text-center text-sm font-extrabold leading-snug text-white/85">
+            {scoreBlurb}
+          </p>
+        ) : null}
 
-          <div className="flex w-full shrink-0 flex-col items-center">
-            <RetroDailySwipeStack
-              cardKey={cardKey}
-              seasonLabel={puzzle.seasonFull}
-              showNext={showNext}
-              showQueued={showQueued}
-              flyAwayNonce={flyAwayNonce}
-              nextFace={
-                phase === 'intro' ? (
-                  <RetroDailyCountdownCard value={3} />
-                ) : revealLeadsToScore ? (
-                  scoreFace
-                ) : revealContinues && nextFixture ? (
-                  <RetroDailyFixtureCard fixture={nextFixture} />
-                ) : (
-                  logoBack
-                )
-              }
-              queuedFace={logoBack}
-              disabled={
-                !interactive ||
-                phase === 'countdown' ||
-                phase === 'score' ||
-                (phase === 'reveal' && revealContinues)
-              }
-              onDrag={(dx, dy) => {
-                setDragX(dx);
-                setDragY(dy);
-              }}
-              onSwipeAway={onSwipeAway}
-            >
-              {face}
-            </RetroDailySwipeStack>
+        {/* Card fills leftover space — shrinks so chrome below always fits */}
+        <div className="grid min-h-0 w-full flex-1 place-items-center">
+          <RetroDailySwipeStack
+            cardKey={cardKey}
+            seasonLabel={puzzle.seasonFull}
+            showNext={showNext}
+            showQueued={showQueued}
+            flyAwayNonce={flyAwayNonce}
+            nextFace={
+              phase === 'intro' ? (
+                <RetroDailyCountdownCard value={3} />
+              ) : revealLeadsToScore ? (
+                scoreFace
+              ) : revealContinues && nextFixture ? (
+                <RetroDailyFixtureCard fixture={nextFixture} />
+              ) : (
+                logoBack
+              )
+            }
+            queuedFace={logoBack}
+            disabled={
+              !interactive ||
+              phase === 'countdown' ||
+              phase === 'score' ||
+              (phase === 'reveal' && revealContinues)
+            }
+            onDrag={(dx, dy) => {
+              setDragX(dx);
+              setDragY(dy);
+            }}
+            onSwipeAway={onSwipeAway}
+          >
+            {face}
+          </RetroDailySwipeStack>
+        </div>
 
-            <div className="mt-5 flex w-full flex-col items-center">
-              {phase === 'intro' ? (
-                <div className="flex w-full items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setRulesOpen(true)}
-                    className="rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
-                  >
-                    Rules
-                  </button>
-                  <Link
-                    to="/admin/retro-totl-daily/scoreboard"
-                    className="rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
-                  >
-                    Scoreboard
-                  </Link>
-                </div>
-              ) : null}
-
-              {playChrome ? (
-                <div className="flex w-full flex-col items-center gap-3">
-                  <div className="flex w-full gap-2.5">
-                    {(
-                      [
-                        ['H', 'Home Win', highlightHome],
-                        ['D', 'Draw', highlightDraw],
-                        ['A', 'Away Win', highlightAway],
-                      ] as const
-                    ).map(([pick, label, hot]) => (
-                      <button
-                        key={pick}
-                        type="button"
-                        disabled={phase !== 'playing' || !interactive}
-                        onClick={() => commitPick(pick)}
-                        className={`h-14 flex-1 rounded-2xl text-sm font-extrabold text-white disabled:opacity-50 ${
-                          hot ? 'bg-[#1C8376] scale-105' : 'bg-white/20'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-1">
-                    <RetroDailyProgressPips
-                      total={fixtures.length}
-                      completed={outcomes.length}
-                      current={index}
-                      mode={phase === 'playing' ? 'countdown' : 'progress'}
-                      secondsLeft={secondsLeft}
-                      timerPct={pipTimerPct}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {phase === 'score' ? (
-                <div className="flex w-full flex-col items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={restart}
-                    className="h-14 w-full rounded-2xl bg-[#1C8376] text-base font-extrabold text-white"
-                  >
-                    Play again
-                  </button>
-                  <div className="mt-1">
-                    <RetroDailyProgressPips
-                      total={fixtures.length}
-                      completed={outcomes.length}
-                      current={Math.max(0, outcomes.length - 1)}
-                      mode="results"
-                      results={fixtures.map((f) => {
-                        const o = outcomes.find((x) => x.fixture.id === f.id);
-                        if (!o) return 'pending';
-                        return o.correct ? 'correct' : 'wrong';
-                      })}
-                    />
-                  </div>
-                </div>
-              ) : null}
+        {/* Buttons + pips always visible — never covered by Safari chrome */}
+        <div className="mt-3 flex w-full shrink-0 flex-col items-center">
+          {phase === 'intro' ? (
+            <div className="flex w-full items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setRulesOpen(true)}
+                className="rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
+              >
+                Rules
+              </button>
+              <Link
+                to="/admin/retro-totl-daily/scoreboard"
+                className="rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
+              >
+                Scoreboard
+              </Link>
             </div>
-          </div>
+          ) : null}
 
-          <div className="min-h-0 flex-1" aria-hidden />
+          {playChrome ? (
+            <div className="flex w-full flex-col items-center gap-2.5">
+              <div className="flex w-full gap-2.5">
+                {(
+                  [
+                    ['H', 'Home Win', highlightHome],
+                    ['D', 'Draw', highlightDraw],
+                    ['A', 'Away Win', highlightAway],
+                  ] as const
+                ).map(([pick, label, hot]) => (
+                  <button
+                    key={pick}
+                    type="button"
+                    disabled={phase !== 'playing' || !interactive}
+                    onClick={() => commitPick(pick)}
+                    className={`h-12 flex-1 rounded-2xl text-sm font-extrabold text-white disabled:opacity-50 sm:h-14 ${
+                      hot ? 'bg-[#1C8376] scale-105' : 'bg-white/20'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <RetroDailyProgressPips
+                total={fixtures.length}
+                completed={outcomes.length}
+                current={index}
+                mode={phase === 'playing' ? 'countdown' : 'progress'}
+                secondsLeft={secondsLeft}
+                timerPct={pipTimerPct}
+              />
+            </div>
+          ) : null}
+
+          {phase === 'score' ? (
+            <div className="flex w-full flex-col items-center gap-2.5">
+              <button
+                type="button"
+                onClick={restart}
+                className="h-12 w-full rounded-2xl bg-[#1C8376] text-base font-extrabold text-white sm:h-14"
+              >
+                Play again
+              </button>
+              <RetroDailyProgressPips
+                total={fixtures.length}
+                completed={outcomes.length}
+                current={Math.max(0, outcomes.length - 1)}
+                mode="results"
+                results={fixtures.map((f) => {
+                  const o = outcomes.find((x) => x.fixture.id === f.id);
+                  if (!o) return 'pending';
+                  return o.correct ? 'correct' : 'wrong';
+                })}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 
