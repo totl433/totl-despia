@@ -30,7 +30,8 @@ export function HorizontalScrollContainer({ children, className = '' }: Horizont
       }}
     >
       <style>{`.scrollbar-hide::-webkit-scrollbar { display: none; }`}</style>
-      <div className="flex gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
+      {/* items-start: don't stretch short cards to the tallest sibling (empty white space) */}
+      <div className="flex items-start gap-2" style={{ width: 'max-content', minWidth: '100%' }}>
         {children}
       </div>
     </div>

@@ -1,13 +1,13 @@
 /**
  * Keep the mobile shell sized to the *visible* viewport.
  *
- * iOS Safari intermittently:
- * 1) scrolls the layout viewport (`visualViewport.offsetTop > 0`) → cut-off top
- * 2) leaves `--app-height` stuck small after the URL bar collapses → empty gap
- *    at the bottom until refresh
+ * iOS Safari / Chrome intermittently:
+ * 1) scrolls the layout viewport (`visualViewport.offsetTop > 0`) → cut-off top (logo clipped)
+ * 2) leaves `--app-height` stuck wrong after the URL bar moves → empty gap under the nav
  *
- * Strategy: pin scroll to 0, always keep `#root` at top:0, and remeasure often
- * enough that a missed resize still corrects within a beat.
+ * Strategy: pin window + app-shell scroll to 0, size `#root` to the visual
+ * viewport (top + height together), and remeasure often enough that a missed
+ * resize still corrects within a beat.
  */
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -15,23 +15,32 @@ export function installViewportHeightLock(): () => void {
   const root = document.documentElement;
   let raf = 0;
   let lastHeight = -1;
+  let lastOffset = -1;
+
+  const pinScroll = () => {
+    // Only pin the *window* layout scroll (iOS visualViewport offset).
+    // Never reset `.app-shell-scroll` here — that is real page scroll.
+    if (window.scrollY !== 0 || window.pageYOffset !== 0) {
+      window.scrollTo(0, 0);
+    }
+  };
 
   const measure = () => {
     const vv = window.visualViewport;
 
-    // Pin layout scroll — never leave the shell shifted by offsetTop
-    if ((vv?.offsetTop ?? 0) > 0 || window.scrollY !== 0 || window.pageYOffset !== 0) {
-      window.scrollTo(0, 0);
-    }
+    pinScroll();
 
-    const height = Math.max(1, Math.round(vv?.height ?? window.innerHeight));
+    // Prefer visualViewport; clamp to innerHeight so we never size taller than the layout viewport
+    const vvHeight = vv?.height ?? window.innerHeight;
+    const height = Math.max(1, Math.round(Math.min(vvHeight, window.innerHeight)));
+    // If iOS still reports an offset after pinScroll, shift the shell to match the visible area
+    const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
 
-    // Always zero — CSS pins #root to top:0; shifting by offsetTop caused bottom gaps
-    root.style.setProperty('--app-offset-top', '0px');
-
-    if (height === lastHeight) return;
+    if (height === lastHeight && offset === lastOffset) return;
     lastHeight = height;
+    lastOffset = offset;
     root.style.setProperty('--app-height', `${height}px`);
+    root.style.setProperty('--app-offset-top', `${offset}px`);
   };
 
   const apply = () => {
@@ -58,7 +67,8 @@ export function installViewportHeightLock(): () => void {
 
   const onVisibility = () => {
     if (document.visibilityState === 'visible') {
-      lastHeight = -1; // force rewrite after tab resume
+      lastHeight = -1;
+      lastOffset = -1;
       schedule();
     }
   };

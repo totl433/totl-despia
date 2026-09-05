@@ -29,17 +29,6 @@ export interface MiniLeagueGwTableCardProps {
 }
 
 /**
- * Calculate minimum height needed for a card based on member count
- */
-function calculateCardHeight(maxMembers: number): number {
-  const headerHeight = 60;
-  const tableHeaderHeight = 32;
-  const rowHeight = 32;
-  const padding = 24;
-  return headerHeight + tableHeaderHeight + (maxMembers * rowHeight) + padding;
-}
-
-/**
  * MiniLeagueGwTableCard - Pure presentational component (like LeaderboardCard)
  * Receives pre-calculated rows - just renders them
  */
@@ -92,22 +81,12 @@ export default function MiniLeagueGwTableCard({
   const isFinished = allFixturesFinished;
   const isDraw = displayRows.length > 1 && displayRows[0]?.score === displayRows[1]?.score && displayRows[0]?.unicorns === displayRows[1]?.unicorns;
   
-  // Calculate height based on actual rows
-  const memberCountForHeight = displayRows.length > 0 ? displayRows.length : members.length;
-  const cardHeight = calculateCardHeight(memberCountForHeight);
-  
   const badge = unread > 0 ? Math.min(unread, 99) : 0;
 
   return (
     <Link
       to={`/league/${leagueCode}`}
-      className="w-[320px] flex-shrink-0 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden block no-underline relative"
-      style={{ 
-        minHeight: `${cardHeight}px`,
-        height: 'auto',
-        display: 'flex',
-        flexDirection: 'column'
-      }}
+      className="w-[320px] flex-shrink-0 self-start bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden block no-underline relative"
     >
       <style>{`
         /* Intentionally no pulsing cell animations on the Home ML cards.
@@ -161,13 +140,13 @@ export default function MiniLeagueGwTableCard({
       </div>
 
       {/* Content */}
-      <div className="px-4 pt-2 pb-4 flex-1 flex flex-col min-h-0">
+      <div className="px-4 pt-2 pb-4">
         {!displayGw ? (
-          <div className="text-center py-8 flex-1">
+          <div className="text-center py-8">
             <div className="text-xs text-slate-500 dark:text-slate-400">No gameweek available</div>
           </div>
         ) : displayRows.length > 0 ? (
-          <div className="overflow-visible flex-1 -mx-4">
+          <div className="overflow-visible -mx-4">
             <div className="bg-white dark:bg-slate-800 px-4">
               <table className="w-full text-sm border-collapse dark:bg-slate-800" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <thead className="sticky top-0 bg-white dark:bg-slate-800" style={{ 
@@ -240,7 +219,7 @@ export default function MiniLeagueGwTableCard({
             </div>
           </div>
         ) : (
-          <div className="flex justify-center py-8 flex-1">
+          <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
           </div>
         )}
