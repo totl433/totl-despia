@@ -43,6 +43,19 @@ export function isLiveMatchStatus(status: string | null | undefined): boolean {
   return status === 'IN_PLAY' || status === 'PAUSED';
 }
 
+/**
+ * Football Data sometimes returns TIMED/SCHEDULED mid-match (empty scores).
+ * Once we have stored IN_PLAY or PAUSED, ignore those regressions so the UI
+ * does not snap back to "not started". Still accept PAUSED, IN_PLAY, FINISHED, etc.
+ */
+export function shouldIgnoreTimedStatusRegression(
+  previousStatus: string | null | undefined,
+  incomingStatus: string | null | undefined
+): boolean {
+  if (!isLiveMatchStatus(previousStatus)) return false;
+  return incomingStatus === 'TIMED' || incomingStatus === 'SCHEDULED';
+}
+
 export function shouldRunScheduledPollForSite(siteUrl: string | null | undefined): boolean {
   if (!siteUrl) return true;
 

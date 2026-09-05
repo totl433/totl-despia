@@ -2,6 +2,7 @@ import { Handler } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 import {
   isKickoffTooOldForPolling,
+  shouldIgnoreTimedStatusRegression,
   shouldRunScheduledPollForSite,
 } from './lib/liveMatchGuards';
 import {
@@ -182,7 +183,9 @@ async function pollAllLiveScores() {
       .in('api_match_id', apiMatchIds);
 
     const finishedMatchIds = new Set<number>();
+    const existingStatusByMatchId = new Map<number, string>();
     (existingScores || []).forEach((score: any) => {
+      existingStatusByMatchId.set(score.api_match_id, score.status);
       if (score.status === 'FINISHED') {
         finishedMatchIds.add(score.api_match_id);
       }
@@ -276,6 +279,15 @@ async function pollAllLiveScores() {
       }
 
       const status = matchData.status || 'SCHEDULED';
+      const previousStatus = existingStatusByMatchId.get(apiMatchId);
+      // FD sometimes returns TIMED mid-match; do not wipe a live/HT row.
+      if (shouldIgnoreTimedStatusRegression(previousStatus, status)) {
+        console.warn(
+          `[pollLiveScores] Ignoring ${status} for match ${apiMatchId}: already ${previousStatus} (FD flicker)`
+        );
+        continue;
+      }
+
       const isLive = status === 'IN_PLAY' || status === 'PAUSED';
       
       // Extract goals and bookings from API response FIRST
