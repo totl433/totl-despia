@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import RetroDailyLogoBack from './RetroDailyLogoBack';
 
 export const SWIPE_THRESHOLD = 100;
@@ -6,6 +6,8 @@ export const DRAW_THRESHOLD = 120;
 
 const USER_FLY_MS = 280;
 const AUTO_FLY_MS = 480;
+const CARD_ASPECT = 0.75; // width / height
+const CARD_MAX_W = 420;
 
 type Props = {
   cardKey: string;
@@ -47,8 +49,44 @@ export default function RetroDailySwipeStack({
   onSwipeAway,
 }: Props) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const childrenRef = useRef(children);
   childrenRef.current = children;
+
+  /** Explicit px size — Safari won’t reliably shrink aspect-ratio boxes via max-height. */
+  const [box, setBox] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const measure = () => {
+      const aw = host.clientWidth;
+      const ah = host.clientHeight;
+      if (aw < 2 || ah < 2) return;
+      let w = Math.min(aw, CARD_MAX_W);
+      let h = w / CARD_ASPECT;
+      if (h > ah) {
+        h = ah;
+        w = h * CARD_ASPECT;
+      }
+      // Leave a hair of room so under-card peeks don’t clip chrome
+      w = Math.max(120, Math.floor(w));
+      h = Math.max(160, Math.floor(h));
+      setBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, []);
 
   const [outgoing, setOutgoing] = useState<React.ReactNode | null>(null);
   const [settling, setSettling] = useState(false);
@@ -231,31 +269,30 @@ export default function RetroDailySwipeStack({
     : 'none';
 
   return (
-    <div
-      ref={surfaceRef}
-      className="relative mx-auto min-h-0 touch-none select-none"
-      style={{
-        // Fit inside the flex slot above pinned buttons/pips: width-first, then
-        // max-height shrinks the box (and aspect-ratio reflows width) on short screens.
-        width: 'min(100%, 420px)',
-        maxWidth: '100%',
-        maxHeight: '100%',
-        minHeight: 0,
-        height: 'auto',
-        aspectRatio: '0.75',
-        cursor: disabled ? 'default' : 'grab',
-      }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endPointer}
-      onPointerCancel={(e) => {
-        pointerStart.current = null;
-        if (!flying) resetMotion();
-        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      }}
-    >
+    <div ref={hostRef} className="flex h-full min-h-0 w-full items-center justify-center">
+      <div
+        ref={surfaceRef}
+        className="relative touch-none select-none"
+        style={{
+          width: box.w ? `${box.w}px` : 'min(100%, 420px)',
+          height: box.h ? `${box.h}px` : undefined,
+          aspectRatio: box.h ? undefined : String(CARD_ASPECT),
+          maxWidth: '100%',
+          maxHeight: '100%',
+          cursor: disabled ? 'default' : 'grab',
+          visibility: box.w ? 'visible' : 'hidden',
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPointer}
+        onPointerCancel={(e) => {
+          pointerStart.current = null;
+          if (!flying) resetMotion();
+          if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
+        }}
+      >
       {showQueued ? (
         <div
           className="pointer-events-none absolute inset-0 z-[1]"
@@ -316,6 +353,7 @@ export default function RetroDailySwipeStack({
           {outgoing}
         </div>
       ) : null}
+      </div>
     </div>
   );
 }

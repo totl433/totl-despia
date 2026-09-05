@@ -407,17 +407,16 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="fixed inset-0 flex flex-col overflow-hidden text-white"
+      className="fixed left-0 right-0 flex flex-col overflow-hidden text-white"
       style={{
         backgroundColor: BG,
-        // Prefer live visual viewport; fall back to locked app height / svh
+        top: 'var(--app-offset-top, 0px)',
         height: 'var(--app-height, 100svh)',
         maxHeight: 'var(--app-height, 100svh)',
-        top: 'var(--app-offset-top, 0px)',
       }}
     >
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-        <header className="relative mb-2 flex min-h-12 shrink-0 items-center justify-center py-0.5">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
+        <header className="relative mb-1.5 flex min-h-11 shrink-0 items-center justify-center py-0.5">
           <button
             type="button"
             aria-label="Close"
@@ -427,9 +426,9 @@ export default function RetroTotlDailyPage() {
             ×
           </button>
           <div className="flex flex-col items-center px-12">
-            <h1 className="text-sm font-black leading-tight sm:text-base">Retro Totl Daily</h1>
+            <h1 className="text-sm font-black leading-tight">Retro Totl Daily</h1>
             <p
-              className="mt-1 text-xl leading-none text-white sm:text-2xl"
+              className="mt-1 text-lg leading-none text-white sm:text-xl"
               style={{ fontFamily: "'PressStart2P', monospace" }}
             >
               {puzzle.seasonFull}
@@ -449,8 +448,8 @@ export default function RetroTotlDailyPage() {
           </p>
         ) : null}
 
-        {/* Card fills leftover space — shrinks so chrome below always fits */}
-        <div className="grid min-h-0 w-full flex-1 place-items-center">
+        {/* Measured slot — SwipeStack sizes the card in px (Safari-safe) */}
+        <div className="min-h-0 w-full flex-1">
           <RetroDailySwipeStack
             cardKey={cardKey}
             seasonLabel={puzzle.seasonFull}

@@ -157,18 +157,23 @@ function ScoreFace({
 function TeamMini({ code, name }: { code: string; name: string }) {
   const src = retroBadgeUrl(code);
   return (
-    <div className="flex flex-1 flex-col items-center">
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          className="h-16 w-16 object-contain"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      ) : null}
-      <p className="mt-2 text-center text-xs font-extrabold leading-tight text-slate-900">{name}</p>
+    <div className="flex min-w-0 flex-1 flex-col items-center">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center">
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            className="max-h-full max-w-full object-contain object-center"
+            draggable={false}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.visibility = 'hidden';
+            }}
+          />
+        ) : null}
+      </div>
+      <p className="mt-2 line-clamp-2 min-h-[2rem] w-full text-center text-xs font-extrabold leading-tight text-slate-900">
+        {name}
+      </p>
     </div>
   );
 }
