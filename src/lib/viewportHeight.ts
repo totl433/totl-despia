@@ -1,13 +1,13 @@
 /**
  * Keep the mobile shell sized to the *visible* viewport.
  *
- * iOS Safari / Chrome intermittently:
- * 1) scrolls the layout viewport (`visualViewport.offsetTop > 0`) → cut-off top (logo clipped)
- * 2) leaves `--app-height` stuck wrong after the URL bar moves → empty gap under the nav
+ * iOS Safari / Chrome intermittently on *first* load (fixes itself after refresh):
+ * 1) reports a short visualViewport → white gap under the shell
+ * 2) scrolls the layout viewport (`offsetTop > 0`) → cut-off top
  *
- * Strategy: pin window + app-shell scroll to 0, size `#root` to the visual
- * viewport (top + height together), and remeasure often enough that a missed
- * resize still corrects within a beat.
+ * Strategy: pin window scroll, size `#root` with top+height, and during the
+ * first few seconds only allow the height to grow (high-water) so a too-small
+ * first paint can’t stick until the user refreshes.
  */
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
@@ -16,25 +16,44 @@ export function installViewportHeightLock(): () => void {
   let raf = 0;
   let lastHeight = -1;
   let lastOffset = -1;
+  const startedAt = performance.now();
+  /** First-load settle window — only grow height so we never stick undersized. */
+  const SETTLE_MS = 4000;
 
   const pinScroll = () => {
-    // Only pin the *window* layout scroll (iOS visualViewport offset).
-    // Never reset `.app-shell-scroll` here — that is real page scroll.
     if (window.scrollY !== 0 || window.pageYOffset !== 0) {
       window.scrollTo(0, 0);
     }
   };
 
+  const readHeight = () => {
+    const vv = window.visualViewport;
+    const vvH = vv?.height ?? window.innerHeight;
+    const innerH = window.innerHeight;
+    const clientH = document.documentElement.clientHeight;
+    const offset = vv?.offsetTop ?? 0;
+    const settling = performance.now() - startedAt < SETTLE_MS;
+
+    // During settle: take the max so a tiny first reading can’t leave a white gap.
+    // After settle: track the live visual viewport (clamped to layout height).
+    if (settling || offset === 0) {
+      return Math.max(1, Math.round(Math.max(vvH, innerH, clientH || 0)));
+    }
+    return Math.max(1, Math.round(Math.min(vvH, innerH)));
+  };
+
   const measure = () => {
     const vv = window.visualViewport;
-
     pinScroll();
 
-    // Prefer visualViewport; clamp to innerHeight so we never size taller than the layout viewport
-    const vvHeight = vv?.height ?? window.innerHeight;
-    const height = Math.max(1, Math.round(Math.min(vvHeight, window.innerHeight)));
-    // If iOS still reports an offset after pinScroll, shift the shell to match the visible area
+    let height = readHeight();
     const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
+    const settling = performance.now() - startedAt < SETTLE_MS;
+
+    // High-water during settle — never shrink back to a bad first paint
+    if (settling && lastHeight > 0) {
+      height = Math.max(height, lastHeight);
+    }
 
     if (height === lastHeight && offset === lastOffset) return;
     lastHeight = height;
@@ -45,7 +64,6 @@ export function installViewportHeightLock(): () => void {
 
   const apply = () => {
     measure();
-    // Safari sometimes applies scrollTo asynchronously — remeasure once more
     measure();
   };
 
@@ -61,7 +79,14 @@ export function installViewportHeightLock(): () => void {
 
   window.addEventListener('resize', schedule);
   window.addEventListener('orientationchange', schedule);
-  window.addEventListener('pageshow', schedule);
+  window.addEventListener('pageshow', (e) => {
+    // bfcache / refresh — remeasure from scratch
+    if ((e as PageTransitionEvent).persisted) {
+      lastHeight = -1;
+      lastOffset = -1;
+    }
+    schedule();
+  });
   window.addEventListener('focus', schedule);
   window.addEventListener('scroll', schedule, { passive: true });
 
@@ -74,7 +99,6 @@ export function installViewportHeightLock(): () => void {
   };
   document.addEventListener('visibilitychange', onVisibility);
 
-  // URL-bar / chrome settle often only shows up after a touch
   document.addEventListener('touchstart', schedule, { passive: true });
   document.addEventListener('touchend', schedule, { passive: true });
 
@@ -84,31 +108,30 @@ export function installViewportHeightLock(): () => void {
     vv.addEventListener('scroll', schedule);
   }
 
-  // Catch late chrome settle after first paint / auth hydrate
-  const t1 = window.setTimeout(schedule, 50);
-  const t2 = window.setTimeout(schedule, 250);
-  const t3 = window.setTimeout(schedule, 800);
-  const t4 = window.setTimeout(schedule, 2000);
+  // Dense early poll — first load often misses the URL-bar resize until refresh
+  const t1 = window.setTimeout(schedule, 0);
+  const t2 = window.setTimeout(schedule, 50);
+  const t3 = window.setTimeout(schedule, 100);
+  const t4 = window.setTimeout(schedule, 250);
+  const t5 = window.setTimeout(schedule, 500);
+  const t6 = window.setTimeout(schedule, 1000);
+  const t7 = window.setTimeout(schedule, 2000);
+  const t8 = window.setTimeout(schedule, 3500);
 
-  // Aggressive early poll (missed resize on load), then light while visible
-  const earlyPoll = window.setInterval(schedule, 200);
-  const stopEarly = window.setTimeout(() => window.clearInterval(earlyPoll), 4000);
+  const earlyPoll = window.setInterval(schedule, 100);
+  const stopEarly = window.setTimeout(() => window.clearInterval(earlyPoll), 5000);
   const slowPoll = window.setInterval(() => {
     if (document.visibilityState === 'visible') schedule();
-  }, 1500);
+  }, 2000);
 
   return () => {
     cancelAnimationFrame(raf);
-    window.clearTimeout(t1);
-    window.clearTimeout(t2);
-    window.clearTimeout(t3);
-    window.clearTimeout(t4);
-    window.clearTimeout(stopEarly);
+    [t1, t2, t3, t4, t5, t6, t7, t8, stopEarly].forEach((id) => window.clearTimeout(id));
     window.clearInterval(earlyPoll);
     window.clearInterval(slowPoll);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
-    window.removeEventListener('pageshow', schedule);
+    window.removeEventListener('pageshow', schedule as EventListener);
     window.removeEventListener('focus', schedule);
     window.removeEventListener('scroll', schedule);
     document.removeEventListener('visibilitychange', onVisibility);

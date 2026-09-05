@@ -6,16 +6,23 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <!-- Sync --app-height before paint so iOS chrome can’t leave a gap on first load -->
+    <!-- Sync --app-height before paint. First iOS load often undersizes; take max. -->
     <script>
       (function () {
+        var started = Date.now();
+        var lastH = 0;
         function apply() {
           var vv = window.visualViewport;
           if (window.scrollY || window.pageYOffset) {
             window.scrollTo(0, 0);
           }
           var vvH = (vv && vv.height) || window.innerHeight;
-          var h = Math.max(1, Math.round(Math.min(vvH, window.innerHeight)));
+          var innerH = window.innerHeight;
+          var clientH = document.documentElement.clientHeight || 0;
+          var settling = Date.now() - started < 4000;
+          // Prefer the larger reading on first load so we don’t leave a white gap
+          var h = Math.max(1, Math.round(settling ? Math.max(vvH, innerH, clientH, lastH) : Math.min(vvH, innerH)));
+          if (settling) lastH = Math.max(lastH, h);
           var offset = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
           document.documentElement.style.setProperty('--app-height', h + 'px');
           document.documentElement.style.setProperty('--app-offset-top', offset + 'px');
@@ -23,14 +30,16 @@
         apply();
         window.addEventListener('resize', apply);
         window.addEventListener('scroll', apply, { passive: true });
+        document.addEventListener('touchstart', apply, { passive: true });
         document.addEventListener('touchend', apply, { passive: true });
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', apply);
           window.visualViewport.addEventListener('scroll', apply);
         }
-        setTimeout(apply, 50);
-        setTimeout(apply, 300);
-        setTimeout(apply, 1000);
+        var times = [0, 50, 100, 250, 500, 1000, 2000, 3500];
+        times.forEach(function (ms) { setTimeout(apply, ms); });
+        var poll = setInterval(apply, 100);
+        setTimeout(function () { clearInterval(poll); }, 5000);
       })();
     </script>
     <!-- Preload critical fonts to prevent layout shift / FOUT -->

@@ -33,6 +33,7 @@ import RetroDailySwipeStack, {
 } from '../components/retroDaily/RetroDailySwipeStack';
 import RetroDailyProgressPips from '../components/retroDaily/RetroDailyProgressPips';
 import { ensureRetroPixelFont } from '../lib/retroDaily/pixelFont';
+import { useVisualViewportBox } from '../hooks/useVisualViewportBox';
 
 type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
@@ -45,6 +46,8 @@ export default function RetroTotlDailyPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const isAdmin = isFounderAdmin(user?.id);
+  // Live iOS Safari frame — do not use --app-height / 100svh (leaves a white gap).
+  const viewport = useVisualViewportBox(BG);
 
   const [puzzle, setPuzzle] = useState<RetroPuzzle>(() => createMockRetroPuzzle());
   const fixtures = puzzle.fixtures;
@@ -407,12 +410,13 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="fixed left-0 right-0 flex flex-col overflow-hidden text-white"
+      className="fixed flex flex-col overflow-hidden text-white"
       style={{
         backgroundColor: BG,
-        top: 'var(--app-offset-top, 0px)',
-        height: 'var(--app-height, 100svh)',
-        maxHeight: 'var(--app-height, 100svh)',
+        top: viewport.top,
+        left: viewport.left,
+        width: viewport.width,
+        height: viewport.height,
       }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
