@@ -10,15 +10,11 @@ export default function ScrollLogo() {
   /** Ignore restored scroll until we’ve forced top after a link-open. */
   const scrollReady = useRef(false);
 
-  // Force top, then allow the entrance spin (never start mid-scroll from a link)
+  // One-shot top on mount (link-open restore). Do not keep fighting the user.
   useEffect(() => {
     scrollAppToTop();
-    const readyId = window.setTimeout(() => {
-      scrollAppToTop();
-      scrollReady.current = true;
-      setHasLoaded(true);
-    }, 80);
-    return () => window.clearTimeout(readyId);
+    scrollReady.current = true;
+    setHasLoaded(true);
   }, []);
 
   // Handle scroll for logo animation using requestAnimationFrame
