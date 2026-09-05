@@ -33,7 +33,6 @@ import RetroDailySwipeStack, {
 } from '../components/retroDaily/RetroDailySwipeStack';
 import RetroDailyProgressPips from '../components/retroDaily/RetroDailyProgressPips';
 import { ensureRetroPixelFont } from '../lib/retroDaily/pixelFont';
-import { useVisualViewportBox } from '../hooks/useVisualViewportBox';
 
 type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
@@ -46,8 +45,6 @@ export default function RetroTotlDailyPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const isAdmin = isFounderAdmin(user?.id);
-  // Live iOS Safari frame — do not use --app-height / 100svh (leaves a white gap).
-  const viewport = useVisualViewportBox(BG);
 
   const [puzzle, setPuzzle] = useState<RetroPuzzle>(() => createMockRetroPuzzle());
   const fixtures = puzzle.fixtures;
@@ -410,14 +407,8 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="fixed flex flex-col overflow-hidden text-white"
-      style={{
-        backgroundColor: BG,
-        top: viewport.top,
-        left: viewport.left,
-        width: viewport.width,
-        height: viewport.height,
-      }}
+      className="fixed inset-0 flex flex-col overflow-hidden text-white"
+      style={{ backgroundColor: BG }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
         <header className="relative mb-1.5 flex min-h-11 shrink-0 items-center justify-center py-0.5">
@@ -495,13 +486,13 @@ export default function RetroTotlDailyPage() {
               <button
                 type="button"
                 onClick={() => setRulesOpen(true)}
-                className="rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
+                className="inline-flex items-center justify-center rounded-full border-[1.5px] border-white px-5 py-3 text-sm font-extrabold text-white"
               >
                 Rules
               </button>
               <Link
                 to="/admin/retro-totl-daily/scoreboard"
-                className="rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
+                className="inline-flex items-center justify-center rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
               >
                 Scoreboard
               </Link>

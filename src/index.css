@@ -91,16 +91,14 @@ html.dark #root {
 /*
  * Mobile app shell:
  * - Main pane scrolls; bottom nav is a flex sibling (not position:fixed).
- * - Height comes from --app-height (visualViewport) so iOS chrome can’t leave
- *   a cut-off top + empty bottom gap. See installViewportHeightLock().
- * - top tracks --app-offset-top when visualViewport is scrolled (logo clip fix);
- *   height is always the visible height so the pair doesn’t leave a nav gap.
+ * - #root is position:fixed; inset:0 — fills the Safari visual viewport without
+ *   depending on a first-load JS pixel height (that caused the white/navy gap
+ *   until refresh).
  */
 @media (max-width: 1023.98px) {
   html,
   body {
-    height: var(--app-height, 100dvh);
-    max-height: var(--app-height, 100dvh);
+    height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
     background-color: #f5f7f6;
@@ -112,12 +110,9 @@ html.dark #root {
 
   #root {
     position: fixed;
-    left: 0;
-    right: 0;
-    top: var(--app-offset-top, 0px);
+    inset: 0;
     width: 100%;
-    height: var(--app-height, 100dvh);
-    max-height: var(--app-height, 100dvh);
+    height: 100%;
     overflow: hidden;
     background-color: #f5f7f6;
   }
