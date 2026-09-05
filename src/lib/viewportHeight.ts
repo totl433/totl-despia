@@ -1,19 +1,35 @@
 /**
- * Keep `#root` sized to the visible viewport on mobile Safari.
+ * Mobile Safari layout helpers.
  *
- * Rules (hard-won):
+ * Hard rules (do not regress):
  * - Never reset `.app-shell-scroll` — that is the app’s scroll surface.
- * - Never set `#root` top from visualViewport.offsetTop — that creates gaps.
- * - Only pin the *window* scroll (layout viewport), not the app shell.
+ * - Never drive `#root` height from JS / `--app-height` — a short first
+ *   measurement on link-open leaves a permanent bottom gap until refresh.
+ * - Shell size is CSS-only: `position:fixed; inset:0` + `min-height: 100lvh`.
+ * - Only pin the *window* (layout) scroll so the shell isn’t shifted under chrome.
  */
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const html = document.documentElement;
   let raf = 0;
-  let lastH = -1;
-  const startedAt = performance.now();
-  const SETTLE_MS = 6000;
+
+  const clearRootInlineSize = () => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    // Drop any leftover inline sizing from older boots / hot reloads
+    root.style.removeProperty('top');
+    root.style.removeProperty('bottom');
+    root.style.removeProperty('height');
+    root.style.removeProperty('min-height');
+    root.style.removeProperty('max-height');
+    root.style.removeProperty('left');
+    root.style.removeProperty('right');
+    root.style.removeProperty('width');
+    // Keep position under CSS media query; only clear if we had forced fixed inline
+    // (CSS still applies position:fixed on mobile)
+    root.style.removeProperty('position');
+  };
 
   const pinWindowScroll = () => {
     if (window.scrollY !== 0 || window.pageYOffset !== 0) {
@@ -27,91 +43,41 @@ export function installViewportHeightLock(): () => void {
     }
   };
 
-  const readHeight = () => {
-    const vv = window.visualViewport;
-    const vvH = vv?.height ?? 0;
-    const innerH = window.innerHeight || 0;
-    const clientH = document.documentElement.clientHeight || 0;
-    return Math.max(1, Math.round(Math.max(vvH, innerH, clientH)));
-  };
-
   const apply = () => {
     pinWindowScroll();
+    clearRootInlineSize();
 
-    let height = readHeight();
-    const settling = performance.now() - startedAt < SETTLE_MS;
-    if (settling && lastH > 0) {
-      height = Math.max(height, lastH);
-    }
-
+    // Keep vars for any leftover consumers — do NOT size #root from these.
+    const vv = window.visualViewport;
+    const height = Math.max(
+      1,
+      Math.round(Math.max(vv?.height ?? 0, window.innerHeight || 0, html.clientHeight || 0))
+    );
     html.style.setProperty('--app-height', `${height}px`);
     html.style.setProperty('--app-offset-top', '0px');
-
-    if (height === lastH) return;
-    lastH = height;
-
-    const root = document.getElementById('root');
-    if (root) {
-      root.style.position = 'fixed';
-      root.style.left = '0px';
-      root.style.right = '0px';
-      root.style.width = '100%';
-      root.style.top = '0px';
-      root.style.bottom = '0px';
-      root.style.height = `${height}px`;
-      root.style.minHeight = `${height}px`;
-      root.style.maxHeight = 'none';
-    }
   };
 
   const schedule = () => {
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
-      raf = requestAnimationFrame(apply);
-    });
+    raf = requestAnimationFrame(apply);
   };
 
   apply();
-  schedule();
 
   window.addEventListener('resize', schedule);
   window.addEventListener('orientationchange', schedule);
-  window.addEventListener('load', schedule);
-  window.addEventListener('pageshow', (e) => {
-    if ((e as PageTransitionEvent).persisted) lastH = -1;
-    schedule();
-  });
-  window.addEventListener('focus', schedule);
-  // Window scroll only — pin layout viewport; do NOT touch .app-shell-scroll
+  window.addEventListener('pageshow', schedule);
   window.addEventListener('scroll', schedule, { passive: true });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      lastH = -1;
-      schedule();
-    }
-  });
-
-  const vv = window.visualViewport;
-  vv?.addEventListener('resize', schedule);
-  // Do not listen to vv.scroll for apply — fires while chrome moves and is noisy
-
-  const timers = [0, 50, 100, 250, 500, 1000, 2000, 4000].map((ms) =>
-    window.setTimeout(schedule, ms)
-  );
-  const earlyPoll = window.setInterval(schedule, 200);
-  const stopEarly = window.setTimeout(() => window.clearInterval(earlyPoll), 6000);
+  document.addEventListener('visibilitychange', schedule);
+  window.visualViewport?.addEventListener('resize', schedule);
 
   return () => {
     cancelAnimationFrame(raf);
-    timers.forEach((id) => window.clearTimeout(id));
-    window.clearTimeout(stopEarly);
-    window.clearInterval(earlyPoll);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
-    window.removeEventListener('load', schedule);
     window.removeEventListener('pageshow', schedule);
-    window.removeEventListener('focus', schedule);
     window.removeEventListener('scroll', schedule);
-    vv?.removeEventListener('resize', schedule);
+    document.removeEventListener('visibilitychange', schedule);
+    window.visualViewport?.removeEventListener('resize', schedule);
   };
 }
