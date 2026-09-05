@@ -4,7 +4,16 @@
  * Cut-off top + gap at bottom = layout scrolled under the chrome.
  * Fix: pin window scroll to 0, keep #root at top:0, size height from visualViewport.
  * Never shift #root by offsetTop (that causes the gap). Never touch .app-shell-scroll.
+ *
+ * Desktop uses normal document scroll — never pin window scroll there.
+ * Mobile shell breakpoint must match CSS in index.css (max-width: 1023.98px).
  */
+const MOBILE_SHELL_MQ = '(max-width: 1023.98px)';
+
+function isMobileShellViewport(): boolean {
+  return window.matchMedia(MOBILE_SHELL_MQ).matches;
+}
+
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
 
@@ -13,9 +22,14 @@ export function installViewportHeightLock(): () => void {
   let lastHeight = -1;
 
   const measure = () => {
+    const mobile = isMobileShellViewport();
     const vv = window.visualViewport;
 
-    if ((vv?.offsetTop ?? 0) > 0 || window.scrollY !== 0 || window.pageYOffset !== 0) {
+    // Only pin window scroll on mobile — desktop scrolls the document.
+    if (
+      mobile &&
+      ((vv?.offsetTop ?? 0) > 0 || window.scrollY !== 0 || window.pageYOffset !== 0)
+    ) {
       window.scrollTo(0, 0);
     }
 
@@ -47,6 +61,7 @@ export function installViewportHeightLock(): () => void {
   window.addEventListener('orientationchange', schedule);
   window.addEventListener('pageshow', schedule);
   window.addEventListener('focus', schedule);
+  // Scroll pin is mobile-only; still listen so Safari chrome show/hide is caught.
   window.addEventListener('scroll', schedule, { passive: true });
 
   const onVisibility = () => {
@@ -61,6 +76,13 @@ export function installViewportHeightLock(): () => void {
   const vv = window.visualViewport;
   vv?.addEventListener('resize', schedule);
   vv?.addEventListener('scroll', schedule);
+
+  const mq = window.matchMedia(MOBILE_SHELL_MQ);
+  const onMq = () => {
+    lastHeight = -1;
+    schedule();
+  };
+  mq.addEventListener?.('change', onMq);
 
   const timers = [50, 250, 800, 2000].map((ms) => window.setTimeout(schedule, ms));
   const earlyPoll = window.setInterval(schedule, 250);
@@ -80,5 +102,6 @@ export function installViewportHeightLock(): () => void {
     document.removeEventListener('touchend', schedule);
     vv?.removeEventListener('resize', schedule);
     vv?.removeEventListener('scroll', schedule);
+    mq.removeEventListener?.('change', onMq);
   };
 }

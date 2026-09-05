@@ -1,10 +1,20 @@
 /**
  * Mobile layout scrolls inside `.app-shell-scroll` (not the window).
+ * Desktop uses normal document scroll.
  * Helpers keep route resets / logo animations working on either surface.
+ * Breakpoint must match CSS in index.css (max-width: 1023.98px).
  */
+
+const MOBILE_SHELL_MQ = '(max-width: 1023.98px)';
+
+function usesMobileShellScroll(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia(MOBILE_SHELL_MQ).matches;
+}
 
 export function getAppScrollElement(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
+  if (!usesMobileShellScroll()) return null;
   return document.querySelector('.app-shell-scroll') as HTMLElement | null;
 }
 
