@@ -7,9 +7,12 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useNavigate } from "react-router-dom";
 import { isNativeApp } from "./lib/platform";
 import { installViewportHeightLock } from "./lib/viewportHeight";
+import { disableBrowserScrollRestoration, scrollAppToTop } from "./lib/appScroll";
 
 // Pin mobile shell to the visible viewport (fixes intermittent iOS top cut-off / bottom gap).
 if (typeof window !== 'undefined') {
+  disableBrowserScrollRestoration();
+  scrollAppToTop();
   installViewportHeightLock();
 }
 

@@ -3,10 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { scrollAppToTop } from '../lib/appScroll';
 
 /**
- * ScrollToTop component - ensures page always loads at the top on navigation
- * This is critical for React Router apps where scroll position can persist.
- * Works for both eagerly and lazily loaded pages.
- * Mobile scrolls inside `.app-shell-scroll`; desktop uses the window.
+ * Always land at the top on route changes and cold link-opens.
+ * Safari otherwise restores a mid-page scroll → TotL logo mid-spin / clipped.
  */
 export default function ScrollToTop() {
   const { pathname } = useLocation();
@@ -17,14 +15,22 @@ export default function ScrollToTop() {
     };
 
     scrollToTop();
-
     requestAnimationFrame(() => {
       requestAnimationFrame(scrollToTop);
     });
 
-    const timeoutId = setTimeout(scrollToTop, 100);
+    const times = [0, 50, 100, 250, 500, 1000, 2000].map((ms) =>
+      window.setTimeout(scrollToTop, ms)
+    );
 
-    return () => clearTimeout(timeoutId);
+    window.addEventListener('pageshow', scrollToTop);
+    window.addEventListener('load', scrollToTop);
+
+    return () => {
+      times.forEach((id) => window.clearTimeout(id));
+      window.removeEventListener('pageshow', scrollToTop);
+      window.removeEventListener('load', scrollToTop);
+    };
   }, [pathname]);
 
   return null;

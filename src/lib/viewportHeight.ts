@@ -15,9 +15,11 @@ export function installViewportHeightLock(): () => void {
   let lastTop = -1;
 
   const apply = () => {
-    if (window.scrollY !== 0 || window.pageYOffset !== 0) {
-      window.scrollTo(0, 0);
-    }
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+    const shell = document.querySelector('.app-shell-scroll') as HTMLElement | null;
+    if (shell) shell.scrollTop = 0;
 
     const vv = window.visualViewport;
     const height = Math.max(1, Math.round(vv?.height ?? window.innerHeight));

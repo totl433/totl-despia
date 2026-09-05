@@ -22,6 +22,18 @@ export function scrollAppToTop(): void {
   if (document.body) document.body.scrollTop = 0;
 }
 
+/** Call once at app boot — link-opens otherwise restore a mid-page scroll. */
+export function disableBrowserScrollRestoration(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function onAppScroll(listener: () => void, options?: AddEventListenerOptions): () => void {
   const el = getAppScrollElement();
   if (el) {

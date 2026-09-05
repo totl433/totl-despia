@@ -6,11 +6,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <!-- Early viewport sync for link-open (Messages etc.) before React boots -->
+    <!-- Early viewport + scroll pin for link-open (Messages etc.) before React boots -->
     <script>
       (function () {
+        try {
+          if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+        } catch (e) {}
         function apply() {
-          if (window.scrollY || window.pageYOffset) window.scrollTo(0, 0);
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollTop = 0;
+          if (document.body) document.body.scrollTop = 0;
+          var shell = document.querySelector('.app-shell-scroll');
+          if (shell) shell.scrollTop = 0;
           var vv = window.visualViewport;
           var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
           var top = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
