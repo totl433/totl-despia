@@ -6,24 +6,43 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <!-- Pin scroll; shell size is CSS inset:0 (not a JS pixel height). -->
+    <!-- Early viewport sync for link-open (Messages etc.) before React boots -->
     <script>
       (function () {
         function apply() {
           if (window.scrollY || window.pageYOffset) window.scrollTo(0, 0);
           var vv = window.visualViewport;
           var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
-          var offset = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
+          var top = Math.max(0, Math.round((vv && vv.offsetTop) || 0));
           document.documentElement.style.setProperty('--app-height', h + 'px');
-          document.documentElement.style.setProperty('--app-offset-top', offset + 'px');
+          document.documentElement.style.setProperty('--app-offset-top', top + 'px');
+          var root = document.getElementById('root');
+          if (root) {
+            root.style.position = 'fixed';
+            root.style.left = '0';
+            root.style.right = '0';
+            root.style.width = '100%';
+            root.style.top = top + 'px';
+            root.style.height = h + 'px';
+            root.style.maxHeight = h + 'px';
+            root.style.bottom = 'auto';
+          }
         }
         apply();
         window.addEventListener('resize', apply);
+        window.addEventListener('load', apply);
+        window.addEventListener('pageshow', apply);
         window.addEventListener('scroll', apply, { passive: true });
+        document.addEventListener('touchstart', apply, { passive: true });
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', apply);
           window.visualViewport.addEventListener('scroll', apply);
         }
+        [0, 50, 100, 200, 500, 1000, 2000, 4000, 8000].forEach(function (ms) {
+          setTimeout(apply, ms);
+        });
+        var poll = setInterval(apply, 100);
+        setTimeout(function () { clearInterval(poll); }, 10000);
       })();
     </script>
     <!-- Preload critical fonts to prevent layout shift / FOUT -->

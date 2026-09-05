@@ -91,9 +91,9 @@ html.dark #root {
 /*
  * Mobile app shell:
  * - Main pane scrolls; bottom nav is a flex sibling (not position:fixed).
- * - #root is position:fixed; inset:0 — fills the Safari visual viewport without
- *   depending on a first-load JS pixel height (that caused the white/navy gap
- *   until refresh).
+ * - #root is position:fixed; inset:0 as CSS fallback.
+ * - installViewportHeightLock() then sets top/height from visualViewport
+ *   (needed when opening via an external link — first paint is often short).
  */
 @media (max-width: 1023.98px) {
   html,
@@ -113,6 +113,7 @@ html.dark #root {
     inset: 0;
     width: 100%;
     height: 100%;
+    height: 100dvh;
     overflow: hidden;
     background-color: #f5f7f6;
   }

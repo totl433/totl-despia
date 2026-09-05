@@ -1,48 +1,99 @@
 /**
- * Mobile Safari: keep the layout viewport pinned to the top.
- * Shell size comes from CSS (`#root { position: fixed; inset: 0 }`) — do not
- * drive height from a first-load JS pixel value (that caused the gap-until-refresh).
+ * Keep `#root` glued to the visible iOS Safari viewport.
+ *
+ * Opening via an external link (Messages, Slack, etc.) often paints with a
+ * too-short viewport; a refresh then gets the right size. CSS `inset:0` alone
+ * does not correct that on first paint — we must set pixel height from
+ * visualViewport and keep remeasuring until Safari settles.
  */
 export function installViewportHeightLock(): () => void {
   if (typeof window === 'undefined') return () => {};
 
-  const root = document.documentElement;
+  const html = document.documentElement;
   let raf = 0;
+  let lastH = -1;
+  let lastTop = -1;
 
   const apply = () => {
     if (window.scrollY !== 0 || window.pageYOffset !== 0) {
       window.scrollTo(0, 0);
     }
-    // Keep vars updated for any leftover consumers, but sizing does not depend on them.
+
     const vv = window.visualViewport;
     const height = Math.max(1, Math.round(vv?.height ?? window.innerHeight));
-    const offset = Math.max(0, Math.round(vv?.offsetTop ?? 0));
-    root.style.setProperty('--app-height', `${height}px`);
-    root.style.setProperty('--app-offset-top', `${offset}px`);
+    const top = Math.max(0, Math.round(vv?.offsetTop ?? 0));
+
+    html.style.setProperty('--app-height', `${height}px`);
+    html.style.setProperty('--app-offset-top', `${top}px`);
+
+    if (height === lastH && top === lastTop) return;
+    lastH = height;
+    lastTop = top;
+
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.position = 'fixed';
+      root.style.left = '0px';
+      root.style.right = '0px';
+      root.style.width = '100%';
+      root.style.top = `${top}px`;
+      root.style.height = `${height}px`;
+      root.style.maxHeight = `${height}px`;
+      root.style.bottom = 'auto';
+    }
   };
 
   const schedule = () => {
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(apply);
+    raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(apply);
+    });
   };
 
   apply();
+  schedule();
+
   window.addEventListener('resize', schedule);
   window.addEventListener('orientationchange', schedule);
+  window.addEventListener('load', schedule);
   window.addEventListener('pageshow', schedule);
+  window.addEventListener('focus', schedule);
   window.addEventListener('scroll', schedule, { passive: true });
   document.addEventListener('visibilitychange', schedule);
-  window.visualViewport?.addEventListener('resize', schedule);
-  window.visualViewport?.addEventListener('scroll', schedule);
+  // First tap often forces Safari to publish the real viewport after a link-open
+  document.addEventListener('touchstart', schedule, { passive: true });
+  document.addEventListener('touchend', schedule, { passive: true });
+
+  const vv = window.visualViewport;
+  vv?.addEventListener('resize', schedule);
+  vv?.addEventListener('scroll', schedule);
+
+  // Link-open chrome settle is slow — poll hard, then ease off
+  const timers = [0, 50, 100, 200, 400, 800, 1500, 3000, 5000, 8000].map((ms) =>
+    window.setTimeout(schedule, ms)
+  );
+  const earlyPoll = window.setInterval(schedule, 100);
+  const stopEarly = window.setTimeout(() => window.clearInterval(earlyPoll), 10000);
+  const slowPoll = window.setInterval(() => {
+    if (document.visibilityState === 'visible') schedule();
+  }, 2000);
 
   return () => {
     cancelAnimationFrame(raf);
+    timers.forEach((id) => window.clearTimeout(id));
+    window.clearTimeout(stopEarly);
+    window.clearInterval(earlyPoll);
+    window.clearInterval(slowPoll);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('orientationchange', schedule);
+    window.removeEventListener('load', schedule);
     window.removeEventListener('pageshow', schedule);
+    window.removeEventListener('focus', schedule);
     window.removeEventListener('scroll', schedule);
     document.removeEventListener('visibilitychange', schedule);
-    window.visualViewport?.removeEventListener('resize', schedule);
-    window.visualViewport?.removeEventListener('scroll', schedule);
+    document.removeEventListener('touchstart', schedule);
+    document.removeEventListener('touchend', schedule);
+    vv?.removeEventListener('resize', schedule);
+    vv?.removeEventListener('scroll', schedule);
   };
 }

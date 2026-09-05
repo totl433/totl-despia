@@ -407,7 +407,7 @@ export default function RetroTotlDailyPage() {
 
   return (
     <div
-      className="fixed inset-0 flex flex-col overflow-hidden text-white"
+      className="absolute inset-0 flex flex-col overflow-hidden text-white"
       style={{ backgroundColor: BG }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
