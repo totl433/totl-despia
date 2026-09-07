@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
@@ -580,7 +580,9 @@ export default function LeaguesScreen() {
     []
   );
   const showTablesView =
-    showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
+    Platform.OS !== 'android' &&
+    showTopLiveRail &&
+    (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
   const showListView = !showTablesView;
   const canToggleLiveLayout = showTopLiveRail && showTablesView && listLeagues.length > 2;
   const wasShowingTablesViewRef = React.useRef(showTablesView);
@@ -590,6 +592,36 @@ export default function LeaguesScreen() {
     }
     wasShowingTablesViewRef.current = showTablesView;
   }, [showTablesView]);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    console.info(
+      '[AndroidDiagnostics][LeaguesScreen]',
+      JSON.stringify({
+        isLoading,
+        hasData: !!data,
+        error: error instanceof Error ? error.message : error ? String(error) : null,
+        leagueCount: listLeagues.length,
+        fixtureCount: home?.fixtures?.length ?? 0,
+        viewingGw,
+        currentGw,
+        gwState,
+        showTablesView,
+        showListView,
+      })
+    );
+  }, [
+    currentGw,
+    data,
+    error,
+    gwState,
+    home?.fixtures?.length,
+    isLoading,
+    listLeagues.length,
+    showListView,
+    showTablesView,
+    viewingGw,
+  ]);
 
   const headerScoreSummary = React.useMemo(() => {
     if (!home) return null;
@@ -933,7 +965,7 @@ export default function LeaguesScreen() {
 
       <FlatList
         ref={listRef}
-        data={showListView ? listLeagues : []}
+        data={listLeagues}
         style={{ flex: 1 }}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{
@@ -1033,7 +1065,7 @@ export default function LeaguesScreen() {
                         return (
                           <Reanimated.View
                             key={`live-${leagueId}`}
-                            layout={liveLayoutTransition}
+                            layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
                             style={{
                               paddingHorizontal: 6,
                               marginBottom: 12,
@@ -1062,14 +1094,17 @@ export default function LeaguesScreen() {
                       };
                       if (isExpanded) {
                         return (
-                          <Reanimated.View layout={liveLayoutTransition} style={{ marginHorizontal: -6 }}>
+                          <Reanimated.View
+                            layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
+                            style={{ marginHorizontal: -6 }}
+                          >
                             {listLeagues.map(renderCard)}
                           </Reanimated.View>
                         );
                       }
                       return (
                         <Reanimated.View
-                          layout={liveLayoutTransition}
+                          layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
                           style={{ flexDirection: 'row', marginHorizontal: -6 }}
                         >
                           <View style={{ flex: 1 }}>{cols[0].map(renderCard)}</View>
@@ -1143,8 +1178,9 @@ export default function LeaguesScreen() {
             ) : null}
           </>
         }
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ItemSeparatorComponent={() => (showListView ? <View style={{ height: 12 }} /> : null)}
         renderItem={({ item }) => {
+          if (!showListView) return null;
           const leagueId = String(item.id);
           const enabled = visibleLeagueIds.has(leagueId);
 

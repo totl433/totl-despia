@@ -16,6 +16,14 @@ export const queryClient = new QueryClient({
 
 export const queryPersister = createAsyncStoragePersister({
   storage: AsyncStorage,
-  key: 'totl.react-query',
+  // Bump the key when persisted response shapes or season bootstrapping changes.
+  // This prevents an older installed build from hydrating stale empty snapshots.
+  key: 'totl.react-query.v2',
 });
+
+export const queryPersistOptions = {
+  persister: queryPersister,
+  maxAge: 24 * 60 * 60_000,
+  buster: '2.0.27',
+};
 

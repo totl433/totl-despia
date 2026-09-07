@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Pressable, View, useWindowDimensions } from 'react-native';
+import { Animated, Platform, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -370,6 +370,24 @@ export default function HomeScreen() {
 //VERTICAL SPACING CONTROL HERE
   const errorMessage = homeError ? getErrorMessage(homeError) : leaguesError ? getErrorMessage(leaguesError) : null;
   const SECTION_GAP_Y = 40; // visual rhythm between major sections (spec)
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    console.info(
+      '[AndroidDiagnostics][HomeScreen]',
+      JSON.stringify({
+        homeLoading: isHomeLoading,
+        hasHome: !!home,
+        homeError: homeError ? getErrorMessage(homeError) : null,
+        leaguesError: leaguesError ? getErrorMessage(leaguesError) : null,
+        fixtureCount: fixtures.length,
+        viewingGw,
+        currentGw,
+        gwState,
+        layout: gwOpenLayout,
+      })
+    );
+  }, [currentGw, fixtures.length, gwOpenLayout, gwState, home, homeError, isHomeLoading, leaguesError, viewingGw]);
 
   // Initial/empty load: avoid rendering empty/broken home sections while waiting on BFF/Railway.
   if (isHomeLoading && !home && !homeError) {
@@ -819,13 +837,16 @@ export default function HomeScreen() {
                   return (
                     <Reanimated.View
                       key={`mini-day-${section.date}-${sectionIdx}`}
-                      layout={miniLayoutTransition}
+                      layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
                       style={{ marginBottom: sectionIdx === fixturesByDate.length - 1 ? 0 : 8 }}
                     >
                       <View style={{ marginBottom: 10, zIndex: 1 }}>
                         <TotlText style={{ fontSize: 17, lineHeight: 21, fontFamily: t.font.medium, color: t.color.text }}>{section.date}</TotlText>
                       </View>
-                      <Reanimated.View layout={miniLayoutTransition} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, zIndex: 20 }}>
+                      <Reanimated.View
+                        layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
+                        style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, zIndex: 20 }}
+                      >
                         {section.fixtures.map((f: Fixture, idx: number) => {
                           const fixtureId = String(f.id);
                           const ls = liveByFixtureIndex.get(f.fixture_index) ?? null;
@@ -886,7 +907,7 @@ export default function HomeScreen() {
                           return (
                             <Reanimated.View
                               key={`mini-${fixtureId}`}
-                              layout={miniLayoutTransition}
+                              layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
                               style={{
                                 width: isMiniExpanded ? '100%' : '50%',
                                 paddingHorizontal: 6,

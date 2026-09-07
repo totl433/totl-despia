@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Button, Card, Screen, ThemeProvider, TotlText } from '@totl/ui';
-import { AppState, Linking, LogBox } from 'react-native';
+import { AppState, Linking, LogBox, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 
@@ -11,7 +11,7 @@ LogBox.ignoreLogs([
   'RevenueCat',
 ]);
 
-import { queryClient, queryPersister } from './lib/queryClient';
+import { queryClient, queryPersistOptions } from './lib/queryClient';
 import { initSentry } from './lib/sentry';
 import { supabase } from './lib/supabase';
 import { consumeAuthCallbackUrl } from './lib/authCallback';
@@ -30,6 +30,7 @@ import AppNavigator from './navigation/AppNavigator';
 import { resolveProfileStatus } from './lib/userProfile';
 import PopupCardsProvider from './components/popupCards/PopupCardsProvider';
 import { lightThemeTokens } from './lib/lightThemeTokens';
+import CenteredSpinner from './components/CenteredSpinner';
 
 export default function AppRoot() {
   const [fontsReady, setFontsReady] = useState(false);
@@ -217,15 +218,19 @@ function ThemedApp({
   const { isDark } = useThemePreference();
   const [profileReady, setProfileReady] = useState(!authed);
   const [needsUsername, setNeedsUsername] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileAttempt, setProfileAttempt] = useState(0);
 
   useEffect(() => {
     if (!authed) {
       setNeedsUsername(false);
+      setProfileError(null);
       setProfileReady(true);
       return;
     }
 
     let alive = true;
+    setProfileError(null);
     setProfileReady(false);
     supabase.auth
       .getUser()
@@ -238,25 +243,30 @@ function ThemedApp({
           }
           return;
         }
-        const status = await resolveProfileStatus(userId);
+        const status = await Promise.race([
+          resolveProfileStatus(userId),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Profile setup timed out.')), 12_000);
+          }),
+        ]);
         if (!alive) return;
         setNeedsUsername(status === 'needs-username');
         setProfileReady(true);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!alive) return;
-        setNeedsUsername(true);
-        setProfileReady(true);
+        console.warn('[AppRoot] Profile resolution failed', error instanceof Error ? error.message : String(error));
+        setProfileError('We couldn’t finish signing you in. Check your connection and try again.');
       });
 
     return () => {
       alive = false;
     };
-  }, [authed]);
+  }, [authed, profileAttempt]);
 
   return (
     <ThemeProvider tokens={isDark ? undefined : lightThemeTokens}>
-      <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: queryPersister }}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={queryPersistOptions}>
         {!envStatus.ok ? (
           <Screen>
             <TotlText variant="heading" style={{ marginBottom: 12 }}>
@@ -276,7 +286,25 @@ function ThemedApp({
           </Screen>
         ) : pendingPasswordReset ? (
           <AuthScreen initialMode="setNew" onPasswordResetComplete={onPasswordResetComplete} />
-        ) : authed && !profileReady ? null : authed && needsUsername ? (
+        ) : authed && !profileReady ? (
+          <Screen>
+            {profileError ? (
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <Card>
+                  <TotlText variant="heading" style={{ marginBottom: 8 }}>
+                    Sign-in needs another try
+                  </TotlText>
+                  <TotlText variant="muted" style={{ marginBottom: 16 }}>
+                    {profileError}
+                  </TotlText>
+                  <Button title="Try again" onPress={() => setProfileAttempt((attempt) => attempt + 1)} />
+                </Card>
+              </View>
+            ) : (
+              <CenteredSpinner loading label="Signing you in…" />
+            )}
+          </Screen>
+        ) : authed && needsUsername ? (
           <ChooseUsernameScreen onComplete={() => setNeedsUsername(false)} />
         ) : authed ? (
           <JoinIntentProvider>

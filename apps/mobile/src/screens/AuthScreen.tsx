@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Pressable, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardStickyView, useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -10,8 +10,25 @@ import { hasSqlLikeWildcards, normalizeDisplayName } from '../lib/displayName';
 import { checkDisplayNameAvailable, saveUsername } from '../lib/userProfile';
 import { AUTH_CALLBACK_URL } from '../lib/authCallbackUrl';
 import { env } from '../env';
+import { friendlyAuthError, normalizeAuthEmail } from '../lib/authEmail';
 
 type AuthMode = 'signIn' | 'signUp' | 'forgot' | 'setNew';
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
 
 export default function AuthScreen({
   initialMode = 'signUp',
@@ -31,6 +48,7 @@ export default function AuthScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const usernameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
@@ -57,10 +75,12 @@ export default function AuthScreen({
           : 'Reset your password';
 
   const submit = async () => {
+    if (busy) return;
+    setAuthError(null);
     setBusy(true);
     try {
       if (mode === 'forgot') {
-        const trimmed = email.trim().toLowerCase();
+        const trimmed = normalizeAuthEmail(email);
         if (!trimmed) throw new Error('Please enter your email address.');
         const siteUrl = String(env.EXPO_PUBLIC_SITE_URL).replace(/\/+$/, '');
         const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
@@ -89,11 +109,23 @@ export default function AuthScreen({
       }
 
       if (mode === 'signIn') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const normalizedEmail = normalizeAuthEmail(email);
+        if (!normalizedEmail) throw new Error('Please enter your email address.');
+        if (!password) throw new Error('Please enter your password.');
+        const { error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: normalizedEmail, password }),
+          15_000,
+          'Sign in timed out.'
+        );
         if (error) throw error;
+        Keyboard.dismiss();
+        emailRef.current?.blur();
+        passwordRef.current?.blur();
         return;
       }
 
+      const normalizedEmail = normalizeAuthEmail(email);
+      if (!normalizedEmail) throw new Error('Please enter your email address.');
       const trimmedName = normalizeDisplayName(displayName);
       if (!trimmedName) throw new Error('Display name is required.');
       if (hasSqlLikeWildcards(trimmedName)) {
@@ -106,7 +138,7 @@ export default function AuthScreen({
       if (!available) throw new Error('Username already taken. Please choose a different name.');
 
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           data: { display_name: trimmedName },
@@ -122,7 +154,11 @@ export default function AuthScreen({
 
       Alert.alert('Check your email', 'Confirm your email address to finish sign up.');
     } catch (e: any) {
-      Alert.alert('Auth failed', e?.message ?? 'Unknown error');
+      Keyboard.dismiss();
+      emailRef.current?.blur();
+      passwordRef.current?.blur();
+      confirmRef.current?.blur();
+      setAuthError(friendlyAuthError(e));
     } finally {
       setBusy(false);
     }
@@ -280,6 +316,7 @@ export default function AuthScreen({
               <Pressable
                 onPress={() => {
                   setResetEmailSent(false);
+                  setAuthError(null);
                   setMode('forgot');
                 }}
                 hitSlop={8}
@@ -311,6 +348,15 @@ export default function AuthScreen({
                 />
               </>
             ) : null}
+
+            {authError ? (
+              <TotlText
+                accessibilityRole="alert"
+                style={{ color: '#DC2626', marginTop: 12, fontSize: 14, lineHeight: 20 }}
+              >
+                {authError}
+              </TotlText>
+            ) : null}
           </Card>
         )}
       </KeyboardAwareScrollView>
@@ -328,6 +374,7 @@ export default function AuthScreen({
               title="Back to sign in"
               onPress={() => {
                 setResetEmailSent(false);
+                setAuthError(null);
                 setMode('signIn');
               }}
               disabled={busy}
@@ -344,6 +391,7 @@ export default function AuthScreen({
                   variant="secondary"
                   onPress={() => {
                     setResetEmailSent(false);
+                    setAuthError(null);
                     setMode('signIn');
                   }}
                   disabled={busy}
@@ -352,7 +400,10 @@ export default function AuthScreen({
                 <Button
                   title={mode === 'signIn' ? 'Need an account? Sign up' : 'Have an account? Sign in'}
                   variant="secondary"
-                  onPress={() => setMode((m) => (m === 'signIn' ? 'signUp' : 'signIn'))}
+                  onPress={() => {
+                    setAuthError(null);
+                    setMode((m) => (m === 'signIn' ? 'signUp' : 'signIn'));
+                  }}
                   disabled={busy}
                 />
               )}
