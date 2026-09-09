@@ -331,6 +331,7 @@ const SeasonPredictionsPage = lazy(() => import("./pages/SeasonPredictions"));
 const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPredictionsResults"));
 const RetroTotlDailyPage = lazy(() => import("./pages/RetroTotlDaily"));
 const RetroTotlDailyScoreboardPage = lazy(() => import("./pages/RetroTotlDailyScoreboard"));
+const RetroTotlDailyPlayersPage = lazy(() => import("./pages/RetroTotlDailyPlayers"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -922,6 +923,7 @@ function AppContent() {
           <Routes>
             <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
             <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
+            <Route path="/admin/retro-totl-daily/players" element={<RetroTotlDailyPlayersPage />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
@@ -1034,6 +1036,7 @@ function AppContent() {
                 <Route path="/admin/gw-stats" element={<RequireAuth><AdminGwStatsPage /></RequireAuth>} />
                 <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
                 <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
+                <Route path="/admin/retro-totl-daily/players" element={<RetroTotlDailyPlayersPage />} />
                 <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
                 <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />

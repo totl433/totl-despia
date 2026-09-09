@@ -21,6 +21,11 @@ type Props = {
   seasonLabel: string;
   disabled?: boolean;
   /**
+   * When true, a click/tap (no real drag) still flies the card away.
+   * Needed on desktop / embedded browsers where pointermove often never fires.
+   */
+  tapAdvances?: boolean;
+  /**
    * Increment to force a swipe-away animation (even when disabled),
    * e.g. after the reveal 3-2-1 when the streak continues.
    */
@@ -44,6 +49,7 @@ export default function RetroDailySwipeStack({
   queuedFace,
   seasonLabel,
   disabled = false,
+  tapAdvances = false,
   flyAwayNonce = 0,
   onDrag,
   onSwipeAway,
@@ -150,7 +156,16 @@ export default function RetroDailySwipeStack({
 
   const startFlyOff = useCallback(
     (dx: number, dy: number, opts?: { force?: boolean }) => {
-      if ((!opts?.force && disabledRef.current) || outgoing || settling || animating.current) return;
+      if (opts?.force) {
+        // Start button / auto-advance must never get stuck behind a half-finished fly
+        clearFlyTimer();
+        animating.current = false;
+        setOutgoing(null);
+        setSettling(false);
+        setTransitionOn(false);
+      } else if (disabledRef.current || outgoing || settling || animating.current) {
+        return;
+      }
       animating.current = true;
       clearFlyTimer();
 
@@ -251,6 +266,11 @@ export default function RetroDailySwipeStack({
 
     if (Math.abs(dx) > 60 || Math.abs(dy) > 60) {
       startFlyOff(dx, dy);
+      return;
+    }
+    // Click / tap with no drag — advance when parent opts in (intro, score reveal)
+    if (tapAdvances && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      startFlyOff(0, 160);
       return;
     }
     // Spring-ish snap back

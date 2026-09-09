@@ -64,6 +64,14 @@ export default function AdminDataPage() {
               </Link>
             )}
             {isAdmin && (
+              <Link
+                to="/admin/retro-totl-daily/players"
+                className="block w-full py-3 bg-[#0B1F3A] text-white font-semibold rounded-xl text-center"
+              >
+                Retro Totl Daily — The Players
+              </Link>
+            )}
+            {isAdmin && (
             <Link
               to="/api-admin"
               className="block w-full py-3 bg-[#1C8376] text-white font-semibold rounded-xl text-center"
