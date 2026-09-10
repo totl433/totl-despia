@@ -1110,6 +1110,10 @@ video {
   margin-bottom: 0.5rem;
 }
 
+.mb-2\.5{
+  margin-bottom: 0.625rem;
+}
+
 .mb-3{
   margin-bottom: 0.75rem;
 }
@@ -1232,10 +1236,6 @@ video {
 
 .mt-auto{
   margin-top: auto;
-}
-
-.mb-2\.5{
-  margin-bottom: 0.625rem;
 }
 
 .box-border{
@@ -1501,10 +1501,6 @@ video {
   max-height: 320px;
 }
 
-.max-h-\[70\%\]{
-  max-height: 70%;
-}
-
 .max-h-\[70vh\]{
   max-height: 70vh;
 }
@@ -1762,6 +1758,10 @@ video {
   width: 100%;
 }
 
+.w-\[3\.25rem\]{
+  width: 3.25rem;
+}
+
 .min-w-0{
   min-width: 0px;
 }
@@ -1844,10 +1844,6 @@ video {
 
 .max-w-\[672px\]{
   max-width: 672px;
-}
-
-.max-w-\[70\%\]{
-  max-width: 70%;
 }
 
 .max-w-\[80px\]{
@@ -3994,10 +3990,6 @@ video {
   font-size: clamp(18px,6vw,30px);
 }
 
-.text-\[clamp\(22px\2c 6\.5vw\2c 34px\)\]{
-  font-size: clamp(22px,6.5vw,34px);
-}
-
 .text-\[clamp\(22px\2c 7vw\2c 36px\)\]{
   font-size: clamp(22px,7vw,36px);
 }
@@ -4501,10 +4493,6 @@ video {
 
 .opacity-100{
   opacity: 1;
-}
-
-.opacity-25{
-  opacity: 0.25;
 }
 
 .opacity-40{
@@ -7113,10 +7101,6 @@ select option {
     height: 0.5rem;
   }
 
-  .sm\:h-20{
-    height: 5rem;
-  }
-
   .sm\:h-24{
     height: 6rem;
   }
@@ -7191,10 +7175,6 @@ select option {
 
   .sm\:w-2{
     width: 0.5rem;
-  }
-
-  .sm\:w-20{
-    width: 5rem;
   }
 
   .sm\:w-24{
@@ -7390,10 +7370,6 @@ select option {
 
   .sm\:pt-4{
     padding-top: 1rem;
-  }
-
-  .sm\:pt-6{
-    padding-top: 1.5rem;
   }
 
   .sm\:text-2xl{

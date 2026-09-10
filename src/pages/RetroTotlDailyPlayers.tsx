@@ -332,7 +332,7 @@ export default function RetroTotlDailyPlayersPage() {
   );
 
   if (!pixelFontReady) {
-    return <div className="absolute inset-0" style={{ backgroundColor: BG }} />;
+    return <div className="h-full w-full" style={{ backgroundColor: BG }} />;
   }
 
   const secondsLeft = Math.max(0, Math.ceil(timerPct * (PLAYERS_TIMER_MS / 1000)));
@@ -387,7 +387,7 @@ export default function RetroTotlDailyPlayersPage() {
 
   return (
     <div
-      className="absolute inset-0 flex flex-col overflow-hidden text-white"
+      className="flex h-full min-h-0 flex-col overflow-hidden text-white"
       style={{ backgroundColor: BG }}
     >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-1 flex-col px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.85rem,env(safe-area-inset-bottom,0px))]">
@@ -410,10 +410,10 @@ export default function RetroTotlDailyPlayersPage() {
             </p>
           </div>
           <Link
-            to="/admin/retro-totl-daily"
+            to="/admin/retro-totl-daily/players/scoreboard"
             className="absolute right-0 top-1/2 -translate-y-1/2 text-xs font-extrabold text-white/90 hover:text-white"
           >
-            Fixtures
+            Scoreboard
           </Link>
         </header>
 
@@ -478,10 +478,10 @@ export default function RetroTotlDailyPlayersPage() {
                   Rules
                 </button>
                 <Link
-                  to="/admin/retro-totl-daily"
+                  to="/admin/retro-totl-daily/players/scoreboard"
                   className="inline-flex items-center justify-center rounded-full border-[1.5px] border-white/50 px-5 py-3 text-sm font-extrabold text-white/90 hover:border-white hover:text-white"
                 >
-                  Fixtures game
+                  Scoreboard
                 </Link>
               </div>
             </div>

@@ -332,6 +332,7 @@ const SeasonPredictionsResultsPage = lazy(() => import("./pages/SeasonPrediction
 const RetroTotlDailyPage = lazy(() => import("./pages/RetroTotlDaily"));
 const RetroTotlDailyScoreboardPage = lazy(() => import("./pages/RetroTotlDailyScoreboard"));
 const RetroTotlDailyPlayersPage = lazy(() => import("./pages/RetroTotlDailyPlayers"));
+const RetroTotlDailyPlayersScoreboardPage = lazy(() => import("./pages/RetroTotlDailyPlayersScoreboard"));
 
 // New onboarding + auth flow
 import { AuthGate } from "./features/auth";
@@ -919,13 +920,16 @@ function AppContent() {
   if (location.pathname.startsWith('/admin/retro-totl-daily')) {
     return (
       <ErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
-            <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
-            <Route path="/admin/retro-totl-daily/players" element={<RetroTotlDailyPlayersPage />} />
-          </Routes>
-        </Suspense>
+        <div className="fixed inset-0 overflow-hidden" style={{ backgroundColor: '#0B1F3A' }}>
+          <Suspense fallback={<div className="h-full w-full" style={{ backgroundColor: '#0B1F3A' }} />}>
+            <Routes>
+              <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
+              <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
+              <Route path="/admin/retro-totl-daily/players" element={<RetroTotlDailyPlayersPage />} />
+              <Route path="/admin/retro-totl-daily/players/scoreboard" element={<RetroTotlDailyPlayersScoreboardPage />} />
+            </Routes>
+          </Suspense>
+        </div>
       </ErrorBoundary>
     );
   }
@@ -1037,6 +1041,7 @@ function AppContent() {
                 <Route path="/admin/retro-totl-daily" element={<RetroTotlDailyPage />} />
                 <Route path="/admin/retro-totl-daily/scoreboard" element={<RetroTotlDailyScoreboardPage />} />
                 <Route path="/admin/retro-totl-daily/players" element={<RetroTotlDailyPlayersPage />} />
+                <Route path="/admin/retro-totl-daily/players/scoreboard" element={<RetroTotlDailyPlayersScoreboardPage />} />
                 <Route path="/season-predictions" element={<RequireAuth><SeasonPredictionsPage /></RequireAuth>} />
                 <Route path="/season-predictions/results" element={<RequireAuth><SeasonPredictionsResultsPage /></RequireAuth>} />
                 <Route path="/admin/leaderboards" element={<RequireAuth><RequireAdmin><AdminLeaderboards /></RequireAdmin></RequireAuth>} />

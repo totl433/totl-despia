@@ -61,6 +61,9 @@ export default function RetroPlayersScoreCard({
                 )}
               </div>
               <p className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{card.playerName}</p>
+              <p className="w-[3.25rem] shrink-0 text-right text-[11px] font-extrabold tabular-nums text-slate-500">
+                {card.questionSeason ?? ''}
+              </p>
               <img
                 src={retroBadgeUrl(card.correct.clubCode)}
                 alt=""

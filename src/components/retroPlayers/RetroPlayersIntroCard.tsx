@@ -20,9 +20,9 @@ export default function RetroPlayersIntroCard() {
         className="relative z-[3] mt-3 text-center text-[clamp(9px,2.8vw,12px)] leading-5 text-white/90 sm:mt-4"
         style={{ fontFamily: "'PressStart2P', monospace" }}
       >
-        Ten Players
+        Ten Players...
         <br />
-        Which Ten Clubs
+        Which Ten Clubs?
       </p>
       <p className="relative z-[3] mt-5 text-center text-sm font-extrabold leading-5 text-white sm:mt-8 sm:text-[15px]">
         Swipe or tap Start
