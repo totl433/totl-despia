@@ -3,7 +3,8 @@ import { Pressable, View } from 'react-native';
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { TotlText, useTokens } from '@totl/ui';
 
-export default function RetroDailyRulesSheet({
+/** Rules sheet for Retro Totl Daily — The Players. */
+export default function RetroPlayersRulesSheet({
   open,
   onClose,
 }: {
@@ -36,34 +37,34 @@ export default function RetroDailyRulesSheet({
     >
       <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 8, paddingBottom: 36 }}>
         <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 22, lineHeight: 26, color: t.color.text }}>
-          Retro Totl Daily — Rules
+          The Players — Rules
         </TotlText>
 
         <View style={{ height: 14 }} />
 
         <RuleBlock
-          title="One season a day"
-          body="Each day unlocks a Premier League season from the past. Everyone gets the same 10 fixtures."
+          title="Guess the club"
+          body="Each card shows a Premier League player and one season. Pick which club he played for that season."
         />
         <RuleBlock
-          title="Guess the result"
-          body="Swipe left for Home, right for Away, or down for a Draw — or use the buttons. You get one guess per card."
+          title="One season"
+          body="The clue is a single year — e.g. 96/97. After you answer, you’ll see the full spell at that club."
+        />
+        <RuleBlock
+          title="Gets harder"
+          body="Later cards lean on short spells — and often put another club from their career in the options."
         />
         <RuleBlock
           title="Ten seconds"
-          body="The countdown pips under the buttons are your clock. They turn red as time runs out — if they hit zero, you’re out."
+          body="Swipe the card or tap a club. If the timer hits zero, that run ends."
         />
         <RuleBlock
           title="Stay alive"
-          body="Get it right to keep going. Get it wrong (or time out) and that run ends after the reveal."
+          body="Get it right to keep going. Wrong answer or timeout — check the reveal, then see your score."
         />
         <RuleBlock
-          title="Your score"
-          body="Score is how far you get through the 10. Nail all 10 and we’ll make some noise."
-        />
-        <RuleBlock
-          title="Fair play"
-          body="Live game: one attempt per day after 8am UK. This admin build lets you replay as much as you like."
+          title="Appearances"
+          body="Totals are Premier League league games for that club across their career."
         />
 
         <View style={{ height: 10 }} />

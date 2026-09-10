@@ -1,84 +1,97 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import Animated, {
-  interpolateColor,
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import { useSharedValue } from 'react-native-reanimated';
 import { TotlText, useTokens } from '@totl/ui';
 
 import {
-  createMockRetroPuzzle,
-  RETRO_TIMER_MS,
-  type RetroFixture,
-  type RetroPick,
-  type RetroPuzzle,
-} from '../../lib/retroDaily/mockPuzzle';
+  createPlayersPuzzle,
+  PLAYERS_TIMER_MS,
+  type PlayersClubOption,
+  type PlayersPuzzle,
+} from '../../lib/retroPlayers/buildPuzzle';
 import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
-import type { RetroTotlDailyStackParamList } from '../../navigation/RetroTotlDailyNavigator';
-import RetroDailyIntroCard from '../../components/retroDaily/RetroDailyIntroCard';
+import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
+import { TEAM_BADGES } from '../../lib/teamBadges';
+import { normalizeTeamCode } from '../../lib/teamColors';
 import RetroDailyCountdownCard from '../../components/retroDaily/RetroDailyCountdownCard';
-import RetroDailyFixtureCard from '../../components/retroDaily/RetroDailyFixtureCard';
 import RetroDailyLogoBack from '../../components/retroDaily/RetroDailyLogoBack';
-import RetroDailyPromoteFlipCard, {
-  RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS,
-  RETRO_PROMOTE_FLIP_DELAY_MS,
-  RETRO_PROMOTE_FLIP_MS,
-} from '../../components/retroDaily/RetroDailyPromoteFlipCard';
-import RetroDailyRevealCard, {
-  resultMatchesPick,
-  RETRO_REVEAL_FLIP_MS,
-  RETRO_REVEAL_HOLD_MS,
-} from '../../components/retroDaily/RetroDailyRevealCard';
-import RetroDailyScoreCard, {
-  retroScoreBlurb,
-  type RetroRoundOutcome,
-} from '../../components/retroDaily/RetroDailyScoreCard';
-import RetroDailyRulesSheet from '../../components/retroDaily/RetroDailyRulesSheet';
 import RetroDailyProgressPips from '../../components/retroDaily/RetroDailyProgressPips';
 import RetroDailySwipeStack, {
   DRAW_THRESHOLD,
   SWIPE_THRESHOLD,
 } from '../../components/retroDaily/RetroDailySwipeStack';
+import RetroPlayersIntroCard from '../../components/retroPlayers/RetroPlayersIntroCard';
+import RetroPlayersCard from '../../components/retroPlayers/RetroPlayersCard';
+import RetroPlayersPromoteFlipCard, {
+  RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS,
+  RETRO_PROMOTE_FLIP_DELAY_MS,
+  RETRO_PROMOTE_FLIP_MS,
+} from '../../components/retroPlayers/RetroPlayersPromoteFlipCard';
+import RetroPlayersRevealCard, {
+  PLAYERS_REVEAL_FLIP_MS,
+  PLAYERS_REVEAL_HOLD_MS,
+  type PlayersRoundOutcome,
+} from '../../components/retroPlayers/RetroPlayersRevealCard';
+import RetroPlayersScoreCard, { playersScoreBlurb } from '../../components/retroPlayers/RetroPlayersScoreCard';
+import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
 
 type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
 const BG = '#0B1F3A';
 const CHROME_WHITE = '#FFFFFF';
 const ACTIVE_BG = '#1C8376';
-const INACTIVE_BG = 'rgba(255,255,255,0.22)';
-const BOTTOM_SLOT_H = 128;
+const BOTTOM_SLOT_H = 148;
+
+/** Left / down / right → options[0] / [1] / [2] — same thresholds as fixtures H/D/A. */
+function optionFromSwipe(
+  dx: number,
+  dy: number,
+  options: PlayersClubOption[]
+): PlayersClubOption | null {
+  if (options.length === 0) return null;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const left = options[0]!;
+  const mid = options[1] ?? left;
+  const right = options[2] ?? mid;
+  if (absX >= SWIPE_THRESHOLD && absX > absY * 1.15) return dx > 0 ? right : left;
+  if (dy >= DRAW_THRESHOLD && dy > absX * 1.05) return mid;
+  if (absX >= absY) return dx >= 0 ? right : left;
+  return mid;
+}
 
 /**
- * Admin prototype: Retro Totl Daily — fixtures.
- * Shell matches web: ProgressPips, streak auto-advance, promote timings.
+ * Retro Totl Daily — The Players (admin prototype).
+ * Matches web: player + season clue, three clubs, streak auto-advance.
  */
-export default function RetroTotlDailyScreen() {
+export default function RetroTotlDailyPlayersScreen() {
   const t = useTokens();
-  const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyPlayersStackParamList>>();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
-  const [puzzle, setPuzzle] = React.useState<RetroPuzzle>(() => createMockRetroPuzzle());
-  const fixtures = puzzle.fixtures;
+  const [puzzle, setPuzzle] = React.useState<PlayersPuzzle>(() => createPlayersPuzzle());
+  const cards = puzzle.cards;
   const [phase, setPhase] = React.useState<Phase>('intro');
   const [index, setIndex] = React.useState(0);
   const [countdown, setCountdown] = React.useState(3);
-  const [outcomes, setOutcomes] = React.useState<RetroRoundOutcome[]>([]);
+  const [outcomes, setOutcomes] = React.useState<PlayersRoundOutcome[]>([]);
   const [lastCorrect, setLastCorrect] = React.useState(false);
   const [lastTimedOut, setLastTimedOut] = React.useState(false);
-  const [revealFixture, setRevealFixture] = React.useState<RetroFixture | null>(null);
+  const [revealCard, setRevealCard] = React.useState<(typeof cards)[0] | null>(null);
+  const [timerPct, setTimerPct] = React.useState(1);
+  const [interactive, setInteractive] = React.useState(true);
   const [cardKey, setCardKey] = React.useState('intro');
   const [flipKey, setFlipKey] = React.useState(0);
   const [flyAwayNonce, setFlyAwayNonce] = React.useState(0);
-  const [interactive, setInteractive] = React.useState(true);
   const [rulesOpen, setRulesOpen] = React.useState(false);
-  const [timerPct, setTimerPct] = React.useState(1);
+  const [hotCode, setHotCode] = React.useState<string | null>(null);
+  const [dragSnap, setDragSnap] = React.useState({ x: 0, y: 0 });
   const [confettiShot, setConfettiShot] = React.useState<{
     key: number;
     count: number;
@@ -86,6 +99,40 @@ export default function RetroTotlDailyScreen() {
     fallSpeed: number;
     ttlMs: number;
   } | null>(null);
+
+  const dragX = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const timerEpoch = React.useRef(0);
+  const timerRaf = React.useRef<number | null>(null);
+  const phaseRef = React.useRef(phase);
+  const interactiveRef = React.useRef(interactive);
+  const cardRef = React.useRef(cards[0] ?? null);
+  const indexRef = React.useRef(0);
+  const lastCorrectRef = React.useRef(false);
+  const cardsLenRef = React.useRef(cards.length);
+  phaseRef.current = phase;
+  interactiveRef.current = interactive;
+  cardRef.current = cards[index] ?? null;
+  indexRef.current = index;
+  lastCorrectRef.current = lastCorrect;
+  cardsLenRef.current = cards.length;
+
+  const card = cards[index] ?? null;
+  const score = outcomes.filter((o) => o.correct).length;
+  const perfect =
+    score === cards.length && outcomes.length === cards.length && outcomes.every((o) => o.correct);
+  const fromCountdown = cardKey.startsWith('play-0-') && !cardKey.includes('-instant-');
+  const fromInstant = cardKey.includes('-instant-');
+  const revealContinues = lastCorrect && index < cards.length - 1;
+  const revealLeadsToScore = phase === 'reveal' && !revealContinues;
+  const nextCard = revealContinues ? cards[index + 1] ?? null : null;
+  const showNext = phase !== 'score';
+  const showQueued =
+    phase === 'intro' ||
+    phase === 'countdown' ||
+    phase === 'playing' ||
+    (phase === 'reveal' && !revealLeadsToScore);
+  const headerBlock = 56;
 
   const fireConfetti = React.useCallback(
     (opts?: { count?: number; explosionSpeed?: number; fallSpeed?: number; ttlMs?: number }) => {
@@ -102,78 +149,51 @@ export default function RetroTotlDailyScreen() {
     []
   );
 
-  const dragX = useSharedValue(0);
-  const dragY = useSharedValue(0);
-  const pickHighlight = useSharedValue(0);
-  const timerEpoch = React.useRef(0);
-  const timerRaf = React.useRef<number | null>(null);
-  const phaseRef = React.useRef(phase);
-  const interactiveRef = React.useRef(interactive);
-  const fixtureRef = React.useRef(fixtures[0] ?? null);
-  const indexRef = React.useRef(0);
-  const lastCorrectRef = React.useRef(false);
-  const fixturesLenRef = React.useRef(fixtures.length);
-  phaseRef.current = phase;
-  interactiveRef.current = interactive;
-  fixtureRef.current = fixtures[index] ?? null;
-  indexRef.current = index;
-  lastCorrectRef.current = lastCorrect;
-  fixturesLenRef.current = fixtures.length;
-
-  const fixture = fixtures[index] ?? null;
-  const score = outcomes.filter((o) => o.correct).length;
-  const perfect =
-    score === fixtures.length &&
-    outcomes.length === fixtures.length &&
-    outcomes.every((o) => o.correct);
-  const fromCountdown = cardKey.startsWith('play-0-') && !cardKey.includes('-instant-');
-  const fromInstant = cardKey.includes('-instant-');
-  const revealContinues = lastCorrect && index < fixtures.length - 1;
-  const revealLeadsToScore = phase === 'reveal' && !revealContinues;
-  const nextFixture = revealContinues ? fixtures[index + 1] ?? null : null;
-  const showNext = phase !== 'score';
-  const showQueued =
-    phase === 'intro' ||
-    phase === 'countdown' ||
-    phase === 'playing' ||
-    (phase === 'reveal' && !revealLeadsToScore);
-  const playChrome = phase === 'countdown' || phase === 'playing' || phase === 'reveal';
-  const headerBlock = 56;
-
   const close = React.useCallback(() => {
-    const parent = navigation.getParent?.();
-    if (parent?.canGoBack?.()) parent.goBack();
-    else if (navigation.canGoBack?.()) navigation.goBack();
-    else parent?.navigate?.('Tabs', { screen: 'Profile' });
+    const parent = navigation.getParent?.() as
+      | { canGoBack?: () => boolean; goBack?: () => void; navigate?: (name: string, params?: object) => void }
+      | undefined;
+    if (parent?.canGoBack?.()) {
+      parent.goBack?.();
+      return;
+    }
+    if (typeof (navigation as { canGoBack?: () => boolean }).canGoBack === 'function' &&
+      (navigation as { canGoBack: () => boolean }).canGoBack()) {
+      (navigation as { goBack: () => void }).goBack();
+      return;
+    }
+    parent?.navigate?.('Tabs', { screen: 'Profile' });
   }, [navigation]);
 
   const openScoreboard = React.useCallback(() => {
-    navigation.navigate('RetroTotlDailyScoreboard');
-  }, [navigation]);
-
-  const openPlayers = React.useCallback(() => {
-    const parent = navigation.getParent?.() as { navigate?: (name: string) => void } | undefined;
-    parent?.navigate?.('RetroTotlDailyPlayersFlow');
+    navigation.navigate('RetroTotlDailyPlayersScoreboard');
   }, [navigation]);
 
   const restart = React.useCallback(() => {
     timerEpoch.current += 1;
     if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
-    setPuzzle(createMockRetroPuzzle());
+    setPuzzle(createPlayersPuzzle());
     setPhase('intro');
     setIndex(0);
     setCountdown(3);
     setOutcomes([]);
     setLastCorrect(false);
     setLastTimedOut(false);
-    setRevealFixture(null);
+    setRevealCard(null);
+    setTimerPct(1);
+    setInteractive(true);
     setCardKey('intro');
     setFlipKey(0);
-    setInteractive(true);
-    setTimerPct(1);
+    setHotCode(null);
+    setDragSnap({ x: 0, y: 0 });
     dragX.value = 0;
     dragY.value = 0;
   }, [dragX, dragY]);
+
+  const startFromIntro = React.useCallback(() => {
+    if (phaseRef.current !== 'intro') return;
+    setFlyAwayNonce((n) => n + 1);
+  }, []);
 
   React.useEffect(() => {
     if (phase !== 'countdown') return;
@@ -199,6 +219,14 @@ export default function RetroTotlDailyScreen() {
   }, [confettiShot]);
 
   React.useEffect(() => {
+    if (phase !== 'reveal' || !lastCorrect) return;
+    const id = setTimeout(() => {
+      fireConfetti({ count: 90, explosionSpeed: 340, fallSpeed: 2200, ttlMs: 2800 });
+    }, PLAYERS_REVEAL_HOLD_MS);
+    return () => clearTimeout(id);
+  }, [fireConfetti, flipKey, lastCorrect, phase]);
+
+  React.useEffect(() => {
     if (phase !== 'playing' && phase !== 'reveal') {
       setInteractive(phase === 'intro' || phase === 'score');
       setTimerPct(1);
@@ -207,13 +235,15 @@ export default function RetroTotlDailyScreen() {
 
     setInteractive(false);
     setTimerPct(1);
+    setHotCode(null);
+    setDragSnap({ x: 0, y: 0 });
     const hold =
       phase === 'playing'
         ? fromInstant
           ? 280
           : (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
             RETRO_PROMOTE_FLIP_MS
-        : RETRO_REVEAL_HOLD_MS + RETRO_REVEAL_FLIP_MS;
+        : PLAYERS_REVEAL_HOLD_MS + PLAYERS_REVEAL_FLIP_MS;
     const epoch = ++timerEpoch.current;
     const isPlaying = phase === 'playing';
 
@@ -225,7 +255,7 @@ export default function RetroTotlDailyScreen() {
         const tick = (now: number) => {
           if (timerEpoch.current !== epoch) return;
           const elapsed = now - started;
-          const left = Math.max(0, 1 - elapsed / RETRO_TIMER_MS);
+          const left = Math.max(0, 1 - elapsed / PLAYERS_TIMER_MS);
           setTimerPct(left);
           if (left <= 0) return;
           timerRaf.current = requestAnimationFrame(tick);
@@ -233,7 +263,7 @@ export default function RetroTotlDailyScreen() {
         timerRaf.current = requestAnimationFrame(tick);
         return;
       }
-      if (phase === 'reveal' && !(lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1)) {
+      if (phase === 'reveal' && !(lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1)) {
         setInteractive(true);
       }
     }, hold);
@@ -241,18 +271,18 @@ export default function RetroTotlDailyScreen() {
     const timeoutId = isPlaying
       ? setTimeout(() => {
           if (timerEpoch.current !== epoch) return;
-          const f = fixtures[index];
-          if (!f) return;
-          setOutcomes((prev) => [...prev, { fixture: f, pick: null, correct: false, timedOut: true }]);
-          setRevealFixture(f);
+          const c = cards[index];
+          if (!c) return;
+          setOutcomes((prev) => [...prev, { card: c, pick: null, correct: false, timedOut: true }]);
+          setRevealCard(c);
           setLastCorrect(false);
           setLastTimedOut(true);
           setPhase('reveal');
-          setCardKey(`reveal-${f.id}-${Date.now()}`);
+          setCardKey(`reveal-${c.id}-${Date.now()}`);
           setFlipKey((k) => k + 1);
           setInteractive(false);
           setTimerPct(1);
-        }, hold + RETRO_TIMER_MS)
+        }, hold + PLAYERS_TIMER_MS)
       : undefined;
 
     return () => {
@@ -261,45 +291,77 @@ export default function RetroTotlDailyScreen() {
       if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
       // Don't bump timerEpoch here — that races the next unlock after streak fly-away.
     };
-  }, [cardKey, fixtures, fromCountdown, fromInstant, index, phase]);
+  }, [cardKey, cards, fromCountdown, fromInstant, index, phase]);
 
-  const pickFromSwipe = (dx: number, dy: number): RetroPick => {
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
-    if (absX >= SWIPE_THRESHOLD && absX > absY * 1.15) return dx > 0 ? 'A' : 'H';
-    if (dy >= DRAW_THRESHOLD && dy > absX * 1.05) return 'D';
-    if (absX >= absY) return dx >= 0 ? 'A' : 'H';
-    return 'D';
-  };
-
-  const advanceFromReveal = React.useCallback((opts?: { instant?: boolean }) => {
-    timerEpoch.current += 1;
-    dragX.value = 0;
-    dragY.value = 0;
-    if (lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1) {
-      const next = indexRef.current + 1;
-      setIndex(next);
-      setPhase('playing');
-      setCardKey(opts?.instant ? `play-${next}-instant-${Date.now()}` : `play-${next}-${Date.now()}`);
-      if (!opts?.instant) setFlipKey((k) => k + 1);
-      setInteractive(false);
+  // Mirror SharedValue drag into React state for button highlight
+  React.useEffect(() => {
+    if (phase !== 'playing' || !interactive) {
+      setDragSnap({ x: 0, y: 0 });
       return;
     }
-    setPhase('score');
-    setCardKey(`score-${Date.now()}`);
-    setInteractive(true);
-    if (lastCorrectRef.current && indexRef.current === fixturesLenRef.current - 1) {
-      fireConfetti({ count: 280, explosionSpeed: 480, fallSpeed: 3600, ttlMs: 5800 });
-    }
-  }, [dragX, dragY, fireConfetti]);
+    const id = setInterval(() => {
+      setDragSnap({ x: dragX.value, y: dragY.value });
+    }, 32);
+    return () => clearInterval(id);
+  }, [dragX, dragY, interactive, phase]);
 
-  const swipeToNextFixture = React.useCallback(() => {
+  const commitPick = React.useCallback((pick: PlayersClubOption) => {
+    if (phaseRef.current !== 'playing' || !interactiveRef.current) return;
+    const c = cardRef.current;
+    if (!c) return;
+    timerEpoch.current += 1;
+    if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
+    const correct = pick.clubCode === c.correct.clubCode;
+    setOutcomes((prev) => [...prev, { card: c, pick, correct, timedOut: false }]);
+    setRevealCard(c);
+    setLastCorrect(correct);
+    setLastTimedOut(false);
+    setPhase('reveal');
+    setCardKey(`reveal-${c.id}-${Date.now()}`);
+    setFlipKey((k) => k + 1);
+    setInteractive(false);
+    setTimerPct(1);
+    setHotCode(null);
+    setDragSnap({ x: 0, y: 0 });
+    dragX.value = 0;
+    dragY.value = 0;
+  }, [dragX, dragY]);
+
+  const advanceFromReveal = React.useCallback(
+    (opts?: { instant?: boolean }) => {
+      timerEpoch.current += 1;
+      setHotCode(null);
+      setDragSnap({ x: 0, y: 0 });
+      dragX.value = 0;
+      dragY.value = 0;
+      if (lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1) {
+        const next = indexRef.current + 1;
+        setIndex(next);
+        setPhase('playing');
+        setCardKey(opts?.instant ? `play-${next}-instant-${Date.now()}` : `play-${next}-${Date.now()}`);
+        if (!opts?.instant) setFlipKey((k) => k + 1);
+        setInteractive(false);
+        return;
+      }
+      setPhase('score');
+      setCardKey(`score-${Date.now()}`);
+      setInteractive(true);
+      if (lastCorrectRef.current && indexRef.current === cardsLenRef.current - 1) {
+        fireConfetti({ count: 280, explosionSpeed: 480, fallSpeed: 3600, ttlMs: 5800 });
+      }
+    },
+    [dragX, dragY, fireConfetti]
+  );
+
+  const swipeToNext = React.useCallback(() => {
     setFlyAwayNonce((n) => n + 1);
   }, []);
 
   const onSwipeAway = React.useCallback(
     (dx: number, dy: number) => {
       timerEpoch.current += 1;
+      setDragSnap({ x: 0, y: 0 });
+      setHotCode(null);
       dragX.value = 0;
       dragY.value = 0;
       const p = phaseRef.current;
@@ -313,132 +375,76 @@ export default function RetroTotlDailyScreen() {
       }
 
       if (p === 'playing') {
-        const f = fixtureRef.current;
-        if (!f) return;
-        const pick = pickFromSwipe(dx, dy);
-        const correct = resultMatchesPick(f, pick);
-        setOutcomes((prev) => [...prev, { fixture: f, pick, correct, timedOut: false }]);
-        setRevealFixture(f);
-        setLastCorrect(correct);
-        setLastTimedOut(false);
-        setPhase('reveal');
-        setCardKey(`reveal-${f.id}-${Date.now()}`);
-        setFlipKey((k) => k + 1);
-        setInteractive(false);
-        setTimerPct(1);
+        const c = cardRef.current;
+        if (!c) return;
+        const pick = optionFromSwipe(dx, dy, c.options);
+        if (pick) commitPick(pick);
         return;
       }
 
       if (p === 'reveal') {
-        if (lastCorrectRef.current && indexRef.current < fixturesLenRef.current - 1) {
-          advanceFromReveal({ instant: true });
-          return;
-        }
-        setPhase('score');
-        setCardKey(`score-${Date.now()}`);
-        setInteractive(true);
-        if (lastCorrectRef.current && indexRef.current === fixturesLenRef.current - 1) {
-          fireConfetti({ count: 280, explosionSpeed: 480, fallSpeed: 3600, ttlMs: 5800 });
-        }
+        advanceFromReveal({ instant: true });
+        return;
+      }
+
+      if (p === 'score') {
+        restart();
       }
     },
-    [advanceFromReveal, dragX, dragY, fireConfetti]
+    [advanceFromReveal, commitPick, dragX, dragY, restart]
   );
-
-  const commitPick = React.useCallback(
-    (pick: RetroPick) => {
-      if (phase !== 'playing' || !interactive || !fixture) return;
-      timerEpoch.current += 1;
-      const correct = resultMatchesPick(fixture, pick);
-      setOutcomes((prev) => [...prev, { fixture, pick, correct, timedOut: false }]);
-      setRevealFixture(fixture);
-      setLastCorrect(correct);
-      setLastTimedOut(false);
-      setPhase('reveal');
-      setCardKey(`reveal-${fixture.id}-${Date.now()}`);
-      setFlipKey((k) => k + 1);
-      setInteractive(false);
-      setTimerPct(1);
-      dragX.value = 0;
-      dragY.value = 0;
-    },
-    [dragX, dragY, fixture, interactive, phase]
-  );
-
-  React.useEffect(() => {
-    pickHighlight.value = phase === 'playing' && interactive ? 1 : 0;
-    if (phase !== 'playing') {
-      dragX.value = 0;
-      dragY.value = 0;
-    }
-  }, [dragX, dragY, interactive, phase, pickHighlight]);
-
-  const mkBtnStyle = (side: 'H' | 'D' | 'A') =>
-    useAnimatedStyle(() => {
-      const absX = Math.abs(dragX.value);
-      const absY = Math.abs(dragY.value);
-      let hot = 0;
-      if (side === 'H') {
-        hot = dragX.value < 0 && absX >= absY * 1.15 ? Math.min(1, absX / 140) : 0;
-      } else if (side === 'A') {
-        hot = dragX.value > 0 && absX >= absY * 1.15 ? Math.min(1, absX / 140) : 0;
-      } else {
-        hot = dragY.value > 0 && absY >= absX * 1.05 ? Math.min(1, absY / 140) : 0;
-      }
-      const p = pickHighlight.value * hot;
-      return { backgroundColor: interpolateColor(p, [0, 1], [INACTIVE_BG, ACTIVE_BG]) };
-    });
-
-  const homeBtnStyle = mkBtnStyle('H');
-  const drawBtnStyle = mkBtnStyle('D');
-  const awayBtnStyle = mkBtnStyle('A');
 
   const timerRunning = phase === 'playing' && interactive;
   const secondsLeft = timerRunning ? Math.max(1, Math.ceil(timerPct * 10)) : 10;
   const pipTimerPct = timerRunning ? timerPct : 1;
-  const scoreBlurb = retroScoreBlurb(score, fixtures.length, perfect);
-  const logoBack = <RetroDailyLogoBack seasonLabel={puzzle.seasonFull} />;
+  const scoreBlurb = playersScoreBlurb(score, cards.length, perfect);
+  const logoBack = <RetroDailyLogoBack seasonLabel="The Players" />;
   const scoreFace = (
-    <RetroDailyScoreCard
-      seasonLabel={puzzle.seasonFull}
-      fixtures={fixtures}
-      outcomes={outcomes}
-      score={score}
-      perfect={perfect}
-    />
+    <RetroPlayersScoreCard cards={cards} outcomes={outcomes} score={score} perfect={perfect} />
   );
 
   let face: React.ReactNode = null;
   if (phase === 'intro') {
-    face = <RetroDailyIntroCard seasonLabel={puzzle.seasonFull} />;
+    face = <RetroPlayersIntroCard />;
   } else if (phase === 'countdown') {
     face = <RetroDailyCountdownCard value={Math.max(1, countdown)} />;
-  } else if (phase === 'playing' && fixture) {
+  } else if (phase === 'playing' && card) {
     face = fromInstant ? (
-      <RetroDailyFixtureCard fixture={fixture} />
+      <RetroPlayersCard card={card} />
     ) : (
-      <RetroDailyPromoteFlipCard
-        fixture={fixture}
+      <RetroPlayersPromoteFlipCard
+        card={card}
         flipKey={flipKey}
         holdMs={fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS}
-        backFace={fromCountdown ? <RetroDailyCountdownCard value={1} /> : logoBack}
+        backFace={fromCountdown ? <RetroDailyCountdownCard value={1} /> : undefined}
       />
     );
-  } else if (phase === 'reveal' && revealFixture) {
+  } else if (phase === 'reveal' && revealCard) {
     face = (
-      <RetroDailyRevealCard
-        fixture={revealFixture}
+      <RetroPlayersRevealCard
+        card={revealCard}
         correct={lastCorrect}
         timedOut={lastTimedOut}
         flipKey={flipKey}
         autoContinue={revealContinues}
         swipeReady={interactive}
-        onAutoAdvance={swipeToNextFixture}
+        onAutoAdvance={swipeToNext}
       />
     );
   } else if (phase === 'score') {
     face = scoreFace;
+  } else {
+    face = logoBack;
   }
+
+  const absX = Math.abs(dragSnap.x);
+  const absY = Math.abs(dragSnap.y);
+  const highlightLeft =
+    phase === 'playing' && interactive && dragSnap.x < 0 && absX >= absY * 1.15 && absX > 30;
+  const highlightMid =
+    phase === 'playing' && interactive && dragSnap.y > 0 && absY >= absX * 1.05 && absY > 30;
+  const highlightRight =
+    phase === 'playing' && interactive && dragSnap.x > 0 && absX >= absY * 1.15 && absX > 30;
 
   return (
     <View
@@ -451,7 +457,7 @@ export default function RetroTotlDailyScreen() {
         paddingRight: insets.right,
       }}
     >
-      <RetroDailyRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
+      <RetroPlayersRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
 
       <View style={{ paddingHorizontal: t.space[4], height: headerBlock, justifyContent: 'center' }}>
         <View style={{ height: 48, justifyContent: 'center', alignItems: 'center' }}>
@@ -480,12 +486,12 @@ export default function RetroTotlDailyScreen() {
               style={{
                 marginTop: 4,
                 fontFamily: RETRO_PIXEL_FONT,
-                fontSize: 14,
+                fontSize: 13,
                 lineHeight: 18,
                 color: CHROME_WHITE,
               }}
             >
-              {puzzle.seasonFull}
+              The Players
             </TotlText>
           </View>
           <Pressable
@@ -533,17 +539,18 @@ export default function RetroTotlDailyScreen() {
       >
         <RetroDailySwipeStack
           cardKey={cardKey}
-          seasonLabel={puzzle.seasonFull}
+          seasonLabel="The Players"
           showNext={showNext}
           showQueued={showQueued}
           flyAwayNonce={flyAwayNonce}
+          tapAdvances={phase === 'intro' || (phase === 'reveal' && !revealContinues)}
           nextFace={
             phase === 'intro' ? (
               <RetroDailyCountdownCard value={3} />
             ) : revealLeadsToScore ? (
               scoreFace
-            ) : revealContinues && nextFixture ? (
-              <RetroDailyFixtureCard fixture={nextFixture} />
+            ) : revealContinues && nextCard ? (
+              <RetroPlayersCard card={nextCard} />
             ) : (
               logoBack
             )
@@ -557,7 +564,6 @@ export default function RetroTotlDailyScreen() {
             phase === 'score' ||
             (phase === 'reveal' && revealContinues)
           }
-          tapAdvances={phase === 'intro' || (phase === 'reveal' && !revealContinues)}
           onSwipeAway={onSwipeAway}
         >
           {face}
@@ -575,6 +581,20 @@ export default function RetroTotlDailyScreen() {
       >
         {phase === 'intro' ? (
           <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
+            <Pressable
+              onPress={startFromIntro}
+              style={({ pressed }) => ({
+                height: 52,
+                width: '100%',
+                borderRadius: 16,
+                backgroundColor: ACTIVE_BG,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.9 : 1,
+              })}
+            >
+              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>Start</TotlText>
+            </Pressable>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
                 onPress={() => setRulesOpen(true)}
@@ -600,64 +620,101 @@ export default function RetroTotlDailyScreen() {
                   opacity: pressed ? 0.75 : 1,
                 })}
               >
-                <TotlText style={{ fontWeight: '800', color: 'rgba(255,255,255,0.9)' }}>Scoreboard</TotlText>
+                <TotlText style={{ fontWeight: '800', color: 'rgba(255,255,255,0.9)' }}>
+                  Scoreboard
+                </TotlText>
               </Pressable>
             </View>
-            <Pressable
-              onPress={openPlayers}
-              style={({ pressed }) => ({
-                paddingHorizontal: 20,
-                paddingVertical: 12,
-                borderRadius: 999,
-                borderWidth: 1.5,
-                borderColor: ACTIVE_BG,
-                backgroundColor: 'rgba(28,131,118,0.25)',
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <TotlText style={{ fontWeight: '800', color: CHROME_WHITE }}>The Players</TotlText>
-            </Pressable>
           </View>
         ) : null}
 
-        {playChrome ? (
+        {phase === 'reveal' && !revealContinues && interactive ? (
+          <Pressable
+            onPress={() => advanceFromReveal({ instant: true })}
+            style={({ pressed }) => ({
+              height: 52,
+              width: '100%',
+              marginBottom: 10,
+              borderRadius: 16,
+              backgroundColor: ACTIVE_BG,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.9 : 1,
+            })}
+          >
+            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>See score</TotlText>
+          </Pressable>
+        ) : null}
+
+        {phase === 'playing' ? (
           <View style={{ width: '100%', gap: 10 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              {(
-                [
-                  ['H', 'Home Win', homeBtnStyle],
-                  ['D', 'Draw', drawBtnStyle],
-                  ['A', 'Away Win', awayBtnStyle],
-                ] as const
-              ).map(([pick, label, btnStyle]) => (
-                <Pressable
-                  key={pick}
-                  disabled={phase !== 'playing' || !interactive}
-                  onPress={() => commitPick(pick)}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    height: 52,
-                    borderRadius: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    opacity: phase !== 'playing' || !interactive ? 0.5 : pressed ? 0.88 : 1,
-                  })}
-                >
-                  <Animated.View style={[StyleSheet.absoluteFillObject, btnStyle]} />
-                  <TotlText style={{ fontWeight: '800', fontSize: 13, color: '#FFFFFF' }}>{label}</TotlText>
-                </Pressable>
-              ))}
+              {(card?.options ?? []).map((opt, i) => {
+                const dragHot =
+                  (i === 0 && highlightLeft) ||
+                  (i === 1 && highlightMid) ||
+                  (i === 2 && highlightRight);
+                const hot = dragHot || hotCode === opt.clubCode;
+                const badge = TEAM_BADGES[normalizeTeamCode(opt.clubCode)] ?? null;
+                return (
+                  <Pressable
+                    key={opt.clubCode}
+                    disabled={!interactive}
+                    onPress={() => commitPick(opt)}
+                    onPressIn={() => setHotCode(opt.clubCode)}
+                    onPressOut={() => setHotCode(null)}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      height: 68,
+                      borderRadius: 16,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      paddingHorizontal: 4,
+                      backgroundColor: hot ? ACTIVE_BG : 'rgba(255,255,255,0.2)',
+                      transform: [{ scale: hot ? 1.03 : 1 }],
+                      opacity: !interactive ? 0.5 : pressed ? 0.88 : 1,
+                    })}
+                  >
+                    {badge ? (
+                      <Image source={badge} style={{ width: 28, height: 28 }} resizeMode="contain" />
+                    ) : null}
+                    <TotlText
+                      style={{
+                        color: '#FFFFFF',
+                        fontWeight: '800',
+                        fontSize: 11,
+                        textAlign: 'center',
+                        lineHeight: 13,
+                      }}
+                      numberOfLines={2}
+                    >
+                      {opt.clubName}
+                    </TotlText>
+                  </Pressable>
+                );
+              })}
             </View>
             <RetroDailyProgressPips
-              total={fixtures.length}
+              total={cards.length}
               completed={outcomes.length}
               current={index}
-              mode={phase === 'playing' ? 'countdown' : 'progress'}
+              mode="countdown"
               secondsLeft={secondsLeft}
               timerPct={pipTimerPct}
             />
           </View>
+        ) : null}
+
+        {phase === 'reveal' ? (
+          <RetroDailyProgressPips
+            total={cards.length}
+            completed={outcomes.length}
+            current={index}
+            mode="progress"
+            secondsLeft={secondsLeft}
+            timerPct={1}
+          />
         ) : null}
 
         {phase === 'score' ? (
@@ -677,12 +734,12 @@ export default function RetroTotlDailyScreen() {
               <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Play again</TotlText>
             </Pressable>
             <RetroDailyProgressPips
-              total={fixtures.length}
+              total={cards.length}
               completed={outcomes.length}
               current={Math.max(0, outcomes.length - 1)}
               mode="results"
-              results={fixtures.map((f) => {
-                const o = outcomes.find((x) => x.fixture.id === f.id);
+              results={cards.map((c) => {
+                const o = outcomes.find((x) => x.card.id === c.id);
                 if (!o) return 'pending';
                 return o.correct ? 'correct' : 'wrong';
               })}

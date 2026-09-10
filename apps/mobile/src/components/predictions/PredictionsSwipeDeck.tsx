@@ -188,7 +188,7 @@ export default function PredictionsSwipeDeck({
   /** Admin Make Your Predictions Test: tap card to flip and see stats. */
   enableCardFlip?: boolean;
   /** Real cached preview stats keyed by fixture_index. Falls back to mock if missing. */
-  statsByFixtureIndex?: Map<number, MatchPreviewStats>;
+  statsByFixtureIndex?: Map<number, MatchPreviewStats> | Record<number, MatchPreviewStats>;
 }) {
   const deckIdentity = React.useMemo(
     () => fixtures.map((fixture) => `${String(fixture.id)}:${fixture.fixture_index}`).join('|'),
@@ -288,7 +288,13 @@ export default function PredictionsSwipeDeck({
 
   const statsForCard = React.useCallback(
     (fixture: Fixture) => {
-      const cached = statsByFixtureIndex?.get(fixture.fixture_index);
+      // React Query can rehydrate a Map as a plain object — never assume `.get` exists.
+      let cached: MatchPreviewStats | undefined;
+      if (statsByFixtureIndex instanceof Map) {
+        cached = statsByFixtureIndex.get(fixture.fixture_index);
+      } else if (statsByFixtureIndex && typeof statsByFixtureIndex === 'object') {
+        cached = (statsByFixtureIndex as Record<number, MatchPreviewStats>)[fixture.fixture_index];
+      }
       if (cached) return cached;
       return buildMockMatchPreviewStats({
         homeCode: fixture.home_code,

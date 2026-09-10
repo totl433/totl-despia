@@ -47,6 +47,11 @@ export default function AdminHomeScreen() {
     parent?.navigate?.('RetroTotlDailyFlow');
   }, [navigation]);
 
+  const openRetroTotlDailyPlayers = React.useCallback(() => {
+    const parent = navigation.getParent?.();
+    parent?.navigate?.('RetroTotlDailyPlayersFlow');
+  }, [navigation]);
+
   const openHpSimulator = React.useCallback(() => {
     navigation.navigate('AdminHomeSimulator');
   }, [navigation]);
@@ -161,6 +166,24 @@ export default function AdminHomeScreen() {
             })}
           >
             <TotlText style={{ fontWeight: '700' }}>Retro Totl Daily</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="The Players"
+            onPress={openRetroTotlDailyPlayers}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>The Players</TotlText>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 

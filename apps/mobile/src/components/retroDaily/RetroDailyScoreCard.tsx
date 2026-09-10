@@ -10,13 +10,15 @@ import {
 import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { normalizeTeamCode } from '../../lib/teamColors';
+import type { RetroRoundOutcome } from './RetroDailyRevealCard';
 
-export type RetroRoundOutcome = {
-  fixture: RetroFixture;
-  pick: RetroPick | null;
-  correct: boolean;
-  timedOut: boolean;
-};
+export type { RetroRoundOutcome };
+
+export function retroScoreBlurb(score: number, _total: number, perfect: boolean): string {
+  if (perfect) return 'Perfect ten — absolute scenes. See you tomorrow.';
+  if (score === 0) return 'Rough start — try again tomorrow.';
+  return 'Solid run — try again tomorrow.';
+}
 
 function TeamBadge({ code, size = 18, muted = false }: { code: string; size?: number; muted?: boolean }) {
   const badge = TEAM_BADGES[normalizeTeamCode(code)] ?? null;
@@ -40,13 +42,14 @@ function TeamBadge({ code, size = 18, muted = false }: { code: string; size?: nu
 
 /**
  * Final score card — compact header + all 10 fixtures (unreached greyed out).
+ * Blurb lives above the card (parent).
  */
 export default function RetroDailyScoreCard({
   seasonLabel,
   fixtures,
   outcomes,
   score,
-  perfect,
+  perfect: _perfect,
   onShare,
 }: {
   seasonLabel: string;
@@ -84,12 +87,6 @@ export default function RetroDailyScoreCard({
       // ignore
     }
   }, [onShare, outcomes, score, seasonLabel, total]);
-
-  const blurb = perfect
-    ? 'Perfect ten — absolute scenes.'
-    : score === 0
-      ? 'Rough start — tomorrow’s another season.'
-      : 'Solid run. Come back for tomorrow’s ten.';
 
   return (
     <Card
@@ -135,7 +132,7 @@ export default function RetroDailyScoreCard({
             style={{ marginTop: 2, fontSize: 11, fontWeight: '700', color: '#64748B' }}
             numberOfLines={1}
           >
-            Retro Totl Daily · {blurb}
+            Retro Totl Daily
           </TotlText>
         </View>
         <Pressable

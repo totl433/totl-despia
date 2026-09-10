@@ -70,6 +70,7 @@ for (const [code, cols] of Object.entries(teamColorsExtra as Record<string, { pr
 
 const TEAM_CODE_ALIASES: Record<string, string> = {
   NOT: 'NFO', // Nottingham Forest (some feeds use NOT)
+  BRI: 'BHA', // Brighton (seed / older codes)
 };
 
 export function normalizeTeamCode(code: string | null | undefined): string {

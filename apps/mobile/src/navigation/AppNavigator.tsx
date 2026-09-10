@@ -13,6 +13,7 @@ import Chat2ThreadScreen from '../screens/Chat2ThreadScreen';
 import ProfileNavigator from './ProfileNavigator';
 import PredictionsScreen from '../screens/PredictionsScreen';
 import RetroTotlDailyNavigator from './RetroTotlDailyNavigator';
+import RetroTotlDailyPlayersNavigator from './RetroTotlDailyPlayersNavigator';
 import Chat2Navigator from './Chat2Navigator';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { useJoinIntent } from '../context/JoinIntentContext';
@@ -35,6 +36,7 @@ export type RootStackParamList = {
   PredictionsFlow: undefined;
   PredictionsTestFlow: undefined;
   RetroTotlDailyFlow: undefined;
+  RetroTotlDailyPlayersFlow: undefined;
   GameweekResults: { gw: number; mode?: 'roundup' | 'fixturesShare' };
   BrandedLeaderboard: { idOrSlug: string; joinCode?: string; initialTab?: 'leaderboard' | 'broadcast' };
   BrandedLeaderboardList: undefined;
@@ -207,6 +209,13 @@ export default function AppNavigator() {
         <Stack.Screen
           name="RetroTotlDailyFlow"
           component={RetroTotlDailyNavigator}
+          options={{
+            presentation: 'fullScreenModal',
+          }}
+        />
+        <Stack.Screen
+          name="RetroTotlDailyPlayersFlow"
+          component={RetroTotlDailyPlayersNavigator}
           options={{
             presentation: 'fullScreenModal',
           }}

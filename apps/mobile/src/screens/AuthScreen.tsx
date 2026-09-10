@@ -6,7 +6,7 @@ import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import HeaderTotlLogo from '../components/HeaderTotlLogo';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { supabase } from '../lib/supabase';
-import { hasSqlLikeWildcards, normalizeDisplayName } from '../lib/displayName';
+import { normalizeDisplayName, USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, validateDisplayName } from '../lib/displayName';
 import { checkDisplayNameAvailable, saveUsername } from '../lib/userProfile';
 import { AUTH_CALLBACK_URL } from '../lib/authCallbackUrl';
 import { env } from '../env';
@@ -95,10 +95,8 @@ export default function AuthScreen({
       }
 
       const trimmedName = normalizeDisplayName(displayName);
-      if (!trimmedName) throw new Error('Display name is required.');
-      if (hasSqlLikeWildcards(trimmedName)) {
-        throw new Error('Display name contains invalid characters. Please remove % or _.');
-      }
+      const nameError = validateDisplayName(trimmedName);
+      if (nameError) throw new Error(nameError);
       if (password !== confirmPassword) throw new Error('Passwords do not match.');
       if (password.length < 6) throw new Error('Password must be at least 6 characters.');
 
@@ -199,14 +197,18 @@ export default function AuthScreen({
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   selectionColor={t.color.brand}
                   value={displayName}
-                  onChangeText={setDisplayName}
+                  onChangeText={(v) => setDisplayName(v.slice(0, USERNAME_MAX_LENGTH))}
+                  maxLength={USERNAME_MAX_LENGTH}
                   placeholder="e.g. Thomas"
                   placeholderTextColor={t.color.muted}
                   style={{
                     ...inputStyle,
-                    marginBottom: 12,
+                    marginBottom: 4,
                   }}
                 />
+                <TotlText variant="muted" style={{ marginBottom: 12, fontSize: 13 }}>
+                  {USERNAME_MIN_LENGTH}–{USERNAME_MAX_LENGTH} characters
+                </TotlText>
               </>
             ) : null}
 
