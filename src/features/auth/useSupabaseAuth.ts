@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { resolveSeasonCtx } from '../../lib/seasonStack';
-import { checkDisplayNameAvailable, saveUsername } from '../../lib/userProfile';
+import { checkDisplayNameAvailable, normalizeDisplayName, saveUsername, validateDisplayName } from '../../lib/userProfile';
 
 export type AuthGateStatus = 'checking' | 'authed' | 'guest';
 
@@ -127,12 +127,8 @@ export async function signUpWithPassword(
   const trimmedEmail = normalizeEmail(email);
   const trimmedName = normalizeDisplayName(displayName);
 
-  if (!trimmedName) {
-    throw new Error('Display name is required.');
-  }
-  if (hasSqlLikeWildcards(trimmedName)) {
-    throw new Error('Display name contains invalid characters. Please remove % or _.');
-  }
+  const nameError = validateDisplayName(trimmedName);
+  if (nameError) throw new Error(nameError);
 
   // Check if username is already taken (case-insensitive).
   // Prefer server-side check (harder to bypass); fall back to client check on localhost only.
@@ -298,16 +294,6 @@ export async function signUpWithPassword(
   }
 
   return data;
-}
-
-function normalizeDisplayName(input: string): string {
-  return input.trim().replace(/\s+/g, ' ');
-}
-
-function hasSqlLikeWildcards(input: string): boolean {
-  // We rely on ILIKE for case-insensitive comparison; disallow wildcard characters
-  // so the check is an exact match, not a pattern match.
-  return input.includes('%') || input.includes('_');
 }
 
 export async function resetPasswordForEmail(email: string) {

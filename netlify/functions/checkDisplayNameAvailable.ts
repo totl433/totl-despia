@@ -24,6 +24,9 @@ function hasSqlLikeWildcards(input: string): boolean {
   return input.includes('%') || input.includes('_')
 }
 
+const USERNAME_MIN_LENGTH = 3
+const USERNAME_MAX_LENGTH = 18
+
 // POST body: { displayName: string } (also accepts { name: string })
 // Returns: { available: boolean, message?: string }
 export const handler: Handler = async (event) => {
@@ -53,6 +56,18 @@ export const handler: Handler = async (event) => {
 
   const displayName = normalizeDisplayName(rawName)
   if (!displayName) return json(400, { error: 'displayName cannot be empty' })
+  if (displayName.length < USERNAME_MIN_LENGTH) {
+    return json(400, {
+      available: false,
+      message: `Display name must be at least ${USERNAME_MIN_LENGTH} characters.`,
+    })
+  }
+  if (displayName.length > USERNAME_MAX_LENGTH) {
+    return json(400, {
+      available: false,
+      message: `Display name must be at most ${USERNAME_MAX_LENGTH} characters.`,
+    })
+  }
   if (hasSqlLikeWildcards(displayName)) {
     return json(400, { error: 'displayName contains invalid characters' })
   }

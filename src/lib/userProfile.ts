@@ -1,11 +1,33 @@
 import { supabase } from './supabase';
 
-function normalizeDisplayName(input: string): string {
+/** Display name / username length bounds (characters after trim). */
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 18;
+
+export function normalizeDisplayName(input: string): string {
   return input.trim().replace(/\s+/g, ' ');
 }
 
 function hasSqlLikeWildcards(input: string): boolean {
   return input.includes('%') || input.includes('_');
+}
+
+/**
+ * Validate a display name. Returns a user-facing error message, or null if ok.
+ */
+export function validateDisplayName(raw: string): string | null {
+  const name = normalizeDisplayName(raw);
+  if (!name) return 'Display name is required.';
+  if (name.length < USERNAME_MIN_LENGTH) {
+    return `Display name must be at least ${USERNAME_MIN_LENGTH} characters.`;
+  }
+  if (name.length > USERNAME_MAX_LENGTH) {
+    return `Display name must be at most ${USERNAME_MAX_LENGTH} characters.`;
+  }
+  if (hasSqlLikeWildcards(name)) {
+    return 'Display name contains invalid characters. Please remove % or _.';
+  }
+  return null;
 }
 
 export async function checkDisplayNameAvailable(
@@ -14,6 +36,7 @@ export async function checkDisplayNameAvailable(
 ): Promise<boolean> {
   const trimmed = normalizeDisplayName(displayName);
   if (!trimmed) return false;
+  if (validateDisplayName(trimmed)) return false;
 
   let query = supabase.from('users').select('id').ilike('name', trimmed).limit(1);
   if (exceptUserId) query = query.neq('id', exceptUserId);
@@ -40,10 +63,8 @@ export async function checkDisplayNameAvailable(
 
 export async function saveUsername(userId: string, rawName: string): Promise<string> {
   const name = normalizeDisplayName(rawName);
-  if (!name) throw new Error('Display name is required.');
-  if (hasSqlLikeWildcards(name)) {
-    throw new Error('Display name contains invalid characters. Please remove % or _.');
-  }
+  const lengthError = validateDisplayName(name);
+  if (lengthError) throw new Error(lengthError);
   const available = await checkDisplayNameAvailable(name, userId);
   if (!available) {
     throw new Error('Username already taken. Please choose a different name.');

@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { saveUsername } from '../../lib/userProfile';
+import {
+  saveUsername,
+  USERNAME_MAX_LENGTH,
+  USERNAME_MIN_LENGTH,
+  validateDisplayName,
+} from '../../lib/userProfile';
 import AuthLoading from './AuthLoading';
 
 export default function ChooseUsername({
@@ -16,6 +21,11 @@ export default function ChooseUsername({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const localError = validateDisplayName(displayName);
+    if (localError) {
+      setError(localError);
+      return;
+    }
     setIsLoading(true);
     try {
       await saveUsername(userId, displayName);
@@ -42,12 +52,17 @@ export default function ChooseUsername({
           <input
             type="text"
             value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => setDisplayName(e.target.value.slice(0, USERNAME_MAX_LENGTH))}
             placeholder="Display name"
             className="w-full px-4 py-3 border border-slate-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#1C8376] focus:border-transparent"
             required
+            minLength={USERNAME_MIN_LENGTH}
+            maxLength={USERNAME_MAX_LENGTH}
             autoComplete="username"
           />
+          <p className="text-sm text-slate-500">
+            {USERNAME_MIN_LENGTH}–{USERNAME_MAX_LENGTH} characters
+          </p>
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
           <button
             type="submit"

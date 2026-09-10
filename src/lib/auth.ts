@@ -14,7 +14,8 @@ export function signIn(displayName: string, email?: string): User {
   // NOTE: real uniqueness comes from the backend; this is a placeholder.
   const clean = displayName.trim();
   if (!clean) throw new Error('Display name is required.');
-  if (clean.length < 2) throw new Error('Name must be at least 2 characters.');
+  if (clean.length < 3) throw new Error('Name must be at least 3 characters.');
+  if (clean.length > 18) throw new Error('Name must be at most 18 characters.');
 
   const id = `u_${crypto.randomUUID()}`;
   const user: User = { id, displayName: clean, email: email?.trim() || undefined };
