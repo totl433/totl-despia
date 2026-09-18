@@ -37,7 +37,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.despia.totlnative",
-      "versionCode": 2022221
+      "versionCode": 2022222
     },
     "web": {
       "favicon": "./assets/favicon.png"

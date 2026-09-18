@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { Button, Card, Screen, ThemeProvider, TotlText } from '@totl/ui';
-import { AppState, Linking, LogBox, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, LogBox, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 
@@ -45,6 +45,11 @@ export default function AppRoot() {
 
   useEffect(() => {
     let alive = true;
+    const fontTimeout = setTimeout(() => {
+      if (!alive) return;
+      console.warn('[AppRoot] Font loading timed out; continuing with system fonts.');
+      setFontsReady(true);
+    }, 8_000);
     Font.loadAsync({
       'Gramatika-Regular': require('../../../public/Fonts/Gramatika-Regular.ttf'),
       'Gramatika-Medium': require('../../../public/Fonts/Gramatika-Medium.ttf'),
@@ -59,10 +64,12 @@ export default function AppRoot() {
       })
       .finally(() => {
         if (!alive) return;
+        clearTimeout(fontTimeout);
         setFontsReady(true);
       });
     return () => {
       alive = false;
+      clearTimeout(fontTimeout);
     };
   }, []);
 
@@ -73,6 +80,19 @@ export default function AppRoot() {
     }
 
     let alive = true;
+    const finishSessionBootstrap = (
+      session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']
+    ) => {
+      if (!alive) return;
+      setAuthed(!!session);
+      setSessionUserId(session?.user?.id ?? null);
+      setSessionReady(true);
+    };
+    const sessionTimeout = setTimeout(() => {
+      if (!alive) return;
+      console.warn('[AppRoot] Session restore timed out; showing sign-in instead of a blank screen.');
+      finishSessionBootstrap(null);
+    }, 10_000);
     const handleAuthUrl = (url: string | null) => {
       if (!alive || !url) return;
       const recovery = isPasswordRecoveryUrl(url);
@@ -87,23 +107,31 @@ export default function AppRoot() {
           if (alive && recovery) setPendingPasswordReset(false);
         });
     };
-    void Linking.getInitialURL().then(handleAuthUrl);
+    void Linking.getInitialURL().then(handleAuthUrl).catch((error) => {
+      console.warn('[AppRoot] Could not read the initial URL:', error);
+    });
     const linkSub = Linking.addEventListener('url', ({ url }) => handleAuthUrl(url));
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return;
-      setAuthed(!!data.session);
-      setSessionUserId(data.session?.user?.id ?? null);
-      setSessionReady(true);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        clearTimeout(sessionTimeout);
+        finishSessionBootstrap(data.session);
+      })
+      .catch((error) => {
+        clearTimeout(sessionTimeout);
+        console.warn('[AppRoot] Session restore failed; showing sign-in:', error);
+        finishSessionBootstrap(null);
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      setAuthed(!!session);
-      setSessionUserId(session?.user?.id ?? null);
+      clearTimeout(sessionTimeout);
+      finishSessionBootstrap(session);
       if (event === 'PASSWORD_RECOVERY') setPendingPasswordReset(true);
       if (event === 'SIGNED_OUT') setPendingPasswordReset(false);
     });
     return () => {
       alive = false;
+      clearTimeout(sessionTimeout);
       linkSub.remove();
       sub.subscription.unsubscribe();
     };
@@ -189,7 +217,20 @@ export default function AppRoot() {
     };
   }, [authed, sessionReady, sessionUserId]);
 
-  if (!fontsReady || !sessionReady) return null;
+  if (!fontsReady || !sessionReady) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#F8FAFC',
+        }}
+      >
+        <ActivityIndicator size="small" color="#1C8376" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>
