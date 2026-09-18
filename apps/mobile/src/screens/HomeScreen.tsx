@@ -446,7 +446,11 @@ export default function HomeScreen() {
             // Ensure the last fixture isn't hidden behind the floating bottom tab bar.
             paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
           }}
-          refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={
+            Platform.OS === 'android' ? undefined : (
+              <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            )
+          }
         >
         {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
 

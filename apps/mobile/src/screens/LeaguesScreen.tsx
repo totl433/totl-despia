@@ -973,7 +973,11 @@ export default function LeaguesScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          Platform.OS === 'android' ? undefined : (
+            <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          )
+        }
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={
