@@ -126,11 +126,13 @@ function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
   return (
     <div className="flex w-full flex-col items-center gap-4">
       <div className="inline-flex w-fit flex-col items-stretch gap-4">
-        <AppStoreBadge
-          placement="splash"
-          slideId="splash"
-          imgClassName="h-14 w-auto sm:h-16"
-        />
+        <div className="flex w-full justify-center">
+          <AppStoreBadge
+            placement="splash"
+            slideId="splash"
+            imgClassName="h-14 w-auto sm:h-16"
+          />
+        </div>
         <GooglePlayBadge imgClassName="h-auto w-[207px] sm:w-[237px]" />
       </div>
       <button
@@ -316,11 +318,13 @@ export default function GetAppPage() {
                       {slide.body}
                     </p>
                     <div className="mt-8 inline-flex w-fit flex-col items-stretch gap-3">
-                      <AppStoreBadge
-                        placement="final_cta"
-                        slideId={slide.id}
-                        imgClassName="h-14 w-auto"
-                      />
+                      <div className="flex w-full justify-center">
+                        <AppStoreBadge
+                          placement="final_cta"
+                          slideId={slide.id}
+                          imgClassName="h-14 w-auto"
+                        />
+                      </div>
                       <GooglePlayBadge />
                     </div>
                     <button
