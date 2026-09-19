@@ -7,6 +7,9 @@ import {
 } from '../lib/googleAnalytics';
 import { APP_STORE_URL, setPreferPlayOnline } from '../lib/playOnlinePreference';
 
+const GOOGLE_PLAY_URL =
+  'https://play.google.com/store/apps/details?id=com.despia.totlnative';
+
 /**
  * Six swipe pages:
  * 1 splash + 4 feature screens + final download CTA
@@ -51,7 +54,7 @@ const SLIDES = [
   {
     id: 'download',
     kind: 'cta' as const,
-    title: 'Get TotL on iPhone',
+    title: 'Get TotL on iPhone or Android',
     body: 'Make your picks, climb the table, and settle it with your mates.',
   },
 ] as const;
@@ -94,22 +97,23 @@ function AppStoreBadge({
   );
 }
 
-function GooglePlaySoon({ tone = 'splash' }: { tone?: 'splash' | 'light' }) {
+function GooglePlayLink({ tone = 'splash' }: { tone?: 'splash' | 'light' }) {
   const isSplash = tone === 'splash';
   return (
-    <button
-      type="button"
-      disabled
-      className={`flex h-14 w-full cursor-not-allowed flex-col items-center justify-center gap-0.5 rounded-xl border px-3 text-center text-[13px] font-medium leading-tight tracking-tight sm:h-16 sm:text-[14px] ${
+    <a
+      href={GOOGLE_PLAY_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-3 text-center text-[13px] font-medium leading-tight tracking-tight transition-colors sm:h-16 sm:text-[14px] ${
         isSplash
-          ? 'border-white/25 text-white/45'
-          : 'border-black/15 text-black/35'
+          ? 'border-white/50 text-white hover:bg-white/10'
+          : 'border-black/25 text-black/80 hover:bg-black/5'
       }`}
-      aria-disabled="true"
+      aria-label="Get TotL on Google Play"
     >
       <span>Google Play</span>
-      <span>Coming soon</span>
-    </button>
+      <span>Download now</span>
+    </a>
   );
 }
 
@@ -122,7 +126,7 @@ function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
           slideId="splash"
           imgClassName="h-14 w-auto sm:h-16"
         />
-        <GooglePlaySoon tone="splash" />
+        <GooglePlayLink tone="splash" />
       </div>
       <button
         type="button"
@@ -312,7 +316,7 @@ export default function GetAppPage() {
                         slideId={slide.id}
                         imgClassName="h-14 w-auto"
                       />
-                      <GooglePlaySoon tone="light" />
+                      <GooglePlayLink tone="light" />
                     </div>
                     <button
                       type="button"
