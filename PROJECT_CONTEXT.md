@@ -1,428 +1,266 @@
-# TOTL Web - Current Project State
+# TOTL Project Handoff
 
-> **Last Updated**: 2025-01-XX (Performance optimization: Cache-first loading strategy implemented)
-> 
-> This is a living document. Update it when major features are added, architecture changes, or significant decisions are made.
-> 
-> **IMPORTANT**: See `PR.md` for execution rules. See `GAME_STATE.md` for game state system details.
+Last verified: 19 September 2026
 
-## 🎯 What This App Does
-TOTL is a Premier League predictions game where users:
-1. Make predictions (Home/Draw/Away) before each gameweek
-2. Compete in private mini-leagues (up to 8 members)
-3. Track live scores and their prediction accuracy
-4. Receive push notifications for goals and game events
-5. View global and mini-league leaderboards
+This is the primary context file for a fresh Cursor session. Read it before
+changing code or releasing any build. Do not add credentials, API keys,
+passwords, signing files, or customer data to this document.
 
-## 🏗️ Architecture Overview
+## Repository
 
-### Frontend
-- **Framework**: React 18.3 + TypeScript + Vite
-- **Styling**: TailwindCSS
-- **Routing**: React Router v7 with lazy loading
-- **State**: React Context (AuthContext) + Supabase real-time
-- **Game State**: Centralized `useGameweekState` hook (4 states: GW_OPEN, GW_PREDICTED, LIVE, RESULTS_PRE_GW)
-  - **Key principle**: GW is LIVE between first kickoff and last FT. A game is LIVE between kickoff and FT (status IN_PLAY or PAUSED)
-- **Key Libraries**: 
-  - `@supabase/supabase-js` - Database & auth
-  - `despia-native` - OneSignal push notifications (native app only)
-  - `react-chat-elements` - Chat UI
-  - `react-router-dom` - Routing
-  - Platform detection utilities in `src/lib/platform.ts` (planned)
+- GitHub: `https://github.com/totl433/totl-despia`
+- Product: Top of the League (TotL)
+- Website: `https://playtotl.com`
+- Android package: `com.despia.totlnative`
+- iOS bundle ID: `com.despia.totlnative`
+- Production Supabase project URL starts with:
+  `https://gyjagrtwrhctmgkootjj.supabase.co`
 
-### Backend
-- **Database**: Supabase (PostgreSQL)
-- **Auth**: Supabase Auth
-- **Functions**: Netlify Functions (TypeScript)
-- **External APIs**: 
-  - Football Data API (live scores)
-  - OneSignal (push notifications)
+The repository has materially different web and mobile branches. Do not assume
+that `main` is the mobile release branch.
 
-### Data Flow
-```
-Football Data API
-  ↓ (polled every 5min)
-pollLiveScores (Netlify Function)
-  ↓ (updates)
-Supabase live_scores table
-  ↓ (webhook trigger)
-sendScoreNotificationsWebhook (Netlify Function)
-  ↓ (sends)
-OneSignal → User devices
-```
+## Branches and Ownership
 
-### Caching & Performance
-- **Cache Layer**: `src/lib/cache.ts` - localStorage-based caching with TTL
-- **Pre-loading**: `src/services/initialDataLoader.ts` - Pre-warms cache on app init
-- **Strategy**: Cache-first with background refresh
-  - Synchronous cache checks for instant rendering
-  - Background refresh for stale data (non-blocking)
-  - All critical data pre-loaded during Volley loading screen
+### `main`
 
-## 🌐 Platform Differentiation (Web vs Native App)
+- Production website and Netlify functions.
+- Current reference commit when this file was written:
+  `4b6ed65022f9515cf12e11434e66682ca45ed808`
+- Merging a pull request to `main` triggers Netlify deployment.
+- Verify `playtotl.com` after each merge.
 
-TOTL is served on two platforms:
-- **Web Browser**: playtotl.com (public-facing website) - *planned for post-migration*
-- **Native App**: Despia wrapper (iOS/Android via Despia platform)
+### `expo-ui-carl`
 
-### Platform Detection
-- **Utility**: `src/lib/platform.ts` (planned)
-  - `isNativeApp()` - Returns `true` if running in Despia native app
-  - `isWebBrowser()` - Returns `true` if running in web browser
-- **Detection Method**: Checks for `despia` object or `onesignalplayerid` global property
-- **Current**: Uses `isDespiaAvailable()` from `src/lib/pushNotificationsV2.ts` (will be centralized)
+- Shared Expo iOS/Android development branch used by Carl and Jof.
+- Current reference commit when this file was written:
+  `2cc167690f9cf77866e9ed18e6203ba63bf5e5a3`
+- Pull this branch before starting general mobile feature work.
 
-### Platform-Specific Features
+### `hotfix/android-blank-screens`
 
-#### Web-Only Features (Planned)
-- **Cookie Consent Banner**: Required for GDPR/CCPA compliance (Termly integration)
-- **App Promotion Modal**: Shows on first visit/login to encourage app download
+- Exact source used for Android release `2.0.27 (2022222)`.
+- Current branch tip:
+  `75435f503b49fe1db1072ccc5a65bbefb32bb3db`
+- Contains Android rendering and authentication hardening not guaranteed to be
+  present on `expo-ui-carl`.
+- Reconcile this branch into the long-lived mobile branch deliberately. Do not
+  discard it or overwrite it with a broad merge.
 
-#### Native App-Only Features  
-- **Push Notifications**: OneSignal integration via Despia (not available in web)
-- **Notification Centre**: Full notification preferences UI (will be hidden on web)
-- **WhatsApp Deep Links**: Uses `whatsapp://` protocol (web uses `https://wa.me/`)
+## Current Production Status
 
-#### Shared Features
-- All game functionality (predictions, leaderboards, mini-leagues)
-- Authentication and user profiles
-- Live scores and results
-- Legal pages (Privacy Policy, Terms, Cookie Policy)
+### Website
 
-### Implementation Pattern (Planned)
-```typescript
-import { isNativeApp, isWebBrowser } from '../lib/platform';
+- Live at `https://playtotl.com`.
+- Google Analytics ID: `G-5HWWJWTRRD`.
+- GA bootstrap and cookie-consent integration are implemented.
+- App Store clicks are tracked.
+- The landing page has live App Store and Google Play links.
+- Google Play destination:
+  `https://play.google.com/store/apps/details?id=com.despia.totlnative`
+- Official store badges are present on:
+  - Splash slide
+  - All four feature slides
+  - Final download slide
+- Splash and final stacked badges use matched visible widths and exact shared
+  centerlines.
+- Feature-slide badges are side by side in one shared absolute CTA band with
+  optically matched visible heights and identical positioning.
+- Recent website pull requests:
+  - PR #4: enable Google Play links
+  - PR #5: use official Google Play artwork
+  - PR #6/#7: correct visible badge sizing
+  - PR #8: add Google Play badge to feature slides
+  - PR #9: precisely center stacked badges
 
-// Conditional rendering
-{isNativeApp() && <NotificationCentreButton />}
-{isWebBrowser() && <CookieConsent />}
-```
+### Android
 
-### Implementation Status
-- ⏳ **Planned**: See `PLATFORM_DIFFERENTIATION_PLAN.md` for full implementation plan
-- **Ready for execution**: After migration to playtotl.com
+- Production release: `2.0.27`
+- Production version code: `2022222`
+- Released through Google Play on 19 September 2026.
+- The release was first submitted to Internal testing and then promoted to
+  Production.
+- Managed publishing was enabled during review; the approved release was
+  manually published.
+- Play Console release name may display as `12 March`; the actual current
+  version code is `2022222`.
 
-### Related Documentation
-- `PLATFORM_DIFFERENTIATION_PLAN.md` - Full implementation plan (planned for post-migration)
+Important Android fixes in `hotfix/android-blank-screens`:
 
-## 📁 Project Structure
+- Removed Android `RefreshControl` usage from Predictions/Home, Mini leagues,
+  and branded leaderboard list screens. Under React Native New Architecture it
+  caused valid loaded content to paint as a blank screen.
+- Confirmed affected screens render on the Android emulator with real account
+  data.
+- Added visible session/profile loading and failure states.
+- Added authentication timeouts, normalized email handling, inline friendly
+  errors, and keyboard dismissal.
+- Busted persisted React Query cache for version `2.0.27`.
+- Disabled problematic Android layout transitions where required.
 
-```
-src/
-├── main.tsx              # App entry, routing, auth gate
-├── App.tsx               # Alternative router (legacy?)
-├── pages/                # 18 active page components (+ unused in _unused/)
-│   ├── Home.tsx          # Main dashboard (eagerly loaded)
-│   ├── Tables.tsx         # League tables (eagerly loaded)
-│   ├── Global.tsx         # Global leaderboard (eagerly loaded)
-│   ├── Predictions.tsx   # Predictions center (eagerly loaded)
-│   ├── League.tsx         # Mini-league page (lazy)
-│   ├── Admin.tsx         # Web admin (lazy)
-│   ├── ApiAdmin.tsx      # App admin (lazy)
-│   ├── Profile.tsx       # User profile (lazy)
-│   ├── Stats.tsx         # User stats (lazy)
-│   ├── NotificationCentre.tsx # Notification settings (lazy)
-│   ├── EmailPreferences.tsx # Email preferences (lazy)
-│   ├── CreateLeague.tsx  # Create league (lazy)
-│   ├── HowToPlay.tsx     # How to play guide (lazy)
-│   ├── CookiePolicy.tsx  # Cookie policy (lazy)
-│   ├── SwipeCardPreview.tsx # Swipe card preview (lazy)
-│   ├── AdminData.tsx     # Admin data view (lazy)
-│   ├── TempGlobal.tsx    # Temp global view (lazy)
-│   └── _unused/          # Unused/legacy pages (moved here)
-├── components/           # 131 reusable components
-│   ├── BottomNav.tsx    # Bottom navigation
-│   ├── PredictionsBanner.tsx
-│   ├── FloatingProfile.tsx
-│   └── ...
-├── features/
-│   └── auth/            # Auth components (AuthGate, AuthFlow, SignInForm, etc.)
-│       └── AuthGate.tsx # Main auth route handler (replaces old Auth.tsx page)
-├── context/
-│   └── AuthContext.tsx  # Auth state management
-├── hooks/
-│   └── useGameweekState.ts  # CRITICAL: Game state hook (always use this)
-├── lib/
-│   ├── supabase.ts      # Supabase client
-│   ├── gameweekState.ts # Game state utility functions
-│   └── ...
-├── services/            # Data services
-│   └── initialDataLoader.ts
-└── ...
+Do not reintroduce `TotlRefreshControl` on the three fixed Android screens
+without testing a release/New Architecture build on Android.
 
-netlify/functions/      # 48 Netlify serverless functions
-supabase/sql/           # 34 SQL migration files
-scripts/                # 262 utility scripts (.mjs, .sql, .sh)
-```
+### iOS
 
-## 🔑 Key Features & Current State
+- The app uses EAS/TestFlight.
+- `supportsTablet` is false.
+- Branded leaderboard products are consumable season-access purchases:
+  - `totl_access_099`
+  - `totl_access_199`
+- Confirm the current TestFlight build and App Store submission in EAS/App
+  Store Connect before incrementing versions. Do not infer it from this file.
 
-### ✅ Working Features
-- **Authentication**: Supabase Auth with protected routes
-- **Live Scores**: Real-time updates from Football Data API
-- **Predictions**: Users can submit predictions before deadline
-- **Mini-Leagues**: Create/join leagues with codes (max 8 members)
-- **Push Notifications**: OneSignal integration via Despia
-- **Leaderboards**: Global and mini-league rankings
-- **Onboarding**: Welcome flow for new users
-- **Game State System**: Centralized 4-state system (GW_OPEN, GW_PREDICTED, LIVE, RESULTS_PRE_GW)
+## Platform Rules
 
-### ⚠️ Known Issues
-- **Netlify Deployment**: Wrong repository connection (see `NETLIFY_DEPLOYMENT_BLOCKED.md`)
-- **Vercel Integration**: Shows errors but not primary deployment
+- Supported surfaces are:
+  1. Web (`playtotl.com`)
+  2. Expo native app (iOS and Android)
+- Despia is deprecated. Do not propose Despia-specific implementations.
+- The website and mobile app are released independently.
+- A mobile/TestFlight request does not authorize a Netlify deployment.
+- A website request does not require an EAS build.
 
-### 🚧 Recent Changes
-- Push notification system migrated to webhook-based (v2)
-- Live scores system uses `live_scores` table as single source of truth
-- Auth flow with AuthGate component protecting routes (uses `src/features/auth/`, not `src/pages/Auth.tsx`)
-- Game state system implemented with `useGameweekState` hook
-- Gameweek transition system: users choose when to move to new GW (stored in `user_notification_preferences.current_viewing_gw`)
-- All-submitted notifications now work for all mini-leagues (not just API Test)
-- Unused pages moved to `src/pages/_unused/` folder
+## Project Areas
 
-## 🗄️ Database Schema (Key Tables)
+- Web application: `src/`
+- Web entry/router: `src/main.tsx`
+- Download landing page: `src/pages/GetApp.tsx`
+- Google Analytics: `src/lib/googleAnalytics.ts`
+- Cookie consent: `src/features/auth/consentStorage.ts`
+- Netlify functions: `netlify/functions/`
+- Expo app: `apps/mobile/`
+- Mobile root/session handling: `apps/mobile/src/AppRoot.tsx`
+- Mobile navigation: `apps/mobile/src/navigation/`
+- Mobile Predictions/Home: `apps/mobile/src/screens/HomeScreen.tsx`
+- Mobile mini leagues: `apps/mobile/src/screens/LeaguesScreen.tsx`
+- Branded leaderboard list:
+  `apps/mobile/src/screens/brandedLeaderboards/BrandedLeaderboardListScreen.tsx`
+- BFF: `apps/bff/`
+- Shared domain package: `packages/domain/`
+- Database SQL/migrations: `supabase/`
 
-### Core Tables
-- `users` - User profiles
-- `app_fixtures` - Premier League fixtures (use for fixture details)
-- `test_api_fixtures` - Test fixtures for development
-- `live_scores` - Current scores (updated by pollLiveScores) - **USE FOR LIVE DATA**
-- `app_gw_results` - Official H/D/A results of finished games - **USE FOR FINAL RESULTS**
-- `predictions` / `app_gw_submissions` - User predictions
-- `mini_leagues` - League data
-- `push_subscriptions` - OneSignal player IDs
-- `notification_state` - Tracks sent notifications (prevents duplicates)
-- `meta` - App metadata (current_gw, etc.)
-- `user_notification_preferences` - User preferences including `current_viewing_gw`
+## Safe Setup on a New Laptop
 
-### Views (Single Source of Truth)
-- `app_v_gw_points` - Gameweek points calculations
-- `app_v_ocp_overall` - Overall leaderboard calculations
-
-## 🎮 Game State System
-
-The app uses a centralized 4-state system for gameweeks:
-
-1. **GW_OPEN**: New GW published, user hasn't submitted predictions (before first kickoff)
-2. **GW_PREDICTED**: User submitted, but first kickoff hasn't happened
-3. **LIVE**: First kickoff happened AND last game hasn't finished (FT)
-4. **RESULTS_PRE_GW**: GW has finished (last game has reached FT AND no active games)
-
-**Key Principles:**
-- **GW is LIVE**: Between first kickoff and last FT (last game by kickoff time must reach FT)
-- **Game is LIVE**: Between kickoff and FT (status IN_PLAY or PAUSED in `live_scores`)
-
-**CRITICAL**: Always use `useGameweekState` hook. Never create custom state logic. See `GAME_STATE.md` for full details.
-
-## 🔧 Development Workflow
-
-### Running Locally
 ```bash
-npm run dev              # Start dev server + Tailwind watch
-npm run build            # Production build
-npm run check            # Type check + build
+git clone https://github.com/totl433/totl-despia.git
+cd totl-despia
+git fetch --all --prune
+npm install
 ```
 
-### Key Scripts
-- `scripts/monitor-jof-notifications.mjs` - Check notification status
-- `scripts/check-live-score.mjs` - Debug live scores
-- `scripts/fix-finished-game.mjs` - Manually set game status
+For website work:
 
-### Netlify Functions
-- `pollLiveScores` - Scheduled (every 5min), polls Football Data API
-- `sendScoreNotificationsWebhook` - Webhook-triggered, sends notifications
-- `registerPlayer` - Registers OneSignal player IDs
-- `sendPushAll` - Broadcast notifications
-
-## 📚 Important Documentation
-
-### Execution Rules (MUST READ)
-- `PR.md` - Core execution rules (single source of truth, testing, debugging, game state)
-
-### System Architecture
-- `GAME_STATE.md` - Game state system (4 states, useGameweekState hook, component behavior)
-- `API_SYSTEM_EXPLAINER.md` - Live scores system
-- `NOTIFICATIONS_V2_MIGRATION_COMPLETE.md` - Notification architecture
-- `DESPIA_DOCUMENTATION.md` - Despia/OneSignal setup
-- `PLATFORM_DIFFERENTIATION_PLAN.md` - Platform differentiation implementation plan (web vs native app)
-
-### Guides
-- `JOF_SIMPLE_GUIDE.md` - Simple task guides
-- `NOTIFICATION_DEBUG_GUIDE.md` - Debugging notifications
-
-### Issues & Fixes
-- `NETLIFY_DEPLOYMENT_BLOCKED.md` - Deployment issue
-- `PUSH_NOTIFICATION_ISSUE.md` - Notification problems
-- Many other issue-specific docs in root
-
-## 🎨 Design Patterns
-
-### Component Structure
-- Pages in `src/pages/`
-- Reusable components in `src/components/`
-- Feature-specific code in `src/features/`
-- Utilities in `src/lib/`
-
-### Loading Strategy
-
-#### Pre-loading & Caching (Performance Optimization)
-- **Initial Data Loader** (`src/services/initialDataLoader.ts`): Pre-warms cache during app initialization
-  - Blocks on critical data: fixtures, picks, league data, ML live tables, user submissions, game state, live scores
-  - Pre-caches for instant page loads: Home, Predictions, Global, Tables pages
-  - Cache TTL: HOME (5min), GLOBAL (10min), PREDICTIONS (5min)
-  
-- **Cache-First Strategy**: All pages check cache synchronously on mount
-  - Instant render if cache is fresh (< TTL threshold)
-  - Background refresh if cache is stale
-  - Blocking fetch only if no cache exists
-  - **Single source of truth**: Read cache once, pass data via props/state to avoid redundant reads
-  
-- **Synchronous State Initialization**: Components initialize state from cache immediately in `loadInitialStateFromCache()`
-  - State initialized before first render (no loading spinners when cache exists)
-  - Example: `liveScoresFromCache` state initialized from `initialState.liveScores`
-  - Data appears instantly on page load
-  - Background updates refresh data silently via hooks/subscriptions
-  
-- **Props-Based Data Flow**: Parent components calculate derived data from cache and pass as props
-  - Avoids child components re-reading cache (e.g., LeaderboardsSection receives pre-calculated live scores)
-  - Single cache read per data type, data flows down via props
-  - Example: HomePage calculates `currentGwLiveScore` from cache and passes to LeaderboardsSection
-  
-- **Font Loading Optimization**: 
-  - Font preloading via `<link rel="preload">` in `index.html`
-  - `font-display: block` prevents layout shift during font loading
-  - Ensures text renders with correct sizing immediately
-
-#### Page Loading
-- **Eagerly loaded**: Home, Tables, Global, Predictions (BottomNav pages)
-- **Lazy loaded**: League, Admin, Profile, etc.
-- Uses `Suspense` with `PageLoader` fallback for lazy routes
-- All critical data pre-loaded before initial render
-
-#### Cache Keys
-- `home:basic:${userId}` - Basic home page data (GW, points, overall)
-- `home:fixtures:${userId}:${gw}` - Fixtures with live scores and user picks
-- `home:gwResults:${gw}` - GW results for fixture outcomes
-- `home:leagueData:${userId}:${gw}` - Mini-league data
-- `ml_live_table:${leagueId}:${gw}` - ML live table data (fixtures, picks, submissions, results)
-- `gameState:${gw}` - Gameweek state (GW_OPEN, LIVE, etc.)
-- `user:submissions:${userId}` - User submission status for all GWs
-- `app:lastCompletedGw` - Last completed GW (avoids DB query)
-
-### Game State Pattern
-```typescript
-import { useGameweekState } from '../hooks/useGameweekState';
-
-// Global state (no userId)
-const { state, loading, error } = useGameweekState(currentGw);
-
-// User-specific state (with userId)
-const { state, loading, error } = useGameweekState(currentGw, user?.id);
-
-// Then use state: 'GW_OPEN' | 'GW_PREDICTED' | 'LIVE' | 'RESULTS_PRE_GW'
+```bash
+git switch main
+git pull --ff-only origin main
+npm install
+npm run build
 ```
 
-### Styling
-- TailwindCSS utility classes
-- Custom theme colors (see `tailwind.config.cjs`)
-- "Old school" theme mode available
+For general mobile work:
 
-## 🚀 Deployment
+```bash
+git switch expo-ui-carl
+git pull --ff-only origin expo-ui-carl
+npm install
+cd apps/mobile
+```
 
-### Primary: Netlify
-- **Branch**: `staging`
-- **Build**: `npm run build`
-- **Publish**: `dist/`
-- **Functions**: `netlify/functions/`
-- **Config**: `netlify.toml`
+For Android production-hotfix investigation:
 
-### Secondary: Vercel
-- Currently has connection issues (not critical)
+```bash
+git switch hotfix/android-blank-screens
+git pull --ff-only origin hotfix/android-blank-screens
+npm install
+cd apps/mobile
+```
 
-## 💡 Common Tasks
+Install and authenticate these tools as needed:
 
-### Adding a New Page
-1. Create component in `src/pages/`
-2. Add route in `src/main.tsx`
-3. Use lazy loading if not critical path
-4. Add to BottomNav if needed
-5. **For performance**: Implement cache-first loading pattern (see `Home.tsx` example)
-   - Initialize state from cache synchronously
-   - Background refresh if cache is stale
-   - Pre-load data in `initialDataLoader.ts` if page is critical
+- GitHub CLI (`gh`)
+- EAS CLI
+- Android Studio/SDK and `adb`
+- Xcode (for iOS)
+- Supabase CLI only when the correct production account is available
 
-### Implementing Cache-First Loading (Best Practice)
-When adding new pages or optimizing existing ones, follow this pattern to ensure instant loading:
+## Release Commands
 
-1. **Create `loadInitialStateFromCache()` function**:
-   - Load all required data from cache synchronously (before first render)
-   - Return object with all initial state values
-   - Return empty/fallback values if no cache exists
+Run EAS commands from `apps/mobile`.
 
-2. **Initialize state from cache**:
-   ```typescript
-   const initialState = loadInitialStateFromCache();
-   const [data, setData] = useState(initialState.data);
-   ```
+Android:
 
-3. **Merge with hook updates**:
-   - Use `useMemo` to merge cached state with hook data
-   - Prioritize cached data for instant display
-   - Hook updates refresh silently in background
+```bash
+npx eas build --platform android --profile production
+```
 
-4. **Avoid redundant cache reads**:
-   - Read cache once per data type in parent component
-   - Pass pre-calculated data as props to children
-   - Don't re-read the same cache key in child components
+iOS/TestFlight:
 
-5. **Example pattern** (from HomePage):
-   ```typescript
-   // Load from cache synchronously (before render)
-   const loadInitialStateFromCache = () => {
-     const cached = getCached<DataType>(`cache:key`);
-     return { data: cached?.data || defaultData, hasCache: !!cached };
-   };
-   
-   // Initialize state from cache
-   const initialState = loadInitialStateFromCache();
-   const [data, setData] = useState(initialState.data);
-   
-   // Merge with hook updates (background refresh)
-   const mergedData = useMemo(() => {
-     return { ...data, ...hookData };
-   }, [data, hookData]);
-   ```
+```bash
+npx eas build --platform ios --profile production --auto-submit
+```
 
-### Adding a Netlify Function
-1. Create `.ts` file in `netlify/functions/`
-2. Export handler function
-3. Configure in `netlify.toml` if scheduled
+Before either build:
 
-### Working with Game State
-1. Import `useGameweekState` hook
-2. Pass `currentGw` and optionally `userId`
-3. Check `GAME_STATE.md` for component behavior rules
-4. Use correct data source based on state:
-   - LIVE: `live_scores` table
-   - RESULTS: `app_gw_results` table
-5. Test in all 4 states
+1. Confirm the intended branch and commit.
+2. Confirm the store version/build number.
+3. Build/export locally where practical.
+4. Confirm app name, icon, bundle/package identity, and environment.
+5. Do not trigger unrelated web deployment.
 
-### Debugging Notifications
-1. Check `scripts/monitor-jof-notifications.mjs`
-2. Review `push_subscriptions` table
-3. Check `notification_state` for duplicates
-4. See `NOTIFICATION_DEBUG_GUIDE.md`
+## Validation Expectations
 
-## 🔄 Keeping This Updated
+Website:
 
-When you make significant changes:
-1. Update the "Last Updated" date
-2. Add new features to "Working Features"
-3. Document architecture changes
-4. Note any new patterns or conventions
-5. Update "Recent Changes" section
+- Run `npm run build`.
+- Use a pull request and wait for Netlify preview checks.
+- Visually verify responsive CTA/layout changes in the preview.
+- After merge, verify the production URL rather than assuming deployment.
 
----
+Mobile:
 
-**Note**: This file should be your first reference when starting work. Always check `PR.md` for execution rules and `GAME_STATE.md` for game state details.
+- Validate production bundles before EAS when practical.
+- Test fresh install, upgrade, logged-out, logged-in, background, and
+  cold-start paths for risky changes.
+- For Android UI issues, collect Metro logs and `adb logcat`, but trust visible
+  runtime behavior over harmless emulator graphics warnings.
+- RevenueCat `BILLING_UNAVAILABLE` is expected on a sideloaded emulator and is
+  not evidence of a rendering failure.
 
+## Services and Security
+
+- Supabase is production infrastructure. Inspect before changing schema.
+- Never expose or commit service-role keys.
+- The Supabase MCP connection previously visible on one machine pointed to an
+  unrelated inactive project, not the production TOTL project. Verify project
+  ref `gyjagrtwrhctmgkootjj` before any remote operation.
+- EAS already has Android signing credentials and a Google Play service account
+  configured.
+- Apple/Google store actions are external production changes: verify target
+  track and release number before confirming.
+
+## Known Local-Machine Issue
+
+On the previous Mac, system Git exited with status 69 because the Xcode licence
+had not been accepted. A pure-Python Dulwich workaround was temporarily used.
+On a new laptop, fix this normally by installing Xcode command-line tools and
+accepting the Xcode licence; do not preserve the temporary workaround.
+
+## First Actions in a New Cursor Session
+
+Ask Cursor to:
+
+1. Read `AGENTS.md`, this file, and relevant `.cursor/rules/`.
+2. Run `git status`, identify the current branch, and fetch remote refs.
+3. Compare branch tip with its remote before editing.
+4. Confirm whether the task is web, iOS, Android, BFF, or database work.
+5. Preserve unrelated local changes.
+6. Use a focused feature/fix branch and pull request for website changes.
+
+## Remaining Follow-up
+
+- Deliberately reconcile `hotfix/android-blank-screens` into the long-lived
+  mobile branch after reviewing the diff.
+- Confirm the Google Play Billing policy warning is cleared for the production
+  bundle in Play Console.
+- Keep this file updated after meaningful releases, branch changes, or
+  architecture decisions.
