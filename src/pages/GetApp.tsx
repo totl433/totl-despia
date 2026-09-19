@@ -97,22 +97,25 @@ function AppStoreBadge({
   );
 }
 
-function GooglePlayLink({ tone = 'splash' }: { tone?: 'splash' | 'light' }) {
-  const isSplash = tone === 'splash';
+function GooglePlayBadge({
+  imgClassName = 'h-14 w-auto',
+}: {
+  imgClassName?: string;
+}) {
   return (
     <a
       href={GOOGLE_PLAY_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex h-14 w-full flex-col items-center justify-center gap-0.5 rounded-xl border px-3 text-center text-[13px] font-medium leading-tight tracking-tight transition-colors sm:h-16 sm:text-[14px] ${
-        isSplash
-          ? 'border-white/50 text-white hover:bg-white/10'
-          : 'border-black/25 text-black/80 hover:bg-black/5'
-      }`}
+      className="flex w-full justify-center transition-opacity hover:opacity-90 active:opacity-80"
       aria-label="Get TotL on Google Play"
     >
-      <span>Google Play</span>
-      <span>Download now</span>
+      <img
+        src="/assets/get-app/google-play-badge.png"
+        alt="Get it on Google Play"
+        className={imgClassName}
+        draggable={false}
+      />
     </a>
   );
 }
@@ -126,7 +129,7 @@ function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
           slideId="splash"
           imgClassName="h-14 w-auto sm:h-16"
         />
-        <GooglePlayLink tone="splash" />
+        <GooglePlayBadge imgClassName="h-14 w-auto sm:h-16" />
       </div>
       <button
         type="button"
@@ -316,7 +319,7 @@ export default function GetAppPage() {
                         slideId={slide.id}
                         imgClassName="h-14 w-auto"
                       />
-                      <GooglePlayLink tone="light" />
+                      <GooglePlayBadge />
                     </div>
                     <button
                       type="button"
