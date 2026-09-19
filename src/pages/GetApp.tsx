@@ -99,15 +99,17 @@ function AppStoreBadge({
 
 function GooglePlayBadge({
   imgClassName = 'h-auto w-[207px]',
+  className = 'w-full',
 }: {
   imgClassName?: string;
+  className?: string;
 }) {
   return (
     <a
       href={GOOGLE_PLAY_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex w-full justify-center transition-opacity hover:opacity-90 active:opacity-80"
+      className={`flex justify-center transition-opacity hover:opacity-90 active:opacity-80 ${className}`}
       aria-label="Get TotL on Google Play"
     >
       <img
@@ -360,13 +362,17 @@ export default function GetAppPage() {
           })}
         </div>
 
-        {/* Feature slides: App Store badge in the band above the dots (does not move the dots) */}
+        {/* Feature slides: store badges in the shared band above the dots. */}
         {!onSplash && !onCta && (
           <div className="pointer-events-none absolute inset-x-0 bottom-[calc(2.75rem+env(safe-area-inset-bottom,0px))] z-20 flex h-[4.75rem] items-center justify-center px-5">
-            <div className="pointer-events-auto">
+            <div className="pointer-events-auto flex items-center justify-center gap-2">
               <AppStoreBadge
                 placement="feature_slide"
                 slideId={SLIDES[index].id}
+              />
+              <GooglePlayBadge
+                className="w-auto"
+                imgClassName="h-[66px] w-auto"
               />
             </div>
           </div>
