@@ -98,7 +98,7 @@ function AppStoreBadge({
 }
 
 function GooglePlayBadge({
-  imgClassName = 'h-14 w-auto',
+  imgClassName = 'h-auto w-[180px]',
 }: {
   imgClassName?: string;
 }) {
@@ -129,7 +129,7 @@ function SplashCtas({ onPlayOnline }: { onPlayOnline: () => void }) {
           slideId="splash"
           imgClassName="h-14 w-auto sm:h-16"
         />
-        <GooglePlayBadge imgClassName="h-14 w-auto sm:h-16" />
+        <GooglePlayBadge imgClassName="h-auto w-[180px] sm:w-[206px]" />
       </div>
       <button
         type="button"
