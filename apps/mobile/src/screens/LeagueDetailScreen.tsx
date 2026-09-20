@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Image, Pressable, Share, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Alert, Image, Platform, Pressable, Share, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
@@ -1279,7 +1279,11 @@ export default function LeagueDetailScreen() {
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
               >
                 {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -1339,7 +1343,11 @@ export default function LeagueDetailScreen() {
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
               >
                 {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -1417,7 +1425,11 @@ export default function LeagueDetailScreen() {
                 ref={predictionsScrollRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
                 onScroll={(e) => {
                   predictionsScrollYRef.current = e.nativeEvent.contentOffset.y;
                 }}
