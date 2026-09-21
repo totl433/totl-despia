@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Image, Pressable, TextInput, View } from 'react-native';
+import { Alert, Image, Platform, Pressable, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
@@ -29,10 +29,12 @@ export default function CreateLeagueScreen() {
   const [creating, setCreating] = React.useState(false);
 
   const handlePickBadge = React.useCallback(async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Please allow photo library access to pick a badge.', [{ text: 'OK' }]);
-      return;
+    if (Platform.OS === 'ios') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to pick a badge.', [{ text: 'OK' }]);
+        return;
+      }
     }
 
     const picked = await ImagePicker.launchImageLibraryAsync({

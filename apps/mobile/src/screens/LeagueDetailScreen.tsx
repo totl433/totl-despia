@@ -519,10 +519,12 @@ export default function LeagueDetailScreen() {
     const leagueName = String(leagueMeta?.name ?? params.name ?? 'Mini league');
     if (!leagueId) return;
 
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Please allow photo library access to update the league badge.', [{ text: 'OK' }]);
-      return;
+    if (Platform.OS === 'ios') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to update the league badge.', [{ text: 'OK' }]);
+        return;
+      }
     }
 
     const picked = await ImagePicker.launchImageLibraryAsync({

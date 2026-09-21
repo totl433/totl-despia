@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Keyboard, Pressable, View } from 'react-native';
+import { Alert, Keyboard, Platform, Pressable, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTokens } from '@totl/ui';
@@ -205,10 +205,12 @@ export default function Chat2ThreadScreen() {
 
   const handleChooseGroupIcon = React.useCallback(async () => {
     if (!leagueId) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Please allow photo library access to update the group icon.', [{ text: 'OK' }]);
-      return;
+    if (Platform.OS === 'ios') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to update the group icon.', [{ text: 'OK' }]);
+        return;
+      }
     }
 
     const picked = await ImagePicker.launchImageLibraryAsync({
