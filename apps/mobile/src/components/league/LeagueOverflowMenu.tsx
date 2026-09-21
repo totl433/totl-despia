@@ -83,7 +83,13 @@ export default function LeagueOverflowMenu({
   open: boolean;
   onClose: () => void;
   onAction: (action: LeagueOverflowAction) => void;
-  extraItems?: Array<{ key: string; label: string; icon: React.JSX.Element; onPress: () => void }>;
+  extraItems?: Array<{
+    key: string;
+    label: string;
+    icon: React.JSX.Element;
+    destructive?: boolean;
+    onPress: () => void;
+  }>;
   showBadgeActions?: boolean;
   showResetBadge?: boolean;
   showCoreActions?: boolean;
@@ -164,7 +170,14 @@ export default function LeagueOverflowMenu({
           />
         ) : null}
         {extraItems.map((it) => (
-          <MenuRow key={it.key} label={it.label} icon={it.icon} onPress={it.onPress} textColor={sheetTextColor} />
+          <MenuRow
+            key={it.key}
+            label={it.label}
+            icon={it.icon}
+            destructive={it.destructive}
+            onPress={it.onPress}
+            textColor={sheetTextColor}
+          />
         ))}
         {showBadgeActions ? (
           <>

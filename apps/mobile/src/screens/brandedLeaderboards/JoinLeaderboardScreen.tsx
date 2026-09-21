@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
 import { api } from '../../lib/api';
 import { shouldShowPaywallBeforeJoin } from '../../lib/brandedLeaderboardAccess';
@@ -8,6 +9,7 @@ import { shouldShowPaywallBeforeJoin } from '../../lib/brandedLeaderboardAccess'
 export default function JoinLeaderboardScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const t = useTokens();
 
   const leaderboardId: string | undefined = route.params?.leaderboardId;
@@ -48,6 +50,10 @@ export default function JoinLeaderboardScreen() {
       }
 
       await api.joinBrandedLeaderboard(targetId!, trimmed);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-mine'] }),
+        queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-manage'] }),
+      ]);
       (navigation as any).replace('BrandedLeaderboard', { idOrSlug: targetId });
     } catch (err: any) {
       const status = typeof err?.status === 'number' ? err.status : null;
@@ -59,7 +65,7 @@ export default function JoinLeaderboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, [code, leaderboardId, navigation]);
+  }, [code, leaderboardId, navigation, queryClient]);
 
   return (
     <Screen>

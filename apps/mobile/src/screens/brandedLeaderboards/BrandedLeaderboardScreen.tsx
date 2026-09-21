@@ -652,37 +652,22 @@ export default function BrandedLeaderboardScreen({
         onPressChat={() => (navigation as any).navigate('ChatHub')}
         avatarUrl={avatarUrl}
         title={headerTitle}
-        hideProfile={!hideBackButton}
+        hideProfile
         hideChat
         rightAction={
-          hasActiveMembership ? (
-            <Pressable
-              onPress={() => setMenuOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Leaderboard menu"
-              disabled={leaving}
-              style={({ pressed }) => ({
-                paddingHorizontal: 8,
-                paddingVertical: 6,
-                opacity: pressed || leaving ? 0.75 : 1,
-              })}
-            >
-              <Ionicons name="ellipsis-horizontal" size={22} color={t.color.text} />
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={handleJoin}
-              accessibilityRole="button"
-              accessibilityLabel="Join leaderboard"
-              style={({ pressed }) => ({
-                paddingHorizontal: 8,
-                paddingVertical: 6,
-                opacity: pressed ? 0.75 : 1,
-              })}
-            >
-              <TotlText style={{ color: t.color.brand, fontWeight: '800', fontSize: 16 }}>Join</TotlText>
-            </Pressable>
-          )
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Leaderboard menu"
+            disabled={leaving}
+            style={({ pressed }) => ({
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              opacity: pressed || leaving ? 0.75 : 1,
+            })}
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color={t.color.text} />
+          </Pressable>
         }
         leftAction={
           hideBackButton ? undefined : (
@@ -711,15 +696,28 @@ export default function BrandedLeaderboardScreen({
         onAction={() => {}}
         extraItems={[
           {
-            key: 'leave-branded-leaderboard',
-            label: leaving ? 'Leaving...' : 'Leave leaderboard',
-            icon: <Ionicons name="log-out-outline" size={18} color={t.color.danger} />,
-            onPress: confirmLeave,
+            key: 'join-branded-leaderboard',
+            label: 'Join leaderboard',
+            icon: <Ionicons name="add" size={20} color={t.color.text} />,
+            onPress: () => {
+              setMenuOpen(false);
+              handleJoin();
+            },
           },
+          ...(hasActiveMembership
+            ? [
+                {
+                  key: 'leave-branded-leaderboard',
+                  label: leaving ? 'Leaving...' : 'Leave leaderboard',
+                  icon: <Ionicons name="log-out-outline" size={18} color={t.color.danger} />,
+                  onPress: confirmLeave,
+                  destructive: true,
+                },
+              ]
+            : []),
         ]}
         showBadgeActions={false}
         showCoreActions={false}
-        menuTextColor={t.color.text}
       />
       <View style={{ flex: 1, minHeight: 0 }}>
         {viewTab === 'broadcast' && canAccessBroadcast ? (
