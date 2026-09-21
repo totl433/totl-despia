@@ -8,6 +8,7 @@ import HeaderTotlLogo from '../components/HeaderTotlLogo';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { supabase } from '../lib/supabase';
 import { saveUsername } from '../lib/userProfile';
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, validateDisplayName } from '../lib/displayName';
 
 export default function ChooseUsernameScreen({ onComplete }: { onComplete: () => void }) {
   const t = useTokens();
@@ -18,6 +19,11 @@ export default function ChooseUsernameScreen({ onComplete }: { onComplete: () =>
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    const localError = validateDisplayName(displayName);
+    if (localError) {
+      Alert.alert('Could not save username', localError);
+      return;
+    }
     setBusy(true);
     try {
       const { data } = await supabase.auth.getUser();
@@ -69,7 +75,8 @@ export default function ChooseUsernameScreen({ onComplete }: { onComplete: () =>
             keyboardAppearance={isDark ? 'dark' : 'light'}
             selectionColor={t.color.brand}
             value={displayName}
-            onChangeText={setDisplayName}
+            onChangeText={(v) => setDisplayName(v.slice(0, USERNAME_MAX_LENGTH))}
+            maxLength={USERNAME_MAX_LENGTH}
             placeholder="e.g. Thomas"
             placeholderTextColor={t.color.muted}
             style={{
@@ -82,6 +89,9 @@ export default function ChooseUsernameScreen({ onComplete }: { onComplete: () =>
               letterSpacing: 0,
             }}
           />
+          <TotlText variant="muted" style={{ marginTop: 8, fontSize: 13 }}>
+            {USERNAME_MIN_LENGTH}–{USERNAME_MAX_LENGTH} characters
+          </TotlText>
         </Card>
       </KeyboardAwareScrollView>
 

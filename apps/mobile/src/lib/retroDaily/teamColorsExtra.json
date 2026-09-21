@@ -1,0 +1,217 @@
+{
+  "ARS": {
+    "primary": "#EF0107",
+    "secondary": "#FBFFFF",
+    "source": "Arsenal"
+  },
+  "AVL": {
+    "primary": "#490125",
+    "secondary": "#93BDE4",
+    "source": "Aston Villa"
+  },
+  "BAR": {
+    "primary": "#E31C23",
+    "secondary": "#FFFFFF",
+    "source": "Barnsley"
+  },
+  "BHA": {
+    "primary": "#0057B8",
+    "secondary": "#FFFFFF",
+    "source": "Brighton WFC"
+  },
+  "BIR": {
+    "primary": "#0000FF",
+    "secondary": "#FFFFFF",
+    "source": "Birmingham City"
+  },
+  "BLA": {
+    "primary": "#009EE0",
+    "secondary": "#FFFFFF",
+    "source": "Blackburn Rovers"
+  },
+  "BLP": {
+    "primary": "#FF5F00",
+    "secondary": "#FFFFFF",
+    "source": "Blackpool"
+  },
+  "BOL": {
+    "primary": "#FFFFFF",
+    "secondary": "#1A1A1A",
+    "source": "Bolton Wanderers"
+  },
+  "BRD": {
+    "primary": "#7A0001",
+    "secondary": "#F4A300",
+    "source": "Bradford City"
+  },
+  "BRE": {
+    "primary": "#E30613",
+    "secondary": "#FFFFFF",
+    "source": "Brentford"
+  },
+  "BUR": {
+    "primary": "#6C1D45",
+    "secondary": "#99D6EA",
+    "source": "Burnley"
+  },
+  "CAR": {
+    "primary": "#0070B5",
+    "secondary": "#FFFFFF",
+    "source": "Cardiff City"
+  },
+  "CHA": {
+    "primary": "#D4021D",
+    "secondary": "#FFFFFF",
+    "source": "Charlton Athletic"
+  },
+  "CHE": {
+    "primary": "#034694",
+    "secondary": "#FFFFFF",
+    "source": "Chelsea"
+  },
+  "COV": {
+    "primary": "#77BBFF",
+    "secondary": "#FFFFFF",
+    "source": "Coventry City"
+  },
+  "CRY": {
+    "primary": "#1B458F",
+    "secondary": "#C4122E",
+    "source": "Crystal Palace"
+  },
+  "DER": {
+    "primary": "#FFFFFF",
+    "secondary": "#000000",
+    "source": "Derby County"
+  },
+  "EVE": {
+    "primary": "#003399",
+    "secondary": "#FFFFFF",
+    "source": "Everton"
+  },
+  "FUL": {
+    "primary": "#FFFFFF",
+    "secondary": "#000000",
+    "source": "Fulham"
+  },
+  "HUD": {
+    "primary": "#0E63AD",
+    "secondary": "#FFFFFF",
+    "source": "Huddersfield Town"
+  },
+  "HUL": {
+    "primary": "#F5971D",
+    "secondary": "#000000",
+    "source": "Hull City"
+  },
+  "IPS": {
+    "primary": "#3A64A3",
+    "secondary": "#DE2C37",
+    "source": "Ipswich Town"
+  },
+  "LEE": {
+    "primary": "#FFFFFF",
+    "secondary": "#1D428A",
+    "source": "Leeds United"
+  },
+  "LEI": {
+    "primary": "#003090",
+    "secondary": "#FFFFFF",
+    "source": "Leicester City"
+  },
+  "LIV": {
+    "primary": "#C8102E",
+    "secondary": "#FFFFFF",
+    "source": "Liverpool"
+  },
+  "LUT": {
+    "primary": "#F2922F",
+    "secondary": "#1B4695",
+    "source": "Luton Town"
+  },
+  "MCI": {
+    "primary": "#6CABDD",
+    "secondary": "#FFFFFF",
+    "source": "Manchester City"
+  },
+  "MID": {
+    "primary": "#FF0000",
+    "secondary": "#FFFFFF",
+    "source": "Middlesbrough"
+  },
+  "NOR": {
+    "primary": "#FFF200",
+    "secondary": "#00A651",
+    "source": "fallback"
+  },
+  "OLD": {
+    "primary": "#0053A0",
+    "secondary": "#E30613",
+    "source": "fallback"
+  },
+  "POR": {
+    "primary": "#001489",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "QPR": {
+    "primary": "#1D5BA4",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "REA": {
+    "primary": "#004C97",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "SHU": {
+    "primary": "#EE2737",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "SHW": {
+    "primary": "#007A3D",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "SOU": {
+    "primary": "#D71920",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "STK": {
+    "primary": "#E03A3E",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "SWA": {
+    "primary": "#FFFFFF",
+    "secondary": "#000000",
+    "source": "fallback"
+  },
+  "SWI": {
+    "primary": "#E03A3E",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "WAT": {
+    "primary": "#FBEE23",
+    "secondary": "#ED2127",
+    "source": "fallback"
+  },
+  "WBA": {
+    "primary": "#122F67",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "WIG": {
+    "primary": "#1D59AF",
+    "secondary": "#FFFFFF",
+    "source": "fallback"
+  },
+  "WIM": {
+    "primary": "#0033A0",
+    "secondary": "#FFD100",
+    "source": "fallback"
+  }
+}

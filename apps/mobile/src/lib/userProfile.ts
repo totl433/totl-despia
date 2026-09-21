@@ -1,6 +1,10 @@
 import { env } from '../env';
 import { supabase } from './supabase';
-import { hasSqlLikeWildcards, normalizeDisplayName } from './displayName';
+import {
+  hasSqlLikeWildcards,
+  normalizeDisplayName,
+  validateDisplayName,
+} from './displayName';
 
 export type ProfileStatus = 'ready' | 'needs-username';
 
@@ -10,6 +14,7 @@ export async function checkDisplayNameAvailable(
 ): Promise<boolean> {
   const trimmed = normalizeDisplayName(displayName);
   if (!trimmed) return false;
+  if (validateDisplayName(trimmed)) return false;
 
   let query = supabase.from('users').select('id').ilike('name', trimmed).limit(1);
   if (exceptUserId) query = query.neq('id', exceptUserId);
@@ -36,10 +41,8 @@ export async function checkDisplayNameAvailable(
 
 export async function saveUsername(userId: string, rawName: string): Promise<string> {
   const name = normalizeDisplayName(rawName);
-  if (!name) throw new Error('Display name is required.');
-  if (hasSqlLikeWildcards(name)) {
-    throw new Error('Display name contains invalid characters. Please remove % or _.');
-  }
+  const lengthError = validateDisplayName(name);
+  if (lengthError) throw new Error(lengthError);
 
   const available = await checkDisplayNameAvailable(name, userId);
   if (!available) {

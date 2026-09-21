@@ -15,15 +15,17 @@ function formatKickoffLabel(kickoff: string | null | undefined): string | null {
 
 function FormDots({ form }: { form: string | null | undefined }) {
   const dots = React.useMemo(() => {
-    const raw = (form ?? '').trim().toUpperCase();
-    const lastFive = (raw || '?????').slice(-5).padStart(5, '?');
-    return lastFive.split('');
+    const raw = (form ?? '').trim().toUpperCase().replace(/[^WDL]/g, '');
+    // Only real results — rolling last 5, no placeholder pads for unplayed games.
+    return raw.slice(-5).split('').filter(Boolean);
   }, [form]);
+
+  if (dots.length === 0) return null;
 
   const dotColor = (c: string) => {
     if (c === 'W') return '#10B981'; // emerald-500
     if (c === 'L') return '#DC2626'; // red-600
-    return '#D1D5DB'; // gray-300 (draw/unknown)
+    return '#D1D5DB'; // gray-300 (draw)
   };
 
   return (

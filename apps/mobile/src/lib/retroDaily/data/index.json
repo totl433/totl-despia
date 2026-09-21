@@ -1,0 +1,207 @@
+{
+  "generatedAt": "2026-09-04T16:26:24.083Z",
+  "source": "https://www.football-data.co.uk/",
+  "from": "9394",
+  "to": "2526",
+  "seasons": [
+    {
+      "seasonKey": "9394",
+      "seasonLabel": "93/94",
+      "fixtureCount": 462,
+      "file": "seasons/9394.json"
+    },
+    {
+      "seasonKey": "9495",
+      "seasonLabel": "94/95",
+      "fixtureCount": 462,
+      "file": "seasons/9495.json"
+    },
+    {
+      "seasonKey": "9596",
+      "seasonLabel": "95/96",
+      "fixtureCount": 380,
+      "file": "seasons/9596.json"
+    },
+    {
+      "seasonKey": "9697",
+      "seasonLabel": "96/97",
+      "fixtureCount": 380,
+      "file": "seasons/9697.json"
+    },
+    {
+      "seasonKey": "9798",
+      "seasonLabel": "97/98",
+      "fixtureCount": 380,
+      "file": "seasons/9798.json"
+    },
+    {
+      "seasonKey": "9899",
+      "seasonLabel": "98/99",
+      "fixtureCount": 380,
+      "file": "seasons/9899.json"
+    },
+    {
+      "seasonKey": "9900",
+      "seasonLabel": "99/00",
+      "fixtureCount": 380,
+      "file": "seasons/9900.json"
+    },
+    {
+      "seasonKey": "0001",
+      "seasonLabel": "00/01",
+      "fixtureCount": 380,
+      "file": "seasons/0001.json"
+    },
+    {
+      "seasonKey": "0102",
+      "seasonLabel": "01/02",
+      "fixtureCount": 380,
+      "file": "seasons/0102.json"
+    },
+    {
+      "seasonKey": "0203",
+      "seasonLabel": "02/03",
+      "fixtureCount": 380,
+      "file": "seasons/0203.json"
+    },
+    {
+      "seasonKey": "0304",
+      "seasonLabel": "03/04",
+      "fixtureCount": 380,
+      "file": "seasons/0304.json"
+    },
+    {
+      "seasonKey": "0405",
+      "seasonLabel": "04/05",
+      "fixtureCount": 380,
+      "file": "seasons/0405.json"
+    },
+    {
+      "seasonKey": "0506",
+      "seasonLabel": "05/06",
+      "fixtureCount": 380,
+      "file": "seasons/0506.json"
+    },
+    {
+      "seasonKey": "0607",
+      "seasonLabel": "06/07",
+      "fixtureCount": 380,
+      "file": "seasons/0607.json"
+    },
+    {
+      "seasonKey": "0708",
+      "seasonLabel": "07/08",
+      "fixtureCount": 380,
+      "file": "seasons/0708.json"
+    },
+    {
+      "seasonKey": "0809",
+      "seasonLabel": "08/09",
+      "fixtureCount": 380,
+      "file": "seasons/0809.json"
+    },
+    {
+      "seasonKey": "0910",
+      "seasonLabel": "09/10",
+      "fixtureCount": 380,
+      "file": "seasons/0910.json"
+    },
+    {
+      "seasonKey": "1011",
+      "seasonLabel": "10/11",
+      "fixtureCount": 380,
+      "file": "seasons/1011.json"
+    },
+    {
+      "seasonKey": "1112",
+      "seasonLabel": "11/12",
+      "fixtureCount": 380,
+      "file": "seasons/1112.json"
+    },
+    {
+      "seasonKey": "1213",
+      "seasonLabel": "12/13",
+      "fixtureCount": 380,
+      "file": "seasons/1213.json"
+    },
+    {
+      "seasonKey": "1314",
+      "seasonLabel": "13/14",
+      "fixtureCount": 380,
+      "file": "seasons/1314.json"
+    },
+    {
+      "seasonKey": "1415",
+      "seasonLabel": "14/15",
+      "fixtureCount": 380,
+      "file": "seasons/1415.json"
+    },
+    {
+      "seasonKey": "1516",
+      "seasonLabel": "15/16",
+      "fixtureCount": 380,
+      "file": "seasons/1516.json"
+    },
+    {
+      "seasonKey": "1617",
+      "seasonLabel": "16/17",
+      "fixtureCount": 380,
+      "file": "seasons/1617.json"
+    },
+    {
+      "seasonKey": "1718",
+      "seasonLabel": "17/18",
+      "fixtureCount": 380,
+      "file": "seasons/1718.json"
+    },
+    {
+      "seasonKey": "1819",
+      "seasonLabel": "18/19",
+      "fixtureCount": 380,
+      "file": "seasons/1819.json"
+    },
+    {
+      "seasonKey": "1920",
+      "seasonLabel": "19/20",
+      "fixtureCount": 380,
+      "file": "seasons/1920.json"
+    },
+    {
+      "seasonKey": "2021",
+      "seasonLabel": "20/21",
+      "fixtureCount": 380,
+      "file": "seasons/2021.json"
+    },
+    {
+      "seasonKey": "2122",
+      "seasonLabel": "21/22",
+      "fixtureCount": 380,
+      "file": "seasons/2122.json"
+    },
+    {
+      "seasonKey": "2223",
+      "seasonLabel": "22/23",
+      "fixtureCount": 380,
+      "file": "seasons/2223.json"
+    },
+    {
+      "seasonKey": "2324",
+      "seasonLabel": "23/24",
+      "fixtureCount": 380,
+      "file": "seasons/2324.json"
+    },
+    {
+      "seasonKey": "2425",
+      "seasonLabel": "24/25",
+      "fixtureCount": 380,
+      "file": "seasons/2425.json"
+    },
+    {
+      "seasonKey": "2526",
+      "seasonLabel": "25/26",
+      "fixtureCount": 380,
+      "file": "seasons/2526.json"
+    }
+  ],
+  "totalFixtures": 12704
+}

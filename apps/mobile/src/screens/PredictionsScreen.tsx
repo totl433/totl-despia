@@ -20,6 +20,18 @@ import { useConfetti } from '../lib/confetti';
 import AppTopHeader from '../components/AppTopHeader';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
+import {
+  buildMatchPreviewStatsFromCache,
+  computeCleanSheetsFromResults,
+  hasSeasonStats,
+  type MatchPreviewStats,
+  type TeamFormsDbRow,
+} from '../lib/matchPreviewStats';
+
+/** Fallback if app_season_runtime has no current season (2026/27). */
+const TEST_STATS_SEASON_FALLBACK_ID = 'e0a58f84-9575-4b6b-adca-320defc04b46';
+/** Slightly darker than theme slate-50 so white prediction cards read clearer. */
+const PREDICTIONS_BG = '#F1F5F9';
 
 type Mode = 'cards' | 'review' | 'list';
 
@@ -75,41 +87,6 @@ function fixtureDateLabel(kickoff: string | null | undefined) {
   return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-function buildFakeFixtures(): Fixture[] {
-  const now = Date.now();
-  const teams: Array<[string, string, string, string]> = [
-    ['COV', 'Coventry', 'ARS', 'Arsenal'],
-    ['HUL', 'Hull', 'MUN', 'Man Utd'],
-    ['IPS', 'Ipswich', 'SUN', 'Sunderland'],
-    ['ARS', 'Arsenal', 'CHE', 'Chelsea'],
-    ['BHA', 'Brighton', 'WHU', 'West Ham'],
-    ['BRE', 'Brentford', 'AVL', 'Aston Villa'],
-    ['CRY', 'Crystal Palace', 'EVE', 'Everton'],
-    ['LEE', 'Leeds', 'WOL', 'Wolves'],
-    ['FUL', 'Fulham', 'NFO', 'Nottingham Forest'],
-    ['SUN', 'Sunderland', 'BUR', 'Burnley'],
-  ];
-
-  return teams.map(([homeCode, homeName, awayCode, awayName], idx) => {
-    const kickoff = new Date(now + (idx + 1) * 3 * 60 * 60 * 1000);
-    return {
-      id: `test-fixture-${idx + 1}`,
-      gw: 99,
-      fixture_index: idx,
-      kickoff_time: kickoff.toISOString(),
-      api_match_id: null,
-      home_team: homeName,
-      away_team: awayName,
-      home_name: homeName,
-      away_name: awayName,
-      home_code: homeCode,
-      away_code: awayCode,
-      home_crest: null,
-      away_crest: null,
-    };
-  });
-}
-
 function normalizeTeamForms(input: Record<string, string> | null | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   Object.entries(input ?? {}).forEach(([rawCode, rawForm]) => {
@@ -141,7 +118,7 @@ function PickChip({
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: active ? '#1C8376' : '#E6F3F0',
+        backgroundColor: active ? '#1C8376' : '#C5D9D4',
         opacity: disabled ? 0.5 : pressed ? 0.92 : 1,
         transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
@@ -293,24 +270,172 @@ export default function PredictionsScreen() {
     enabled: !isTestMode,
     queryFn: () => api.getPredictions(),
   });
-  const { data: testModePredictions } = useQuery({
-    queryKey: ['predictions-test-forms'],
+  const {
+    data: testModePredictions,
+    isLoading: testModeLoading,
+    error: testModeError,
+  } = useQuery({
+    queryKey: ['predictions-test-live'],
     enabled: isTestMode,
     queryFn: () => api.getPredictions(),
     staleTime: 30_000,
   });
 
-  const fakeFixtures = React.useMemo(() => buildFakeFixtures(), []);
+  /** This week's fixtures from /v1/predictions — never fake/hardcoded. */
+  const testFixtures = React.useMemo(
+    () => ((testModePredictions?.fixtures ?? []) as Fixture[]),
+    [testModePredictions?.fixtures]
+  );
+  const testGw = typeof testModePredictions?.gw === 'number' ? testModePredictions.gw : null;
+
+  const { data: flipStatsByFixtureIndex } = useQuery({
+    queryKey: [
+      'match-preview-stats',
+      'test',
+      testGw,
+      testFixtures.map((f) => `${f.fixture_index}:${f.api_match_id ?? ''}`).join('|'),
+    ],
+    enabled: isTestMode && testGw != null && testFixtures.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const gw = testGw as number;
+      const apiMatchIds = testFixtures
+        .map((f) => Number(f.api_match_id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+
+      const { data: runtime } = await (supabase as any)
+        .from('app_season_runtime')
+        .select('current_season_id')
+        .eq('id', 1)
+        .maybeSingle();
+      const seasonId =
+        typeof runtime?.current_season_id === 'string' && runtime.current_season_id
+          ? runtime.current_season_id
+          : TEST_STATS_SEASON_FALLBACK_ID;
+
+      const [{ data: formsRows }, { data: h2hRows }, { data: resultRows }, { data: resultFixtures }] =
+        await Promise.all([
+          supabase
+            .from('app_team_forms')
+            .select('team_code, form, league_position, played, won, drawn, lost, goals_for, goals_against')
+            .eq('gw', gw),
+          apiMatchIds.length
+            ? supabase
+                .from('app_fixture_h2h')
+                .select('api_match_id, home_wins, draws, away_wins, number_of_matches')
+                .eq('gw', gw)
+                .in('api_match_id', apiMatchIds)
+            : Promise.resolve({ data: [] as any[] }),
+          supabase
+            .from('app_season_results')
+            .select('gw, fixture_index, home_score, away_score, api_match_id')
+            .eq('season_id', seasonId)
+            .lt('gw', gw),
+          supabase
+            .from('app_season_fixtures')
+            .select('gw, fixture_index, home_code, away_code')
+            .eq('season_id', seasonId)
+            .lt('gw', gw),
+        ]);
+
+      const formsByCode = new Map<string, TeamFormsDbRow>();
+      for (const row of formsRows || []) {
+        const code = normalizeTeamCode((row as any).team_code);
+        if (code) formsByCode.set(code, row as TeamFormsDbRow);
+      }
+
+      const h2hByMatchId = new Map<
+        number,
+        { home_wins: number; draws: number; away_wins: number; number_of_matches?: number | null }
+      >();
+      for (const row of h2hRows || []) {
+        const id = Number((row as any).api_match_id);
+        if (Number.isFinite(id)) {
+          h2hByMatchId.set(id, {
+            home_wins: Number((row as any).home_wins) || 0,
+            draws: Number((row as any).draws) || 0,
+            away_wins: Number((row as any).away_wins) || 0,
+            number_of_matches: (row as any).number_of_matches ?? null,
+          });
+        }
+      }
+
+      const fixtureKey = (g: number, idx: number) => `${g}:${idx}`;
+      const codesByResultKey = new Map<string, { home_code: string; away_code: string }>();
+      for (const fx of resultFixtures || []) {
+        codesByResultKey.set(fixtureKey(Number((fx as any).gw), Number((fx as any).fixture_index)), {
+          home_code: String((fx as any).home_code || ''),
+          away_code: String((fx as any).away_code || ''),
+        });
+      }
+      const scoreRows = (resultRows || []).map((r: any) => {
+        const codes = codesByResultKey.get(fixtureKey(Number(r.gw), Number(r.fixture_index)));
+        return {
+          home_code: normalizeTeamCode(codes?.home_code ?? null),
+          away_code: normalizeTeamCode(codes?.away_code ?? null),
+          home_score: r.home_score,
+          away_score: r.away_score,
+        };
+      });
+
+      const out = new Map<number, MatchPreviewStats>();
+      for (const fixture of testFixtures) {
+        const homeCode = normalizeTeamCode(fixture.home_code);
+        const awayCode = normalizeTeamCode(fixture.away_code);
+        const homeForms = formsByCode.get(homeCode) ?? null;
+        const awayForms = formsByCode.get(awayCode) ?? null;
+        const matchId = Number(fixture.api_match_id);
+        const h2h = Number.isFinite(matchId) ? h2hByMatchId.get(matchId) ?? null : null;
+        const cleanSheets =
+          homeCode && awayCode ? computeCleanSheetsFromResults(scoreRows, homeCode, awayCode) : null;
+
+        if (!hasSeasonStats(homeForms) && !hasSeasonStats(awayForms) && !h2h && !cleanSheets) {
+          continue;
+        }
+
+        out.set(
+          fixture.fixture_index,
+          buildMatchPreviewStatsFromCache({
+            gw,
+            homeCode,
+            awayCode,
+            homeForms,
+            awayForms,
+            h2h,
+            cleanSheets,
+            subtitle: `Gameweek ${gw}`,
+          })
+        );
+      }
+
+      return out;
+    },
+  });
+
+  // React Query structural sharing / cache can turn Map → plain object; normalize before use.
+  const flipStatsMap = React.useMemo(() => {
+    const raw = flipStatsByFixtureIndex;
+    if (!raw) return undefined;
+    if (raw instanceof Map) return raw;
+    const map = new Map<number, MatchPreviewStats>();
+    for (const [k, v] of Object.entries(raw as Record<string, MatchPreviewStats>)) {
+      const idx = Number(k);
+      if (Number.isFinite(idx) && v) map.set(idx, v);
+    }
+    return map;
+  }, [flipStatsByFixtureIndex]);
+
   const effectiveData = React.useMemo(() => {
     if (!isTestMode) return data;
+    // Admin test: this week's live fixtures, but never locked by submit/deadline.
     return {
-      gw: 99,
-      fixtures: fakeFixtures,
+      gw: testGw,
+      fixtures: testFixtures,
       picks: [],
       submitted: false,
-      teamForms: {},
+      teamForms: (testModePredictions?.teamForms ?? {}) as Record<string, string>,
     };
-  }, [data, fakeFixtures, isTestMode]);
+  }, [data, isTestMode, testFixtures, testGw, testModePredictions?.teamForms]);
 
   const fixtures = React.useMemo(() => {
     const fx = (effectiveData?.fixtures ?? []) as Fixture[];
@@ -347,7 +472,8 @@ export default function PredictionsScreen() {
   }, [fixtures]);
 
   const gw = effectiveData?.gw ?? null;
-  const submitted = effectiveData?.submitted ?? false;
+  // Test flow must stay interactive even if the live GW is submitted / past deadline.
+  const submitted = isTestMode ? false : (effectiveData?.submitted ?? false);
   const teamFormsFromApi = React.useMemo(
     () => normalizeTeamForms((effectiveData?.teamForms ?? {}) as Record<string, string>),
     [effectiveData?.teamForms]
@@ -442,15 +568,20 @@ export default function PredictionsScreen() {
     return { ...serverPicks, ...draftPicks };
   }, [draftPicks, serverPicks, submitted]);
 
-  const deadline = React.useMemo(() => deadlineCountdown(fixtures, nowMs), [fixtures, nowMs]);
-  const deadlineExpired = deadline?.expired ?? false;
+  const deadline = React.useMemo(() => {
+    // Admin test flow: never lock on deadline.
+    if (isTestMode) return null;
+    return deadlineCountdown(fixtures, nowMs);
+  }, [fixtures, isTestMode, nowMs]);
+  const deadlineExpired = isTestMode ? false : (deadline?.expired ?? false);
 
   const allPicksMade = React.useMemo(() => {
     if (!fixtures.length) return false;
     return fixtures.every((f) => isPick(picks[f.fixture_index]));
   }, [fixtures, picks]);
 
-  const forceListMode = submitted || deadlineExpired;
+  // Never force list/lock in admin test — always allow swipe + flip.
+  const forceListMode = isTestMode ? false : submitted || deadlineExpired;
   const [mode, setMode] = React.useState<Mode>('list');
   const currentViewMode: 'swipe' | 'list' = mode === 'cards' ? 'swipe' : 'list';
 
@@ -523,20 +654,22 @@ export default function PredictionsScreen() {
 
   const setPickLocal = React.useCallback(
     (fixture_index: number, pick: Pick) => {
-      if (submitted || deadlineExpired) return;
+      if (!isTestMode && (submitted || deadlineExpired)) return;
       setDraftPicks((prev) => ({ ...prev, [fixture_index]: pick }));
     },
-    [deadlineExpired, submitted]
+    [deadlineExpired, isTestMode, submitted]
   );
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
       setConfirmError(null);
-      if (submitted) throw new Error('Already submitted');
-      if (deadlineExpired) throw new Error('Deadline has passed');
+      if (!isTestMode) {
+        if (submitted) throw new Error('Already submitted');
+        if (deadlineExpired) throw new Error('Deadline has passed');
+      }
       if (typeof gw !== 'number') throw new Error('Missing gameweek');
       if (!fixtures.length) throw new Error('No fixtures');
-      if (isTestMode) return { gw: 99 };
+      if (isTestMode) return { gw };
 
       // Ensure we have a pick for every fixture.
       const picksArray = fixtures.map((f) => {
@@ -692,7 +825,7 @@ export default function PredictionsScreen() {
             marginTop: -insets.top,
             paddingTop: insets.top + 4,
             paddingHorizontal: t.space[4],
-            backgroundColor: t.color.background,
+            backgroundColor: PREDICTIONS_BG,
           }}
         >
           <View style={{ height: 60, justifyContent: 'center', alignItems: 'center' }}>
@@ -743,16 +876,22 @@ export default function PredictionsScreen() {
     );
   };
 
-  const showInitialSpinner = isLoading && !data && !error;
+  const showInitialSpinner = isTestMode
+    ? testModeLoading && !testModePredictions && !testModeError
+    : isLoading && !data && !error;
+  const screenError = isTestMode ? testModeError : error;
+  const screenLoading = isTestMode ? testModeLoading : isLoading;
   const onRefresh = React.useCallback(() => {
-    if (isTestMode) return Promise.resolve();
+    if (isTestMode) {
+      return queryClient.invalidateQueries({ queryKey: ['predictions-test-live'] });
+    }
     return refetch();
-  }, [isTestMode, refetch]);
+  }, [isTestMode, queryClient, refetch]);
 
   // --- Render modes ---
   if (showInitialSpinner) {
     return (
-      <Screen fullBleed>
+      <Screen fullBleed backgroundColor={PREDICTIONS_BG}>
         <CenteredSpinner loading />
       </Screen>
     );
@@ -762,7 +901,7 @@ export default function PredictionsScreen() {
     const cardWidth = Math.min(420, screenWidth - t.space[4] * 2);
 
     return (
-      <Screen fullBleed>
+      <Screen fullBleed backgroundColor={PREDICTIONS_BG}>
         <PredictionsHowToSheet
           open={howToOpen}
           onClose={() => setHowToOpen(false)}
@@ -773,7 +912,13 @@ export default function PredictionsScreen() {
           }}
         />
         {renderTopBar({
-          title: isTestMode ? 'Test' : typeof gw === 'number' ? `Gameweek ${gw}` : 'Predictions',
+          title: isTestMode
+            ? typeof gw === 'number'
+              ? `Test · GW${gw}`
+              : 'Test'
+            : typeof gw === 'number'
+              ? `Gameweek ${gw}`
+              : 'Predictions',
         })}
 
         <View style={{ paddingHorizontal: t.space[4], alignItems: 'center', marginTop: 16 }}>
@@ -799,13 +944,13 @@ export default function PredictionsScreen() {
             paddingBottom: t.space[6],
           }}
         >
-          {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-          {error ? (
+          {screenLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+          {screenError ? (
             <Card style={[FLAT_CARD_STYLE, { marginBottom: 12, width: '100%' }]}>
               <TotlText variant="heading" style={{ marginBottom: 6 }}>
                 Couldn’t load predictions
               </TotlText>
-              <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
+              <TotlText variant="muted">{(screenError as any)?.message ?? 'Unknown error'}</TotlText>
             </Card>
           ) : null}
 
@@ -817,9 +962,11 @@ export default function PredictionsScreen() {
               cardWidth={cardWidth}
               screenWidth={screenWidth}
               screenHeight={screenHeight}
-              disabled={submitted || deadlineExpired}
+              disabled={isTestMode ? false : submitted || deadlineExpired}
               onCommitPick={setPickLocal}
               onCurrentIndexChange={setCardIndex}
+              enableCardFlip={isTestMode}
+              statsByFixtureIndex={flipStatsMap}
             />
           ) : (
             <Card style={[FLAT_CARD_STYLE, { width: '100%' }]}>
@@ -836,7 +983,7 @@ export default function PredictionsScreen() {
 
   if (mode === 'review') {
     return (
-      <Screen fullBleed>
+      <Screen fullBleed backgroundColor={PREDICTIONS_BG}>
         {renderTopBar({
           title: isStandalonePredictionsFlow
             ? typeof gw === 'number'
@@ -849,7 +996,7 @@ export default function PredictionsScreen() {
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: t.space[4], paddingBottom: 140 }}
-            refreshControl={<TotlRefreshControl refreshing={!isTestMode && isRefetching} onRefresh={onRefresh} />}
+            refreshControl={<TotlRefreshControl refreshing={isTestMode ? testModeLoading : isRefetching} onRefresh={onRefresh} />}
           >
             {!reviewTipDismissed ? (
               <View
@@ -972,12 +1119,12 @@ export default function PredictionsScreen() {
 
   // List mode (submitted or deadline passed)
   return (
-    <Screen fullBleed>
+    <Screen fullBleed backgroundColor={PREDICTIONS_BG}>
       <AppTopHeader
         onPressChat={() => navigation.navigate('ChatHub')}
         onPressProfile={() => navigation.navigate('Profile')}
         avatarUrl={avatarUrl}
-        title={isTestMode ? 'Test' : 'Predictions'}
+        title={isTestMode ? (typeof gw === 'number' ? `Test · GW${gw}` : 'Test') : 'Predictions'}
         leftAction={
           isStandalonePredictionsFlow ? (
             <Pressable
@@ -1010,16 +1157,16 @@ export default function PredictionsScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={!isTestMode && isRefetching} onRefresh={onRefresh} />}
+        refreshControl={<TotlRefreshControl refreshing={isTestMode ? testModeLoading : isRefetching} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        {isLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
-        {error ? (
+        {screenLoading ? <TotlText variant="muted">Loading…</TotlText> : null}
+        {screenError ? (
           <Card style={[FLAT_CARD_STYLE, { marginBottom: 12 }]}>
             <TotlText variant="heading" style={{ marginBottom: 6 }}>
               Couldn’t load predictions
             </TotlText>
-            <TotlText variant="muted">{(error as any)?.message ?? 'Unknown error'}</TotlText>
+            <TotlText variant="muted">{(screenError as any)?.message ?? 'Unknown error'}</TotlText>
           </Card>
         ) : null}
 

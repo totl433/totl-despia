@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TotlText, useTokens } from '@totl/ui';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
 import { useOffering, usePurchases } from '../../hooks/usePurchases';
 import { api } from '../../lib/api';
 import { retryBrandedLeaderboardActivation } from '../../lib/brandedLeaderboardActivation';
@@ -40,6 +41,7 @@ export default function BrandedLeaderboardPaywall({
 }: Props) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { purchasePackage } = usePurchases();
   const effectiveOfferingId = offeringId ?? DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
   const { offering, loading: offeringLoading } = useOffering(effectiveOfferingId);
@@ -92,6 +94,10 @@ export default function BrandedLeaderboardPaywall({
       if (joinCode) {
         try {
           await api.joinBrandedLeaderboard(leaderboardId, joinCode);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-mine'] }),
+            queryClient.invalidateQueries({ queryKey: ['branded-leaderboards-manage'] }),
+          ]);
         } catch (err: any) {
           console.warn('[Paywall] Join failed after successful activation', err);
           Alert.alert(
@@ -104,7 +110,7 @@ export default function BrandedLeaderboardPaywall({
 
       onSuccess();
     },
-    [purchasePackage, leaderboardId, joinCode, onSuccess],
+    [purchasePackage, leaderboardId, joinCode, onSuccess, queryClient],
   );
 
   const priceDisplay = `£${(priceCents / 100).toFixed(2)}`;

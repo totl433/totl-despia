@@ -8,12 +8,19 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { TotlText } from '@totl/ui';
 
 import SwipePredictionCard from './SwipePredictionCard';
+import FlippableSwipePredictionCard, { CARD_FLIP_MS } from './FlippableSwipePredictionCard';
+import {
+  buildMatchPreviewStatsFromCache,
+  buildMockMatchPreviewStats,
+  type MatchPreviewStats,
+} from '../../lib/matchPreviewStats';
 
 type FixtureForms = { home: string | null; away: string | null };
 type CardSnapshot = {
@@ -46,12 +53,73 @@ function findNextUnpickedIndex(fixtures: Fixture[], picks: Record<number, Pick>,
 
 const EMPTY_FIXTURE_FORMS: FixtureForms = { home: null, away: null };
 const ACTIVE_BG = '#1C8376';
-const INACTIVE_BG = '#E6F3F0';
+/** Darker mint so buttons read on predictions page bg (#F1F5F9). */
+const INACTIVE_BG = '#C5D9D4';
 const ACTIVE_TEXT = '#FFFFFF';
 const INACTIVE_TEXT = '#0F172A';
 const SWIPE_THRESHOLD = 110;
 const DRAW_SWIPE_THRESHOLD = 140;
 const DIRECTION_RATIO = 1.2;
+
+/** Bold under-card cue; soft opacity pulse a couple of times when a new card lands. */
+function FlipHintLabel({
+  flipped,
+  pulseKey,
+  tx,
+  ty,
+  hidden,
+}: {
+  flipped: boolean;
+  pulseKey: string | number;
+  tx: Animated.SharedValue<number>;
+  ty: Animated.SharedValue<number>;
+  /** Hide while a pick transition is in flight. */
+  hidden?: boolean;
+}) {
+  const pulseOpacity = useSharedValue(1);
+
+  React.useEffect(() => {
+    pulseOpacity.value = 1;
+    pulseOpacity.value = withSequence(
+      withTiming(0.35, { duration: 340, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 340, easing: Easing.inOut(Easing.ease) }),
+      withTiming(0.35, { duration: 340, easing: Easing.inOut(Easing.ease) }),
+      withTiming(1, { duration: 340, easing: Easing.inOut(Easing.ease) })
+    );
+  }, [pulseKey, pulseOpacity]);
+
+  const style = useAnimatedStyle(() => {
+    // Fade out as soon as the card starts moving so the hint stays under the stack, not on the swipe.
+    const drag = Math.min(1, (Math.abs(tx.value) + Math.abs(ty.value)) / 28);
+    const base = pulseOpacity.value * (1 - drag);
+    return { opacity: hidden ? 0 : base };
+  }, [hidden]);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          marginTop: 22,
+          marginBottom: 8,
+          alignItems: 'center',
+        },
+        style,
+      ]}
+    >
+      <TotlText
+        style={{
+          textAlign: 'center',
+          fontSize: 14,
+          fontWeight: '800',
+          color: '#334155',
+        }}
+      >
+        Tap card to {flipped ? 'flip back' : 'see stats'}
+      </TotlText>
+    </Animated.View>
+  );
+}
+
 const RESET_SPRING = {
   damping: 18,
   stiffness: 220,
@@ -105,6 +173,8 @@ export default function PredictionsSwipeDeck({
   disabled,
   onCommitPick,
   onCurrentIndexChange,
+  enableCardFlip = false,
+  statsByFixtureIndex,
 }: {
   fixtures: Fixture[];
   picks: Record<number, Pick>;
@@ -115,6 +185,10 @@ export default function PredictionsSwipeDeck({
   disabled: boolean;
   onCommitPick: (fixtureIndex: number, pick: Pick) => void;
   onCurrentIndexChange?: (index: number) => void;
+  /** Admin Make Your Predictions Test: tap card to flip and see stats. */
+  enableCardFlip?: boolean;
+  /** Real cached preview stats keyed by fixture_index. Falls back to mock if missing. */
+  statsByFixtureIndex?: Map<number, MatchPreviewStats> | Record<number, MatchPreviewStats>;
 }) {
   const deckIdentity = React.useMemo(
     () => fixtures.map((fixture) => `${String(fixture.id)}:${fixture.fixture_index}`).join('|'),
@@ -125,6 +199,9 @@ export default function PredictionsSwipeDeck({
   const [deck, setDeck] = React.useState<DeckCards>(() => buildDeckCards(fixtures, formsByFixtureIndex, picks));
   const [transition, setTransition] = React.useState<TransitionState>(null);
   const [settlingTopCard, setSettlingTopCard] = React.useState(false);
+  const [cardFlipped, setCardFlipped] = React.useState(false);
+  const [flipAnimating, setFlipAnimating] = React.useState(false);
+  const flipAnimTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDeckIdentityRef = React.useRef<string | null>(null);
   const resetAfterCommitRafRef = React.useRef<number | null>(null);
 
@@ -152,6 +229,7 @@ export default function PredictionsSwipeDeck({
   React.useEffect(() => {
     return () => {
       if (resetAfterCommitRafRef.current) cancelAnimationFrame(resetAfterCommitRafRef.current);
+      if (flipAnimTimeoutRef.current) clearTimeout(flipAnimTimeoutRef.current);
     };
   }, []);
 
@@ -180,12 +258,81 @@ export default function PredictionsSwipeDeck({
     }
     setTransition(null);
     setSettlingTopCard(false);
+    setCardFlipped(false);
     setLocalPicks(picks);
     setDeck(buildDeckCards(fixtures, formsByFixtureIndex, picks));
     resetMotion();
   }, [deckIdentity, fixtures, formsByFixtureIndex, picks, resetMotion]);
 
   const currentCard = transition?.outgoing ?? deck.current;
+
+  React.useEffect(() => {
+    setCardFlipped(false);
+    setFlipAnimating(false);
+    if (flipAnimTimeoutRef.current) {
+      clearTimeout(flipAnimTimeoutRef.current);
+      flipAnimTimeoutRef.current = null;
+    }
+  }, [deck.current?.fixture.fixture_index]);
+
+  const toggleCardFlip = React.useCallback(() => {
+    if (!enableCardFlip || disabled || transition || flipAnimating) return;
+    setFlipAnimating(true);
+    setCardFlipped((v) => !v);
+    if (flipAnimTimeoutRef.current) clearTimeout(flipAnimTimeoutRef.current);
+    flipAnimTimeoutRef.current = setTimeout(() => {
+      setFlipAnimating(false);
+      flipAnimTimeoutRef.current = null;
+    }, CARD_FLIP_MS);
+  }, [disabled, enableCardFlip, flipAnimating, transition]);
+
+  const statsForCard = React.useCallback(
+    (fixture: Fixture) => {
+      // React Query can rehydrate a Map as a plain object — never assume `.get` exists.
+      let cached: MatchPreviewStats | undefined;
+      if (statsByFixtureIndex instanceof Map) {
+        cached = statsByFixtureIndex.get(fixture.fixture_index);
+      } else if (statsByFixtureIndex && typeof statsByFixtureIndex === 'object') {
+        cached = (statsByFixtureIndex as Record<number, MatchPreviewStats>)[fixture.fixture_index];
+      }
+      if (cached) return cached;
+      return buildMockMatchPreviewStats({
+        homeCode: fixture.home_code,
+        awayCode: fixture.away_code,
+        gw: typeof fixture.gw === 'number' ? fixture.gw : 99,
+      });
+    },
+    [statsByFixtureIndex]
+  );
+
+  const renderCard = React.useCallback(
+    (
+      snapshot: CardSnapshot,
+      opts: { showSwipeHint: boolean; flipped?: boolean }
+    ) => {
+      if (enableCardFlip) {
+        return (
+          <FlippableSwipePredictionCard
+            fixture={snapshot.fixture}
+            showSwipeHint={opts.showSwipeHint}
+            homeForm={snapshot.forms.home}
+            awayForm={snapshot.forms.away}
+            stats={statsForCard(snapshot.fixture)}
+            flipped={opts.flipped ?? false}
+          />
+        );
+      }
+      return (
+        <SwipePredictionCard
+          fixture={snapshot.fixture}
+          showSwipeHint={opts.showSwipeHint}
+          homeForm={snapshot.forms.home}
+          awayForm={snapshot.forms.away}
+        />
+      );
+    },
+    [enableCardFlip, statsForCard]
+  );
 
   React.useEffect(() => {
     onCurrentIndexChange?.(deck.current?.index ?? Math.max(0, fixtures.length - 1));
@@ -296,6 +443,7 @@ export default function PredictionsSwipeDeck({
       const current = currentDeck.current;
       if (!current || disabled || transition || isAnimatingSV.value) return;
 
+      setCardFlipped(false);
       const nextPicks = {
         ...localPicksRef.current,
         [current.fixture.fixture_index]: pick,
@@ -335,7 +483,7 @@ export default function PredictionsSwipeDeck({
   );
 
   const gesture = React.useMemo(() => {
-    return Gesture.Pan()
+    const pan = Gesture.Pan()
       .enabled(!disabled && !transition)
       .maxPointers(1)
       .runOnJS(false)
@@ -368,7 +516,29 @@ export default function PredictionsSwipeDeck({
         ty.value = withSpring(0, RESET_SPRING);
         revealProgress.value = withSpring(0, RESET_SPRING);
       });
-  }, [disabled, isAnimatingSV, revealProgress, startPickTransition, transition, tx, ty]);
+
+    if (!enableCardFlip) return pan;
+
+    const tap = Gesture.Tap()
+      .enabled(!disabled && !transition)
+      .maxDuration(280)
+      .onEnd(() => {
+        runOnJS(toggleCardFlip)();
+      });
+
+    // Tap has priority for short presses; pan wins once movement starts.
+    return Gesture.Exclusive(tap, pan);
+  }, [
+    disabled,
+    enableCardFlip,
+    isAnimatingSV,
+    revealProgress,
+    startPickTransition,
+    toggleCardFlip,
+    transition,
+    tx,
+    ty,
+  ]);
 
   const pressableOpacity = (pressed: boolean) => {
     if (disabled || !currentCard || !!transition || settlingTopCard) return 0.55;
@@ -438,12 +608,7 @@ export default function PredictionsSwipeDeck({
                   zIndex: 3,
                 }}
               >
-                <SwipePredictionCard
-                  fixture={deck.current.fixture}
-                  showSwipeHint
-                  homeForm={deck.current.forms.home}
-                  awayForm={deck.current.forms.away}
-                />
+                {renderCard(deck.current, { showSwipeHint: true, flipped: false })}
               </View>
             ) : (
               <Animated.View
@@ -457,12 +622,7 @@ export default function PredictionsSwipeDeck({
                   topCardStyle,
                 ]}
               >
-                <SwipePredictionCard
-                  fixture={deck.current.fixture}
-                  showSwipeHint
-                  homeForm={deck.current.forms.home}
-                  awayForm={deck.current.forms.away}
-                />
+                {renderCard(deck.current, { showSwipeHint: true, flipped: cardFlipped })}
               </Animated.View>
             )
           ) : null}
@@ -479,18 +639,23 @@ export default function PredictionsSwipeDeck({
                 topCardStyle,
               ]}
             >
-              <SwipePredictionCard
-                fixture={transition.outgoing.fixture}
-                showSwipeHint
-                homeForm={transition.outgoing.forms.home}
-                awayForm={transition.outgoing.forms.away}
-              />
+              {renderCard(transition.outgoing, { showSwipeHint: true, flipped: false })}
             </Animated.View>
           ) : null}
         </View>
       </GestureDetector>
 
-      <View style={{ height: 32 }} />
+      {enableCardFlip ? (
+        <FlipHintLabel
+          flipped={cardFlipped}
+          pulseKey={deck.current?.fixture.fixture_index ?? 'none'}
+          tx={tx}
+          ty={ty}
+          hidden={!!transition || settlingTopCard || flipAnimating}
+        />
+      ) : null}
+
+      <View style={{ height: enableCardFlip ? 18 : 32 }} />
 
       <View style={{ width: '100%' }}>
         <View style={{ flexDirection: 'row', gap: 10 }}>
