@@ -652,7 +652,7 @@ export default function BrandedLeaderboardScreen({
         onPressChat={() => (navigation as any).navigate('ChatHub')}
         avatarUrl={avatarUrl}
         title={headerTitle}
-        hideProfile
+        hideProfile={!hideBackButton}
         hideChat
         rightAction={
           <Pressable
