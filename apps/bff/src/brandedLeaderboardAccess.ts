@@ -11,6 +11,11 @@ export const DEFAULT_BRANDED_LEADERBOARD_PRICE_TIERS = {
   },
 } as const;
 
+const LEGACY_PRODUCT_IDS_BY_PRICE: Record<number, string[]> = {
+  99: ['totl_season_099', 'totl_season_sub_099'],
+  199: ['totl_season_sub_199'],
+};
+
 export type BrandedLeaderboardAccessReason =
   | 'free_not_joined'
   | 'free_joined'
@@ -159,11 +164,15 @@ export function getExpectedLeaderboardProductIds(input: {
   priceCents?: number | null;
 }): string[] {
   const configured = input.configuredProductId?.trim();
+  const priceCents = Number(input.priceCents ?? 0);
+  const tier = getDefaultTierConfig(priceCents);
   if (configured) {
+    if (tier && LEGACY_PRODUCT_IDS_BY_PRICE[priceCents]?.includes(configured)) {
+      return Array.from(new Set([configured, tier.productId]));
+    }
     return [configured];
   }
 
-  const tier = getDefaultTierConfig(Number(input.priceCents ?? 0));
   return tier ? [tier.productId] : [];
 }
 
