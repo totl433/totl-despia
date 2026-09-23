@@ -1,8 +1,9 @@
 import React from 'react';
-import { Image, Pressable, ScrollView, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 
 import { api } from '../../lib/api';
@@ -16,6 +17,7 @@ import { useThemePreference, type ThemePreference } from '../../context/ThemePre
 export default function ProfileHomeScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { preference, effectiveTheme, setPreference } = useThemePreference();
 
   const goHome = React.useCallback(() => {
@@ -150,7 +152,9 @@ export default function ProfileHomeScreen() {
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
           paddingTop: t.space[4],
-          paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
+          paddingBottom:
+            FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING +
+            (Platform.OS === 'android' ? insets.bottom + t.space[4] : 0),
         }}
         refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
         showsVerticalScrollIndicator={false}

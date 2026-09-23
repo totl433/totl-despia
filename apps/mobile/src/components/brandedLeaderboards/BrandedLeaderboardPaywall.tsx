@@ -1,16 +1,25 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TotlText, useTokens } from '@totl/ui';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useOffering, usePurchases } from '../../hooks/usePurchases';
 import { api } from '../../lib/api';
 import { retryBrandedLeaderboardActivation } from '../../lib/brandedLeaderboardActivation';
+import type { OfferingIssue } from '../../lib/purchases';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 const DEFAULT_TIER_OFFERINGS: Record<number, string> = {
   99: 'totl_access_099',
   199: 'totl_access_199',
+};
+
+const OFFERING_ISSUE_MESSAGES: Record<OfferingIssue, string> = {
+  'purchases-unavailable': 'Purchases are not available on this device right now. Please try again later.',
+  'invalid-api-key': 'Purchases are not configured correctly for this platform. Please contact support.',
+  'fetch-failed': 'We could not contact the store. Check your connection and try again.',
+  'missing-offering': 'Season access has not been configured for this leaderboard.',
+  'empty-offering': 'Season access is not available from the store in your region right now.',
 };
 
 type Props = {
@@ -41,8 +50,10 @@ export default function BrandedLeaderboardPaywall({
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const { purchasePackage } = usePurchases();
-  const effectiveOfferingId = offeringId ?? DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
-  const { offering, loading: offeringLoading } = useOffering(effectiveOfferingId);
+  const tierOfferingId = DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
+  const effectiveOfferingId =
+    Platform.OS === 'android' ? tierOfferingId ?? offeringId ?? null : offeringId ?? tierOfferingId;
+  const { offering, issue: offeringIssue, loading: offeringLoading } = useOffering(effectiveOfferingId);
   const [purchasing, setPurchasing] = useState(false);
 
   const packages = offering?.availablePackages ?? [];
@@ -235,7 +246,12 @@ export default function BrandedLeaderboardPaywall({
       ) : (
         <Pressable
           onPress={() => {
-            Alert.alert('Not Available', 'Season access is not available right now. Please try again later.');
+            Alert.alert(
+              'Not Available',
+              offeringIssue
+                ? OFFERING_ISSUE_MESSAGES[offeringIssue]
+                : 'Season access is not available right now. Please try again later.',
+            );
           }}
           style={({ pressed }) => ({
             backgroundColor: '#000',

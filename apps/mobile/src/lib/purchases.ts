@@ -1,8 +1,22 @@
-import { NativeModules } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import type { CustomerInfo, PurchasesOffering } from 'react-native-purchases';
 import { supabase } from './supabase';
 
-const RC_API_KEY = 'appl_GWrmMNrbiSPWUfWlqFYiWnkopgX';
+const RC_IOS_API_KEY = 'appl_GWrmMNrbiSPWUfWlqFYiWnkopgX';
+const RC_ANDROID_API_KEY = 'goog_ujOqhSHvNLqaXjbtzObkERLZyYr';
+const RC_API_KEY = Platform.OS === 'android' ? RC_ANDROID_API_KEY : RC_IOS_API_KEY;
+
+export type OfferingIssue =
+  | 'purchases-unavailable'
+  | 'invalid-api-key'
+  | 'fetch-failed'
+  | 'missing-offering'
+  | 'empty-offering';
+
+export type OfferingResult = {
+  offering: PurchasesOffering | null;
+  issue: OfferingIssue | null;
+};
 
 let configured = false;
 let available = false;
@@ -157,21 +171,72 @@ export async function syncPurchasesForCurrentSession(): Promise<CustomerInfo | n
   }
 }
 
-export async function fetchOffering(offeringId: string): Promise<PurchasesOffering | null> {
+function isInvalidApiKeyError(err: unknown): boolean {
+  const message = String((err as any)?.message ?? err).toLowerCase();
+  return (
+    message.includes('invalid api key') ||
+    message.includes('invalid public api key') ||
+    message.includes('invalid credentials') ||
+    message.includes('api key is not valid') ||
+    message.includes('unauthorized')
+  );
+}
+
+export async function fetchOffering(offeringId: string): Promise<OfferingResult> {
   const { data } = await supabase.auth.getSession();
   await configurePurchases(data.session?.user?.id ?? null);
   if (data.session?.user?.id) {
     await loginPurchases(data.session.user.id);
   }
-  if (!available) return null;
+  if (!available) {
+    console.warn('[Purchases] Offering unavailable because the SDK is not configured', {
+      offeringId,
+      platform: Platform.OS,
+    });
+    return { offering: null, issue: 'purchases-unavailable' };
+  }
   try {
     const Purchases = getPurchases();
-    if (!Purchases) return null;
+    if (!Purchases) {
+      console.warn('[Purchases] Offering unavailable because the native module is missing', {
+        offeringId,
+        platform: Platform.OS,
+      });
+      return { offering: null, issue: 'purchases-unavailable' };
+    }
     const offerings = await Purchases.getOfferings();
-    return offerings.all[offeringId] ?? null;
+    const offering = offerings.all[offeringId] ?? null;
+    if (!offering) {
+      console.warn('[Purchases] Requested offering was not returned by RevenueCat', {
+        offeringId,
+        platform: Platform.OS,
+        availableOfferingIds: Object.keys(offerings.all),
+      });
+      return { offering: null, issue: 'missing-offering' };
+    }
+    if (offering.availablePackages.length === 0) {
+      console.warn('[Purchases] RevenueCat offering has no packages for this platform', {
+        offeringId,
+        platform: Platform.OS,
+      });
+      return { offering, issue: 'empty-offering' };
+    }
+    return { offering, issue: null };
   } catch (err) {
-    console.warn('[Purchases] fetchOffering failed', err);
-    return null;
+    if (isInvalidApiKeyError(err)) {
+      console.warn('[Purchases] RevenueCat rejected the platform API key', {
+        offeringId,
+        platform: Platform.OS,
+        message: (err as any)?.message ?? String(err),
+      });
+      return { offering: null, issue: 'invalid-api-key' };
+    }
+    console.warn('[Purchases] Failed to fetch RevenueCat offering', {
+      offeringId,
+      platform: Platform.OS,
+      message: (err as any)?.message ?? String(err),
+    });
+    return { offering: null, issue: 'fetch-failed' };
   }
 }
 

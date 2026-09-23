@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
-import { getCustomerInfo, fetchOffering, syncPurchasesForCurrentSession } from '../lib/purchases';
+import {
+  getCustomerInfo,
+  fetchOffering,
+  syncPurchasesForCurrentSession,
+  type OfferingIssue,
+} from '../lib/purchases';
 
 function getPurchases() {
   try {
@@ -52,16 +57,29 @@ export function usePurchases() {
 
 export function useOffering(offeringId: string | null | undefined) {
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
+  const [issue, setIssue] = useState<OfferingIssue | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!offeringId) return;
+    let cancelled = false;
+    if (!offeringId) {
+      setOffering(null);
+      setIssue('missing-offering');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetchOffering(offeringId).then((o) => {
-      setOffering(o);
+    setIssue(null);
+    fetchOffering(offeringId).then((result) => {
+      if (cancelled) return;
+      setOffering(result.offering);
+      setIssue(result.issue);
       setLoading(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [offeringId]);
 
-  return { offering, loading };
+  return { offering, issue, loading };
 }

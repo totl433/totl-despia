@@ -199,10 +199,16 @@ describe('price tier defaults', () => {
     expect(getDefaultTierConfig(299)).toBeNull();
   });
 
-  it('prefers explicit leaderboard product ids when present', () => {
+  it('prefers custom product ids but accepts current tier products for legacy leaderboard mappings', () => {
     expect(getExpectedLeaderboardProductIds({ configuredProductId: 'custom_lb_product', priceCents: 99 })).toEqual([
       'custom_lb_product',
     ]);
+    expect(
+      getExpectedLeaderboardProductIds({ configuredProductId: 'totl_season_sub_099', priceCents: 99 }),
+    ).toEqual(['totl_season_sub_099', 'totl_access_099']);
+    expect(
+      getExpectedLeaderboardProductIds({ configuredProductId: 'totl_season_sub_199', priceCents: 199 }),
+    ).toEqual(['totl_season_sub_199', 'totl_access_199']);
     expect(getExpectedLeaderboardProductIds({ priceCents: 99 })).toEqual(['totl_access_099']);
   });
 });
