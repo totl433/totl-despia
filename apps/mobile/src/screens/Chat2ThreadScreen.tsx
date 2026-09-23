@@ -1,8 +1,8 @@
 import React from 'react';
-import { Alert, Keyboard, Platform, Pressable, View } from 'react-native';
+import { Alert, Image, Keyboard, Modal, Platform, Pressable, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useTokens } from '@totl/ui';
+import { Button, TotlText, useTokens } from '@totl/ui';
 import Svg, { Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -61,6 +61,8 @@ export default function Chat2ThreadScreen() {
 
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [chatMuted, setChatMuted] = React.useState(false);
+  const [pendingGroupIconUri, setPendingGroupIconUri] = React.useState<string | null>(null);
+  const [updatingGroupIcon, setUpdatingGroupIcon] = React.useState(false);
 
   const { optimisticallyClear } = useLeagueUnreadCounts();
   React.useEffect(() => {
@@ -203,27 +205,7 @@ export default function Chat2ThreadScreen() {
     [leagueId]
   );
 
-  const handleChooseGroupIcon = React.useCallback(async () => {
-    if (!leagueId) return;
-    if (Platform.OS === 'ios') {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Permission needed', 'Please allow photo library access to update the group icon.', [{ text: 'OK' }]);
-        return;
-      }
-    }
-
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (picked.canceled) return;
-    const asset = picked.assets?.[0];
-    const uri = asset?.uri ? String(asset.uri) : null;
-    if (!uri) return;
-
+  const saveGroupIcon = React.useCallback(async (uri: string) => {
     const manipulated = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 256 } }], {
       compress: 0.75,
       format: ImageManipulator.SaveFormat.JPEG,
@@ -232,8 +214,7 @@ export default function Chat2ThreadScreen() {
     const b64 = await FileSystem.readAsStringAsync(manipulated.uri, { encoding: 'base64' });
     const bytes = base64ToUint8Array(b64);
     if (!bytes.byteLength) {
-      Alert.alert('Update failed', 'The edited image produced 0 bytes. Please try again.', [{ text: 'OK' }]);
-      return;
+      throw new Error('The edited image produced 0 bytes. Please try again.');
     }
 
     const fileName = `${leagueId}-${Date.now()}.jpg`;
@@ -267,6 +248,57 @@ export default function Chat2ThreadScreen() {
     ]);
     Alert.alert('Updated', 'Group icon updated.', [{ text: 'OK' }]);
   }, [leagueId, queryClient]);
+
+  const handleChooseGroupIcon = React.useCallback(async () => {
+    if (!leagueId) return;
+    try {
+      if (Platform.OS === 'ios') {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Permission needed', 'Please allow photo library access to update the group icon.', [{ text: 'OK' }]);
+          return;
+        }
+      }
+
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+      if (picked.canceled) return;
+      const asset = picked.assets?.[0];
+      const uri = asset?.uri ? String(asset.uri) : null;
+      if (!uri) return;
+
+      if (Platform.OS === 'android') {
+        setPendingGroupIconUri(uri);
+        return;
+      }
+
+      await saveGroupIcon(uri);
+    } catch (e: any) {
+      Alert.alert('Couldn’t update icon', e?.message ?? 'Failed to update the group icon. Please try again.', [{ text: 'OK' }]);
+    }
+  }, [leagueId, saveGroupIcon]);
+
+  const handleCancelGroupIcon = React.useCallback(() => {
+    if (updatingGroupIcon) return;
+    setPendingGroupIconUri(null);
+  }, [updatingGroupIcon]);
+
+  const handleConfirmGroupIcon = React.useCallback(async () => {
+    if (!pendingGroupIconUri || updatingGroupIcon) return;
+    setUpdatingGroupIcon(true);
+    try {
+      await saveGroupIcon(pendingGroupIconUri);
+      setPendingGroupIconUri(null);
+    } catch (e: any) {
+      Alert.alert('Couldn’t update icon', e?.message ?? 'Failed to update the group icon. Please try again.', [{ text: 'OK' }]);
+    } finally {
+      setUpdatingGroupIcon(false);
+    }
+  }, [pendingGroupIconUri, saveGroupIcon, updatingGroupIcon]);
 
   const handleResetGroupIcon = React.useCallback(async () => {
     try {
@@ -321,6 +353,90 @@ export default function Chat2ThreadScreen() {
           onPressChooseIcon={handleChooseGroupIcon}
           onPressResetIcon={handleResetGroupIcon}
         />
+
+        <Modal
+          visible={Platform.OS === 'android' && pendingGroupIconUri !== null}
+          animationType="fade"
+          onRequestClose={handleCancelGroupIcon}
+          statusBarTranslucent
+        >
+          <View
+            accessibilityViewIsModal
+            style={{
+              flex: 1,
+              backgroundColor: t.color.background,
+              paddingHorizontal: 24,
+              paddingVertical: 32,
+              justifyContent: 'center',
+            }}
+          >
+            <View style={{ width: '100%', maxWidth: 440, alignSelf: 'center' }}>
+              <TotlText
+                style={{
+                  color: t.color.text,
+                  fontSize: 24,
+                  lineHeight: 30,
+                  fontWeight: '900',
+                  textAlign: 'center',
+                }}
+              >
+                Use this group icon?
+              </TotlText>
+              <TotlText
+                style={{
+                  color: t.color.muted,
+                  fontSize: 14,
+                  lineHeight: 20,
+                  textAlign: 'center',
+                  marginTop: 8,
+                  marginBottom: 24,
+                }}
+              >
+                Check the crop before updating your mini-league chat.
+              </TotlText>
+
+              <View
+                style={{
+                  width: '100%',
+                  aspectRatio: 1,
+                  borderRadius: 24,
+                  overflow: 'hidden',
+                  backgroundColor: t.color.surface,
+                  borderWidth: 1,
+                  borderColor: t.color.border,
+                }}
+              >
+                {pendingGroupIconUri ? (
+                  <Image
+                    source={{ uri: pendingGroupIconUri }}
+                    accessibilityLabel="Selected group icon preview"
+                    resizeMode="cover"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                ) : null}
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title="Cancel"
+                    variant="secondary"
+                    onPress={handleCancelGroupIcon}
+                    disabled={updatingGroupIcon}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title={updatingGroupIcon ? 'Updating…' : 'Choose'}
+                    onPress={() => void handleConfirmGroupIcon()}
+                    loading={updatingGroupIcon}
+                    disabled={updatingGroupIcon}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </View>
   );

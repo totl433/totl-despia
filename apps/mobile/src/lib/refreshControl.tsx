@@ -9,9 +9,11 @@ import { RefreshControl } from 'react-native';
 export function TotlRefreshControl({
   refreshing,
   onRefresh,
+  children,
 }: {
   refreshing: boolean;
   onRefresh: () => void;
+  children?: React.ReactNode;
 }) {
   // Keep this very bright for visibility on the dark background.
   const spinnerColor = '#FFFFFF';
@@ -22,7 +24,9 @@ export function TotlRefreshControl({
       onRefresh={onRefresh}
       tintColor={spinnerColor} // iOS
       colors={[spinnerColor]} // Android
-    />
+    >
+      {children}
+    </RefreshControl>
   );
 }
 
