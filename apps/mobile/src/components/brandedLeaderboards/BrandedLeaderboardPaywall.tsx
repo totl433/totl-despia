@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TotlText, useTokens } from '@totl/ui';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -43,7 +43,9 @@ export default function BrandedLeaderboardPaywall({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { purchasePackage } = usePurchases();
-  const effectiveOfferingId = offeringId ?? DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
+  const tierOfferingId = DEFAULT_TIER_OFFERINGS[priceCents] ?? null;
+  const effectiveOfferingId =
+    Platform.OS === 'ios' ? tierOfferingId ?? offeringId ?? null : offeringId ?? tierOfferingId;
   const { offering, loading: offeringLoading } = useOffering(effectiveOfferingId);
   const [purchasing, setPurchasing] = useState(false);
 
