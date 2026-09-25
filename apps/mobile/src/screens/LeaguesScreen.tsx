@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { FlatList, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useRoute, useScrollToTop, type RouteProp } from '@react-navigation/native';
@@ -941,7 +941,11 @@ export default function LeaguesScreen() {
           paddingTop: t.space[4],
           paddingBottom: FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING,
         }}
-        refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          Platform.OS === 'android' ? undefined : (
+            <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          )
+        }
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         ListHeaderComponent={
@@ -1033,7 +1037,7 @@ export default function LeaguesScreen() {
                         return (
                           <Reanimated.View
                             key={`live-${leagueId}`}
-                            layout={liveLayoutTransition}
+                            layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
                             style={{
                               paddingHorizontal: 6,
                               marginBottom: 12,
@@ -1062,14 +1066,17 @@ export default function LeaguesScreen() {
                       };
                       if (isExpanded) {
                         return (
-                          <Reanimated.View layout={liveLayoutTransition} style={{ marginHorizontal: -6 }}>
+                          <Reanimated.View
+                            layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
+                            style={{ marginHorizontal: -6 }}
+                          >
                             {listLeagues.map(renderCard)}
                           </Reanimated.View>
                         );
                       }
                       return (
                         <Reanimated.View
-                          layout={liveLayoutTransition}
+                          layout={Platform.OS === 'android' ? undefined : liveLayoutTransition}
                           style={{ flexDirection: 'row', marginHorizontal: -6 }}
                         >
                           <View style={{ flex: 1 }}>{cols[0].map(renderCard)}</View>

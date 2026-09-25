@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Image, Pressable, Share, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Alert, Image, Platform, Pressable, Share, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Screen, TotlText, useTokens } from '@totl/ui';
@@ -550,10 +550,12 @@ export default function LeagueDetailScreen() {
     const leagueName = String(leagueMeta?.name ?? params.name ?? 'Mini league');
     if (!leagueId) return;
 
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Please allow photo library access to update the league badge.', [{ text: 'OK' }]);
-      return;
+    if (Platform.OS === 'ios') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to update the league badge.', [{ text: 'OK' }]);
+        return;
+      }
     }
 
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -1330,7 +1332,11 @@ export default function LeagueDetailScreen() {
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
               >
                 {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -1390,7 +1396,11 @@ export default function LeagueDetailScreen() {
               <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
               >
                 {leagueDetailsLoading || (!seasonStartGwResolved && !isDevFakeLeague) ? (
                   <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -1468,7 +1478,11 @@ export default function LeagueDetailScreen() {
                 ref={predictionsScrollRef}
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: 140, flexGrow: 1, justifyContent: 'flex-start' }}
-                refreshControl={<TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  Platform.OS === 'android' ? undefined : (
+                    <TotlRefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                  )
+                }
                 onScroll={(e) => {
                   predictionsScrollYRef.current = e.nativeEvent.contentOffset.y;
                 }}
@@ -1586,14 +1600,17 @@ export default function LeagueDetailScreen() {
                           {predictions.sections.map((section, sectionIdx) => (
                             <Reanimated.View
                               key={`pred-section-${section.label}-${sectionIdx}`}
-                              layout={miniLayoutTransition}
+                              layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
                               style={{ marginBottom: sectionIdx === predictions.sections.length - 1 ? 0 : 8 }}
                             >
                               <View style={{ marginBottom: 10, zIndex: 1 }}>
                                 <TotlText style={{ fontSize: 17, lineHeight: 21, fontFamily: t.font.medium, color: t.color.text }}>{section.label}</TotlText>
                               </View>
                               {predictionsLayout === 'mini' ? (
-                                <Reanimated.View layout={miniLayoutTransition} style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+                                <Reanimated.View
+                                  layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
+                                  style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}
+                                >
                                   {section.fixtures.map((f) => {
                                     const k = String(f.fixture_index);
                                     const miniFixtureId = `league-pred-mini-${predictions.picksGw}-${f.fixture_index}`;
@@ -1627,7 +1644,7 @@ export default function LeagueDetailScreen() {
                                     return (
                                       <Reanimated.View
                                         key={`mini-${predictions.picksGw}-${f.fixture_index}`}
-                                        layout={miniLayoutTransition}
+                                        layout={Platform.OS === 'android' ? undefined : miniLayoutTransition}
                                         style={{
                                           width: isMiniExpanded ? '100%' : '50%',
                                           paddingHorizontal: 6,

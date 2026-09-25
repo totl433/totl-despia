@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, FlatList, Image, Pressable, ScrollView, View } from 'react-native';
+import { Alert, FlatList, Image, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Screen, TotlText, useTokens } from '@totl/ui';
@@ -189,7 +189,11 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
         <FlatList
           data={activeItems}
           keyExtractor={(item) => item.leaderboard.id}
-          refreshControl={<TotlRefreshControl refreshing={false} onRefresh={() => refetch()} />}
+          refreshControl={
+            Platform.OS === 'android' ? undefined : (
+              <TotlRefreshControl refreshing={false} onRefresh={() => refetch()} />
+            )
+          }
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingTop: 16,
@@ -219,7 +223,11 @@ export default function BrandedLeaderboardListScreen({ embedded = false }: { emb
         />
       ) : (
         <ScrollView
-          refreshControl={<TotlRefreshControl refreshing={false} onRefresh={() => refetch()} />}
+          refreshControl={
+            Platform.OS === 'android' ? undefined : (
+              <TotlRefreshControl refreshing={false} onRefresh={() => refetch()} />
+            )
+          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 100, flexGrow: 1 }}
         >
           <LeaderboardSection

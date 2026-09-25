@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, Pressable, TextInput, View } from 'react-native';
+import { Keyboard, PixelRatio, Platform, Pressable, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useQuery } from '@tanstack/react-query';
@@ -246,6 +246,10 @@ export default function LeagueChatTabV2({
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const effectiveHeaderOffset = typeof keyboardHeaderOffset === 'number' ? keyboardHeaderOffset : headerHeight;
+  const androidKeyboardOffset =
+    typeof keyboardHeaderOffset === 'number'
+      ? keyboardHeaderOffset
+      : headerHeight / PixelRatio.get();
   const nameById = React.useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
   const avatarById = React.useMemo(() => new Map(members.map((m) => [m.id, m.avatar_url ?? null])), [members]);
 
@@ -695,12 +699,19 @@ export default function LeagueChatTabV2({
             );
           }}
           // GiftedChat uses `react-native-keyboard-controller`'s KeyboardAvoidingView internally.
-          // With a native stack header, our screen content starts *below* the header, so we must
-          // offset by the header height (otherwise the toolbar can sit under the keyboard).
-          keyboardAvoidingViewProps={{
-            keyboardVerticalOffset: effectiveHeaderOffset,
-            behavior: 'padding' as any,
-          }}
+          // Android reports the native-stack header in physical pixels here, while the keyboard
+          // controller expects layout units. Normalize by density so the composer clears the IME.
+          keyboardAvoidingViewProps={
+            Platform.OS === 'android'
+              ? {
+                  keyboardVerticalOffset: androidKeyboardOffset,
+                  behavior: 'translate-with-padding' as const,
+                }
+              : {
+                  keyboardVerticalOffset: effectiveHeaderOffset,
+                  behavior: 'padding' as const,
+                }
+          }
           keyboardProviderProps={{ preload: false }}
           listProps={{
             style: { backgroundColor: chatBg },
