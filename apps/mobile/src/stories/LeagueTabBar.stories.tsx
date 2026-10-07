@@ -23,6 +23,8 @@ export const Default: Story = {
   args: {
     value: 'gwTable',
     onChange: () => {},
+    gwTableLabel: 'GW4 Table',
+    gwTableLive: true,
   },
 };
 

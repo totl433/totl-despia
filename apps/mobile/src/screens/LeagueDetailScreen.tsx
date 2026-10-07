@@ -218,11 +218,27 @@ export default function LeagueDetailScreen() {
   const seasonGw = effectiveCurrentGw;
   const defaultTableGw = React.useMemo(() => {
     if (!home) return null;
+    if (typeof effectiveCurrentGw !== 'number') return null;
+
+    // Only trust home fixture kickoffs when they belong to the published current GW.
+    // Sticky viewingGw on a finished previous GW would otherwise always look “started”.
+    const fixturesAreCurrent =
+      typeof viewingGw === 'number' && viewingGw === effectiveCurrentGw;
+
+    if (!fixturesAreCurrent) {
+      // Home still on previous GW: only jump to current while matches are actually in play.
+      // Ignore FINISHED (stale) and empty flashes during refetch — those caused 3↔4 thrash.
+      const liveActive = (home.liveScores ?? []).some(
+        (ls: LiveScore) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED'
+      );
+      if (liveActive) return effectiveCurrentGw;
+      return effectiveCurrentGw > 1 ? effectiveCurrentGw - 1 : effectiveCurrentGw;
+    }
+
     return getLeaderboardDisplayGwFromSnapshot({
-      viewingGw,
+      viewingGw: effectiveCurrentGw,
       currentGw: effectiveCurrentGw,
-      latestCompletedGw:
-        typeof viewingGw === 'number' && typeof effectiveCurrentGw === 'number' && viewingGw < effectiveCurrentGw ? viewingGw : null,
+      latestCompletedGw: effectiveCurrentGw > 1 ? effectiveCurrentGw - 1 : null,
       fixtures: home.fixtures ?? [],
       liveScores: home.liveScores ?? [],
       now: new Date(),
@@ -230,11 +246,34 @@ export default function LeagueDetailScreen() {
   }, [effectiveCurrentGw, home, viewingGw]);
 
   const [selectedGw, setSelectedGw] = React.useState<number | null>(null);
+  const manualGwSelectedRef = React.useRef(false);
+  // Ratchet: once we auto-land on a GW, never auto-decrease (stops 3↔4 flicker).
+  const autoTableGwFloorRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    if (selectedGw !== null) return;
     if (typeof defaultTableGw !== 'number') return;
-    setSelectedGw(Math.max(1, Math.trunc(defaultTableGw)));
+    const next = Math.max(1, Math.trunc(defaultTableGw));
+    if (manualGwSelectedRef.current) return;
+
+    if (selectedGw === null) {
+      autoTableGwFloorRef.current = next;
+      setSelectedGw(next);
+      return;
+    }
+
+    const floor = autoTableGwFloorRef.current;
+    const target = typeof floor === 'number' ? Math.max(floor, next) : next;
+    if (target !== selectedGw && target >= selectedGw) {
+      autoTableGwFloorRef.current = target;
+      setSelectedGw(target);
+    } else if (typeof floor === 'number' && next > floor) {
+      autoTableGwFloorRef.current = next;
+    }
   }, [defaultTableGw, selectedGw]);
+
+  const handleChangeSelectedGw = React.useCallback((gw: number) => {
+    manualGwSelectedRef.current = true;
+    setSelectedGw(gw);
+  }, []);
 
   const { data: completedGwsChronological } = useQuery<number[]>({
     queryKey: ['completedGwsChronological', 'v3', useSeasonStack, seasonId, isNewSeasonFresh, browsingArchive],
@@ -264,14 +303,24 @@ export default function LeagueDetailScreen() {
   });
 
   const availableGws = React.useMemo(() => {
+    const publishedMax =
+      typeof effectiveCurrentGw === 'number'
+        ? effectiveCurrentGw
+        : typeof currentGw === 'number'
+          ? currentGw
+          : typeof viewingGw === 'number'
+            ? viewingGw
+            : null;
+
     // Archived 2025/26: full completed list (or 1–38 if missing).
     if (browsingArchive) {
       if (completedGwsChronological?.length) return completedGwsChronological;
       return Array.from({ length: 38 }, (_, i) => i + 1);
     }
-    // Live 2026/27: only up to current GW (no 1–38 from last year).
-    if (browsingLiveNewSeason || isNewSeasonFresh) {
-      const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : 1;
+    // Live season: always include the published current GW so live tables aren't
+    // clamped back to the last completed GW (that fight caused 3↔4 flicker).
+    if (browsingLiveNewSeason || isNewSeasonFresh || useSeasonStack) {
+      const maxGw = publishedMax ?? 1;
       if (maxGw < 1) return [];
       if (completedGwsChronological?.length) {
         const set = new Set(completedGwsChronological);
@@ -282,8 +331,14 @@ export default function LeagueDetailScreen() {
       }
       return Array.from({ length: maxGw }, (_, i) => i + 1);
     }
-    if (completedGwsChronological?.length) return completedGwsChronological;
-    const maxGw = typeof currentGw === 'number' ? currentGw : typeof viewingGw === 'number' ? viewingGw : null;
+    if (completedGwsChronological?.length) {
+      const set = new Set(completedGwsChronological);
+      if (typeof publishedMax === 'number' && publishedMax >= 1) set.add(publishedMax);
+      return Array.from(set)
+        .filter((g) => Number.isFinite(g) && g >= 1)
+        .sort((a, b) => a - b);
+    }
+    const maxGw = publishedMax;
     if (!maxGw || maxGw < 1) return [];
     return Array.from({ length: maxGw }, (_, i) => i + 1);
   }, [
@@ -291,7 +346,9 @@ export default function LeagueDetailScreen() {
     browsingLiveNewSeason,
     completedGwsChronological,
     currentGw,
+    effectiveCurrentGw,
     isNewSeasonFresh,
+    useSeasonStack,
     viewingGw,
   ]);
 
@@ -419,7 +476,9 @@ export default function LeagueDetailScreen() {
       typeof selectedGw === 'number' &&
       seasonStartGwResolved &&
       !isDormantLeague &&
-      tableAvailableGws.includes(selectedGw) &&
+      (tableAvailableGws.includes(selectedGw) ||
+        selectedGw === defaultTableGw ||
+        selectedGw === effectiveCurrentGw) &&
       !isDevFakeLeague,
     queryKey: [
       'leagueGwTable',
@@ -430,6 +489,17 @@ export default function LeagueDetailScreen() {
       seasonId ?? 'none',
     ],
     queryFn: () => api.getLeagueGwTable(leagueId, selectedGw as number),
+    // BFF table already merges live_scores; poll while this GW is the live one.
+    refetchInterval: (() => {
+      if (tab !== 'gwTable') return false;
+      if (typeof selectedGw !== 'number' || typeof effectiveCurrentGw !== 'number') return false;
+      if (selectedGw !== effectiveCurrentGw) return false;
+      const liveActive = (home?.liveScores ?? []).some(
+        (ls: LiveScore) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED'
+      );
+      return liveActive ? 10_000 : false;
+    })(),
+    refetchIntervalInBackground: true,
   });
 
   const gwTableMergedRows = React.useMemo((): LeagueGwTableRow[] => {
@@ -542,9 +612,12 @@ export default function LeagueDetailScreen() {
     if (!seasonStartGwResolved) return;
     if (selectedGw === null) return;
     if (tableAvailableGws.includes(selectedGw)) return;
+    // Don't clamp away from the live default GW while availableGws is still loading.
+    if (typeof defaultTableGw === 'number' && selectedGw === defaultTableGw) return;
+    if (typeof effectiveCurrentGw === 'number' && selectedGw === effectiveCurrentGw) return;
     const nextGw = tableAvailableGws[tableAvailableGws.length - 1] ?? seasonStartGw;
     setSelectedGw(nextGw);
-  }, [seasonStartGw, seasonStartGwResolved, selectedGw, tableAvailableGws]);
+  }, [defaultTableGw, effectiveCurrentGw, seasonStartGw, seasonStartGwResolved, selectedGw, tableAvailableGws]);
 
   const handleEditBadge = React.useCallback(async () => {
     const leagueName = String(leagueMeta?.name ?? params.name ?? 'Mini league');
@@ -1325,7 +1398,19 @@ export default function LeagueDetailScreen() {
             unreadCount={leagueUnreadCount}
           />
 
-          <LeagueTabBar value={tab} onChange={setTab} />
+          <LeagueTabBar
+            value={tab}
+            onChange={setTab}
+            gwTableLabel={typeof selectedGw === 'number' ? `GW${selectedGw} Table` : 'GW Table'}
+            gwTableLive={
+              typeof selectedGw === 'number' &&
+              typeof effectiveCurrentGw === 'number' &&
+              selectedGw === effectiveCurrentGw &&
+              (home?.liveScores ?? []).some(
+                (ls: LiveScore) => ls?.status === 'IN_PLAY' || ls?.status === 'PAUSED'
+              )
+            }
+          />
 
           <View style={{ flex: 1, padding: t.space[4] }}>
             {tab === 'gwTable' ? (
@@ -1383,7 +1468,7 @@ export default function LeagueDetailScreen() {
                     <LeagueGwControlsRow
                       availableGws={tableAvailableGws}
                       selectedGw={selectedGw}
-                      onChangeGw={setSelectedGw}
+                      onChangeGw={handleChangeSelectedGw}
                       onPressRules={() => setRulesOpen(true)}
                       onPressMenu={() => setMenuOpen(true)}
                     />
@@ -1640,7 +1725,12 @@ export default function LeagueDetailScreen() {
                                     const homeLabel = getMediumName(String(f.home_name ?? f.home_team ?? homeCode ?? 'Home'));
                                     const awayLabel = getMediumName(String(f.away_name ?? f.away_team ?? awayCode ?? 'Away'));
                                     const picksMap = new Map<string, LeaguePick>(Object.entries(predictions.picksByFixtureIndex[k] ?? {}));
-                                    const predictionsGwState: GameweekState = predictions.deadlinePassed ? 'DEADLINE_PASSED' : 'GW_PREDICTED';
+                                    const predictionsGwState: GameweekState = (() => {
+                                      if (!predictions.deadlinePassed) return 'GW_PREDICTED';
+                                      if (st === 'FINISHED') return 'RESULTS_PRE_GW';
+                                      if (st === 'IN_PLAY' || st === 'PAUSED') return 'LIVE';
+                                      return 'DEADLINE_PASSED';
+                                    })();
                                     return (
                                       <Reanimated.View
                                         key={`mini-${predictions.picksGw}-${f.fixture_index}`}
@@ -1773,7 +1863,13 @@ export default function LeagueDetailScreen() {
                                                     {homeLabel}
                                                   </TotlText>
                                                 </View>
-                                                <View style={{ width: '32%' }} />
+                                                <View style={{ width: '32%', alignItems: 'center' }}>
+                                                  {hasScore ? (
+                                                    <TotlText style={{ fontSize: 12, lineHeight: 16, fontFamily: t.font.medium, color: t.color.muted }}>
+                                                      {formatMinute(st, live?.minute)}
+                                                    </TotlText>
+                                                  ) : null}
+                                                </View>
                                                 <View style={{ width: '34%', alignItems: 'center' }}>
                                                   <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 20, fontFamily: t.font.medium, color: t.color.text }}>
                                                     {awayLabel}

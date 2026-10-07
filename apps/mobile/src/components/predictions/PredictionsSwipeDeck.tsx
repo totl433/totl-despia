@@ -484,8 +484,11 @@ export default function PredictionsSwipeDeck({
 
   const gesture = React.useMemo(() => {
     const pan = Gesture.Pan()
-      .enabled(!disabled && !transition)
+      .enabled(!disabled && !transition && !flipAnimating)
       .maxPointers(1)
+      // Don’t claim the gesture until the finger clearly moves — lets a clean tap flip.
+      .activeOffsetX([-18, 18])
+      .activeOffsetY([-18, 18])
       .runOnJS(false)
       .onUpdate((e) => {
         if (disabled || transition || isAnimatingSV.value) return;
@@ -520,17 +523,22 @@ export default function PredictionsSwipeDeck({
     if (!enableCardFlip) return pan;
 
     const tap = Gesture.Tap()
-      .enabled(!disabled && !transition)
-      .maxDuration(280)
+      .enabled(!disabled && !transition && !flipAnimating)
+      .maxDuration(250)
+      // Fail the tap as soon as the finger wanders — otherwise swipe attempts flip the card.
+      .maxDistance(12)
       .onEnd(() => {
         runOnJS(toggleCardFlip)();
       });
 
-    // Tap has priority for short presses; pan wins once movement starts.
-    return Gesture.Exclusive(tap, pan);
+    // Pan first: once movement passes activeOffset, swipe owns the gesture.
+    // Tap only fires on a near-stationary press (Carl’s 15 Pro was flipping on swipe attempts
+    // when tap had Exclusive priority).
+    return Gesture.Exclusive(pan, tap);
   }, [
     disabled,
     enableCardFlip,
+    flipAnimating,
     isAnimatingSV,
     revealProgress,
     startPickTransition,
