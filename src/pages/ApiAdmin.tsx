@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import { isGameweekFinished } from "../lib/gameweekState";
+import { hydratePredictionCardStatsForGw } from "../lib/predictionCardStatsHydrate";
 
 // Football Data API types
 type ApiMatch = {
@@ -139,6 +140,8 @@ export default function ApiAdmin() {
  const [loadingGw, setLoadingGw] = useState(true);
  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
  const [recalling, setRecalling] = useState(false);
+ const [cardStatsProgress, setCardStatsProgress] = useState("");
+ const [refreshingCardStats, setRefreshingCardStats] = useState(false);
  const [currentGwFinished, setCurrentGwFinished] = useState<boolean | null>(null);
  const [checkingFinished, setCheckingFinished] = useState(false);
 
@@ -385,92 +388,29 @@ export default function ApiAdmin() {
  return () => { alive = false; };
  }, [isAdmin]);
 
- // Fetch and store team forms from Football Data API standings
- // Expose to window for one-off manual calls
- const fetchAndStoreTeamForms = async (gw: number) => {
+ // Prediction card stats hydrate (forms + H2H) — used on publish and backfill
+ /** Backfill forms + H2H for the live GW (rate-limited; does not re-notify users). */
+ const refreshPredictionCardStats = async () => {
+ if (!currentGw) return;
+ setRefreshingCardStats(true);
+ setError("");
+ setOk("");
+ setCardStatsProgress(`Preparing card stats for GW ${currentGw}…`);
  try {
- console.log(`[ApiAdmin] Fetching team forms for GW ${gw}...`);
- 
- const functionUrl = getFunctionUrl();
- // Use current date for form calculation
- const today = new Date().toISOString().split('T')[0];
- const params = new URLSearchParams({
- resource: 'standings',
- competition: 'PL',
- date: today,
- });
- const url = `${functionUrl}?${params.toString()}`;
-
- const response = await fetch(url);
-
- if (!response.ok) {
- console.warn(`[ApiAdmin] Failed to fetch team forms: ${response.status}`);
- return; // Non-critical error, just skip
- }
-
- const result = await response.json();
-
- if (!result.success || !result.data) {
- console.warn('[ApiAdmin] Invalid standings API response');
- return;
- }
-
- // Parse standings data to extract form + league position
- const formsMap = new Map<string, { form: string; leaguePosition: number | null }>();
- const standings = result.data?.standings || result.data;
- 
- if (standings && Array.isArray(standings)) {
- // Standings is an array of tables (usually one for overall, one for home, one for away)
- // We want the overall table
- const overallTable = standings.find((s: any) => s.type === 'TOTAL') || standings[0];
- 
- if (overallTable && overallTable.table && Array.isArray(overallTable.table)) {
- overallTable.table.forEach((team: any) => {
- // Use team.tla (three-letter code) as key
- const teamCode = (team.team?.tla || team.team?.shortName || '').toUpperCase().trim();
- // API returns comma-separated format (e.g., "D,L,W,D,W") with newest FIRST
- // Reverse it so newest is LAST for display (oldest → newest)
- const formRaw = (team.form || '').trim().toUpperCase().replace(/,/g, '');
- const form = formRaw ? formRaw.split('').reverse().join('') : '';
- const leaguePositionRaw = Number(team?.position);
- const leaguePosition =
-   Number.isFinite(leaguePositionRaw) && leaguePositionRaw > 0 ? Math.trunc(leaguePositionRaw) : null;
-
- // Persist ranks even when form is empty (pre-season)
- if (teamCode && (form || leaguePosition != null)) {
- formsMap.set(teamCode, { form: form || '', leaguePosition });
- }
- });
- }
- }
-
- if (formsMap.size > 0) {
- // Store forms in database
- const formsToInsert = Array.from(formsMap.entries()).map(([team_code, payload]) => ({
- gw,
- team_code,
- form: payload.form || '',
- league_position: payload.leaguePosition,
- }));
-
- const { error: formsError } = await supabase
- .from("app_team_forms")
- .upsert(formsToInsert, {
- onConflict: 'gw,team_code',
- ignoreDuplicates: false,
- });
-
- if (formsError) {
- console.error('[ApiAdmin] Error storing team forms:', formsError);
- } else {
- console.log(`[ApiAdmin] ✅ Successfully stored ${formsMap.size} team forms for GW ${gw}`);
- }
- } else {
- console.warn('[ApiAdmin] ⚠️ No team forms found in API response');
- }
- } catch (error) {
- console.error('[ApiAdmin] Error fetching team forms:', error);
- // Non-critical error, don't block fixture saving
+ const seasonId = season2627IsLive && season2627 ? season2627.id : null;
+ const result = await hydratePredictionCardStatsForGw(
+ currentGw,
+ (p) => setCardStatsProgress(p.message),
+ { seasonId }
+ );
+ setOk(
+ `✅ Prediction card stats refreshed for GW ${currentGw}: ${result.formsCount} forms, ${result.h2hCount} H2H.`
+ );
+ } catch (e: any) {
+ setError(e?.message ?? "Failed to refresh prediction card stats.");
+ } finally {
+ setCardStatsProgress("");
+ setRefreshingCardStats(false);
  }
  };
 
@@ -613,12 +553,13 @@ export default function ApiAdmin() {
 
  const confirmPublish = async () => {
  if (!nextGw) return;
- 
+
  setShowPublishConfirm(false);
 
  setSaving(true);
  setError("");
  setOk("");
+ setCardStatsProgress("");
 
  try {
  const fixturesToInsert = Array.from(selectedFixtures.entries()).map(([fixture_index, f]) => ({
@@ -636,14 +577,56 @@ export default function ApiAdmin() {
  kickoff_time: f.kickoff_time,
  }));
 
- if (season2627IsLive && season2627) {
- console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to 2026/27 GW ${nextGw}...`);
+ const useSeasonStack = !!(season2627IsLive && season2627);
+ const seasonId = useSeasonStack && season2627 ? season2627.id : null;
+
+ // 1) Save fixtures only — do NOT flip current_gw / notify yet
+ if (useSeasonStack && season2627) {
+ console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to ${NEW_SEASON_LABEL} GW ${nextGw}...`);
  await callSeasonAdmin({
  action: "saveSelected",
  seasonId: season2627.id,
  gw: nextGw,
  fixtures: fixturesToInsert,
  });
+ } else {
+ console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}...`);
+
+ const { data: insertedData, error: insertError } = await supabase
+ .from("app_fixtures")
+ .upsert(fixturesToInsert, {
+ onConflict: "gw,fixture_index",
+ ignoreDuplicates: false,
+ })
+ .select();
+
+ if (insertError) {
+ console.error("[ApiAdmin] ❌ Error upserting fixtures to app_fixtures:", insertError);
+ throw insertError;
+ }
+
+ console.log(
+ `[ApiAdmin] ✅ Successfully saved ${insertedData?.length || fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}`
+ );
+ }
+
+ // 2) Pull card stats before the gameweek goes live. If this fails, do not publish.
+ const fixtureCount = fixturesToInsert.length;
+ const estimatedMins = Math.max(1, Math.ceil(((fixtureCount - 1) * 6.5 + 5) / 60));
+
+ setCardStatsProgress(
+ `Pulling prediction card stats for GW ${nextGw} (~${estimatedMins} min for ${fixtureCount} fixtures)…`
+ );
+ console.log(`[ApiAdmin] Pulling prediction card stats for GW ${nextGw} before publish…`);
+ const hydrateResult = await hydratePredictionCardStatsForGw(
+ nextGw,
+ (p) => setCardStatsProgress(p.message),
+ { seasonId }
+ );
+ console.log(`[ApiAdmin] Card stats ready:`, hydrateResult);
+
+ // 3) Always go live (hydrate must not block publish)
+ if (useSeasonStack && season2627) {
  await callSeasonAdmin({
  action: "open",
  seasonId: season2627.id,
@@ -651,27 +634,10 @@ export default function ApiAdmin() {
  });
  setCurrentGw(nextGw);
  } else {
- console.log(`[ApiAdmin] Saving ${fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}...`);
- 
- const { data: insertedData, error: insertError } = await supabase
- .from("app_fixtures")
- .upsert(fixturesToInsert, { 
- onConflict: 'gw,fixture_index',
- ignoreDuplicates: false 
- })
- .select();
-
- if (insertError) {
- console.error('[ApiAdmin] ❌ Error upserting fixtures to app_fixtures:', insertError);
- throw insertError;
- }
-
- console.log(`[ApiAdmin] ✅ Successfully saved ${insertedData?.length || fixturesToInsert.length} fixtures to app_fixtures for GW ${nextGw}`);
-
  console.log(`[ApiAdmin] ⚠️ PUBLISHING: Updating app_meta.current_gw to ${nextGw}...`);
  const { error: metaError } = await supabase
  .from("app_meta")
- .upsert({ id: 1, current_gw: nextGw }, { onConflict: 'id' });
+ .upsert({ id: 1, current_gw: nextGw }, { onConflict: "id" });
 
  if (metaError) {
  throw new Error(`Failed to publish: Could not update current_gw to ${nextGw}. ${metaError.message}`);
@@ -679,64 +645,57 @@ export default function ApiAdmin() {
  setCurrentGw(nextGw);
  }
 
- // Fetch and store team forms for this gameweek (automatic)
- console.log(`[ApiAdmin] 🔄 Automatically fetching team forms for GW ${nextGw}...`);
+ // 4) Notify users (after hydrate attempt — success or fail)
  try {
- await fetchAndStoreTeamForms(nextGw);
- console.log(`[ApiAdmin] ✅ Team forms fetch completed for GW ${nextGw}`);
- } catch (formsError) {
- console.error('[ApiAdmin] ⚠️ Team forms fetch failed (non-critical):', formsError);
- // Don't throw - gameweek is published, form data fetch failure is non-critical
- }
-
- // Send push notification to all users - using V2 dispatcher
- try {
- const pushRes = await fetch('/.netlify/functions/sendPushAllV2', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
+ const pushRes = await fetch("/.netlify/functions/sendPushAllV2", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
  body: JSON.stringify({
  title: `GAMEWEEK ${nextGw} - FIXTURES ARE OUT!`,
  message: `Make your predictions now!`,
- data: { type: 'fixtures_published', gw: nextGw }
- })
+ data: { type: "fixtures_published", gw: nextGw },
+ }),
  });
 
  const pushData = await pushRes.json().catch(() => ({}));
- 
+
  if (pushRes.ok && pushData.ok) {
- console.log(`[ApiAdmin] Push notification sent to ${pushData.sentTo || 0} users (out of ${pushData.userCount || 0} subscribed)`);
+ console.log(
+ `[ApiAdmin] Push notification sent to ${pushData.sentTo || 0} users (out of ${pushData.userCount || 0} subscribed)`
+ );
  } else {
- console.warn('[ApiAdmin] Push notification failed:', pushData);
+ console.warn("[ApiAdmin] Push notification failed:", pushData);
  }
  } catch (pushError) {
- console.error('[ApiAdmin] Error sending push notification:', pushError);
- // Don't throw - gameweek is saved, notification failure is non-critical
+ console.error("[ApiAdmin] Error sending push notification:", pushError);
  }
 
- // Send Volley messages to all leagues
  try {
- const volleyRes = await fetch('/.netlify/functions/sendVolleyGwReady', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ gameweek: nextGw })
+ const volleyRes = await fetch("/.netlify/functions/sendVolleyGwReady", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ gameweek: nextGw }),
  });
 
  const volleyData = await volleyRes.json().catch(() => ({}));
- 
+
  if (volleyRes.ok && volleyData.ok) {
  console.log(`[ApiAdmin] Volley messages sent to ${volleyData.totalLeagues || 0} leagues`);
  } else {
- console.warn('[ApiAdmin] Volley message failed:', volleyData);
+ console.warn("[ApiAdmin] Volley message failed:", volleyData);
  }
  } catch (volleyError) {
- console.error('[ApiAdmin] Error sending Volley messages:', volleyError);
- // Don't throw - gameweek is published, Volley message failure is non-critical
+ console.error("[ApiAdmin] Error sending Volley messages:", volleyError);
  }
 
- setOk(`✅ Gameweek ${nextGw} PUBLISHED with ${selectedFixtures.size} Premier League fixtures! Notification sent to all users.`);
+ setOk(
+ `Gameweek ${nextGw} is live. Card stats saved: ${hydrateResult.formsCount} teams, ${hydrateResult.h2hCount} head-to-heads. Notification sent.`
+ );
  } catch (e: any) {
  setError(e.message ?? "Failed to publish gameweek.");
+ window.alert(`Publish failed:\n${e.message ?? "Unknown error"}`);
  } finally {
+ setCardStatsProgress("");
  setSaving(false);
  }
  };
@@ -1124,6 +1083,14 @@ export default function ApiAdmin() {
  {ok}
  </div>
  )}
+ {cardStatsProgress && (
+ <div className="mb-3 p-3 bg-sky-50 border border-sky-200 rounded-lg text-sky-900 text-sm">
+ <strong>Card stats:</strong> {cardStatsProgress}
+ <p className="mt-1 text-xs text-sky-700">
+ Head-to-head is spaced out so we stay under the API limit. About a minute for 10 fixtures. If this fails, the gameweek is not published.
+ </p>
+ </div>
+ )}
  {apiError && (
  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
  {apiError}
@@ -1152,17 +1119,28 @@ export default function ApiAdmin() {
  type="button"
  title={!canPublishNextGw ? `GW ${currentGw} must be finished first` : ""}
  >
- {saving ? "Publishing…" : `Publish GW ${nextGw}`}
+ {saving ? (cardStatsProgress ? "Card stats…" : "Publishing…") : `Publish GW ${nextGw}`}
  </button>
  )}
  {isPublished && (
  <button
  onClick={recallGameweek}
- disabled={recalling}
+ disabled={recalling || refreshingCardStats}
  className="px-4 py-2 bg-red-600 text-white rounded-lg disabled:opacity-50 font-semibold"
  type="button"
  >
  {recalling ? "Recalling…" : `Recall GW ${nextGw}`}
+ </button>
+ )}
+ {currentGw != null && (
+ <button
+ type="button"
+ onClick={() => void refreshPredictionCardStats()}
+ disabled={saving || refreshingCardStats}
+ className="px-4 py-2 bg-sky-700 text-white rounded-lg disabled:opacity-50 font-semibold"
+ title="Re-fetch standings + H2H for prediction flip cards (no push notification)"
+ >
+ {refreshingCardStats ? "Refreshing card stats…" : `Refresh card stats (GW ${currentGw})`}
  </button>
  )}
  {selectedFixtures.size > 0 && (
@@ -1251,13 +1229,15 @@ export default function ApiAdmin() {
  <p className="font-semibold">This will:</p>
  <ul className="list-disc list-inside space-y-2 ml-2">
  <li>Save {selectedFixtures.size} fixture{selectedFixtures.size === 1 ? '' : 's'} to the database</li>
- <li><strong className="text-red-600">Set {season2627IsLive ? `${NEW_SEASON_LABEL} ` : ''}current GW to {nextGw}</strong> (makes it live)</li>
- <li><strong className="text-red-600">Send push notification to ALL users</strong></li>
- <li>Make this gameweek visible to all users</li>
+ <li>
+ Pull every team’s season stats and every fixture’s head-to-head from the API first (~1 min for 10 fixtures)
+ </li>
+ <li><strong className="text-red-600">Then set {season2627IsLive ? `${NEW_SEASON_LABEL} ` : ''}current GW to {nextGw}</strong> only after those stats are saved</li>
+ <li><strong className="text-red-600">Then send push notification to ALL users</strong></li>
  <li>Lock editing (you'll need to RECALL to make changes)</li>
  </ul>
  <p className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
- <strong>Are you sure?</strong> Once published, users will receive notifications and can start making predictions.
+ <strong>Are you sure?</strong> You’ll see a progress banner while the stats load. If that pull fails, the gameweek stays unpublished.
  </p>
  </div>
 

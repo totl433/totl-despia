@@ -37,6 +37,45 @@ export const handler: Handler = async (event) => {
     const resource = params.get('resource'); // 'standings' or 'matches'
     const competition = params.get('competition') || 'PL';
     
+    // If resource is 'head2head', fetch PL meetings for a match (prediction flip cards)
+    if (resource === 'head2head') {
+      const id = params.get('matchId');
+      if (!id) {
+        return json(400, { error: 'matchId is required for head2head' });
+      }
+      const limit = params.get('limit') || '50';
+      const apiUrl = `${FOOTBALL_DATA_BASE_URL}/matches/${id}/head2head?limit=${encodeURIComponent(limit)}`;
+      console.log('[fetchFootballData] Fetching head2head:', apiUrl);
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Cache-Control': 'no-cache',
+        },
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[fetchFootballData] H2H API error:', response.status, errorText);
+        if (response.status === 429) {
+          return json(429, {
+            error: 'Rate limit reached',
+            message: 'Too many requests. Please wait a moment.',
+            retryAfter: response.headers.get('Retry-After') || '60',
+          });
+        }
+        return json(response.status, {
+          error: 'API error',
+          status: response.status,
+          message: errorText,
+        });
+      }
+
+      const data = await response.json();
+      return json(200, { success: true, data });
+    }
+
     // If resource is 'standings', fetch standings
     if (resource === 'standings') {
       // Use date parameter for form calculation (defaults to today if not provided)
