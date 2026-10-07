@@ -1865,7 +1865,7 @@ export default function LeagueDetailScreen() {
                                                 </View>
                                                 <View style={{ width: '32%', alignItems: 'center' }}>
                                                   {hasScore ? (
-                                                    <TotlText style={{ fontSize: 12, lineHeight: 16, fontFamily: t.font.medium, color: t.color.muted }}>
+                                                    <TotlText style={{ fontSize: 12, lineHeight: 16, fontFamily: t.font.body, color: t.color.muted }}>
                                                       {formatMinute(st, live?.minute)}
                                                     </TotlText>
                                                   ) : null}
