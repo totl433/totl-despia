@@ -1,6 +1,7 @@
 -- Retro Totl Daily — The Players
--- One row per player × Premier League club career (appearances aggregated).
--- Web game can also run from the local seed pack until this table is fully backfilled.
+-- One row per player × Premier League club. appearances is the club total.
+-- spells keeps each separate stint so a question season is never a gap year.
+-- shape: [{"firstSeason","lastSeason","appearances","sources":[url,...]}]
 
 CREATE TABLE IF NOT EXISTS public.retro_player_club_apps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,6 +13,10 @@ CREATE TABLE IF NOT EXISTS public.retro_player_club_apps (
   goals integer,
   first_season text,
   last_season text,
+  spells jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- English Wikipedia user pageviews, July 2015 through October 2026.
+  -- Same number on every club row. Cards 1–5 require at least 1,000,000.
+  wiki_views bigint,
   source text NOT NULL DEFAULT 'seed',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -39,3 +44,5 @@ CREATE POLICY "retro_player_club_apps_public_read"
   FOR SELECT
   TO anon, authenticated
   USING (true);
+
+NOTIFY pgrst, 'reload schema';

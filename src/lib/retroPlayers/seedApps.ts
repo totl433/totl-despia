@@ -1,5 +1,6 @@
 /**
- * The Players deals from the checked list in verifiedApps.ts.
+ * Checked list used to fill `retro_player_club_apps`.
+ * The game reads that table, not this file.
  * The starter rows below are not used.
  * Multiple rows with the same player+club = separate spells (e.g. returns).
  */
@@ -19,6 +20,8 @@ export type PlayerClubApp = {
   clubName: string;
   /** Total PL apps at this club (sum of spells). */
   appearances: number;
+  /** English Wikipedia views for this player. Same on every club row. */
+  wikiViews?: number;
   firstSeason?: string;
   lastSeason?: string;
   /** Separate stints at the club (one entry if continuous). */

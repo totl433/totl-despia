@@ -8,6 +8,8 @@ import {
   type PlayersClubOption,
   type PlayersPuzzle,
 } from '../lib/retroPlayers/buildPuzzle';
+import { loadPlayerClubApps } from '../lib/retroPlayers/loadPlayerClubApps';
+import type { PlayerClubApp } from '../lib/retroPlayers/seedApps';
 import RetroDailyLogoBack from '../components/retroDaily/RetroDailyLogoBack';
 import RetroDailyProgressPips from '../components/retroDaily/RetroDailyProgressPips';
 import RetroDailySwipeStack, {
@@ -60,8 +62,11 @@ export default function RetroTotlDailyPlayersPage() {
   const navigate = useNavigate();
   const isAdmin = isFounderAdmin(user?.id);
 
-  const [puzzle, setPuzzle] = useState<PlayersPuzzle>(() => createPlayersPuzzle());
-  const cards = puzzle.cards;
+  const [puzzle, setPuzzle] = useState<PlayersPuzzle | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const rowsRef = useRef<PlayerClubApp[]>([]);
+  const cards = puzzle?.cards ?? [];
   const [phase, setPhase] = useState<Phase>('intro');
   const [index, setIndex] = useState(0);
   const [outcomes, setOutcomes] = useState<PlayersRoundOutcome[]>([]);
@@ -119,9 +124,29 @@ export default function RetroTotlDailyPlayersPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoadError(false);
+    loadPlayerClubApps()
+      .then((rows) => {
+        if (cancelled) return;
+        rowsRef.current = rows;
+        setPuzzle(createPlayersPuzzle(rows, Date.now()));
+      })
+      .catch((error) => {
+        console.error('[RetroTotlDailyPlayers] load failed:', error);
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogAttempt]);
+
   const restart = useCallback(() => {
+    const rows = rowsRef.current;
+    if (!rows.length) return;
     timerEpoch.current += 1;
-    setPuzzle(createPlayersPuzzle());
+    setPuzzle(createPlayersPuzzle(rows, Date.now()));
     setPhase('intro');
     setIndex(0);
     setOutcomes([]);
@@ -300,6 +325,28 @@ export default function RetroTotlDailyPlayersPage() {
 
   if (!pixelFontReady) {
     return <div className="h-full w-full" style={{ backgroundColor: BG }} />;
+  }
+
+  if (!puzzle) {
+    return (
+      <div
+        className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-white"
+        style={{ backgroundColor: BG }}
+      >
+        <p className="text-center text-base font-extrabold">
+          {loadError ? "Couldn't load the players." : 'Loading the players…'}
+        </p>
+        {loadError ? (
+          <button
+            type="button"
+            onClick={() => setCatalogAttempt((n) => n + 1)}
+            className="h-12 w-full max-w-xs rounded-2xl bg-[#1C8376] text-base font-extrabold text-white"
+          >
+            Try again
+          </button>
+        ) : null}
+      </div>
+    );
   }
 
   const secondsLeft = Math.max(0, Math.ceil(timerPct * (PLAYERS_TIMER_MS / 1000)));

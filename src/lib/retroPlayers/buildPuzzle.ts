@@ -1,4 +1,4 @@
-import { getCleanPlayerClubSeed, type ClubSpell, type PlayerClubApp } from './seedApps';
+import type { ClubSpell, PlayerClubApp } from './seedApps';
 
 export type PlayersDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
@@ -140,6 +140,10 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
  * Appearances shown on the card (that club) for cards 1–10.
  * Card 10 is a club spell of 1 to 9.
  */
+/** Cards 1–5 only: the player needs at least this many Wikipedia views. */
+const EARLY_CARD_MIN_WIKI_VIEWS = 1_000_000;
+const EARLY_CARD_COUNT = 5;
+
 const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
   { min: 300, max: Infinity },
   { min: 200, max: 299 },
@@ -219,12 +223,10 @@ function pickDistractors(
 }
 
 /**
- * Build a random 10-card Players puzzle from the local seed pack.
- * Later: swap seed for `retro_player_club_apps` when the DB is backfilled.
+ * Build a random 10-card Players puzzle from club rows loaded from Supabase.
  */
-export function createPlayersPuzzle(seed: number = Date.now()): PlayersPuzzle {
+export function createPlayersPuzzle(rows: PlayerClubApp[], seed: number = Date.now()): PlayersPuzzle {
   const rng = mulberry32(seed >>> 0);
-  const rows = getCleanPlayerClubSeed();
 
   const clubMap = new Map<string, PlayersClubOption>();
   for (const r of rows) {
@@ -244,7 +246,9 @@ export function createPlayersPuzzle(seed: number = Date.now()): PlayersPuzzle {
     const wholePot = i === CARD_APPEARANCE_BANDS.length - 1;
     const inBand = rows.filter((r) => {
       if (usedPlayers.has(r.playerKey)) return false;
-      return r.appearances >= band.min && r.appearances <= band.max;
+      if (r.appearances < band.min || r.appearances > band.max) return false;
+      if (i < EARLY_CARD_COUNT && (r.wikiViews ?? 0) < EARLY_CARD_MIN_WIKI_VIEWS) return false;
+      return true;
     });
     const multiClub = inBand.filter(
       (r) => otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0
