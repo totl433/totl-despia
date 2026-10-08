@@ -137,26 +137,36 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
- * Games at that club for cards 1–10.
- * Cards 1–6 also need at least EARLY_CARD_MIN_WIKI_VIEWS.
- * Card 10 is the whole 1–7 pot, so a one-club cameo can still come up.
+ * Games at that club for cards 1–10, high to low.
+ * Each card has its own Wikipedia-view floor. The floor steps down,
+ * so a famous player can still appear later on a shorter spell.
+ * Card 10 is the whole 1–9 pot, so a one-club cameo can still come up.
  * Full write-up: docs/RETRO_PLAYERS_RULES.md
  */
-/** Cards 1–6 only: the player needs at least this many Wikipedia views. */
-const EARLY_CARD_MIN_WIKI_VIEWS = 1_000_000;
-const EARLY_CARD_COUNT = 6;
+const CARD_MIN_WIKI_VIEWS = [
+  2_000_000,
+  1_000_000,
+  1_000_000,
+  500_000,
+  500_000,
+  250_000,
+  250_000,
+  0,
+  0,
+  0,
+];
 
 const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
-  { min: 208, max: Infinity },
-  { min: 138, max: 207 },
-  { min: 101, max: 137 },
-  { min: 77, max: 100 },
-  { min: 56, max: 76 },
-  { min: 33, max: 55 },
-  { min: 25, max: 32 },
-  { min: 15, max: 24 },
-  { min: 8, max: 14 },
-  { min: 1, max: 7 },
+  { min: 200, max: Infinity },
+  { min: 150, max: 199 },
+  { min: 100, max: 149 },
+  { min: 80, max: 99 },
+  { min: 60, max: 79 },
+  { min: 40, max: 59 },
+  { min: 30, max: 39 },
+  { min: 20, max: 29 },
+  { min: 10, max: 19 },
+  { min: 1, max: 9 },
 ];
 
 function clubsForPlayer(rows: PlayerClubApp[], playerKey: string): Set<string> {
@@ -244,12 +254,13 @@ export function createPlayersPuzzle(rows: PlayerClubApp[], seed: number = Date.n
   for (let i = 0; i < PLAYERS_CARD_COUNT; i++) {
     const band = CARD_APPEARANCE_BANDS[i]!;
     const harderHalf = i >= 5;
-    // Last card is the 1–7 pot: a one-club spell can still come up.
+    // Last card is the 1–9 pot: a one-club spell can still come up.
     const wholePot = i === CARD_APPEARANCE_BANDS.length - 1;
+    const minViews = CARD_MIN_WIKI_VIEWS[i] ?? 0;
     const inBand = rows.filter((r) => {
       if (usedPlayers.has(r.playerKey)) return false;
       if (r.appearances < band.min || r.appearances > band.max) return false;
-      if (i < EARLY_CARD_COUNT && (r.wikiViews ?? 0) < EARLY_CARD_MIN_WIKI_VIEWS) return false;
+      if ((r.wikiViews ?? 0) < minViews) return false;
       return true;
     });
     const multiClub = inBand.filter(

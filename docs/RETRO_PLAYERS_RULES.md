@@ -22,22 +22,24 @@ Counts below are from the checked list on 8 October 2026: 731 players, 1,517 clu
 
 ## The ten pots
 
-Cards 1–6 only deal a player with at least 1,000,000 Wikipedia views. Cards 7–10 have no fame rule. A famous player with a short spell can still appear on cards 7–10. A player under a million views stays out of cards 1–6, and that spell does not drop into cards 7–10.
+Fame is a floor, and the floor steps down as the spells get shorter. A player is dealt on a card when his games at that club are in the band and his Wikipedia views meet that card’s floor. A famous player can still appear later if the spell at that club is short. Someone under 250,000 views only shows up from card 8 onward.
 
-| Card | Games at that club | Players | Fame rule |
+652 of the 731 players can be dealt.
+
+| Card | Games at that club | Players | Fame floor |
 |---|---|---|---|
-| 1 | 208 or more | 113 | 1 million or more |
-| 2 | 138–207 | 113 | 1 million or more |
-| 3 | 101–137 | 113 | 1 million or more |
-| 4 | 77–100 | 107 | 1 million or more |
-| 5 | 56–76 | 109 | 1 million or more |
-| 6 | 33–55 | 105 | 1 million or more |
-| 7 | 25–32 | 112 | anyone |
-| 8 | 15–24 | 110 | anyone |
-| 9 | 8–14 | 105 | anyone |
-| 10 | 1–7 | 113 | anyone |
+| 1 | 200 or more | 94 | 2 million or more |
+| 2 | 150–199 | 81 | 1 million or more |
+| 3 | 100–149 | 141 | 1 million or more |
+| 4 | 80–99 | 119 | 500,000 or more |
+| 5 | 60–79 | 125 | 500,000 or more |
+| 6 | 40–59 | 134 | 250,000 or more |
+| 7 | 30–39 | 98 | 250,000 or more |
+| 8 | 20–29 | 114 | anyone |
+| 9 | 10–19 | 137 | anyone |
+| 10 | 1–9 | 132 | anyone |
 
-These bands are in `src/lib/retroPlayers/buildPuzzle.ts` (`CARD_APPEARANCE_BANDS`, `EARLY_CARD_COUNT`, `EARLY_CARD_MIN_WIKI_VIEWS`). The same constants are in the Expo app copy of that file.
+These bands are in `src/lib/retroPlayers/buildPuzzle.ts` (`CARD_APPEARANCE_BANDS`, `CARD_MIN_WIKI_VIEWS`). The same constants are in the Expo app copy of that file.
 
 ## Wrong clubs
 
@@ -45,7 +47,7 @@ Cards 1–5: both wrong clubs are ones he never played for in the Premier League
 
 Cards 6–10: if he has another Premier League club on the list, one wrong answer is that club. The other wrong answer is a club he never played for. The season on the front is what separates a real other club from the right one.
 
-Cards 6–9 prefer a player who has another Premier League club, so that real other club can be offered. Card 10 uses the whole 1–7 pot, so a one-club cameo can still come up.
+Cards 6–9 prefer a player who has another Premier League club, so that real other club can be offered. Card 10 uses the whole 1–9 pot, so a one-club cameo can still come up.
 
 ## How a round plays
 
