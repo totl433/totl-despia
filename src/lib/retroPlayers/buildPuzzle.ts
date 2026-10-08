@@ -137,24 +137,26 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
- * Appearances shown on the card (that club) for cards 1–10.
- * Card 10 is a club spell of 1 to 9.
+ * Games at that club for cards 1–10.
+ * Cards 1–5 also need at least EARLY_CARD_MIN_WIKI_VIEWS.
+ * Card 10 is the whole 1–7 pot, so a one-club cameo can still come up.
+ * Full write-up: docs/RETRO_PLAYERS_RULES.md
  */
 /** Cards 1–5 only: the player needs at least this many Wikipedia views. */
 const EARLY_CARD_MIN_WIKI_VIEWS = 1_000_000;
 const EARLY_CARD_COUNT = 5;
 
 const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
-  { min: 300, max: Infinity },
-  { min: 200, max: 299 },
-  { min: 100, max: 199 },
-  { min: 80, max: 99 },
-  { min: 50, max: 79 },
-  { min: 40, max: 49 },
-  { min: 30, max: 39 },
-  { min: 20, max: 29 },
-  { min: 10, max: 19 },
-  { min: 1, max: 9 },
+  { min: 208, max: Infinity },
+  { min: 137, max: 207 },
+  { min: 100, max: 136 },
+  { min: 73, max: 99 },
+  { min: 50, max: 72 },
+  { min: 36, max: 49 },
+  { min: 27, max: 35 },
+  { min: 16, max: 26 },
+  { min: 8, max: 15 },
+  { min: 1, max: 7 },
 ];
 
 function clubsForPlayer(rows: PlayerClubApp[], playerKey: string): Set<string> {
@@ -242,7 +244,7 @@ export function createPlayersPuzzle(rows: PlayerClubApp[], seed: number = Date.n
   for (let i = 0; i < PLAYERS_CARD_COUNT; i++) {
     const band = CARD_APPEARANCE_BANDS[i]!;
     const harderHalf = i >= 5;
-    // Last card is the 1–9 pot: a one-club spell can still come up.
+    // Last card is the 1–7 pot: a one-club spell can still come up.
     const wholePot = i === CARD_APPEARANCE_BANDS.length - 1;
     const inBand = rows.filter((r) => {
       if (usedPlayers.has(r.playerKey)) return false;
