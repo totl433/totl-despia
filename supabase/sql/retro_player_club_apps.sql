@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.retro_player_club_apps (
   last_season text,
   spells jsonb NOT NULL DEFAULT '[]'::jsonb,
   -- English Wikipedia user pageviews, July 2015 through October 2026.
-  -- Same number on every club row. Cards 1–5 require at least 1,000,000.
+  -- Same number on every club row. Cards 1–6 require at least 1,000,000.
   wiki_views bigint,
   source text NOT NULL DEFAULT 'seed',
   created_at timestamptz NOT NULL DEFAULT now(),

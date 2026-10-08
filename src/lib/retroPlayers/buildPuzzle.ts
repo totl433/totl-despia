@@ -138,13 +138,13 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 
 /**
  * Games at that club for cards 1–10.
- * Cards 1–5 also need at least EARLY_CARD_MIN_WIKI_VIEWS.
+ * Cards 1–6 also need at least EARLY_CARD_MIN_WIKI_VIEWS.
  * Card 10 is the whole 1–7 pot, so a one-club cameo can still come up.
  * Full write-up: docs/RETRO_PLAYERS_RULES.md
  */
-/** Cards 1–5 only: the player needs at least this many Wikipedia views. */
+/** Cards 1–6 only: the player needs at least this many Wikipedia views. */
 const EARLY_CARD_MIN_WIKI_VIEWS = 1_000_000;
-const EARLY_CARD_COUNT = 5;
+const EARLY_CARD_COUNT = 6;
 
 const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
   { min: 208, max: Infinity },

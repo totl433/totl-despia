@@ -22,7 +22,7 @@ Counts below are from the checked list on 8 October 2026: 731 players, 1,517 clu
 
 ## The ten pots
 
-Cards 1–5 only deal a player with at least 1,000,000 Wikipedia views. Cards 6–10 have no fame rule. A famous player with a short spell can still appear on cards 6–10. A player under a million views with a long spell stays out of cards 1–5, and that long spell does not drop into cards 6–10.
+Cards 1–6 only deal a player with at least 1,000,000 Wikipedia views. Cards 7–10 have no fame rule. A famous player with a short spell can still appear on cards 7–10. A player under a million views stays out of cards 1–6, and that spell does not drop into cards 7–10.
 
 | Card | Games at that club | Players | Fame rule |
 |---|---|---|---|
@@ -31,7 +31,7 @@ Cards 1–5 only deal a player with at least 1,000,000 Wikipedia views. Cards 6�
 | 3 | 100–136 | 117 | 1 million or more |
 | 4 | 73–99 | 118 | 1 million or more |
 | 5 | 50–72 | 119 | 1 million or more |
-| 6 | 36–49 | 113 | anyone |
+| 6 | 36–49 | 63 | 1 million or more |
 | 7 | 27–35 | 114 | anyone |
 | 8 | 16–26 | 115 | anyone |
 | 9 | 8–15 | 120 | anyone |
