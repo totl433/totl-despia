@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import confetti from 'canvas-confetti';
 import { useAuth } from '../context/AuthContext';
 import { isFounderAdmin } from '../lib/adminIds';
 import {
@@ -9,7 +8,6 @@ import {
   type PlayersClubOption,
   type PlayersPuzzle,
 } from '../lib/retroPlayers/buildPuzzle';
-import RetroDailyCountdownCard from '../components/retroDaily/RetroDailyCountdownCard';
 import RetroDailyLogoBack from '../components/retroDaily/RetroDailyLogoBack';
 import RetroDailyProgressPips from '../components/retroDaily/RetroDailyProgressPips';
 import RetroDailySwipeStack, {
@@ -26,14 +24,12 @@ import RetroPlayersPromoteFlipCard, {
   RETRO_PROMOTE_FLIP_MS,
 } from '../components/retroPlayers/RetroPlayersPromoteFlipCard';
 import RetroPlayersRevealCard, {
-  PLAYERS_REVEAL_FLIP_MS,
-  PLAYERS_REVEAL_HOLD_MS,
   type PlayersRoundOutcome,
 } from '../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersRulesModal from '../components/retroPlayers/RetroPlayersRulesModal';
 import RetroPlayersScoreCard, { playersScoreBlurb } from '../components/retroPlayers/RetroPlayersScoreCard';
 
-type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
+type Phase = 'intro' | 'playing' | 'reveal' | 'score';
 
 const BG = '#0B1F3A';
 
@@ -68,7 +64,6 @@ export default function RetroTotlDailyPlayersPage() {
   const cards = puzzle.cards;
   const [phase, setPhase] = useState<Phase>('intro');
   const [index, setIndex] = useState(0);
-  const [countdown, setCountdown] = useState(3);
   const [outcomes, setOutcomes] = useState<PlayersRoundOutcome[]>([]);
   const [lastCorrect, setLastCorrect] = useState(false);
   const [lastTimedOut, setLastTimedOut] = useState(false);
@@ -111,7 +106,6 @@ export default function RetroTotlDailyPlayersPage() {
   const showNext = phase !== 'score';
   const showQueued =
     phase === 'intro' ||
-    phase === 'countdown' ||
     phase === 'playing' ||
     (phase === 'reveal' && !revealLeadsToScore);
 
@@ -130,7 +124,6 @@ export default function RetroTotlDailyPlayersPage() {
     setPuzzle(createPlayersPuzzle());
     setPhase('intro');
     setIndex(0);
-    setCountdown(3);
     setOutcomes([]);
     setLastCorrect(false);
     setLastTimedOut(false);
@@ -143,31 +136,6 @@ export default function RetroTotlDailyPlayersPage() {
     setDragX(0);
     setDragY(0);
   }, []);
-
-  useEffect(() => {
-    if (phase !== 'countdown') return;
-    setInteractive(false);
-    if (countdown < 1) return;
-    const id = window.setTimeout(() => {
-      if (countdown <= 1) {
-        setPhase('playing');
-        setIndex(0);
-        setCardKey(`play-0-${Date.now()}`);
-        setFlipKey((k) => k + 1);
-      } else {
-        setCountdown((c) => c - 1);
-      }
-    }, 1000);
-    return () => window.clearTimeout(id);
-  }, [countdown, phase]);
-
-  useEffect(() => {
-    if (phase !== 'reveal' || !lastCorrect) return;
-    const id = window.setTimeout(() => {
-      void confetti({ particleCount: 160, spread: 70, origin: { y: 0.25 } });
-    }, PLAYERS_REVEAL_HOLD_MS);
-    return () => window.clearTimeout(id);
-  }, [flipKey, lastCorrect, phase]);
 
   useEffect(() => {
     if (phase !== 'playing' && phase !== 'reveal') {
@@ -187,7 +155,7 @@ export default function RetroTotlDailyPlayersPage() {
           ? 280
           : (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
             RETRO_PROMOTE_FLIP_MS
-        : PLAYERS_REVEAL_HOLD_MS + PLAYERS_REVEAL_FLIP_MS;
+        : 0;
     const epoch = ++timerEpoch.current;
     const isPlaying = phase === 'playing';
 
@@ -277,9 +245,6 @@ export default function RetroTotlDailyPlayersPage() {
     setPhase('score');
     setCardKey(`score-${Date.now()}`);
     setInteractive(true);
-    if (lastCorrectRef.current && indexRef.current === cardsLenRef.current - 1) {
-      void confetti({ particleCount: 280, spread: 90, origin: { y: 0.3 } });
-    }
   }, []);
 
   const swipeToNext = useCallback(() => {
@@ -289,9 +254,10 @@ export default function RetroTotlDailyPlayersPage() {
   const startFromIntro = useCallback(() => {
     if (phaseRef.current !== 'intro') return;
     timerEpoch.current += 1;
-    setPhase('countdown');
-    setCountdown(3);
-    setCardKey(`countdown-${Date.now()}`);
+    setPhase('playing');
+    setIndex(0);
+    setCardKey(`play-0-instant-${Date.now()}`);
+    setFlipKey((k) => k + 1);
     setInteractive(false);
   }, []);
 
@@ -304,9 +270,10 @@ export default function RetroTotlDailyPlayersPage() {
       const p = phaseRef.current;
 
       if (p === 'intro') {
-        setPhase('countdown');
-        setCountdown(3);
-        setCardKey(`countdown-${Date.now()}`);
+        setPhase('playing');
+        setIndex(0);
+        setCardKey(`play-0-instant-${Date.now()}`);
+        setFlipKey((k) => k + 1);
         setInteractive(false);
         return;
       }
@@ -346,8 +313,6 @@ export default function RetroTotlDailyPlayersPage() {
   let face: ReactNode = null;
   if (phase === 'intro') {
     face = <RetroPlayersIntroCard />;
-  } else if (phase === 'countdown') {
-    face = <RetroDailyCountdownCard value={countdown} />;
   } else if (phase === 'playing' && card) {
     face = fromInstant ? (
       <RetroPlayersCard card={card} />
@@ -355,7 +320,7 @@ export default function RetroTotlDailyPlayersPage() {
       <RetroPlayersPromoteFlipCard
         card={card}
         flipKey={flipKey}
-        holdMs={fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS}
+        holdMs={RETRO_PROMOTE_FLIP_DELAY_MS}
       />
     );
   } else if (phase === 'reveal' && revealCard) {
@@ -431,8 +396,8 @@ export default function RetroTotlDailyPlayersPage() {
             showQueued={showQueued}
             flyAwayNonce={flyAwayNonce}
             nextFace={
-              phase === 'intro' ? (
-                <RetroDailyCountdownCard value={3} />
+              phase === 'intro' && cards[0] ? (
+                <RetroPlayersCard card={cards[0]} />
               ) : revealLeadsToScore ? (
                 scoreFace
               ) : revealContinues && nextCard ? (
@@ -444,7 +409,6 @@ export default function RetroTotlDailyPlayersPage() {
             queuedFace={logoBack}
             disabled={
               !interactive ||
-              phase === 'countdown' ||
               phase === 'score' ||
               (phase === 'reveal' && revealContinues)
             }

@@ -136,18 +136,21 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return a;
 }
 
-/** Target mix across a 10-card run (easy → harder). */
-const SLOT_DIFFICULTIES: PlayersDifficulty[] = [
-  'easy',
-  'easy',
-  'easy',
-  'medium',
-  'medium',
-  'medium',
-  'hard',
-  'hard',
-  'expert',
-  'expert',
+/**
+ * Appearances shown on the card (that club) for cards 1–10.
+ * Card 10 is a club spell of 1 to 9.
+ */
+const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
+  { min: 300, max: Infinity },
+  { min: 200, max: 299 },
+  { min: 100, max: 199 },
+  { min: 80, max: 99 },
+  { min: 50, max: 79 },
+  { min: 40, max: 49 },
+  { min: 30, max: 39 },
+  { min: 20, max: 29 },
+  { min: 10, max: 19 },
+  { min: 1, max: 9 },
 ];
 
 function clubsForPlayer(rows: PlayerClubApp[], playerKey: string): Set<string> {
@@ -231,45 +234,22 @@ export function createPlayersPuzzle(seed: number = Date.now()): PlayersPuzzle {
   }
   const allClubs = Array.from(clubMap.values());
 
-  const byDiff: Record<PlayersDifficulty, PlayerClubApp[]> = {
-    easy: [],
-    medium: [],
-    hard: [],
-    expert: [],
-  };
-  for (const r of rows) {
-    // Expert floor: at least 5 apps so nightmare one-offs stay optional later
-    if (r.appearances < 5) continue;
-    byDiff[difficultyForApps(r.appearances)].push(r);
-  }
-
   const usedPlayers = new Set<string>();
   const cards: PlayersCard[] = [];
 
   for (let i = 0; i < PLAYERS_CARD_COUNT; i++) {
-    const want = SLOT_DIFFICULTIES[i]!;
+    const band = CARD_APPEARANCE_BANDS[i]!;
     const harderHalf = i >= 5;
-    const band = byDiff[want].filter((r) => !usedPlayers.has(r.playerKey));
-    // Last 5: prefer players with 2+ clubs so we can plant a career distractor
-    const preferred = harderHalf
-      ? band.filter((r) => otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0)
-      : band;
-    const pool = shuffle(preferred.length ? preferred : band, rng);
-    // Fallback to any unused row if a band is thin
-    const pick =
-      pool[0] ??
-      shuffle(
-        rows.filter((r) => {
-          if (r.appearances < 5 || usedPlayers.has(r.playerKey)) return false;
-          if (!harderHalf) return true;
-          return otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0;
-        }),
-        rng
-      )[0] ??
-      shuffle(
-        rows.filter((r) => r.appearances >= 5 && !usedPlayers.has(r.playerKey)),
-        rng
-      )[0];
+    // Last card is the 1–9 pot: a one-club spell can still come up.
+    const wholePot = i === CARD_APPEARANCE_BANDS.length - 1;
+    const inBand = rows.filter((r) => {
+      if (usedPlayers.has(r.playerKey)) return false;
+      return r.appearances >= band.min && r.appearances <= band.max;
+    });
+    const multiClub = inBand.filter(
+      (r) => otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0
+    );
+    const pick = shuffle(harderHalf && !wholePot && multiClub.length ? multiClub : inBand, rng)[0];
 
     if (!pick) break;
     usedPlayers.add(pick.playerKey);

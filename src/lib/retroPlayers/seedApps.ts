@@ -1,11 +1,10 @@
 /**
- * Starter Premier League player×club appearance pack for The Players daily.
- * Numbers are curated career PL apps (approx where noted) — good enough for
- * puzzle brackets; replace/extend via `retro_player_club_apps` when backfilling
- * full history from FBref etc.
- *
+ * The Players deals from the checked list in verifiedApps.ts.
+ * The starter rows below are not used.
  * Multiple rows with the same player+club = separate spells (e.g. returns).
  */
+
+import { playerKeyFromName, VERIFIED_PLAYER_CLUB_SPELLS } from './verifiedApps';
 
 export type ClubSpell = {
   firstSeason?: string;
@@ -54,9 +53,10 @@ function row(
 export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spells?: ClubSpell[] }> = [
   // —— Easy legends (100+) ——
   row('Ryan Giggs', 'MUN', 'Man United', 632, '1992/93', '2013/14'),
-  row('Gareth Barry', 'AVL', 'Aston Villa', 441, '1997/98', '2008/09'),
-  row('Gareth Barry', 'MCI', 'Man City', 132, '2009/10', '2013/14'),
+  row('Gareth Barry', 'AVL', 'Aston Villa', 365, '1997/98', '2008/09'),
+  row('Gareth Barry', 'MCI', 'Man City', 132, '2009/10', '2012/13'),
   row('Gareth Barry', 'EVE', 'Everton', 131, '2013/14', '2016/17'),
+  row('Gareth Barry', 'WBA', 'West Brom', 25, '2017/18', '2017/18'),
   row('Frank Lampard', 'CHE', 'Chelsea', 429, '2001/02', '2013/14'),
   row('Frank Lampard', 'WHU', 'West Ham', 148, '1995/96', '2000/01'),
   row('Frank Lampard', 'MCI', 'Man City', 32, '2014/15', '2014/15'),
@@ -89,10 +89,11 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Petr Cech', 'ARS', 'Arsenal', 110, '2015/16', '2018/19'),
   row('James Milner', 'LEE', 'Leeds', 48, '2002/03', '2003/04'),
   row('James Milner', 'NEW', 'Newcastle', 94, '2004/05', '2007/08'),
-  row('James Milner', 'AVL', 'Aston Villa', 100, '2008/09', '2009/10'),
+  row('James Milner', 'AVL', 'Aston Villa', 27, '2005/06', '2005/06'),
+  row('James Milner', 'AVL', 'Aston Villa', 73, '2008/09', '2009/10'),
   row('James Milner', 'MCI', 'Man City', 147, '2010/11', '2014/15'),
   row('James Milner', 'LIV', 'Liverpool', 230, '2015/16', '2022/23'),
-  row('James Milner', 'BHA', 'Brighton', 40, '2023/24', '2024/25'),
+  row('James Milner', 'BHA', 'Brighton', 39, '2023/24', '2025/26'),
   row('Mark Noble', 'WHU', 'West Ham', 414, '2004/05', '2021/22'),
   row('Jordan Henderson', 'SUN', 'Sunderland', 71, '2008/09', '2010/11'),
   row('Jordan Henderson', 'LIV', 'Liverpool', 360, '2011/12', '2022/23'),
@@ -243,7 +244,6 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Stewart Downing', 'AVL', 'Aston Villa', 63, '2009/10', '2010/11'),
   row('Stewart Downing', 'LIV', 'Liverpool', 65, '2011/12', '2012/13'),
   row('Stewart Downing', 'WHU', 'West Ham', 79, '2013/14', '2014/15'),
-  row('Stewart Downing', 'MID', 'Middlesbrough', 0),
   row('Gareth Southgate', 'CRY', 'Palace', 108, '1992/93', '1994/95'),
   row('Gareth Southgate', 'AVL', 'Aston Villa', 192, '1995/96', '2000/01'),
   row('Gareth Southgate', 'MID', 'Middlesbrough', 160, '2001/02', '2005/06'),
@@ -277,15 +277,12 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Craig Gardner', 'BIR', 'Birmingham', 58, '2009/10', '2010/11'),
   row('Craig Gardner', 'SUN', 'Sunderland', 81, '2011/12', '2013/14'),
   row('Craig Gardner', 'WBA', 'West Brom', 78, '2014/15', '2016/17'),
-  row('Craig Gardner', 'BIR', 'Birmingham', 0),
   row('Craig Gardner', 'AVL', 'Aston Villa', 10, '2010/11', '2010/11'),
-  row('Darren Bent', 'IPS', 'Ipswich', 0),
   row('Darren Bent', 'CHA', 'Charlton', 68, '2005/06', '2006/07'),
   row('Darren Bent', 'TOT', 'Spurs', 79, '2007/08', '2008/09'),
   row('Darren Bent', 'SUN', 'Sunderland', 58, '2009/10', '2010/11'),
   row('Darren Bent', 'AVL', 'Aston Villa', 61, '2010/11', '2012/13'),
   row('Darren Bent', 'FUL', 'Fulham', 24, '2013/14', '2013/14'),
-  row('Darren Bent', 'BHA', 'Brighton', 0),
   row('Clint Dempsey', 'FUL', 'Fulham', 184, '2006/07', '2012/13'),
   row('Clint Dempsey', 'TOT', 'Spurs', 29, '2012/13', '2012/13'),
   row('Bobby Zamora', 'WHU', 'West Ham', 130, '2003/04', '2007/08'),
@@ -300,7 +297,6 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Scott Parker', 'FUL', 'Fulham', 50, '2013/14', '2014/15'),
   row('Ledley King', 'TOT', 'Spurs', 268, '1999/00', '2011/12'),
   row('Robbie Keane', 'COV', 'Coventry', 31, '1999/00', '1999/00'),
-  row('Robbie Keane', 'INT', 'Inter', 0),
   row('Robbie Keane', 'LEE', 'Leeds', 46, '2000/01', '2001/02'),
   row('Robbie Keane', 'TOT', 'Spurs', 238, '2002/03', '2010/11'),
   row('Robbie Keane', 'LIV', 'Liverpool', 19, '2008/09', '2008/09'),
@@ -331,12 +327,10 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Stan Collymore', 'LIV', 'Liverpool', 63, '1995/96', '1996/97'),
   row('Stan Collymore', 'AVL', 'Aston Villa', 45, '1997/98', '1998/99'),
   row('Stan Collymore', 'LEI', 'Leicester', 6, '1999/00', '1999/00'),
-  row('Stan Collymore', 'BRA', 'Bradford', 0),
   row('Stan Collymore', 'BRD', 'Bradford', 7, '2000/01', '2000/01'),
   row('Brian Deane', 'SHU', 'Sheffield United', 40, '1992/93', '1992/93'),
   row('Brian Deane', 'LEE', 'Leeds', 138, '1993/94', '1996/97'),
   row('Brian Deane', 'SHU', 'Sheffield United', 24, '1997/98', '1997/98'),
-  row('Brian Deane', 'BEN', 'Benfica', 0),
   row('Brian Deane', 'MID', 'Middlesbrough', 59, '1998/99', '2000/01'),
   row('Brian Deane', 'LEI', 'Leicester', 15, '2001/02', '2001/02'),
   row('Brian Deane', 'WHU', 'West Ham', 26, '2003/04', '2003/04'),
@@ -349,10 +343,8 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Les Ferdinand', 'WHU', 'West Ham', 14, '2002/03', '2002/03'),
   row('Les Ferdinand', 'LEI', 'Leicester', 29, '2003/04', '2003/04'),
   row('Les Ferdinand', 'BOL', 'Bolton', 12, '2004/05', '2004/05'),
-  row('Les Ferdinand', 'REA', 'Reading', 0),
   row('Ian Wright', 'ARS', 'Arsenal', 221, '1992/93', '1997/98'),
   row('Ian Wright', 'WHU', 'West Ham', 22, '1998/99', '1998/99'),
-  row('Ian Wright', 'CEL', 'Celtic', 0),
   row('Ian Wright', 'BUR', 'Burnley', 15, '1999/00', '1999/00'),
   row('Tony Cottee', 'EVE', 'Everton', 99, '1992/93', '1993/94'),
   row('Tony Cottee', 'WHU', 'West Ham', 85, '1994/95', '1995/96'),
@@ -361,7 +353,6 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Chris Sutton', 'NOR', 'Norwich', 48, '1992/93', '1993/94'),
   row('Chris Sutton', 'BLA', 'Blackburn', 130, '1994/95', '1998/99'),
   row('Chris Sutton', 'CHE', 'Chelsea', 28, '1999/00', '1999/00'),
-  row('Chris Sutton', 'CEL', 'Celtic', 0),
   row('Chris Sutton', 'BIR', 'Birmingham', 10, '2006/07', '2006/07'),
   row('Chris Sutton', 'AVL', 'Aston Villa', 8, '2006/07', '2006/07'),
   row('Tim Cahill', 'EVE', 'Everton', 226, '2004/05', '2011/12'),
@@ -379,11 +370,22 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Ross Barkley', 'AVL', 'Aston Villa', 40, '2024/25', '2024/25'),
 ];
 
-/** Merge seed rows: same player+club with different seasons = multiple spells. */
+/** Checked spells only. Same player+club with different seasons = multiple spells. */
 export function getCleanPlayerClubSeed(): PlayerClubApp[] {
   const map = new Map<string, PlayerClubApp>();
+  const checked = VERIFIED_PLAYER_CLUB_SPELLS.map((r) => ({
+    ...r,
+    playerKey: playerKeyFromName(r.playerName),
+    spells: [
+      {
+        firstSeason: r.firstSeason,
+        lastSeason: r.lastSeason,
+        appearances: r.appearances,
+      },
+    ],
+  }));
 
-  for (const r of RETRO_PLAYER_CLUB_SEED) {
+  for (const r of checked) {
     if (!r.appearances || r.appearances <= 0) continue;
     if (!r.clubCode || r.clubCode.length > 3) continue;
 

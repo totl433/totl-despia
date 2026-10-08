@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { retroBadgeUrl } from '../../lib/retroDaily/badges';
-import RetroDailyTotlPattern from '../retroDaily/RetroDailyTotlPattern';
-import RetroDailyFlip from '../retroDaily/RetroDailyFlip';
 import type { PlayersCard, PlayersClubOption } from '../../lib/retroPlayers/buildPuzzle';
 
-export const PLAYERS_REVEAL_HOLD_MS = 2000;
-export const PLAYERS_REVEAL_FLIP_MS = 420;
+/** How long a correct answer stays up before the next card. */
+export const PLAYERS_RESULT_HOLD_MS = 900;
 
 export type PlayersRoundOutcome = {
   card: PlayersCard;
@@ -14,31 +12,15 @@ export type PlayersRoundOutcome = {
   timedOut: boolean;
 };
 
-function LoadingFace() {
-  return (
-    <div className="relative flex h-full flex-col items-center justify-center overflow-hidden rounded-[28px] bg-[#0F766E] px-6 shadow-lg">
-      <RetroDailyTotlPattern />
-      <p
-        className="relative z-[1] text-center text-[11px] leading-[18px] text-white"
-        style={{ fontFamily: "'PressStart2P', monospace" }}
-      >
-        Checking…
-      </p>
-    </div>
-  );
-}
-
 function ResultFace({
   card,
   correct,
   timedOut,
-  nextCountdown,
   swipeHint,
 }: {
   card: PlayersCard;
   correct: boolean;
   timedOut: boolean;
-  nextCountdown: number | null;
   swipeHint: boolean;
 }) {
   const statusBg = correct ? '#1C8376' : '#DC2626';
@@ -74,9 +56,6 @@ function ResultFace({
         </p>
       </div>
       <div className="shrink-0 text-center">
-        {nextCountdown != null ? (
-          <p className="text-sm font-extrabold text-slate-500">Next in {nextCountdown}…</p>
-        ) : null}
         {swipeHint ? (
           <p className="text-sm font-extrabold text-slate-500">Swipe for your score</p>
         ) : null}
@@ -102,44 +81,21 @@ export default function RetroPlayersRevealCard({
   swipeReady: boolean;
   onAutoAdvance: () => void;
 }) {
-  const [showResult, setShowResult] = useState(false);
-  const [nextCountdown, setNextCountdown] = useState<number | null>(null);
+  const onAutoAdvanceRef = useRef(onAutoAdvance);
+  onAutoAdvanceRef.current = onAutoAdvance;
 
   useEffect(() => {
-    setShowResult(false);
-    setNextCountdown(null);
-    const id = window.setTimeout(() => setShowResult(true), PLAYERS_REVEAL_HOLD_MS);
+    if (!autoContinue) return;
+    const id = window.setTimeout(() => onAutoAdvanceRef.current(), PLAYERS_RESULT_HOLD_MS);
     return () => window.clearTimeout(id);
-  }, [flipKey]);
-
-  useEffect(() => {
-    if (!showResult || !autoContinue) return;
-    setNextCountdown(3);
-    const a = window.setTimeout(() => setNextCountdown(2), 900);
-    const b = window.setTimeout(() => setNextCountdown(1), 1800);
-    const c = window.setTimeout(() => onAutoAdvance(), 2700);
-    return () => {
-      window.clearTimeout(a);
-      window.clearTimeout(b);
-      window.clearTimeout(c);
-    };
-  }, [autoContinue, onAutoAdvance, showResult]);
+  }, [autoContinue, flipKey]);
 
   return (
-    <RetroDailyFlip
-      resetKey={flipKey}
-      durationMs={PLAYERS_REVEAL_FLIP_MS}
-      faceA={<LoadingFace />}
-      faceB={
-        <ResultFace
-          card={card}
-          correct={correct}
-          timedOut={timedOut}
-          nextCountdown={autoContinue ? nextCountdown : null}
-          swipeHint={!autoContinue && swipeReady}
-        />
-      }
-      showB={showResult}
+    <ResultFace
+      card={card}
+      correct={correct}
+      timedOut={timedOut}
+      swipeHint={!autoContinue && swipeReady}
     />
   );
 }
