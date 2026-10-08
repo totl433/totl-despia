@@ -11,7 +11,10 @@
 const MOBILE_SHELL_MQ = '(max-width: 1023.98px)';
 
 function isMobileShellViewport(): boolean {
-  return window.matchMedia(MOBILE_SHELL_MQ).matches;
+  return (
+    window.matchMedia(MOBILE_SHELL_MQ).matches &&
+    !document.documentElement.classList.contains('landing-page-active')
+  );
 }
 
 export function installViewportHeightLock(): () => void {

@@ -12,9 +12,18 @@
         try {
           if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
         } catch (e) {}
+        function shouldPinWindowScroll() {
+          return (
+            window.matchMedia('(max-width: 1023.98px)').matches &&
+            !document.documentElement.classList.contains('landing-page-active')
+          );
+        }
         function apply() {
           var vv = window.visualViewport;
-          if ((vv && vv.offsetTop > 0) || window.scrollY || window.pageYOffset) {
+          if (
+            shouldPinWindowScroll() &&
+            ((vv && vv.offsetTop > 0) || window.scrollY || window.pageYOffset)
+          ) {
             window.scrollTo(0, 0);
           }
           var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));

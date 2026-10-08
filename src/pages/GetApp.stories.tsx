@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { MemoryRouter } from 'react-router-dom';
-import GetAppPage from '../pages/GetApp';
+import GetAppPage from './landing/LandingPage';
 import { AuthContext } from '../context/AuthContext';
 
 const meta: Meta<typeof GetAppPage> = {

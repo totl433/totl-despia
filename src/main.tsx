@@ -296,7 +296,7 @@ import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";
 import GlobalPage from "./pages/Global";
 import PredictionsPage from "./pages/Predictions";
-import GetAppPage from "./pages/GetApp";
+import GetAppPage from "./pages/landing/LandingPage";
 
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
@@ -361,7 +361,6 @@ import ScrollToTop from "./components/ScrollToTop";
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
-import { prefersPlayOnline } from "./lib/playOnlinePreference";
 import { supabase } from "./lib/supabase";
 import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
 import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
@@ -887,10 +886,14 @@ function AppContent() {
     }
   }, [loadEverythingFirst, initialDataLoaded]);
   
-  // Download-first homepage for web; `/app` always; skip in legacy native wrappers.
+  // Signed-out browser visitors get the marketing homepage. Signed-in users
+  // retain the existing dashboard at `/`; native wrappers never render it.
   const showGetAppLanding =
-    location.pathname === '/app' ||
-    (location.pathname === '/' && !isNativeApp && !prefersPlayOnline());
+    (location.pathname === '/app' && !isNativeApp) ||
+    (location.pathname === '/' &&
+      !isNativeApp &&
+      !authLoading &&
+      !user);
   const isRetroDailyPublic = location.pathname.startsWith('/admin/retro-totl-daily');
   const isLoggedOut = !authLoading && !user;
   if (
