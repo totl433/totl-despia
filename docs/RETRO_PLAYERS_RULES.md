@@ -27,14 +27,14 @@ Cards 1–6 only deal a player with at least 1,000,000 Wikipedia views. Cards 7�
 | Card | Games at that club | Players | Fame rule |
 |---|---|---|---|
 | 1 | 208 or more | 113 | 1 million or more |
-| 2 | 137–207 | 114 | 1 million or more |
-| 3 | 100–136 | 117 | 1 million or more |
-| 4 | 73–99 | 118 | 1 million or more |
-| 5 | 50–72 | 119 | 1 million or more |
-| 6 | 36–49 | 63 | 1 million or more |
-| 7 | 27–35 | 114 | anyone |
-| 8 | 16–26 | 115 | anyone |
-| 9 | 8–15 | 120 | anyone |
+| 2 | 138–207 | 113 | 1 million or more |
+| 3 | 101–137 | 113 | 1 million or more |
+| 4 | 77–100 | 107 | 1 million or more |
+| 5 | 56–76 | 109 | 1 million or more |
+| 6 | 33–55 | 105 | 1 million or more |
+| 7 | 25–32 | 112 | anyone |
+| 8 | 15–24 | 110 | anyone |
+| 9 | 8–14 | 105 | anyone |
 | 10 | 1–7 | 113 | anyone |
 
 These bands are in `src/lib/retroPlayers/buildPuzzle.ts` (`CARD_APPEARANCE_BANDS`, `EARLY_CARD_COUNT`, `EARLY_CARD_MIN_WIKI_VIEWS`). The same constants are in the Expo app copy of that file.

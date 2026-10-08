@@ -148,14 +148,14 @@ const EARLY_CARD_COUNT = 6;
 
 const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
   { min: 208, max: Infinity },
-  { min: 137, max: 207 },
-  { min: 100, max: 136 },
-  { min: 73, max: 99 },
-  { min: 50, max: 72 },
-  { min: 36, max: 49 },
-  { min: 27, max: 35 },
-  { min: 16, max: 26 },
-  { min: 8, max: 15 },
+  { min: 138, max: 207 },
+  { min: 101, max: 137 },
+  { min: 77, max: 100 },
+  { min: 56, max: 76 },
+  { min: 33, max: 55 },
+  { min: 25, max: 32 },
+  { min: 15, max: 24 },
+  { min: 8, max: 14 },
   { min: 1, max: 7 },
 ];
 
