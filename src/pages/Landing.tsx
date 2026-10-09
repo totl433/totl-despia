@@ -646,14 +646,14 @@ export default function LandingPage() {
                 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                 target.scrollIntoView({ block: 'end', behavior: reduce ? 'auto' : 'smooth' });
               }}
-              className="p-1 text-base text-white transition-opacity hover:opacity-80 sm:text-[20px]"
+              className="p-1 text-base text-white transition-opacity hover:opacity-80"
             >
               Download
             </a>
             <button
               type="button"
               onClick={handlePlayOnline}
-              className="p-1 text-base text-white transition-opacity hover:opacity-80 sm:text-[20px]"
+              className="p-1 text-base text-white transition-opacity hover:opacity-80"
             >
               Play online
             </button>
