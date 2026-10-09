@@ -12,16 +12,25 @@ const GOOGLE_PLAY_URL =
 
 const ASSETS = '/assets/landing';
 
-/** Card shadow from Figma ("Flat iPhone", 1:3186); the exported card art has none. */
-const CARD_SHADOW =
-  'drop-shadow(0px 27.62px 11.05px rgba(0,0,0,0.07)) drop-shadow(0px 15.48px 6.19px rgba(0,0,0,0.05)) drop-shadow(0px 8.22px 3.29px rgba(0,0,0,0.04)) drop-shadow(0px 3.42px 1.37px rgba(0,0,0,0.03))';
-
 /**
- * Large soft halo behind the form/leaderboard cards in the feature rows (Figma groups
- * 1:3292 and 1:3453: drop shadow, 0 offset, 210.87px blur, black 10%). Scales with
- * the layout below 1440px.
+ * Card shadows are baked into the feature images (Figma "Flat iPhone" 1:3186 shadow,
+ * plus the 210.87px halo on the form/leaderboard groups 1:3292 / 1:3453). Live CSS
+ * blur filters made the GPU re-render them every frame while scrolling. Each baked
+ * image is the card at its 1440-layout size (`size`) plus padding on every side:
+ * 64px for the card shadow (@2x) and 360px for the halo (@0.5x — it's a soft blur).
+ * Regenerate both if the card art changes.
  */
-const FEATURE_HALO = 'drop-shadow(0px 0px min(14.64vw, 210.87px) rgba(0,0,0,0.1))';
+const CARD_PAD = 64;
+const HALO_PAD = 360;
+
+/** Absolutely positions a padded, baked image so its card lands on a w×h box. */
+function bakedImageStyle(pad: number, [w, h]: readonly [number, number]): React.CSSProperties {
+  return {
+    left: `${(-pad / w) * 100}%`,
+    top: `${(-pad / h) * 100}%`,
+    width: `${((w + 2 * pad) / w) * 100}%`,
+  };
+}
 
 /** Green section background (radial gradient from the Figma frame). */
 const GREEN_GRADIENT = `url("data:image/svg+xml;utf8,<svg viewBox='0 0 1440 1305' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='none'><rect x='0' y='0' height='100%' width='100%' fill='url(%23grad)' opacity='1'/><defs><radialGradient id='grad' gradientUnits='userSpaceOnUse' cx='0' cy='0' r='10' gradientTransform='matrix(112.8 157.91 -174.24 447.82 720 652.5)'><stop stop-color='rgba(28,131,118,1)' offset='0'/><stop stop-color='rgba(23,106,95,1)' offset='0.25'/><stop stop-color='rgba(17,80,72,1)' offset='0.5'/><stop stop-color='rgba(12,55,49,1)' offset='0.75'/><stop stop-color='rgba(6,29,26,1)' offset='1'/></radialGradient></defs></svg>")`;
@@ -36,7 +45,8 @@ const FEATURES = [
     id: 'predict',
     title: 'Predict every gameweek',
     body: 'Ten fixtures. Three outcomes. Score out of 10 depending on how often you’re right, or confidently wrong.',
-    image: `${ASSETS}/slide-predict.png`,
+    image: `${ASSETS}/feature-predict.png`,
+    size: [593.58, 510.11] as const,
     alt: 'Swipe prediction cards for Premier League fixtures',
     fit: { width: '101.64%', left: '0.10%', top: '0.00%', bottom: '-1.71%' },
   },
@@ -44,7 +54,8 @@ const FEATURES = [
     id: 'leagues',
     title: 'Mini leagues get personal',
     body: 'Create leagues with 2–8 friends. Each week is head-to-head. Highest score wins. Group chats take a hit.',
-    image: `${ASSETS}/slide-leagues.png`,
+    image: `${ASSETS}/feature-leagues.png`,
+    size: [584, 477.13] as const,
     alt: 'Mini league group chat',
     fit: { width: '100%', left: '0%', top: '0%', bottom: '0%' },
     chatArt: true,
@@ -53,7 +64,8 @@ const FEATURES = [
     id: 'form',
     title: 'Start anytime and still compete',
     body: 'Joined late? Fear not. Your form tracks the last 5 and 10 weeks, so every gameweek is a chance to push on.',
-    image: `${ASSETS}/slide-form.png`,
+    image: `${ASSETS}/feature-form.png`,
+    size: [669.14, 552.02] as const,
     alt: 'Form leaderboard showing a player climbing over the last 10 gameweeks',
     fit: { width: '114.58%', left: '-7.27%', top: '0.02%', bottom: '-7.41%' },
     halo: true,
@@ -62,7 +74,8 @@ const FEATURES = [
     id: 'leaderboard',
     title: 'Climb the global leaderboard',
     body: 'Every correct prediction adds up. Follow your gut, stay consistent and work from beginner to actual menace.',
-    image: `${ASSETS}/slide-leaderboard.png`,
+    image: `${ASSETS}/feature-leaderboard.png`,
+    size: [702.89, 510] as const,
     alt: 'Global leaderboard with the top three players highlighted',
     fit: { width: '120.36%', left: '-10.05%', top: '0.02%', bottom: '-0.21%' },
     halo: true,
@@ -182,7 +195,14 @@ function RouteLine() {
         ref={svgRef}
         aria-hidden
         className="pointer-events-none absolute hidden overflow-visible xl:block"
-        style={{ left: ROUTE_BOX.left, top: ROUTE_BOX.top, width: ROUTE_BOX.width, height: ROUTE_BOX.height }}
+        // Own compositor layer: redrawing the stroke never repaints the cards around it.
+        style={{
+          left: ROUTE_BOX.left,
+          top: ROUTE_BOX.top,
+          width: ROUTE_BOX.width,
+          height: ROUTE_BOX.height,
+          willChange: 'transform',
+        }}
         viewBox={`0 0 ${ROUTE_BOX.width} ${ROUTE_BOX.height}`}
         fill="none"
       >
@@ -258,6 +278,9 @@ const CHAT_EMOJIS: EmojiSticker[] = [
 
 type EmojiSticker = { src: string; left: string; top: string; width: string; rotate: number };
 
+/** Chat card size at the 1440 layout (the baked art's card box). */
+const CHAT_ART_SIZE = [584, 477.13] as const;
+
 /** Mini-league chat art with its emoji stickers, sized by its parent (height or width). */
 function ChatArtWithEmojis({
   alt,
@@ -272,13 +295,13 @@ function ChatArtWithEmojis({
   return (
     <div className={`relative ${className}`}>
       <img
-        src={`${ASSETS}/slide-leagues.png`}
+        src={`${ASSETS}/feature-leagues.png`}
         alt={alt}
         loading="lazy"
         decoding="async"
         draggable={false}
-        className="block h-full w-full max-w-none"
-        style={{ filter: CARD_SHADOW }}
+        className="absolute max-w-none"
+        style={bakedImageStyle(CARD_PAD, CHAT_ART_SIZE)}
       />
       {CHAT_EMOJIS.map((emoji, i) => {
         const hidden = popped === false;
@@ -334,19 +357,38 @@ function FeatureRow({ feature, imageFirst }: { feature: (typeof FEATURES)[number
         {'chatArt' in feature ? (
           <ChatArtWithEmojis alt={feature.alt} popped={shown} className="aspect-[1246/1018] w-full" />
         ) : (
-          <img
-            src={feature.image}
-            alt={feature.alt}
-            className="block h-auto max-w-none"
+          <div
+            className="relative max-w-none"
             style={{
               width: feature.fit.width,
               marginLeft: feature.fit.left,
               marginTop: feature.fit.top,
               marginBottom: feature.fit.bottom,
-              filter: 'halo' in feature ? `${CARD_SHADOW} ${FEATURE_HALO}` : CARD_SHADOW,
+              aspectRatio: `${feature.size[0]} / ${feature.size[1]}`,
             }}
-            draggable={false}
-          />
+          >
+            {'halo' in feature && (
+              <img
+                src={`${ASSETS}/halo-${feature.id}.png`}
+                alt=""
+                aria-hidden
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                className="pointer-events-none absolute max-w-none"
+                style={bakedImageStyle(HALO_PAD, feature.size)}
+              />
+            )}
+            <img
+              src={feature.image}
+              alt={feature.alt}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              className="absolute max-w-none"
+              style={bakedImageStyle(CARD_PAD, feature.size)}
+            />
+          </div>
         )}
       </div>
     </div>
