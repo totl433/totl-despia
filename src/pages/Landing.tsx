@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -68,13 +69,180 @@ const FEATURES = [
   },
 ] as const;
 
-/** Grey "route" rings along the feature path (px, relative to the 1203px feature column). */
+/**
+ * Route line (Figma "Vector 3082") in its own 851.73×2669.26 box, placed at
+ * (162.3, 187.9) in the 1203px feature column. Every segment heads downwards, so
+ * scroll depth maps straight onto a length along the line.
+ */
+const ROUTE_BOX = { left: 162.3, top: 187.9, width: 851.733, height: 2669.26 };
+const ROUTE_POINTS: ReadonlyArray<readonly [number, number]> = [
+  [843.654, 16.6427],
+  [208.154, 325.143],
+  [25.6544, 576.143],
+  [393.654, 853.643],
+  [740.654, 1137.14],
+  [48.6544, 1761.14],
+  [772.154, 2657.64],
+];
+const ROUTE_D = ROUTE_POINTS.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join('');
+const ROUTE_CUMULATIVE = ROUTE_POINTS.reduce<number[]>((acc, [x, y], i) => {
+  if (i === 0) return [0];
+  const [px, py] = ROUTE_POINTS[i - 1];
+  return [...acc, acc[i - 1] + Math.hypot(x - px, y - py)];
+}, []);
+const ROUTE_LENGTH = ROUTE_CUMULATIVE[ROUTE_CUMULATIVE.length - 1];
+
+/** Length along the route at a given height inside the route box. */
+function routeLengthAtY(y: number): number {
+  if (y <= ROUTE_POINTS[0][1]) return 0;
+  for (let i = 1; i < ROUTE_POINTS.length; i++) {
+    const [, y0] = ROUTE_POINTS[i - 1];
+    const [, y1] = ROUTE_POINTS[i];
+    if (y <= y1) {
+      const t = (y - y0) / (y1 - y0);
+      return ROUTE_CUMULATIVE[i - 1] + t * (ROUTE_CUMULATIVE[i] - ROUTE_CUMULATIVE[i - 1]);
+    }
+  }
+  return ROUTE_LENGTH;
+}
+
+/** Grey rings on the route (px in the 1203px column); `at` = length along the route. */
 const PATH_RINGS = [
-  { left: 308, top: 454 },
-  { left: 740, top: 1174 },
-  { left: 157, top: 1886 },
-  { left: 863, top: 2784 },
+  { left: 308, top: 454, at: 709 },
+  { left: 740, top: 1174, at: 1791 },
+  { left: 157, top: 1886, at: 2851 },
+  { left: 863, top: 2784, at: 4004 },
 ] as const;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Route line that draws itself as the page scrolls (its tip follows 60% down the
+ * viewport, reaching the end as the page bottoms out); each ring turns brand green
+ * once the line reaches it. Reduced motion
+ * shows the finished route. Only rendered at xl, where the column is a fixed 1203px.
+ */
+function RouteLine() {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pathRef = useRef<SVGPathElement>(null);
+  const ringRefs = useRef<Array<SVGCircleElement | null>>([]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    const path = pathRef.current;
+    if (!svg || !path) return;
+
+    const paint = (drawn: number) => {
+      path.style.strokeDashoffset = String(ROUTE_LENGTH - drawn);
+      ringRefs.current.forEach((ring, i) => ring?.classList.toggle('is-reached', drawn >= PATH_RINGS[i].at - 2));
+    };
+
+    if (prefersReducedMotion()) {
+      paint(ROUTE_LENGTH);
+      return;
+    }
+
+    // Nearest scrolling ancestor (the landing page scrolls inside its own container).
+    let scroller: HTMLElement | null = svg.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const root = scroller ?? document.documentElement;
+
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const box = svg.getBoundingClientRect();
+      if (box.width === 0) return; // hidden below xl
+      // The tip sits 60% down the viewport, sliding to the bottom edge over the last
+      // 40% of a screen of scroll so the route finishes as the page bottoms out.
+      const vh = window.innerHeight;
+      const remaining = root.scrollHeight - root.clientHeight - root.scrollTop;
+      const finish = Math.min(1, Math.max(0, 1 - remaining / (vh * 0.4)));
+      paint(routeLengthAtY(vh * (0.6 + 0.4 * finish) - box.top));
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+
+    update();
+    // The landing page scrolls inside its own container, so listen in the capture phase.
+    document.addEventListener('scroll', schedule, { capture: true, passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('scroll', schedule, { capture: true });
+      window.removeEventListener('resize', schedule);
+    };
+  }, []);
+
+  return (
+    <>
+      <svg
+        ref={svgRef}
+        aria-hidden
+        className="pointer-events-none absolute hidden overflow-visible xl:block"
+        style={{ left: ROUTE_BOX.left, top: ROUTE_BOX.top, width: ROUTE_BOX.width, height: ROUTE_BOX.height }}
+        viewBox={`0 0 ${ROUTE_BOX.width} ${ROUTE_BOX.height}`}
+        fill="none"
+      >
+        <path
+          ref={pathRef}
+          d={ROUTE_D}
+          stroke="black"
+          strokeOpacity={0.05}
+          strokeWidth={37}
+          style={{ strokeDasharray: ROUTE_LENGTH, strokeDashoffset: ROUTE_LENGTH }}
+        />
+      </svg>
+      {PATH_RINGS.map((ring, i) => (
+        <svg
+          key={ring.at}
+          aria-hidden
+          className="pointer-events-none absolute hidden h-[124px] w-[124px] xl:block"
+          style={{ left: ring.left, top: ring.top }}
+          viewBox="0 0 124 124"
+          fill="none"
+        >
+          <circle
+            ref={(el) => {
+              ringRefs.current[i] = el;
+            }}
+            className="landing-ring"
+            cx="62"
+            cy="62"
+            r="50"
+            fill="white"
+            strokeWidth="24"
+          />
+        </svg>
+      ))}
+    </>
+  );
+}
+
+/** Flips to true the first time the element scrolls into view (immediately under reduced motion). */
+function useRevealOnce<T extends Element>() {
+  const ref = useRef<T>(null);
+  const [shown, setShown] = useState(
+    () => typeof IntersectionObserver === 'undefined' || prefersReducedMotion()
+  );
+  useEffect(() => {
+    if (shown || !ref.current) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShown(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: '0px 0px -15% 0px' }
+    );
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [shown]);
+  return [ref, shown] as const;
+}
 
 const MARQUEE_ITEMS = ['Premier League predictions', 'Mini leagues', 'Bragging rights'];
 
@@ -91,7 +259,16 @@ const CHAT_EMOJIS: EmojiSticker[] = [
 type EmojiSticker = { src: string; left: string; top: string; width: string; rotate: number };
 
 /** Mini-league chat art with its emoji stickers, sized by its parent (height or width). */
-function ChatArtWithEmojis({ alt, className = '' }: { alt: string; className?: string }) {
+function ChatArtWithEmojis({
+  alt,
+  className = '',
+  popped,
+}: {
+  alt: string;
+  className?: string;
+  /** When set, emojis pop in (with a slight overshoot) once this turns true. */
+  popped?: boolean;
+}) {
   return (
     <div className={`relative ${className}`}>
       <img
@@ -103,17 +280,75 @@ function ChatArtWithEmojis({ alt, className = '' }: { alt: string; className?: s
         className="block h-full w-full max-w-none"
         style={{ filter: CARD_SHADOW }}
       />
-      {CHAT_EMOJIS.map((emoji) => (
-        <img
-          key={emoji.src}
-          src={emoji.src}
-          alt=""
-          aria-hidden
-          draggable={false}
-          className="absolute h-auto max-w-none"
-          style={{ left: emoji.left, top: emoji.top, width: emoji.width, transform: `rotate(${emoji.rotate}deg)` }}
-        />
-      ))}
+      {CHAT_EMOJIS.map((emoji, i) => {
+        const hidden = popped === false;
+        const delay = 450 + i * 150;
+        return (
+          <img
+            key={emoji.src}
+            src={emoji.src}
+            alt=""
+            aria-hidden
+            draggable={false}
+            className="absolute h-auto max-w-none motion-reduce:transition-none"
+            style={{
+              left: emoji.left,
+              top: emoji.top,
+              width: emoji.width,
+              opacity: hidden ? 0 : 1,
+              transform: `rotate(${emoji.rotate}deg) scale(${hidden ? 0.3 : 1})`,
+              transition:
+                popped === undefined
+                  ? undefined
+                  : `transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1) ${delay}ms, opacity 200ms ease-out ${delay}ms`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** One feature row: text, then its card ~100ms later, fade up once on first view. */
+function FeatureRow({ feature, imageFirst }: { feature: (typeof FEATURES)[number]; imageFirst: boolean }) {
+  const [ref, shown] = useRevealOnce<HTMLDivElement>();
+  const reveal = `transition-[opacity,transform] duration-[600ms] ease-out motion-reduce:transition-none ${
+    shown ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
+  }`;
+  return (
+    <div
+      ref={ref}
+      className={`flex flex-col items-center gap-10 lg:items-center lg:justify-between lg:gap-0 ${
+        imageFirst ? 'lg:flex-row-reverse' : 'lg:flex-row'
+      }`}
+    >
+      <div className={`relative z-10 flex w-full max-w-[474px] flex-col gap-5 lg:w-[39.4%] lg:gap-[31.5px] ${reveal}`}>
+        <h3 className="landing-display text-[40px] leading-none text-black sm:text-[48px] lg:text-[min(4.07vw,58.5px)]">
+          {feature.title}
+        </h3>
+        <p className="text-[18px] leading-[1.4] text-black/70 sm:text-[22px] lg:text-[min(1.88vw,27px)]">
+          {feature.body}
+        </p>
+      </div>
+      <div className={`w-full max-w-[584px] delay-100 lg:w-[48.55%] ${reveal}`}>
+        {'chatArt' in feature ? (
+          <ChatArtWithEmojis alt={feature.alt} popped={shown} className="aspect-[1246/1018] w-full" />
+        ) : (
+          <img
+            src={feature.image}
+            alt={feature.alt}
+            className="block h-auto max-w-none"
+            style={{
+              width: feature.fit.width,
+              marginLeft: feature.fit.left,
+              marginTop: feature.fit.top,
+              marginBottom: feature.fit.bottom,
+              filter: 'halo' in feature ? `${CARD_SHADOW} ${FEATURE_HALO}` : CARD_SHADOW,
+            }}
+            draggable={false}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -329,67 +564,13 @@ export default function LandingPage() {
       <section className="relative px-5 pb-24 pt-20 sm:px-9 lg:px-[min(8.13vw,117px)] lg:pb-[444px] lg:pt-[186px]">
         <div className="relative mx-auto max-w-[1203px]">
           {/* Decorative route line + rings (only where the column is its full 1203px). */}
-          <img
-            src={`${ASSETS}/path.svg`}
-            alt=""
-            aria-hidden
-            className="pointer-events-none absolute left-[162.3px] top-[187.9px] hidden h-[2669.26px] w-[851.73px] max-w-none xl:block"
-            draggable={false}
-          />
+          <RouteLine />
 
           <div className="relative flex flex-col gap-24 lg:gap-[200px]">
-            {FEATURES.map((feature, i) => {
-              const imageFirst = i % 2 === 1;
-              return (
-                <div
-                  key={feature.id}
-                  className={`flex flex-col items-center gap-10 lg:items-center lg:justify-between lg:gap-0 ${
-                    imageFirst ? 'lg:flex-row-reverse' : 'lg:flex-row'
-                  }`}
-                >
-                  <div className="relative z-10 flex w-full max-w-[474px] flex-col gap-5 lg:w-[39.4%] lg:gap-[31.5px]">
-                    <h3 className="landing-display text-[40px] leading-none text-black sm:text-[48px] lg:text-[min(4.07vw,58.5px)]">
-                      {feature.title}
-                    </h3>
-                    <p className="text-[18px] leading-[1.4] text-black/70 sm:text-[22px] lg:text-[min(1.88vw,27px)]">
-                      {feature.body}
-                    </p>
-                  </div>
-                  <div className="w-full max-w-[584px] lg:w-[48.55%]">
-                    {'chatArt' in feature ? (
-                      <ChatArtWithEmojis alt={feature.alt} className="aspect-[1246/1018] w-full" />
-                    ) : (
-                      <img
-                        src={feature.image}
-                        alt={feature.alt}
-                        className="block h-auto max-w-none"
-                        style={{
-                          width: feature.fit.width,
-                          marginLeft: feature.fit.left,
-                          marginTop: feature.fit.top,
-                          marginBottom: feature.fit.bottom,
-                          filter: 'halo' in feature ? `${CARD_SHADOW} ${FEATURE_HALO}` : CARD_SHADOW,
-                        }}
-                        draggable={false}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {FEATURES.map((feature, i) => (
+              <FeatureRow key={feature.id} feature={feature} imageFirst={i % 2 === 1} />
+            ))}
           </div>
-
-          {PATH_RINGS.map((ring) => (
-            <img
-              key={`${ring.left}-${ring.top}`}
-              src={`${ASSETS}/ring.svg`}
-              alt=""
-              aria-hidden
-              className="pointer-events-none absolute hidden h-[124px] w-[124px] xl:block"
-              style={{ left: ring.left, top: ring.top }}
-              draggable={false}
-            />
-          ))}
         </div>
       </section>
     </div>

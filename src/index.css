@@ -1013,3 +1013,15 @@ select option {
 @media (prefers-reduced-motion: reduce) {
   .landing-marquee-track { animation: none; }
 }
+
+/* Route rings turn brand green once the scroll-drawn route line reaches them. */
+.landing-ring {
+  stroke: #f2f2f2;
+  transition: stroke 400ms ease-out;
+}
+.landing-ring.is-reached {
+  stroke: #1c8376;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-ring { transition: none; }
+}
