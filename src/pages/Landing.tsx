@@ -719,11 +719,13 @@ export default function LandingPage() {
           />
         </div>
 
-        <div className="relative flex flex-col items-center gap-8 px-5 pt-6 text-center sm:px-8 lg:gap-[50px] lg:pt-[min(2.43vw,35px)]">
-          <h2 className="landing-display max-w-[1376px] text-[48px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[80px] lg:text-[min(8.33vw,120px)]">
+        {/* Figma 1:3764: 50px gaps between trimmed text boxes (cap height to baseline), as in
+            the hero; the negative margins remove the fonts' extra space above/below. */}
+        <div className="relative flex flex-col items-center gap-8 px-5 pt-6 text-center sm:px-8 lg:gap-[min(3.4723vw,50px)] lg:pt-[min(2.43vw,35px)]">
+          <h2 className="landing-display -my-[0.1em] max-w-[1376px] text-[48px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[80px] lg:text-[min(8.33vw,120px)]">
             Psst, you don’t know anything about football!
           </h2>
-          <p className="text-[20px] text-white sm:text-[26px] lg:text-[min(2.31vw,33.3px)]">
+          <p className="text-[20px] text-white sm:text-[26px] lg:-mb-[0.2405em] lg:-mt-[0.2622em] lg:text-[min(2.31vw,33.3px)] lg:leading-[normal]">
             Download now and earn your bragging rights
           </p>
           <StoreBadges placement="final_cta" slideId="download" size="lg" />

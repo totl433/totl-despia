@@ -7992,12 +7992,12 @@ select option {
     gap: 31.5px;
   }
 
-  .lg\:gap-\[50px\]{
-    gap: 50px;
-  }
-
   .lg\:gap-\[min\(2\.83vw\2c 40\.7px\)\]{
     gap: min(2.83vw,40.7px);
+  }
+
+  .lg\:gap-\[min\(3\.4723vw\2c 50px\)\]{
+    gap: min(3.4723vw,50px);
   }
 
   .lg\:space-y-0 > :not([hidden]) ~ :not([hidden]){
