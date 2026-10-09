@@ -274,8 +274,8 @@ export default function LandingPage() {
         {/* Centred hero: headline, subtitle and store badges. The phones in the next
             section overlap the bottom padding, so they peek in under the badges. */}
         <div className="relative z-10 mx-auto flex max-w-[1440px] flex-col items-center gap-8 px-5 pt-8 text-center sm:px-9 lg:gap-[min(2.83vw,40.7px)] lg:pt-[min(3.68vw,53px)]">
-          <h1 className="landing-display text-[64px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[96px] lg:text-[min(15.28vw,220px)]">
-            Top of
+          <h1 className="landing-display text-[64px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[96px] lg:text-[min(13.89vw,200px)]">
+            TotL: Top of
             <br />
             the league
           </h1>
