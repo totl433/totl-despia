@@ -348,23 +348,43 @@ function ChatArtWithEmojis({
 }
 
 /**
- * Phones rise up to 40px faster than the page while scrolling from the top until the
- * download section reaches the top of the viewport. Starts at 0, so the first screen
- * is unchanged; transform-only, and skipped under reduced motion.
+ * Download-section phones with depth (Figma group 1:3745: front "iPhone" 1:3755 at
+ * (0, 0) 915², back 1:3746 at (333.68, 39.61) 860², in a 1193×915 box). While
+ * scrolling from the top until the section reaches the top of the viewport, the back
+ * phone rises 80px and straightens 4°, the front phone rises 30px, both easing into
+ * the Figma position. Offsets scale with the box width; reduced motion shows the
+ * final position. Transform-only.
  */
-function usePhonesRise(img: React.RefObject<HTMLImageElement | null>) {
+const PHONES_BOX = { w: 1193, h: 915 };
+const PHONE_FRONT = { left: 0, top: 0, size: 915 };
+const PHONE_BACK = { left: 333.676, top: 39.613, size: 860 };
+
+function phoneStyle(phone: { left: number; top: number; size: number }): React.CSSProperties {
+  return {
+    left: `${(phone.left / PHONES_BOX.w) * 100}%`,
+    top: `${(phone.top / PHONES_BOX.h) * 100}%`,
+    width: `${(phone.size / PHONES_BOX.w) * 100}%`,
+    willChange: 'transform',
+  };
+}
+
+function usePhonesDepth(box: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
-    const el = img.current;
+    const el = box.current;
     if (!el || prefersReducedMotion()) return;
-    const root = findScrollRoot(el);
+    const [back, front] = el.querySelectorAll<HTMLImageElement>('img');
     const section = el.parentElement;
-    if (!section) return;
+    if (!back || !front || !section) return;
+    const root = findScrollRoot(el);
     return onScrollFrame(() => {
       const sectionTop = section.getBoundingClientRect().top + root.scrollTop - root.getBoundingClientRect().top;
-      const progress = Math.min(1, Math.max(0, root.scrollTop / Math.max(1, sectionTop)));
-      el.style.transform = `translateY(${(-40 * progress).toFixed(1)}px)`;
+      const t = Math.min(1, Math.max(0, root.scrollTop / Math.max(1, sectionTop)));
+      const rest = 1 - t * t * (3 - 2 * t); // smoothstep: 1 at the top, 0 in place
+      const k = el.offsetWidth / PHONES_BOX.w;
+      back.style.transform = `translateY(${(80 * k * rest).toFixed(1)}px) rotate(${(4 * rest).toFixed(2)}deg)`;
+      front.style.transform = `translateY(${(30 * k * rest).toFixed(1)}px)`;
     });
-  }, [img]);
+  }, [box]);
 }
 
 /**
@@ -578,8 +598,8 @@ export default function LandingPage() {
   const { user } = useAuth();
   const stackRef = useRef<HTMLDivElement>(null);
   useStackedRoute(stackRef);
-  const phonesRef = useRef<HTMLImageElement>(null);
-  usePhonesRise(phonesRef);
+  const phonesRef = useRef<HTMLDivElement>(null);
+  usePhonesDepth(phonesRef);
 
   function handlePlayOnline() {
     if (user) {
@@ -675,14 +695,28 @@ export default function LandingPage() {
         <MarqueeStrip side="left" />
         <MarqueeStrip side="right" />
 
-        <img
+        <div
           ref={phonesRef}
-          src={`${ASSETS}/phones.png`}
-          alt="The TotL app on two iPhones: gameweek predictions and a swipe prediction card"
-          className="relative mx-auto -mt-6 h-auto w-[92%] lg:-mt-[min(7.5vw,108px)] lg:ml-[min(8.82vw,127px)] lg:w-[min(82.85vw,1193px)]"
-          style={{ willChange: 'transform' }}
-          draggable={false}
-        />
+          role="img"
+          aria-label="The TotL app on two iPhones: gameweek predictions and a swipe prediction card"
+          className="relative mx-auto -mt-6 aspect-[1193/915] w-[92%] lg:-mt-[min(7.5vw,108px)] lg:ml-[min(8.82vw,127px)] lg:w-[min(82.85vw,1193px)]"
+        >
+          {/* Back phone first so the front phone paints over it, as in Figma. */}
+          <img
+            src={`${ASSETS}/phone-back.png`}
+            alt=""
+            draggable={false}
+            className="absolute h-auto max-w-none"
+            style={phoneStyle(PHONE_BACK)}
+          />
+          <img
+            src={`${ASSETS}/phone-front.png`}
+            alt=""
+            draggable={false}
+            className="absolute h-auto max-w-none"
+            style={phoneStyle(PHONE_FRONT)}
+          />
+        </div>
 
         <div className="relative flex flex-col items-center gap-8 px-5 pt-6 text-center sm:px-8 lg:gap-[50px] lg:pt-[min(2.43vw,35px)]">
           <h2 className="landing-display max-w-[1376px] text-[48px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[80px] lg:text-[min(8.33vw,120px)]">
