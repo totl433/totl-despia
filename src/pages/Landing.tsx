@@ -350,9 +350,9 @@ function ChatArtWithEmojis({
 /**
  * Download-section phones with depth (Figma group 1:3745: front "iPhone" 1:3755 at
  * (0, 0) 915², back 1:3746 at (333.68, 39.61) 860², in a 1193×915 box). While
- * scrolling from the top until the section reaches the top of the viewport, the back
- * phone rises 80px and straightens 4°, the front phone rises 30px, both easing into
- * the Figma position. Offsets scale with the box width; reduced motion shows the
+ * the phones cross the screen (top edge entering the bottom of the viewport → 15% from
+ * the top), the back phone rises 80px and straightens 4°, the front phone rises 30px,
+ * both easing into the Figma position. Offsets scale with the box width; reduced motion shows the
  * final position. Transform-only.
  */
 const PHONES_BOX = { w: 1193, h: 915 };
@@ -373,12 +373,13 @@ function usePhonesDepth(box: React.RefObject<HTMLDivElement | null>) {
     const el = box.current;
     if (!el || prefersReducedMotion()) return;
     const [back, front] = el.querySelectorAll<HTMLImageElement>('img');
-    const section = el.parentElement;
-    if (!back || !front || !section) return;
-    const root = findScrollRoot(el);
+    if (!back || !front) return;
     return onScrollFrame(() => {
-      const sectionTop = section.getBoundingClientRect().top + root.scrollTop - root.getBoundingClientRect().top;
-      const t = Math.min(1, Math.max(0, root.scrollTop / Math.max(1, sectionTop)));
+      // Plays while the phones are on screen: from their top edge entering the bottom
+      // of the viewport until it reaches 15% from the top.
+      const vh = window.innerHeight;
+      const top = el.getBoundingClientRect().top;
+      const t = Math.min(1, Math.max(0, (vh - top) / (vh * 0.85)));
       const rest = 1 - t * t * (3 - 2 * t); // smoothstep: 1 at the top, 0 in place
       const k = el.offsetWidth / PHONES_BOX.w;
       back.style.transform = `translateY(${(80 * k * rest).toFixed(1)}px) rotate(${(4 * rest).toFixed(2)}deg)`;
