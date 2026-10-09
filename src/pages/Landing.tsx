@@ -131,6 +131,45 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
+/** Nearest scrolling ancestor (the landing page scrolls inside its own container). */
+function findScrollRoot(el: Element): HTMLElement {
+  let node: HTMLElement | null = el.parentElement;
+  while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY)) node = node.parentElement;
+  return node ?? document.documentElement;
+}
+
+/**
+ * Viewport y of the route's drawing tip: 60% down the viewport, sliding to the bottom
+ * edge over the last 40% of a screen of scroll so the route finishes as the page
+ * bottoms out. Shared by the desktop zigzag and the stacked connectors.
+ */
+function routeTipY(root: HTMLElement): number {
+  const vh = window.innerHeight;
+  const remaining = root.scrollHeight - root.clientHeight - root.scrollTop;
+  const finish = Math.min(1, Math.max(0, 1 - remaining / (vh * 0.4)));
+  return vh * (0.6 + 0.4 * finish);
+}
+
+/** Runs `update` once now and then at most once per frame on scroll/resize. */
+function onScrollFrame(update: () => void): () => void {
+  let raf = 0;
+  const schedule = () => {
+    if (!raf) raf = requestAnimationFrame(() => {
+      raf = 0;
+      update();
+    });
+  };
+  update();
+  // The landing page scrolls inside its own container, so listen in the capture phase.
+  document.addEventListener('scroll', schedule, { capture: true, passive: true });
+  window.addEventListener('resize', schedule);
+  return () => {
+    cancelAnimationFrame(raf);
+    document.removeEventListener('scroll', schedule, { capture: true });
+    window.removeEventListener('resize', schedule);
+  };
+}
+
 /**
  * Route line that draws itself as the page scrolls (its tip follows 60% down the
  * viewport, reaching the end as the page bottoms out); each ring turns brand green
@@ -157,36 +196,12 @@ function RouteLine() {
       return;
     }
 
-    // Nearest scrolling ancestor (the landing page scrolls inside its own container).
-    let scroller: HTMLElement | null = svg.parentElement;
-    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
-    const root = scroller ?? document.documentElement;
-
-    let raf = 0;
-    const update = () => {
-      raf = 0;
+    const root = findScrollRoot(svg);
+    return onScrollFrame(() => {
       const box = svg.getBoundingClientRect();
       if (box.width === 0) return; // hidden below xl
-      // The tip sits 60% down the viewport, sliding to the bottom edge over the last
-      // 40% of a screen of scroll so the route finishes as the page bottoms out.
-      const vh = window.innerHeight;
-      const remaining = root.scrollHeight - root.clientHeight - root.scrollTop;
-      const finish = Math.min(1, Math.max(0, 1 - remaining / (vh * 0.4)));
-      paint(routeLengthAtY(vh * (0.6 + 0.4 * finish) - box.top));
-    };
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(update);
-    };
-
-    update();
-    // The landing page scrolls inside its own container, so listen in the capture phase.
-    document.addEventListener('scroll', schedule, { capture: true, passive: true });
-    window.addEventListener('resize', schedule);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('scroll', schedule, { capture: true });
-      window.removeEventListener('resize', schedule);
-    };
+      paint(routeLengthAtY(routeTipY(root) - box.top));
+    });
   }, []);
 
   return (
@@ -332,6 +347,77 @@ function ChatArtWithEmojis({
   );
 }
 
+/**
+ * Phones rise up to 40px faster than the page while scrolling from the top until the
+ * download section reaches the top of the viewport. Starts at 0, so the first screen
+ * is unchanged; transform-only, and skipped under reduced motion.
+ */
+function usePhonesRise(img: React.RefObject<HTMLImageElement | null>) {
+  useEffect(() => {
+    const el = img.current;
+    if (!el || prefersReducedMotion()) return;
+    const root = findScrollRoot(el);
+    const section = el.parentElement;
+    if (!section) return;
+    return onScrollFrame(() => {
+      const sectionTop = section.getBoundingClientRect().top + root.scrollTop - root.getBoundingClientRect().top;
+      const progress = Math.min(1, Math.max(0, root.scrollTop / Math.max(1, sectionTop)));
+      el.style.transform = `translateY(${(-40 * progress).toFixed(1)}px)`;
+    });
+  }, [img]);
+}
+
+/**
+ * Stacked layouts (below xl) swap the zigzag for a short vertical connector under each
+ * feature row, ending in a ring. Connectors grow (compositor-only scaleY) as the route
+ * tip passes them and rings turn green on arrival; reduced motion shows them finished.
+ */
+function useStackedRoute(container: React.RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const steps = [...el.querySelectorAll<HTMLElement>('[data-route-step]')];
+    const paint = (step: HTMLElement, progress: number) => {
+      const line = step.querySelector<HTMLElement>('[data-route-line]');
+      if (line) line.style.transform = `scaleY(${progress})`;
+      step.querySelector('.landing-ring')?.classList.toggle('is-reached', progress >= 1);
+    };
+    if (prefersReducedMotion()) {
+      steps.forEach((step) => paint(step, 1));
+      return;
+    }
+    const root = findScrollRoot(el);
+    return onScrollFrame(() => {
+      const tip = routeTipY(root);
+      for (const step of steps) {
+        const box = step.getBoundingClientRect();
+        if (box.height === 0) continue; // hidden at xl
+        paint(step, Math.min(1, Math.max(0, (tip - box.top) / box.height)));
+      }
+    });
+  }, [container]);
+}
+
+/** Vertical route connector + ring hanging below a stacked feature row (hidden at xl). */
+function RouteStep() {
+  return (
+    <div
+      data-route-step
+      aria-hidden
+      className="pointer-events-none absolute left-1/2 top-full flex h-32 w-8 -translate-x-1/2 flex-col items-center pt-4 lg:h-[200px] lg:pt-6 xl:hidden"
+    >
+      <div
+        data-route-line
+        className="w-2 flex-1 origin-top bg-black/5"
+        style={{ transform: 'scaleY(0)', willChange: 'transform' }}
+      />
+      <svg className="h-8 w-8 shrink-0" viewBox="0 0 124 124" fill="none">
+        <circle className="landing-ring" cx="62" cy="62" r="50" fill="white" strokeWidth="24" />
+      </svg>
+    </div>
+  );
+}
+
 /** One feature row: text, then its card ~100ms later, fade up once on first view. */
 function FeatureRow({ feature, imageFirst }: { feature: (typeof FEATURES)[number]; imageFirst: boolean }) {
   const [ref, shown] = useRevealOnce<HTMLDivElement>();
@@ -341,7 +427,7 @@ function FeatureRow({ feature, imageFirst }: { feature: (typeof FEATURES)[number
   return (
     <div
       ref={ref}
-      className={`flex flex-col items-center gap-10 lg:items-center lg:justify-between lg:gap-0 ${
+      className={`relative flex flex-col items-center gap-10 lg:items-center lg:justify-between lg:gap-0 ${
         imageFirst ? 'lg:flex-row-reverse' : 'lg:flex-row'
       }`}
     >
@@ -391,6 +477,7 @@ function FeatureRow({ feature, imageFirst }: { feature: (typeof FEATURES)[number
           </div>
         )}
       </div>
+      <RouteStep />
     </div>
   );
 }
@@ -489,6 +576,10 @@ function MarqueeStrip({ side }: { side: 'left' | 'right' }) {
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const stackRef = useRef<HTMLDivElement>(null);
+  useStackedRoute(stackRef);
+  const phonesRef = useRef<HTMLImageElement>(null);
+  usePhonesRise(phonesRef);
 
   function handlePlayOnline() {
     if (user) {
@@ -585,9 +676,11 @@ export default function LandingPage() {
         <MarqueeStrip side="right" />
 
         <img
+          ref={phonesRef}
           src={`${ASSETS}/phones.png`}
           alt="The TotL app on two iPhones: gameweek predictions and a swipe prediction card"
           className="relative mx-auto -mt-6 h-auto w-[92%] lg:-mt-[min(7.5vw,108px)] lg:ml-[min(8.82vw,127px)] lg:w-[min(82.85vw,1193px)]"
+          style={{ willChange: 'transform' }}
           draggable={false}
         />
 
@@ -603,12 +696,13 @@ export default function LandingPage() {
       </section>
 
       {/* ---------- Features ---------- */}
-      <section className="relative px-5 pb-24 pt-20 sm:px-9 lg:px-[min(8.13vw,117px)] lg:pb-[444px] lg:pt-[186px]">
+      {/* overflow-clip: the last card's halo must not add blank scroll below the page. */}
+      <section className="relative overflow-clip px-5 pb-40 pt-20 sm:px-9 lg:px-[min(8.13vw,117px)] lg:pb-[444px] lg:pt-[186px]">
         <div className="relative mx-auto max-w-[1203px]">
           {/* Decorative route line + rings (only where the column is its full 1203px). */}
           <RouteLine />
 
-          <div className="relative flex flex-col gap-24 lg:gap-[200px]">
+          <div ref={stackRef} className="relative flex flex-col gap-32 lg:gap-[200px]">
             {FEATURES.map((feature, i) => (
               <FeatureRow key={feature.id} feature={feature} imageFirst={i % 2 === 1} />
             ))}
