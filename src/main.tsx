@@ -296,7 +296,8 @@ import HomePage from "./pages/Home";
 import TablesPage from "./pages/Tables";
 import GlobalPage from "./pages/Global";
 import PredictionsPage from "./pages/Predictions";
-import GetAppPage from "./pages/GetApp";
+// Download-first landing for `/` and `/app` (previous swipe version: ./pages/GetApp).
+import GetAppPage from "./pages/Landing";
 
 // Lazy load other pages
 const LeaguePage = lazy(() => import("./pages/League"));
@@ -361,7 +362,6 @@ import ScrollToTop from "./components/ScrollToTop";
 import { loadInitialData } from "./services/initialDataLoader";
 import { bootLog } from "./lib/logEvent";
 import { isDespiaAvailable } from "./lib/platform";
-import { prefersPlayOnline } from "./lib/playOnlinePreference";
 import { supabase } from "./lib/supabase";
 import { ensureActiveSeasonCtx } from "./lib/activeSeasonCtx";
 import { getSeasonTables, withSeasonId } from "./lib/seasonStack";
@@ -413,7 +413,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <React.Fragment key={user.id}>{children}</React.Fragment>;
 }
 
-/** `/` is download-first unless the user chose Play online (30-day cookie). */
+/** `/` for signed-in users (logged-out web visitors get the landing page instead). */
 function HomeOrGetApp() {
   return (
     <RequireAuth>
@@ -887,12 +887,13 @@ function AppContent() {
     }
   }, [loadEverythingFirst, initialDataLoaded]);
   
-  // Download-first homepage for web; `/app` always; skip in legacy native wrappers.
+  const isLoggedOut = !authLoading && !user;
+  // `/app` always shows the landing page. `/` shows it to logged-out web visitors;
+  // signed-in users get the game (legacy native wrappers skip the landing).
   const showGetAppLanding =
     location.pathname === '/app' ||
-    (location.pathname === '/' && !isNativeApp && !prefersPlayOnline());
+    (location.pathname === '/' && !isNativeApp && isLoggedOut);
   const isRetroDailyPublic = location.pathname.startsWith('/admin/retro-totl-daily');
-  const isLoggedOut = !authLoading && !user;
   if (
     loadEverythingFirst &&
     !showGetAppLanding &&
