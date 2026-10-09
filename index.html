@@ -12,9 +12,15 @@
         try {
           if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
         } catch (e) {}
+        // Pin window scroll only for the mobile app shell (matches viewportHeight.ts and the
+        // max-width: 1023.98px CSS); desktop pages scroll the document normally.
+        var mobileShell = window.matchMedia ? window.matchMedia('(max-width: 1023.98px)') : null;
         function apply() {
           var vv = window.visualViewport;
-          if ((vv && vv.offsetTop > 0) || window.scrollY || window.pageYOffset) {
+          if (
+            (!mobileShell || mobileShell.matches) &&
+            ((vv && vv.offsetTop > 0) || window.scrollY || window.pageYOffset)
+          ) {
             window.scrollTo(0, 0);
           }
           var h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));

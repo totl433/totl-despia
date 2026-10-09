@@ -1,5 +1,7 @@
 /* src/index.css */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* Tourney (width axis) — display face for the marketing landing page */
+@import url('https://fonts.googleapis.com/css2?family=Tourney:wdth,wght@75..125,100..900&display=swap');
 
 /* PressStart2P Font Family - Self-hosted for reliability */
 @font-face {
@@ -990,4 +992,36 @@ select option {
   animation: shimmer-box-sweep 0.8s ease-in-out;
   pointer-events: none;
   z-index: 1;
+}
+/* ---------- Marketing landing page (src/pages/Landing.tsx) ---------- */
+.landing-display {
+  font-family: 'Tourney', 'Gramatika', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-variation-settings: 'wdth' 75;
+  text-transform: uppercase;
+}
+
+.landing-marquee-track {
+  animation: landing-marquee 40s linear infinite;
+}
+
+@keyframes landing-marquee {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-marquee-track { animation: none; }
+}
+
+/* Route rings turn brand green once the scroll-drawn route line reaches them. */
+.landing-ring {
+  stroke: #f2f2f2;
+  transition: stroke 400ms ease-out;
+}
+.landing-ring.is-reached {
+  stroke: #1c8376;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-ring { transition: none; }
 }
