@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Public, indexable pages only. /app duplicates / (same landing page) and is left out;
-     signed-in screens are excluded (see robots.txt). Each URL here has a matching
-     per-route canonical written by scripts/prerender-public-routes.mjs. -->
+     signed-in screens are excluded (see robots.txt). Keep in sync with the public
+     routes in src/lib/routeSeo.ts, which sets each page's title, description and canonical. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://playtotl.com/</loc>

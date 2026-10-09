@@ -50,7 +50,8 @@
     <!-- Link previews (WhatsApp, iMessage, Slack, Facebook, LinkedIn, X). Static so crawlers
          see them without running JS; the SPA serves this head on every route. -->
     <meta name="description" content="Predict football results, take on your mates and climb the leaderboards." />
-    <link rel="canonical" href="https://playtotl.com/" />
+    <!-- Canonical is set per route at runtime (src/lib/routeSeo.ts): one static tag would
+         wrongly point every route at "/". -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="TOTL" />
     <meta property="og:locale" content="en_GB" />
@@ -119,42 +120,9 @@
         ]
       }
     </script>
-    <!-- Crawlers that don't run JavaScript read the fallback content in #root; anyone with
-         JS never sees it (hidden here, then replaced when React mounts). -->
-    <script>document.documentElement.classList.add('js');</script>
-    <style>.js .seo-fallback { display: none; }</style>
   </head>
   <body>
-    <div id="root">
-      <!-- seo-fallback:start -->
-      <main class="seo-fallback">
-        <h1>TOTL: Top of the League</h1>
-        <p>Premier League predictions, mini leagues and bragging rights. TOTL is a free-to-download football prediction game on the web, iPhone and Android.</p>
-        <h2>Download TOTL</h2>
-        <ul>
-          <li><a href="https://apps.apple.com/app/id6754661450">Download TOTL for iPhone on the App Store</a></li>
-          <li><a href="https://play.google.com/store/apps/details?id=com.despia.totlnative">Get TOTL for Android on Google Play</a></li>
-          <li><a href="https://playtotl.com/">Play TOTL on the web</a></li>
-        </ul>
-        <h2>How it works</h2>
-        <p>Before each Premier League Gameweek, predict every match as a Home Win, Draw or Away Win. Predictions lock when the first match kicks off, and each correct prediction scores a point.</p>
-        <h2>Predict every gameweek</h2>
-        <p>Ten fixtures. Three outcomes. Score out of 10 depending on how often you’re right, or confidently wrong.</p>
-        <h2>Mini leagues get personal</h2>
-        <p>Create leagues with 2–8 friends. Each week is head-to-head. Highest score wins. Group chats take a hit.</p>
-        <h2>Start anytime and still compete</h2>
-        <p>Joined late? Fear not. The leaderboard resets every month, with a new winner crowned each time. More chances to finish top and claim the bragging rights.</p>
-        <h2>Climb the global leaderboard</h2>
-        <p>Every correct prediction adds up. Follow your gut, stay consistent and work your way from beginner to actual menace. Climb the All v All global leaderboard and claim the top spot.</p>
-        <p>TOTL is not a gambling or sports betting product: predictions are scored with points only.</p>
-        <nav>
-          <a href="https://playtotl.com/support">Support</a>
-          <a href="https://playtotl.com/privacy-policy">Privacy Policy</a>
-          <a href="https://playtotl.com/terms-and-conditions">Terms and Conditions</a>
-        </nav>
-      </main>
-      <!-- seo-fallback:end -->
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
