@@ -63,7 +63,7 @@ const FEATURES = [
   {
     id: 'form',
     title: 'Start anytime and still compete',
-    body: 'Joined late? Fear not. Your form tracks the last 5 and 10 weeks, so every gameweek is a chance to push on.',
+    body: 'Joined late? Fear not. The leaderboard resets every month, with a new winner crowned each time. More chances to finish top and claim the bragging rights.',
     image: `${ASSETS}/feature-form.png`,
     size: [669.14, 552.02] as const,
     alt: 'Form leaderboard showing a player climbing over the last 10 gameweeks',
