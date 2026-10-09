@@ -24,6 +24,20 @@ type SignupRow = {
   leagues: string[];
 };
 
+type MiniLeagueMemberRow = {
+  userId: string;
+  name: string;
+  joinedAt: string | null;
+};
+
+type MiniLeagueRow = {
+  id: string;
+  name: string;
+  code: string | null;
+  createdAt: string;
+  members: MiniLeagueMemberRow[];
+};
+
 type GwStats = {
   submissions: number;
   signups: number;
@@ -32,6 +46,7 @@ type GwStats = {
   chatLeagues: number;
   window: GwWindow;
   signupRows: SignupRow[];
+  miniLeagueRows: MiniLeagueRow[];
 };
 
 function formatShort(iso: string): string {
@@ -94,6 +109,8 @@ export default function AdminGwStatsPage() {
   const [loadingStats, setLoadingStats] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signupsOpen, setSignupsOpen] = useState(false);
+  const [miniLeaguesOpen, setMiniLeaguesOpen] = useState(false);
+  const [expandedLeagueId, setExpandedLeagueId] = useState<string | null>(null);
 
   const loadMeta = useCallback(async () => {
     setLoadingMeta(true);
@@ -182,9 +199,10 @@ export default function AdminGwStatsPage() {
             .order('created_at', { ascending: false }),
           (supabase as any)
             .from('leagues')
-            .select('*', { count: 'exact', head: true })
+            .select('id, name, code, created_at')
             .gte('created_at', window.startIso)
-            .lt('created_at', window.endIso),
+            .lt('created_at', window.endIso)
+            .order('created_at', { ascending: false }),
           (supabase as any)
             .from('league_messages')
             .select('league_id')
@@ -273,16 +291,65 @@ export default function AdminGwStatsPage() {
           leagues: leaguesByUser.get(u.id) ?? [],
         }));
 
+        const newLeagues: Array<{
+          id: string;
+          name: string | null;
+          code: string | null;
+          created_at: string;
+        }> = mlRes.data ?? [];
+
+        const membersByLeague = new Map<string, MiniLeagueMemberRow[]>();
+        if (newLeagues.length > 0) {
+          const leagueIds = newLeagues.map((l) => l.id);
+          const { data: memberRows, error: memberErr } = await (supabase as any)
+            .from('league_members')
+            .select('league_id, user_id, created_at, users(name)')
+            .in('league_id', leagueIds)
+            .order('created_at', { ascending: true });
+          if (memberErr) throw memberErr;
+
+          for (const row of memberRows ?? []) {
+            const leagueId = typeof row.league_id === 'string' ? row.league_id : null;
+            const userId = typeof row.user_id === 'string' ? row.user_id : null;
+            if (!leagueId || !userId) continue;
+            const userField = row.users;
+            const memberName =
+              userField && typeof userField === 'object' && !Array.isArray(userField)
+                ? (userField as { name?: string | null }).name
+                : Array.isArray(userField)
+                  ? (userField[0] as { name?: string | null } | undefined)?.name
+                  : null;
+            const list = membersByLeague.get(leagueId) ?? [];
+            list.push({
+              userId,
+              name: (memberName && String(memberName).trim()) || 'Unnamed',
+              joinedAt: typeof row.created_at === 'string' ? row.created_at : null,
+            });
+            membersByLeague.set(leagueId, list);
+          }
+        }
+
+        const miniLeagueRows: MiniLeagueRow[] = newLeagues.map((l) => ({
+          id: l.id,
+          name: (l.name && String(l.name).trim()) || 'Untitled league',
+          code: l.code ? String(l.code) : null,
+          createdAt: l.created_at,
+          members: membersByLeague.get(l.id) ?? [],
+        }));
+
         setStats({
           submissions: typeof subRes.count === 'number' ? subRes.count : 0,
           signups: signupRows.length,
-          miniLeagues: typeof mlRes.count === 'number' ? mlRes.count : 0,
+          miniLeagues: miniLeagueRows.length,
           chatMessages: chatRows.length,
           chatLeagues: chatLeagueIds.size,
           window,
           signupRows,
+          miniLeagueRows,
         });
         setSignupsOpen(false);
+        setMiniLeaguesOpen(false);
+        setExpandedLeagueId(null);
       } catch (e: any) {
         console.error('[AdminGwStats] stats error:', e);
         setError(e?.message || 'Failed to load stats.');
@@ -489,11 +556,120 @@ export default function AdminGwStatsPage() {
                         </div>
                       )}
                     </div>
-                    <StatCard
-                      label="New mini leagues"
-                      value={stats.miniLeagues}
-                      hint="Leagues created in this GW cycle"
-                    />
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-4 text-left hover:bg-slate-100/70 transition-colors"
+                        onClick={() => setMiniLeaguesOpen((o) => !o)}
+                        aria-expanded={miniLeaguesOpen}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              New mini leagues
+                            </div>
+                            <div className="mt-1 text-3xl font-bold tabular-nums text-[#1C8376]">
+                              {stats.miniLeagues.toLocaleString()}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              Leagues created in this GW cycle
+                              {stats.miniLeagues > 0 ? ' · tap to view who joined' : ''}
+                            </div>
+                          </div>
+                          {stats.miniLeagues > 0 && (
+                            <svg
+                              className={`w-5 h-5 text-slate-400 mt-1 shrink-0 transition-transform ${
+                                miniLeaguesOpen ? 'rotate-180' : ''
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                      {miniLeaguesOpen && stats.miniLeagues > 0 && (
+                        <div className="border-t border-slate-200 bg-white px-3 py-2 max-h-96 overflow-y-auto">
+                          <ul className="divide-y divide-slate-100">
+                            {stats.miniLeagueRows.map((league) => {
+                              const open = expandedLeagueId === league.id;
+                              return (
+                                <li key={league.id} className="py-2">
+                                  <button
+                                    type="button"
+                                    className="w-full text-left px-1 py-2 rounded-lg hover:bg-slate-50"
+                                    onClick={() =>
+                                      setExpandedLeagueId((id) => (id === league.id ? null : league.id))
+                                    }
+                                    aria-expanded={open}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-slate-800 truncate">
+                                          {league.name}
+                                        </div>
+                                        <div className="text-xs text-slate-500 mt-0.5">
+                                          Created {formatShort(league.createdAt)}
+                                          {league.code ? ` · code ${league.code}` : ''}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                          {league.members.length} member
+                                          {league.members.length === 1 ? '' : 's'}
+                                        </span>
+                                        <svg
+                                          className={`w-4 h-4 text-slate-400 transition-transform ${
+                                            open ? 'rotate-180' : ''
+                                          }`}
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                          aria-hidden
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M19 9l-7 7-7-7"
+                                          />
+                                        </svg>
+                                      </div>
+                                    </div>
+                                  </button>
+                                  {open && (
+                                    <ul className="mt-1 mb-2 ml-1 pl-3 border-l-2 border-emerald-100 space-y-2">
+                                      {league.members.length === 0 ? (
+                                        <li className="text-xs text-slate-500 py-1">No members yet</li>
+                                      ) : (
+                                        league.members.map((m) => (
+                                          <li key={m.userId} className="text-sm text-slate-700">
+                                            <span className="font-medium">{m.name}</span>
+                                            {m.joinedAt ? (
+                                              <span className="text-xs text-slate-500 ml-2">
+                                                joined {formatShort(m.joinedAt)}
+                                              </span>
+                                            ) : null}
+                                          </li>
+                                        ))
+                                      )}
+                                    </ul>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                     <StatCard
                       label="Chat messages"
                       value={stats.chatMessages}
