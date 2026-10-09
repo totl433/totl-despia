@@ -46,7 +46,80 @@
     <link rel="preload" href="/Fonts/Gramatika-Medium.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="/Fonts/Gramatika-Bold.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="preload" href="/Fonts/PressStart2P-Regular.ttf" as="font" type="font/ttf" crossorigin>
-    <title>TotL</title>
+    <title>TOTL: Top of the League — Premier League prediction game</title>
+    <!-- Link previews (WhatsApp, iMessage, Slack, Facebook, LinkedIn, X). Static so crawlers
+         see them without running JS; the SPA serves this head on every route. -->
+    <meta name="description" content="Predict football results, take on your mates and climb the leaderboards." />
+    <!-- Canonical is set per route at runtime (src/lib/routeSeo.ts): one static tag would
+         wrongly point every route at "/". -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TOTL" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:url" content="https://playtotl.com/" />
+    <meta property="og:title" content="TOTL — Think You Know Football?" />
+    <meta property="og:description" content="Predict football results, take on your mates and climb the leaderboards." />
+    <meta property="og:image" content="https://playtotl.com/og-image.jpg" />
+    <meta property="og:image:secure_url" content="https://playtotl.com/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="TOTL: Premier League predictions, mini leagues and bragging rights, shown on two iPhones." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TOTL — Think You Know Football?" />
+    <meta name="twitter:description" content="Predict football results, take on your mates and climb the leaderboards." />
+    <meta name="twitter:image" content="https://playtotl.com/og-image.jpg" />
+    <meta name="twitter:image:alt" content="TOTL: Premier League predictions, mini leagues and bragging rights, shown on two iPhones." />
+    <!-- Apple Smart App Banner (iOS Safari): links to the App Store listing. -->
+    <meta name="apple-itunes-app" content="app-id=6754661450" />
+    <!-- Structured data: the web app and the two official store apps, as separate entities.
+         Facts from the App Store / Google Play listings; no ratings or download counts. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://playtotl.com/#website",
+            "url": "https://playtotl.com/",
+            "name": "TOTL",
+            "alternateName": ["TOTL: Top of the League", "Top of the League", "TotL", "Totl"],
+            "description": "Premier League prediction game. Predict every match each Gameweek, compete in mini-leagues with friends and climb the global and monthly leaderboards.",
+            "inLanguage": "en-GB",
+            "mainEntity": { "@id": "https://playtotl.com/#web-app" }
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://playtotl.com/#web-app",
+            "name": "TOTL: Top of the League",
+            "url": "https://playtotl.com/",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Web browser",
+            "browserRequirements": "Requires JavaScript.",
+            "description": "Free-to-play Premier League prediction game: predict a Home Win, Draw or Away Win for every match each Gameweek, score a point for each correct prediction, and compete in private mini-leagues and on global and monthly leaderboards. Not a gambling or betting product."
+          },
+          {
+            "@type": "MobileApplication",
+            "@id": "https://playtotl.com/#ios-app",
+            "name": "Totl - Top of the League",
+            "operatingSystem": "iOS 15.1 or later",
+            "applicationCategory": "EntertainmentApplication",
+            "url": "https://apps.apple.com/app/id6754661450",
+            "installUrl": "https://apps.apple.com/app/id6754661450",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" }
+          },
+          {
+            "@type": "MobileApplication",
+            "@id": "https://playtotl.com/#android-app",
+            "name": "TotL",
+            "operatingSystem": "Android",
+            "applicationCategory": "GameApplication",
+            "url": "https://play.google.com/store/apps/details?id=com.despia.totlnative",
+            "installUrl": "https://play.google.com/store/apps/details?id=com.despia.totlnative",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

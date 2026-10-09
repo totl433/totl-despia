@@ -297,6 +297,7 @@ import TablesPage from "./pages/Tables";
 import GlobalPage from "./pages/Global";
 import PredictionsPage from "./pages/Predictions";
 // Download-first landing for `/` and `/app` (previous swipe version: ./pages/GetApp).
+import { useRouteSeo } from "./lib/routeSeo";
 import GetAppPage from "./pages/Landing";
 
 // Lazy load other pages
@@ -460,6 +461,7 @@ function AppShell() {
 function AppContent() {
   const location = useLocation();
   const navigate = useNavigate();
+  useRouteSeo(location.pathname);
   const { showWelcome, dismissWelcome, user, loading: authLoading } = useAuth();
   // Ensure theme is applied globally; useTheme now forces light on desktop.
   useTheme();

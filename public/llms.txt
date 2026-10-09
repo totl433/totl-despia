@@ -1,0 +1,51 @@
+# TOTL (Top of the League)
+
+> TOTL, short for Top of the League, is a free-to-download Premier League prediction game. Each Gameweek players predict a Home Win, Draw or Away Win for every match, score a point for each correct prediction, and compete with friends in private mini-leagues and on public leaderboards. It is available on the web at playtotl.com, on iPhone (App Store) and on Android (Google Play).
+
+TOTL is also written "TotL" or "Totl". The iPhone app is listed as "Totl - Top of the League" and the Android app as "TotL". The official website is https://playtotl.com/ and the official contact is hello@playtotl.com.
+
+## Download TOTL
+
+TOTL is available on three platforms. These are the only official links:
+
+- [Play on the web](https://playtotl.com/): browser version at playtotl.com
+- [Download for iPhone](https://apps.apple.com/app/id6754661450): App Store, "Totl - Top of the League" (App ID 6754661450, iPhone, iOS 15.1 or later)
+- [Download for Android](https://play.google.com/store/apps/details?id=com.despia.totlnative): Google Play, "TotL" (package com.despia.totlnative)
+
+Both apps are free to download. The App Store and Google Play listings show in-app purchases: some branded leaderboards are unlocked with a one-off season access purchase.
+
+## How the game works
+
+- Before each Premier League Gameweek, players predict every match as a Home Win, Draw or Away Win.
+- Predictions lock when the first match of the Gameweek kicks off.
+- Each correct prediction scores 1 point. Points add up to a player's Overall Correct Predictions (OCP) for the season.
+- Players can join at any point in the season and still compete, because the monthly leaderboard starts from zero each calendar month.
+
+## Leaderboards
+
+- **Global (All v All) leaderboard**: every TOTL player ranked against everyone else, with an Overall table for the season and a Gameweek table for the current week.
+- **Monthly leaderboard**: a fresh race each calendar month using the same scoring (1 point per correct prediction across that month's Gameweeks). Anyone who submits predictions in a Gameweek that month is included. When the month's last Gameweek finishes, the player with the most points wins the month; ties share first place. Monthly wins and Gameweek wins are recorded as trophies.
+
+## Mini-leagues
+
+- Players create a private mini-league and invite friends with a league code (2 to 8 players).
+- Each Gameweek is head-to-head: the player with the most correct predictions wins the week. League points are 3 for a win, 1 for a draw and 0 for a loss.
+- In mini-leagues with 3 or more players, being the only person to correctly predict a fixture earns a "Unicorn". Unicorns break ties for the week; if players are still level, the week is a draw.
+- Each mini-league has a group chat.
+
+## Who it is for
+
+Football fans who follow the Premier League and want a quick weekly prediction game to play against friends, family or colleagues, with bragging rights as the reward.
+
+## What TOTL is not
+
+- TOTL is not a gambling or sports betting product. Players do not place bets, stake money or win money on match results; predictions are scored with points only.
+- TOTL is not a fantasy football game: there are no squads, line-ups or player transfers.
+
+## Public pages
+
+- [Home](https://playtotl.com/): overview of TOTL with App Store and Google Play download links
+- [Support](https://playtotl.com/support): help and frequently asked questions, contact details
+- [Privacy Policy](https://playtotl.com/privacy-policy): how TOTL handles personal data
+- [Terms and Conditions](https://playtotl.com/terms-and-conditions): terms of use
+- [Delete your TOTL account](https://playtotl.com/delete-data): how to request account and data deletion
