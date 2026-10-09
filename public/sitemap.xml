@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Public, indexable pages only. /app duplicates / (same landing page) and is left out;
+     signed-in screens are excluded (see robots.txt). Each URL here has a matching
+     per-route canonical written by scripts/prerender-public-routes.mjs. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://playtotl.com/</loc>
+  </url>
+  <url>
+    <loc>https://playtotl.com/support</loc>
+  </url>
+  <url>
+    <loc>https://playtotl.com/privacy-policy</loc>
+  </url>
+  <url>
+    <loc>https://playtotl.com/terms-and-conditions</loc>
+  </url>
+  <url>
+    <loc>https://playtotl.com/delete-data</loc>
+  </url>
+</urlset>

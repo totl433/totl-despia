@@ -1,2 +1,71 @@
-User-agent: *
+# TOTL (Top of the League) — https://playtotl.com/
+#
+# robots.txt asks well-behaved crawlers not to fetch signed-in app screens. It is
+# not a security mechanism: those routes are protected by sign-in, not by this file.
+#
+# A crawler follows only the most specific group that names it and ignores the
+# "*" group, so the named group below repeats the same exclusions. Keep the two
+# rule blocks identical.
+
+# Search and AI discovery crawlers (tokens from Google, Bing, OpenAI, Anthropic and
+# Perplexity documentation).
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: OAI-SearchBot
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: Claude-SearchBot
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Disallow: /admin
+Disallow: /api-admin
+Disallow: /auth
+Disallow: /profile
+Disallow: /predictions
+Disallow: /season-predictions
+Disallow: /global
+Disallow: /temp-global
+Disallow: /tables
+Disallow: /leagues
+Disallow: /league/
+Disallow: /join-league/
+Disallow: /create-league
+Disallow: /host/
+Disallow: /how-to-play
+Disallow: /cookie-policy
+Disallow: /home-experimental
+Disallow: /swipe-card-preview
+Disallow: /totl-functions/
+Disallow: /notification-docs/
+Disallow: /.netlify/
 Allow: /
+
+# Everyone else: same rules. (Disallow lines come first so first-match parsers agree
+# with Google's longest-match rule.)
+User-agent: *
+Disallow: /admin
+Disallow: /api-admin
+Disallow: /auth
+Disallow: /profile
+Disallow: /predictions
+Disallow: /season-predictions
+Disallow: /global
+Disallow: /temp-global
+Disallow: /tables
+Disallow: /leagues
+Disallow: /league/
+Disallow: /join-league/
+Disallow: /create-league
+Disallow: /host/
+Disallow: /how-to-play
+Disallow: /cookie-policy
+Disallow: /home-experimental
+Disallow: /swipe-card-preview
+Disallow: /totl-functions/
+Disallow: /notification-docs/
+Disallow: /.netlify/
+Allow: /
+
+Sitemap: https://playtotl.com/sitemap.xml
