@@ -261,12 +261,6 @@ export default function LandingPage() {
             >
               Download
             </a>
-            <a
-              href="/support"
-              className="p-1 text-base text-white transition-opacity hover:opacity-80 sm:text-[20px]"
-            >
-              Support
-            </a>
             <button
               type="button"
               onClick={handlePlayOnline}

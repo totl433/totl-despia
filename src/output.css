@@ -889,10 +889,6 @@ video {
   left: 2rem;
 }
 
-.left-\[-22\.3\%\]{
-  left: -22.3%;
-}
-
 .left-\[162\.3px\]{
   left: 162.3px;
 }
@@ -1313,16 +1309,12 @@ video {
   display: none;
 }
 
-.aspect-\[3\/4\]{
-  aspect-ratio: 3/4;
-}
-
-.aspect-\[595\/365\]{
-  aspect-ratio: 595/365;
-}
-
 .aspect-\[1246\/1018\]{
   aspect-ratio: 1246/1018;
+}
+
+.aspect-\[3\/4\]{
+  aspect-ratio: 3/4;
 }
 
 .h-0\.5{
@@ -1523,14 +1515,6 @@ video {
 
 .h-screen{
   height: 100vh;
-}
-
-.h-\[13\.3px\]{
-  height: 13.3px;
-}
-
-.h-\[min\(64vw\2c 300px\)\]{
-  height: min(64vw,300px);
 }
 
 .max-h-0{
@@ -1850,14 +1834,6 @@ video {
   width: 100%;
 }
 
-.w-\[13\.3px\]{
-  width: 13.3px;
-}
-
-.w-\[21\.33px\]{
-  width: 21.33px;
-}
-
 .min-w-0{
   min-width: 0px;
 }
@@ -1952,10 +1928,6 @@ video {
 
 .max-w-\[584px\]{
   max-width: 584px;
-}
-
-.max-w-\[595px\]{
-  max-width: 595px;
 }
 
 .max-w-\[600px\]{
@@ -2154,11 +2126,6 @@ video {
 
 .touch-pan-x{
   --tw-pan-x: pan-x;
-  touch-action: var(--tw-pan-x) var(--tw-pan-y) var(--tw-pinch-zoom);
-}
-
-.touch-pan-y{
-  --tw-pan-y: pan-y;
   touch-action: var(--tw-pan-x) var(--tw-pan-y) var(--tw-pinch-zoom);
 }
 
@@ -2374,14 +2341,6 @@ video {
   gap: 7px;
 }
 
-.gap-\[20px\]{
-  gap: 20px;
-}
-
-.gap-\[8px\]{
-  gap: 8px;
-}
-
 .space-y-0 > :not([hidden]) ~ :not([hidden]){
   --tw-space-y-reverse: 0;
   margin-top: calc(0px * calc(1 - var(--tw-space-y-reverse)));
@@ -2484,10 +2443,6 @@ video {
 
 .overflow-y-hidden{
   overflow-y: hidden;
-}
-
-.overflow-x-clip{
-  overflow-x: clip;
 }
 
 .overflow-y-visible{
@@ -3458,16 +3413,6 @@ video {
   background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
 }
 
-.bg-\[\#dfebe9\]{
-  --tw-bg-opacity: 1;
-  background-color: rgb(223 235 233 / var(--tw-bg-opacity, 1));
-}
-
-.bg-\[\#D9D9D9\]{
-  --tw-bg-opacity: 1;
-  background-color: rgb(217 217 217 / var(--tw-bg-opacity, 1));
-}
-
 .bg-opacity-50{
   --tw-bg-opacity: 0.5;
 }
@@ -3738,10 +3683,6 @@ video {
 
 .p-8{
   padding: 2rem;
-}
-
-.p-\[3\.3px\]{
-  padding: 3.3px;
 }
 
 .px-0{
@@ -4079,10 +4020,6 @@ video {
 
 .pt-\[max\(2rem\2c env\(safe-area-inset-top\)\)\]{
   padding-top: max(2rem,env(safe-area-inset-top));
-}
-
-.pb-\[132px\]{
-  padding-bottom: 132px;
 }
 
 .text-left{
@@ -4973,12 +4910,6 @@ video {
 
 .transition-transform{
   transition-property: transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
-
-.transition-\[opacity\2c transform\]{
-  transition-property: opacity,transform;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
@@ -6778,18 +6709,6 @@ select option {
   --tw-ring-color: rgb(251 113 133 / var(--tw-ring-opacity, 1));
 }
 
-.focus-visible\:outline:focus-visible{
-  outline-style: solid;
-}
-
-.focus-visible\:outline-2:focus-visible{
-  outline-width: 2px;
-}
-
-.focus-visible\:outline-white\/80:focus-visible{
-  outline-color: rgb(255 255 255 / 0.8);
-}
-
 .active\:scale-95:active{
   --tw-scale-x: .95;
   --tw-scale-y: .95;
@@ -6882,11 +6801,6 @@ select option {
 
 .disabled\:opacity-75:disabled{
   opacity: 0.75;
-}
-
-.group:hover .group-hover\:bg-white{
-  --tw-bg-opacity: 1;
-  background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
 }
 
 .peer:checked ~ .peer-checked\:translate-x-5{
@@ -7334,28 +7248,8 @@ select option {
 }
 
 @media not all and (min-width: 1024px){
-  .max-lg\:left-\[-40\%\]{
-    left: -40%;
-  }
-
-  .max-lg\:h-full{
-    height: 100%;
-  }
-
-  .max-lg\:min-h-0{
-    min-height: 0px;
-  }
-
   .max-lg\:w-\[140\%\]{
     width: 140%;
-  }
-
-  .max-lg\:overflow-y-auto{
-    overflow-y: auto;
-  }
-
-  .max-lg\:overscroll-y-contain{
-    overscroll-behavior-y: contain;
   }
 }
 
@@ -7882,11 +7776,6 @@ select option {
     grid-column: span 2 / span 2;
   }
 
-  .lg\:mx-0{
-    margin-left: 0px;
-    margin-right: 0px;
-  }
-
   .lg\:-mt-2{
     margin-top: -0.5rem;
   }
@@ -7897,14 +7786,6 @@ select option {
 
   .lg\:mb-6{
     margin-bottom: 1.5rem;
-  }
-
-  .lg\:ml-\[min\(6\.46vw\2c 93px\)\]{
-    margin-left: min(6.46vw,93px);
-  }
-
-  .lg\:ml-\[min\(8\.54vw\2c 123px\)\]{
-    margin-left: min(8.54vw,123px);
   }
 
   .lg\:ml-\[min\(8\.82vw\2c 127px\)\]{
@@ -7931,18 +7812,6 @@ select option {
     height: 7rem;
   }
 
-  .lg\:h-\[min\(52\.71vw\2c 759px\)\]{
-    height: min(52.71vw,759px);
-  }
-
-  .lg\:h-\[min\(25\.16vw\2c 362\.34px\)\]{
-    height: min(25.16vw,362.34px);
-  }
-
-  .lg\:min-h-\[min\(52\.71vw\2c 759px\)\]{
-    min-height: min(52.71vw,759px);
-  }
-
   .lg\:w-28{
     width: 7rem;
   }
@@ -7965,14 +7834,6 @@ select option {
 
   .lg\:w-\[70\%\]{
     width: 70%;
-  }
-
-  .lg\:w-\[min\(41\.32vw\2c 595px\)\]{
-    width: min(41.32vw,595px);
-  }
-
-  .lg\:w-\[min\(43\.54vw\2c 627px\)\]{
-    width: min(43.54vw,627px);
   }
 
   .lg\:w-\[min\(82\.85vw\2c 1193px\)\]{
@@ -8085,11 +7946,6 @@ select option {
     border-radius: 0.75rem;
   }
 
-  .lg\:px-0{
-    padding-left: 0px;
-    padding-right: 0px;
-  }
-
   .lg\:px-6{
     padding-left: 1.5rem;
     padding-right: 1.5rem;
@@ -8100,16 +7956,16 @@ select option {
     padding-right: min(8.13vw,117px);
   }
 
-  .lg\:pb-0{
-    padding-bottom: 0px;
-  }
-
   .lg\:pb-6{
     padding-bottom: 1.5rem;
   }
 
   .lg\:pb-\[444px\]{
     padding-bottom: 444px;
+  }
+
+  .lg\:pb-\[min\(10\.42vw\2c 150px\)\]{
+    padding-bottom: min(10.42vw,150px);
   }
 
   .lg\:pb-\[min\(5\.49vw\2c 79px\)\]{
@@ -8132,18 +7988,6 @@ select option {
     padding-top: min(3.68vw,53px);
   }
 
-  .lg\:pb-\[min\(9\.72vw\2c 140px\)\]{
-    padding-bottom: min(9.72vw,140px);
-  }
-
-  .lg\:pb-\[min\(8\.33vw\2c 120px\)\]{
-    padding-bottom: min(8.33vw,120px);
-  }
-
-  .lg\:pb-\[min\(10\.42vw\2c 150px\)\]{
-    padding-bottom: min(10.42vw,150px);
-  }
-
   .lg\:text-4xl{
     font-size: 2.25rem;
     line-height: 2.5rem;
@@ -8157,8 +8001,8 @@ select option {
     font-size: min(1.88vw,27px);
   }
 
-  .lg\:text-\[min\(10\.42vw\2c 150px\)\]{
-    font-size: min(10.42vw,150px);
+  .lg\:text-\[min\(15\.28vw\2c 220px\)\]{
+    font-size: min(15.28vw,220px);
   }
 
   .lg\:text-\[min\(2\.31vw\2c 33\.3px\)\]{
@@ -8176,10 +8020,6 @@ select option {
   .lg\:text-sm{
     font-size: 0.875rem;
     line-height: 1.25rem;
-  }
-
-  .lg\:text-\[min\(15\.28vw\2c 220px\)\]{
-    font-size: min(15.28vw,220px);
   }
 
   .lg\:leading-normal{
