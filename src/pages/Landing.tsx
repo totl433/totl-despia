@@ -32,6 +32,23 @@ const GREEN_GRADIENT = `url("data:image/svg+xml;utf8,<svg viewBox='0 0 1440 1305
  */
 const FEATURES = [
   {
+    id: 'predict',
+    title: 'Predict every gameweek',
+    body: 'Ten fixtures. Three outcomes. Score out of 10 depending on how often you’re right, or confidently wrong.',
+    image: `${ASSETS}/slide-predict.png`,
+    alt: 'Swipe prediction cards for Premier League fixtures',
+    fit: { width: '101.64%', left: '0.10%', top: '0.00%', bottom: '-1.71%' },
+  },
+  {
+    id: 'leagues',
+    title: 'Mini leagues get personal',
+    body: 'Create leagues with 2–8 friends. Each week is head-to-head. Highest score wins. Group chats take a hit.',
+    image: `${ASSETS}/slide-leagues.png`,
+    alt: 'Mini league group chat',
+    fit: { width: '100%', left: '0%', top: '0%', bottom: '0%' },
+    chatArt: true,
+  },
+  {
     id: 'form',
     title: 'Start anytime and still compete',
     body: 'Joined late? Fear not. Your form tracks the last 5 and 10 weeks, so every gameweek is a chance to push on.',
@@ -48,23 +65,6 @@ const FEATURES = [
     alt: 'Global leaderboard with the top three players highlighted',
     fit: { width: '120.36%', left: '-10.05%', top: '0.02%', bottom: '-0.21%' },
     halo: true,
-  },
-  {
-    id: 'predict',
-    title: 'Predict every gameweek',
-    body: 'Ten fixtures. Three outcomes. Score out of 10 depending on how often you’re right, or confidently wrong.',
-    image: `${ASSETS}/slide-predict.png`,
-    alt: 'Swipe prediction cards for Premier League fixtures',
-    fit: { width: '101.64%', left: '0.10%', top: '0.00%', bottom: '-1.71%' },
-  },
-  {
-    id: 'leagues',
-    title: 'Mini leagues get personal',
-    body: 'Create leagues with 2–8 friends. Each week is head-to-head. Highest score wins. Group chats take a hit.',
-    image: `${ASSETS}/slide-leagues.png`,
-    alt: 'Mini league group chat',
-    fit: { width: '100%', left: '0%', top: '0%', bottom: '0%' },
-    chatArt: true,
   },
 ] as const;
 
