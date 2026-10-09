@@ -73,7 +73,7 @@ const FEATURES = [
   {
     id: 'leaderboard',
     title: 'Climb the global leaderboard',
-    body: 'Every correct prediction adds up. Follow your gut, stay consistent and work from beginner to actual menace.',
+    body: 'Every correct prediction adds up. Follow your gut, stay consistent and work your way from beginner to actual menace. Climb the All v All global leaderboard and claim the top spot.',
     image: `${ASSETS}/feature-leaderboard.png`,
     size: [702.89, 510] as const,
     alt: 'Global leaderboard with the top three players highlighted',
