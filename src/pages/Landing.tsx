@@ -271,15 +271,18 @@ export default function LandingPage() {
           </div>
         </nav>
 
-        {/* Centred hero: headline, subtitle and store badges. The phones in the next
-            section overlap the bottom padding, so they peek in under the badges. */}
+        {/* Centred hero: headline, subtitle and store badges (Figma 1:3126: 40.69px gaps,
+            top 133px). Figma trims text boxes to cap height and baseline, so the negative
+            margins remove the font's extra space above/below the glyphs (measured from
+            Tourney and Gramatika metrics). The phones in the next section overlap the
+            bottom padding, so they peek in under the badges. */}
         <div className="relative z-10 mx-auto flex max-w-[1440px] flex-col items-center gap-8 px-5 pt-8 text-center sm:px-9 lg:gap-[min(2.83vw,40.7px)] lg:pt-[min(3.68vw,53px)]">
-          <h1 className="landing-display text-[64px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[96px] lg:text-[min(13.89vw,200px)]">
+          <h1 className="landing-display -my-[0.1em] text-[64px] leading-[0.9] tracking-[-0.035em] text-white sm:text-[96px] lg:text-[min(13.89vw,200px)]">
             TotL: Top of
             <br />
             the league
           </h1>
-          <p className="text-[20px] leading-snug text-white sm:text-[26px] lg:text-[min(2.31vw,33.3px)] lg:leading-normal">
+          <p className="text-[20px] leading-snug text-white sm:text-[26px] lg:-mb-[0.2405em] lg:-mt-[0.2622em] lg:text-[min(2.31vw,33.3px)] lg:leading-[normal]">
             Premier League predictions,
             <br />
             Mini leagues and Bragging rights.
