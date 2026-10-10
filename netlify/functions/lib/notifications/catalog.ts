@@ -146,7 +146,7 @@ const catalogData = {
     "channels": ["push"],
     "audience": "users_with_picks_for_fixture",
     "source": "supabase_webhook",
-    "trigger": { "name": "live_scores_status_change", "event_id_format": "kickoff:{api_match_id}:{half}" },
+    "trigger": { "name": "live_scores_status_change", "event_id_format": "kickoff:{api_match_id}:{half} | kickoff:slot:{gw}:{slotKey}:{half}" },
     "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 300 },
     "cooldown": { "per_user_seconds": 0 },
     "quiet_hours": { "start": null, "end": null },

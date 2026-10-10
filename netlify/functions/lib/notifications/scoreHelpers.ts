@@ -13,8 +13,10 @@ import {
   buildGameweekCompleteEventId,
   matchesGoalNotificationMinute,
 } from './scoreTransitionGuards';
+import { buildKickoffSlotEventId, kickoffSlotKey } from './kickoffSlot';
 
 export { buildGameweekCompleteEventId } from './scoreTransitionGuards';
+export { buildKickoffSlotEventId, kickoffSlotKey } from './kickoffSlot';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -62,10 +64,80 @@ export function buildGoalEventId(apiMatchId: number, scorer: string, minute: num
 }
 
 /**
- * Build a kickoff notification event_id
+ * Build a kickoff notification event_id (single match)
  */
 export function buildKickoffEventId(apiMatchId: number, half: 1 | 2): string {
   return `kickoff:${apiMatchId}:${half}`;
+}
+
+export type KickoffSlotFixture = {
+  api_match_id: number;
+  fixture_index: number;
+  home_team: string;
+  away_team: string;
+  kickoff_time: string | null;
+};
+
+/**
+ * Fixtures in this GW that share the same kickoff minute (UTC).
+ * Prefers season fixtures when seasonId is set; also merges legacy app_fixtures.
+ */
+export async function listFixturesInKickoffSlot(params: {
+  gw: number;
+  kickoffTime: string;
+  seasonId?: string | null;
+}): Promise<KickoffSlotFixture[]> {
+  const slotKey = kickoffSlotKey(params.kickoffTime);
+  if (!slotKey) return [];
+
+  const byMatch = new Map<number, KickoffSlotFixture>();
+
+  const addRows = (rows: any[] | null | undefined) => {
+    for (const row of rows || []) {
+      const id = Number(row.api_match_id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const rowKey = kickoffSlotKey(row.kickoff_time);
+      if (rowKey !== slotKey) continue;
+      if (byMatch.has(id)) continue;
+      byMatch.set(id, {
+        api_match_id: id,
+        fixture_index: Number(row.fixture_index) || 0,
+        home_team: String(row.home_team || ''),
+        away_team: String(row.away_team || ''),
+        kickoff_time: row.kickoff_time ?? null,
+      });
+    }
+  };
+
+  const tasks: Promise<void>[] = [];
+
+  if (params.seasonId) {
+    tasks.push(
+      supabase
+        .from('app_season_fixtures')
+        .select('api_match_id, fixture_index, home_team, away_team, kickoff_time')
+        .eq('season_id', params.seasonId)
+        .eq('gw', params.gw)
+        .then(({ data, error }) => {
+          if (error) console.warn('[scoreHelpers] season kickoff slot query failed:', error.message);
+          addRows(data as any[]);
+        })
+    );
+  }
+
+  tasks.push(
+    supabase
+      .from('app_fixtures')
+      .select('api_match_id, fixture_index, home_team, away_team, kickoff_time')
+      .eq('gw', params.gw)
+      .then(({ data, error }) => {
+        if (error) console.warn('[scoreHelpers] app_fixtures kickoff slot query failed:', error.message);
+        addRows(data as any[]);
+      })
+  );
+
+  await Promise.all(tasks);
+  return [...byMatch.values()].sort((a, b) => a.fixture_index - b.fixture_index);
 }
 
 /**
@@ -373,7 +445,9 @@ export async function sendGoalDisallowedNotification(
 }
 
 /**
- * Send a kickoff notification
+ * Send a kickoff notification.
+ * First-half: if multiple fixtures share this kickoff minute, send ONE slot
+ * notification (deduped via kickoff:slot:{gw}:{slotKey}:1) instead of one per match.
  */
 export async function sendKickoffNotification(
   userIds: string[],
@@ -384,31 +458,87 @@ export async function sendKickoffNotification(
     homeTeam: string;
     awayTeam: string;
     isSecondHalf: boolean;
+    kickoffTime?: string | null;
+    seasonId?: string | null;
+    /** Precomputed slot siblings (optional — loaded if omitted for H1). */
+    slotFixtures?: KickoffSlotFixture[];
   }
 ): Promise<BatchDispatchResult> {
-  const { apiMatchId, fixtureIndex, gw, homeTeam, awayTeam, isSecondHalf } = params;
+  const {
+    apiMatchId,
+    fixtureIndex,
+    gw,
+    homeTeam,
+    awayTeam,
+    isSecondHalf,
+    kickoffTime,
+    seasonId,
+    slotFixtures: slotFixturesIn,
+  } = params;
 
   const half = isSecondHalf ? 2 : 1;
-  const eventId = buildKickoffEventId(apiMatchId, half);
-
-  // Build deep link URL from catalog
   const baseUrl = getBaseUrl();
-  const deepLinkUrl = formatDeepLink('kickoff', { api_match_id: apiMatchId }, baseUrl);
+
+  // Only batch first-half kickoffs — 2H restarts are staggered and stay per-match.
+  let slotFixtures: KickoffSlotFixture[] = [];
+  if (!isSecondHalf && kickoffTime) {
+    slotFixtures =
+      slotFixturesIn && slotFixturesIn.length > 0
+        ? slotFixturesIn
+        : await listFixturesInKickoffSlot({ gw, kickoffTime, seasonId });
+  }
+
+  const useSlot = !isSecondHalf && slotFixtures.length > 1;
+  const slotKey = useSlot ? kickoffSlotKey(kickoffTime) : null;
+
+  const eventId =
+    useSlot && slotKey
+      ? buildKickoffSlotEventId(gw, slotKey, half)
+      : buildKickoffEventId(apiMatchId, half);
+
+  const deepLinkUrl = formatDeepLink(
+    'kickoff',
+    { api_match_id: apiMatchId },
+    baseUrl
+  );
+
+  let title: string;
+  let body: string;
+  let groupingParams: Record<string, string | number>;
+
+  if (useSlot && slotKey) {
+    const n = slotFixtures.length;
+    title = `Gameweek ${gw}`;
+    body = `${n} games are underway!`;
+    // Shared collapse/thread so OneSignal treats the slot as one conversation.
+    groupingParams = { api_match_id: `slot-${gw}-${slotKey}`, half };
+  } else {
+    title = `${homeTeam} vs ${awayTeam}`;
+    body = isSecondHalf ? 'Second half underway' : 'Kickoff!';
+    groupingParams = { api_match_id: apiMatchId, half };
+  }
 
   return dispatchNotification({
     notification_key: 'kickoff',
     event_id: eventId,
     user_ids: userIds,
-    title: `${homeTeam} vs ${awayTeam}`,
-    body: isSecondHalf ? 'Second half underway' : 'Kickoff!',
+    title,
+    body,
     data: {
       type: 'kickoff',
       api_match_id: apiMatchId,
       fixture_index: fixtureIndex,
       gw,
+      ...(useSlot
+        ? {
+            kickoff_slot: slotKey,
+            kickoff_slot_count: slotFixtures.length,
+            kickoff_slot_match_ids: slotFixtures.map((f) => f.api_match_id),
+          }
+        : {}),
     },
     url: deepLinkUrl || undefined,
-    grouping_params: { api_match_id: apiMatchId, half },
+    grouping_params: groupingParams,
   });
 }
 

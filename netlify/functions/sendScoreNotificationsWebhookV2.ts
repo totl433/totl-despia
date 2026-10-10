@@ -23,6 +23,7 @@ import {
   sendGameweekCompleteNotification,
   hasGoalNotificationForMinute,
   getExistingKickoffHalf,
+  listFixturesInKickoffSlot,
 } from './lib/notifications/scoreHelpers';
 import {
   isKickoffTooOldForLiveNotifications,
@@ -78,6 +79,67 @@ async function fetchUserIdsWithPicks(
   includePick: boolean = false
 ): Promise<{ userId: string; pick?: string }[]> {
   return fetchDualStackFixturePicks(supabase, fixture, includePick);
+}
+
+/**
+ * Union of users with picks for any fixture in a simultaneous kickoff slot.
+ */
+async function fetchUserIdsForKickoffSlot(
+  fixture: WebhookFixtureInfo,
+  slotFixtures: Array<{ fixture_index: number }>
+): Promise<string[]> {
+  const indexes = [
+    ...new Set(
+      slotFixtures
+        .map((f) => Number(f.fixture_index))
+        .filter((n) => Number.isFinite(n))
+    ),
+  ];
+  if (indexes.length === 0) return [];
+
+  const userIds = new Set<string>();
+
+  const hasLegacy =
+    fixture.isAppFixture || fixture.sources.some((s) => s.stack === 'legacy');
+  if (hasLegacy) {
+    const legGw = fixture.sources.find((s) => s.stack === 'legacy')?.gw ?? fixture.gw;
+    const { data, error } = await supabase
+      .from('app_picks')
+      .select('user_id')
+      .eq('gw', legGw)
+      .in('fixture_index', indexes);
+    if (error) {
+      console.warn('[scoreWebhookV2] kickoff slot legacy picks error:', error.message);
+    } else {
+      for (const row of data || []) {
+        if (row.user_id) userIds.add(row.user_id);
+      }
+    }
+  }
+
+  const seasonId =
+    fixture.seasonId ||
+    fixture.sources.find((s) => s.stack === 'season' && s.seasonId)?.seasonId ||
+    null;
+  if (seasonId) {
+    const seasonGw =
+      fixture.sources.find((s) => s.stack === 'season')?.gw ?? fixture.gw;
+    const { data, error } = await supabase
+      .from('app_season_picks')
+      .select('user_id')
+      .eq('season_id', seasonId)
+      .eq('gw', seasonGw)
+      .in('fixture_index', indexes);
+    if (error) {
+      console.warn('[scoreWebhookV2] kickoff slot season picks error:', error.message);
+    } else {
+      for (const row of data || []) {
+        if (row.user_id) userIds.add(row.user_id);
+      }
+    }
+  }
+
+  return [...userIds];
 }
 
 /**
@@ -476,30 +538,81 @@ export const handler: Handler = async (event, context) => {
 
     // 3. Handle kickoff (simplified - uses idempotency, doesn't rely on oldStatus)
     if (shouldCheckKickoff) {
+      // First-half: batch all fixtures that share this kickoff minute into one push.
+      let slotFixtures =
+        kickoff_time
+          ? await listFixturesInKickoffSlot({
+              gw,
+              kickoffTime: kickoff_time,
+              seasonId: fixture.seasonId,
+            })
+          : [];
+      if (slotFixtures.length === 0) {
+        slotFixtures = [
+          {
+            api_match_id: apiMatchId,
+            fixture_index,
+            home_team,
+            away_team,
+            kickoff_time,
+          },
+        ];
+      }
+
       const picksData = await fetchUserIdsWithPicks(fixture);
-      const userIds = [...new Set(picksData.map(p => p.userId))];
+      const singleMatchUserIds = [...new Set(picksData.map((p) => p.userId))];
+      const existingHalf = oldStatus
+        ? 0
+        : singleMatchUserIds.length > 0
+          ? await getExistingKickoffHalf(apiMatchId, singleMatchUserIds.slice(0, 50))
+          : 0;
+      const kickoffHalf = resolveKickoffHalf({
+        status,
+        oldStatus,
+        existingHalf,
+        kickoffTooOld,
+      });
 
-      if (userIds.length > 0) {
-        const existingHalf = oldStatus
-          ? 0
-          : await getExistingKickoffHalf(apiMatchId, userIds);
-        const kickoffHalf = resolveKickoffHalf({
-          status,
-          oldStatus,
-          existingHalf,
-          kickoffTooOld,
-        });
+      if (kickoffHalf) {
+        const useSlotBatch = kickoffHalf === 1 && slotFixtures.length > 1;
+        const userIds = useSlotBatch
+          ? await fetchUserIdsForKickoffSlot(fixture, slotFixtures)
+          : singleMatchUserIds;
 
-        if (kickoffHalf) {
+        if (useSlotBatch) {
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Kickoff slot batch: ${slotFixtures.length} fixtures @ ${kickoff_time} → ${userIds.length} users`
+          );
+        }
+
+        if (userIds.length > 0) {
           const result = await sendKickoffNotification(userIds, {
-            apiMatchId, fixtureIndex: fixture_index, gw,
-            homeTeam: home_team, awayTeam: away_team,
+            apiMatchId,
+            fixtureIndex: fixture_index,
+            gw,
+            homeTeam: home_team,
+            awayTeam: away_team,
             isSecondHalf: kickoffHalf === 2,
+            kickoffTime: kickoff_time,
+            seasonId: fixture.seasonId,
+            slotFixtures: kickoffHalf === 1 ? slotFixtures : undefined,
           });
           totalSent += result.results.accepted;
-          console.log(`[scoreWebhookV2] [${requestId}] Kickoff (half ${kickoffHalf}): ${result.results.accepted} sent`);
+          console.log(
+            `[scoreWebhookV2] [${requestId}] Kickoff (half ${kickoffHalf}${
+              useSlotBatch ? `, slot x${slotFixtures.length}` : ''
+            }): ${result.results.accepted} sent, ${result.results.suppressed_duplicate} dup`
+          );
 
-          return { statusCode: 200, headers, body: JSON.stringify({ message: 'Kickoff notification sent', sentTo: totalSent }) };
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              message: 'Kickoff notification sent',
+              sentTo: totalSent,
+              slotCount: slotFixtures.length,
+            }),
+          };
         }
       }
     }
