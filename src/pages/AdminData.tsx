@@ -87,6 +87,16 @@ export default function AdminDataPage() {
                 GW Stats
             </Link>
             )}
+            {isAdmin && isWebBrowser() && (
+              <a
+                href="/.netlify/functions/openingUnicornWinRate"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full py-3 bg-white border-2 border-purple-500 text-purple-700 font-semibold rounded-xl text-center"
+              >
+                Opening Unicorn Win Rate (JSON)
+              </a>
+            )}
             {canOpenSeasonPredictions && (
             <Link
                 to="/season-predictions"

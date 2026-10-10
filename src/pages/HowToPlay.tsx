@@ -1,8 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Section from "../components/Section";
 import { PageHeader } from "../components/PageHeader";
 
+type OpeningUnicornWinRateResponse = {
+  winRatePercent: number | null;
+  total: number;
+};
+
 export default function HowToPlayPage() {
+ const [openingUnicornWinRate, setOpeningUnicornWinRate] = useState<number | null>(null);
+
+ useEffect(() => {
+  let alive = true;
+  fetch("/.netlify/functions/openingUnicornWinRate")
+   .then((res) => (res.ok ? res.json() : null))
+   .then((data: OpeningUnicornWinRateResponse | null) => {
+    if (!alive || !data || typeof data.winRatePercent !== "number" || data.total < 1) return;
+    setOpeningUnicornWinRate(data.winRatePercent);
+   })
+   .catch(() => {});
+  return () => {
+   alive = false;
+  };
+ }, []);
+
  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
  predictions: true, // Open by default
  leaderboard: false,
@@ -110,6 +131,14 @@ export default function HowToPlayPage() {
  They can make all the difference in tight weeks — so sometimes
  it's worth backing the surprise result nobody else will.
  </p>
+ {openingUnicornWinRate !== null && (
+  <p className="text-purple-800 dark:text-purple-200 mt-3 text-sm leading-relaxed">
+   Across all mini-leagues, when someone scores a unicorn on the{" "}
+   <strong>opening game</strong> (Friday night or the solo Saturday lunchtime
+   kick-off before the main batch), they go on to win that gameweek in the league{" "}
+   <strong>{openingUnicornWinRate.toFixed(0)}%</strong> of the time.
+  </p>
+ )}
  </div>
  </div>
  </Section>
