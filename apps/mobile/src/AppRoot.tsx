@@ -58,6 +58,7 @@ export default function AppRoot() {
       'BarlowCondensed-Medium': require('../../../public/Fonts/BarlowCondensed-Medium.ttf'),
       'BarlowCondensed-Light': require('../../../public/Fonts/BarlowCondensed-Light.ttf'),
       'PressStart2P-Regular': require('../../../public/Fonts/PressStart2P-Regular.ttf'),
+      'TourneyCondensed-Bold': require('../assets/fonts/TourneyCondensed-Bold.ttf'),
     })
       .catch(() => {
         // If fonts fail to load, keep going with system fonts.
