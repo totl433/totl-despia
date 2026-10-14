@@ -107,7 +107,11 @@ function attachClickHandlerOnce() {
     const fromNavigateTo = typeof additionalData.navigateTo === 'string' ? additionalData.navigateTo : '';
     const fromResult = typeof event?.result?.url === 'string' ? event.result.url : '';
     const fromLaunch = typeof event?.notification?.launchURL === 'string' ? event.notification.launchURL : '';
-    const target = fromData || fromNavigateTo || fromResult || fromLaunch;
+    const screen = typeof additionalData.screen === 'string' ? additionalData.screen : '';
+    const type = typeof additionalData.type === 'string' ? additionalData.type : '';
+    const playersGame = screen === 'players' || type === 'players-daily';
+    const matchCenter = screen === 'match-center' || type === 'match-center-open';
+    const target = playersGame ? '/players' : matchCenter ? '/match-center' : fromData || fromNavigateTo || fromResult || fromLaunch;
     if (!target) return;
     // Queue directly into navigation. Opening another URL here races the iOS
     // universal-link delivery and caused duplicate or web fallback navigation.

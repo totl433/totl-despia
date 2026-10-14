@@ -156,6 +156,10 @@ function StackCard({
 
     return Gesture.Pan()
       .enabled(isTopCard && !isClosing)
+      // A still finger is a button tap. The swipe only starts once the finger
+      // actually moves, so "Do your predictions" can receive the press.
+      .activeOffsetX([-12, 12])
+      .activeOffsetY([-12, 12])
       .maxPointers(1)
       .runOnJS(false)
       .onUpdate((event) => {

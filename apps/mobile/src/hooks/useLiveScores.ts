@@ -36,7 +36,8 @@ function scoreChanged(a: LiveScore | undefined, b: LiveScore): boolean {
     a.updated_at !== b.updated_at ||
     // Goals / cards can be large; stringify is fine given low frequency.
     JSON.stringify(a.goals) !== JSON.stringify(b.goals) ||
-    JSON.stringify(a.red_cards) !== JSON.stringify(b.red_cards)
+    JSON.stringify(a.red_cards) !== JSON.stringify(b.red_cards) ||
+    JSON.stringify(a.lineups) !== JSON.stringify(b.lineups)
   );
 }
 
@@ -248,8 +249,9 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
   const liveByFixtureIndex = useMemo(() => {
     const m = new Map<number, LiveScore>();
     liveScores.forEach((ls) => {
-      const idx = (ls as any).fixture_index;
-      if (isNumber(idx)) m.set(idx, ls);
+      const raw = (ls as { fixture_index?: unknown }).fixture_index;
+      const idx = typeof raw === 'number' ? raw : Number(raw);
+      if (Number.isInteger(idx) && idx >= 0) m.set(idx, ls);
     });
     return m;
   }, [liveScores]);

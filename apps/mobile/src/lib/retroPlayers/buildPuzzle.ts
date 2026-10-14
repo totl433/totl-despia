@@ -1,4 +1,4 @@
-import { getCleanPlayerClubSeed, type ClubSpell, type PlayerClubApp } from './seedApps';
+import type { ClubSpell, PlayerClubApp } from './seedApps';
 
 export type PlayersDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
@@ -136,18 +136,37 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return a;
 }
 
-/** Target mix across a 10-card run (easy → harder). */
-const SLOT_DIFFICULTIES: PlayersDifficulty[] = [
-  'easy',
-  'easy',
-  'easy',
-  'medium',
-  'medium',
-  'medium',
-  'hard',
-  'hard',
-  'expert',
-  'expert',
+/**
+ * Games at that club for cards 1–10, high to low.
+ * Each card has its own Wikipedia-view floor. The floor steps down,
+ * so a famous player can still appear later on a shorter spell.
+ * Card 10 is the whole 1–9 pot, so a one-club cameo can still come up.
+ * Full write-up lives in the web repo: docs/RETRO_PLAYERS_RULES.md
+ */
+const CARD_MIN_WIKI_VIEWS = [
+  2_000_000,
+  1_000_000,
+  1_000_000,
+  500_000,
+  500_000,
+  250_000,
+  250_000,
+  0,
+  0,
+  0,
+];
+
+const CARD_APPEARANCE_BANDS: Array<{ min: number; max: number }> = [
+  { min: 200, max: Infinity },
+  { min: 150, max: 199 },
+  { min: 100, max: 149 },
+  { min: 80, max: 99 },
+  { min: 60, max: 79 },
+  { min: 40, max: 59 },
+  { min: 30, max: 39 },
+  { min: 20, max: 29 },
+  { min: 10, max: 19 },
+  { min: 1, max: 9 },
 ];
 
 function clubsForPlayer(rows: PlayerClubApp[], playerKey: string): Set<string> {
@@ -216,12 +235,10 @@ function pickDistractors(
 }
 
 /**
- * Build a random 10-card Players puzzle from the local seed pack.
- * Later: swap seed for `retro_player_club_apps` when the DB is backfilled.
+ * Build a random 10-card Players puzzle from club rows loaded from Supabase.
  */
-export function createPlayersPuzzle(seed: number = Date.now()): PlayersPuzzle {
+export function createPlayersPuzzle(rows: PlayerClubApp[], seed: number = Date.now()): PlayersPuzzle {
   const rng = mulberry32(seed >>> 0);
-  const rows = getCleanPlayerClubSeed();
 
   const clubMap = new Map<string, PlayersClubOption>();
   for (const r of rows) {
@@ -231,45 +248,25 @@ export function createPlayersPuzzle(seed: number = Date.now()): PlayersPuzzle {
   }
   const allClubs = Array.from(clubMap.values());
 
-  const byDiff: Record<PlayersDifficulty, PlayerClubApp[]> = {
-    easy: [],
-    medium: [],
-    hard: [],
-    expert: [],
-  };
-  for (const r of rows) {
-    // Expert floor: at least 5 apps so nightmare one-offs stay optional later
-    if (r.appearances < 5) continue;
-    byDiff[difficultyForApps(r.appearances)].push(r);
-  }
-
   const usedPlayers = new Set<string>();
   const cards: PlayersCard[] = [];
 
   for (let i = 0; i < PLAYERS_CARD_COUNT; i++) {
-    const want = SLOT_DIFFICULTIES[i]!;
+    const band = CARD_APPEARANCE_BANDS[i]!;
     const harderHalf = i >= 5;
-    const band = byDiff[want].filter((r) => !usedPlayers.has(r.playerKey));
-    // Last 5: prefer players with 2+ clubs so we can plant a career distractor
-    const preferred = harderHalf
-      ? band.filter((r) => otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0)
-      : band;
-    const pool = shuffle(preferred.length ? preferred : band, rng);
-    // Fallback to any unused row if a band is thin
-    const pick =
-      pool[0] ??
-      shuffle(
-        rows.filter((r) => {
-          if (r.appearances < 5 || usedPlayers.has(r.playerKey)) return false;
-          if (!harderHalf) return true;
-          return otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0;
-        }),
-        rng
-      )[0] ??
-      shuffle(
-        rows.filter((r) => r.appearances >= 5 && !usedPlayers.has(r.playerKey)),
-        rng
-      )[0];
+    // Last card is the 1–9 pot: a one-club spell can still come up.
+    const wholePot = i === CARD_APPEARANCE_BANDS.length - 1;
+    const minViews = CARD_MIN_WIKI_VIEWS[i] ?? 0;
+    const inBand = rows.filter((r) => {
+      if (usedPlayers.has(r.playerKey)) return false;
+      if (r.appearances < band.min || r.appearances > band.max) return false;
+      if ((r.wikiViews ?? 0) < minViews) return false;
+      return true;
+    });
+    const multiClub = inBand.filter(
+      (r) => otherClubsForPlayer(rows, r.playerKey, r.clubCode).length > 0
+    );
+    const pick = shuffle(harderHalf && !wholePot && multiClub.length ? multiClub : inBand, rng)[0];
 
     if (!pick) break;
     usedPlayers.add(pick.playerKey);

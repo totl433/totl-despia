@@ -42,9 +42,12 @@ export default function AdminHomeScreen() {
     parent?.navigate?.('PredictionsTestFlow');
   }, [navigation]);
 
-  const openRetroTotlDaily = React.useCallback(() => {
+  const openMatchCenter = React.useCallback(() => {
     const parent = navigation.getParent?.();
-    parent?.navigate?.('RetroTotlDailyFlow');
+    parent?.navigate?.('Tabs', {
+      screen: 'Predictions',
+      params: { screen: 'MatchCenter' },
+    });
   }, [navigation]);
 
   const openRetroTotlDailyPlayers = React.useCallback(() => {
@@ -135,6 +138,24 @@ export default function AdminHomeScreen() {
 
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Match Center"
+            onPress={openMatchCenter}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>Match Center</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="Make your predictions test"
             onPress={openPredictionsTest}
             style={({ pressed }) => ({
@@ -153,25 +174,7 @@ export default function AdminHomeScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Retro Totl Daily"
-            onPress={openRetroTotlDaily}
-            style={({ pressed }) => ({
-              paddingVertical: 14,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              borderBottomWidth: 1,
-              borderBottomColor: 'rgba(148,163,184,0.18)',
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <TotlText style={{ fontWeight: '700' }}>Retro Totl Daily</TotlText>
-            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="The Players"
+            accessibilityLabel="Daily Game - The Players"
             onPress={openRetroTotlDailyPlayers}
             style={({ pressed }) => ({
               paddingVertical: 14,
@@ -183,7 +186,7 @@ export default function AdminHomeScreen() {
               opacity: pressed ? 0.85 : 1,
             })}
           >
-            <TotlText style={{ fontWeight: '700' }}>The Players</TotlText>
+            <TotlText style={{ fontWeight: '700' }}>Daily Game - The Players</TotlText>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 

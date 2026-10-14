@@ -226,8 +226,63 @@ export function teamStatsFromFormsRow(
 }
 
 function finiteOrNull(v: unknown): number | null {
+  // Number(null) is 0, which made missing season columns look like real zeros.
+  if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+export interface SeasonRecord {
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+}
+
+/**
+ * Season W/D/L and goals from finished results we already store.
+ * Used when app_team_forms has a table position but the season columns were never written.
+ */
+export function computeSeasonRecordFromResults(
+  rows: Array<{
+    home_code?: string | null;
+    away_code?: string | null;
+    home_score?: number | null;
+    away_score?: number | null;
+  }>,
+  teamCode: string
+): SeasonRecord {
+  const code = teamCode.toUpperCase();
+  const record: SeasonRecord = {
+    played: 0,
+    won: 0,
+    drawn: 0,
+    lost: 0,
+    goalsFor: 0,
+    goalsAgainst: 0,
+  };
+
+  for (const row of rows) {
+    const homeCode = (row.home_code || '').toUpperCase();
+    const awayCode = (row.away_code || '').toUpperCase();
+    const homeScore = row.home_score;
+    const awayScore = row.away_score;
+    if (homeScore == null || awayScore == null) continue;
+    if (homeCode !== code && awayCode !== code) continue;
+
+    const goalsFor = homeCode === code ? homeScore : awayScore;
+    const goalsAgainst = homeCode === code ? awayScore : homeScore;
+    record.played += 1;
+    record.goalsFor += goalsFor;
+    record.goalsAgainst += goalsAgainst;
+    if (goalsFor > goalsAgainst) record.won += 1;
+    else if (goalsFor < goalsAgainst) record.lost += 1;
+    else record.drawn += 1;
+  }
+
+  return record;
 }
 
 /**

@@ -5,7 +5,7 @@ import { Screen, TotlText, useTokens } from '@totl/ui';
 import { SvgXml } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 
-import HomeScreen from '../screens/HomeScreen';
+import HomeNavigator from './HomeNavigator';
 import GlobalScreen from '../screens/GlobalScreen';
 import LeaguesNavigator from './LeaguesNavigator';
 import BrandedLeaderboardListScreen from '../screens/brandedLeaderboards/BrandedLeaderboardListScreen';
@@ -124,7 +124,7 @@ export default function TabsNavigator() {
     >
       <Tab.Screen
         name="Predictions"
-        component={HomeScreen}
+        component={HomeNavigator}
         options={{
           title: 'Predictions',
           tabBarIcon: ({ color }) => <TabSvgIcon xml={PREDICTIONS_SVG} size={35} color={color} />,

@@ -5,8 +5,16 @@ import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
 import WinnerShimmer from '../WinnerShimmer';
 import RetroDailyTotlPattern from '../retroDaily/RetroDailyTotlPattern';
 
-/** Intro face for Retro Totl Daily — The Players. Matches web (no idle 3D wobble). */
-export default function RetroPlayersIntroCard() {
+/** Intro face for The Players. A played day waits for the next 3pm. Practice does not score. */
+export default function RetroPlayersIntroCard({
+  practice = false,
+  played = false,
+  nextGame = '',
+}: {
+  practice?: boolean;
+  played?: boolean;
+  nextGame?: string;
+}) {
   return (
     <Card
       style={{
@@ -48,34 +56,36 @@ export default function RetroPlayersIntroCard() {
             zIndex: 1,
           }}
         >
-          Retro Totl Daily
+          {played ? 'The Players' : practice ? 'Practice mode' : 'Retro Totl Daily'}
         </TotlText>
         <TotlText
           style={{
             marginTop: 20,
             fontFamily: RETRO_PIXEL_FONT,
-            fontSize: 28,
-            lineHeight: 38,
+            fontSize: played ? 16 : 28,
+            lineHeight: played ? 24 : 38,
             color: '#FFFFFF',
             textAlign: 'center',
             zIndex: 1,
           }}
         >
-          The Players
+          {played ? "Today's game\nhas been played" : practice ? 'PRACTICE MODE' : 'The Players'}
         </TotlText>
         <TotlText
           style={{
             marginTop: 16,
-            fontFamily: RETRO_PIXEL_FONT,
-            fontSize: 12,
-            lineHeight: 20,
+            fontFamily: practice || played ? undefined : RETRO_PIXEL_FONT,
+            fontSize: practice || played ? 16 : 12,
+            lineHeight: practice || played ? 22 : 20,
+            fontWeight: practice || played ? '800' : undefined,
             color: 'rgba(255,255,255,0.9)',
             textAlign: 'center',
             zIndex: 1,
           }}
         >
-          Ten Players...{'\n'}Which Ten Clubs?
+          {played ? nextGame : practice ? 'These scores will not count.' : 'Ten Players...\nWhich Ten Clubs?'}
         </TotlText>
+        {played ? null : (
         <TotlText
           style={{
             marginTop: 32,
@@ -89,6 +99,7 @@ export default function RetroPlayersIntroCard() {
         >
           Swipe or tap Start
         </TotlText>
+        )}
       </View>
     </Card>
   );

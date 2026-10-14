@@ -16,6 +16,8 @@ import Reanimated, {
 import { TotlText, useTokens } from '@totl/ui';
 import type { LiveStatus, Pick } from '@totl/domain';
 import WinnerShimmer from '../WinnerShimmer';
+import ExpandedFixtureMlSwipe from './ExpandedFixtureMlSwipe';
+import { isFixtureMlSwipeState } from './fixtureMlSwipeTypes';
 import type { MiniFixtureCardProps } from './fixtureCardTypes';
 
 const AnimatedImage = Reanimated.createAnimatedComponent(Image);
@@ -72,6 +74,8 @@ export default function MiniFixtureCard({
   homeRedCardCount = 0,
   awayRedCardCount = 0,
   fixtureDateLabel: fixtureDateLabelStr,
+  mlSwipeLeagues = [],
+  mlSwipeUserId = null,
 }: MiniFixtureCardProps) {
   const t = useTokens();
   const layoutTransition = React.useMemo(
@@ -406,6 +410,13 @@ export default function MiniFixtureCard({
               </View>
             ) : null}
 
+            <ExpandedFixtureMlSwipe
+              enabled={isFixtureMlSwipeState(gwState)}
+              leagues={mlSwipeLeagues}
+              currentUserId={mlSwipeUserId}
+              outcome={derivedOutcome}
+              resetKey={`${fixtureId}-${isMiniExpanded}`}
+            >
             {!suppressExpandedDetails && gwState !== 'GW_OPEN' ? (
               <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 12 }}>
                 {(['H', 'D', 'A'] as const).map((side) => {
@@ -474,6 +485,7 @@ export default function MiniFixtureCard({
                 </View>
               </View>
             ) : null}
+            </ExpandedFixtureMlSwipe>
             {suppressExpandedDetails && !footerWithExpandState && (expandedFooterInside ?? footerInside) ? (
               <View style={{ paddingHorizontal: 8, paddingTop: 4, paddingBottom: 2 }}>{expandedFooterInside ?? footerInside}</View>
             ) : null}

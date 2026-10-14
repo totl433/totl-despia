@@ -1,280 +1,174 @@
 import React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { TotlText, useTokens } from '@totl/ui';
+import { Screen, TotlText, useTokens } from '@totl/ui';
 
-import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
+import AppTopHeader from '../../components/AppTopHeader';
+import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
+import UnderlineTabs from '../../components/UnderlineTabs';
+import { api } from '../../lib/api';
+import { playersDayKey, playersMonthName } from '../../lib/retroPlayers/day';
+import { readPlayersScores, scoreForDay, scoreForMonth, scoreOverall } from '../../lib/retroPlayers/scores';
+import { supabase } from '../../lib/supabase';
 
-const BG = '#0B1F3A';
-const CHROME_WHITE = '#FFFFFF';
-const TEAL = '#1C8376';
+type BoardTab = 'today' | 'month' | 'overall';
 
-type BoardTab = 'today' | 'allTime';
+const PREM_PREDICTIONS = 'prem predictions';
 
-type BoardRow = {
-  rank: number;
-  name: string;
-  score: number;
-  you?: boolean;
-};
+function orderRows(rows: LeaderboardRow[]): LeaderboardRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.value == null && b.value == null) return a.name.localeCompare(b.name);
+    if (a.value == null) return 1;
+    if (b.value == null) return -1;
+    if (b.value !== a.value) return b.value - a.value;
+    return a.name.localeCompare(b.name);
+  });
+}
 
-const MOCK_TODAY: BoardRow[] = [
-  { rank: 1, name: 'ClubHistorian', score: 10 },
-  { rank: 2, name: 'ShirtNumber9', score: 9 },
-  { rank: 3, name: 'You', score: 8, you: true },
-  { rank: 4, name: 'LoanRanger', score: 7 },
-  { rank: 5, name: 'AcademyAce', score: 6 },
-  { rank: 6, name: 'CultHero', score: 5 },
-  { rank: 7, name: 'OneSeasonWonder', score: 4 },
-  { rank: 8, name: 'BenchWarmer', score: 3 },
-];
-
-const MOCK_ALL_TIME: BoardRow[] = [
-  { rank: 1, name: 'ClubHistorian', score: 174 },
-  { rank: 2, name: 'ShirtNumber9', score: 161 },
-  { rank: 3, name: 'LoanRanger', score: 155 },
-  { rank: 4, name: 'You', score: 132, you: true },
-  { rank: 5, name: 'AcademyAce', score: 118 },
-  { rank: 6, name: 'CultHero', score: 109 },
-  { rank: 7, name: 'OneSeasonWonder', score: 88 },
-  { rank: 8, name: 'BenchWarmer', score: 76 },
-  { rank: 9, name: 'SquadPlayer', score: 63 },
-  { rank: 10, name: 'YouthProspect', score: 51 },
-];
-
-/** Full-screen The Players scoreboard — Today + All Time mock. */
+/** The Players board, laid out like the 2026/27 leaderboard. */
 export default function RetroPlayersScoreboardScreen() {
   const t = useTokens();
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
   const [tab, setTab] = React.useState<BoardTab>('today');
+  const dayKey = playersDayKey();
+  const monthLabel = playersMonthName(dayKey);
 
   const close = React.useCallback(() => {
     if (navigation.canGoBack?.()) navigation.goBack();
   }, [navigation]);
 
-  const rows = tab === 'today' ? MOCK_TODAY : MOCK_ALL_TIME;
-  const scoreHeader = tab === 'today' ? 'Score' : 'Total';
+  const { data: userData } = useQuery({
+    queryKey: ['authUser'],
+    queryFn: async () => {
+      const { data } = await supabase.auth.getUser();
+      return data.user ?? null;
+    },
+  });
+  const userId = userData?.id ?? null;
+
+  const { data: roster = [], isLoading: rosterLoading } = useQuery({
+    queryKey: ['players-scoreboard-roster'],
+    queryFn: async () => {
+      const { leagues } = await api.listLeagues();
+      const league = leagues.find((row) => row.name.trim().toLowerCase() === PREM_PREDICTIONS);
+      if (!league) return [];
+      const detail = await api.getLeague(String(league.id));
+      return detail.members.map((member) => ({
+        user_id: String(member.id),
+        name: member.name || 'Player',
+        avatar_url: member.avatar_url ?? null,
+      }));
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: scores = {} } = useQuery({
+    queryKey: ['players-day-scores'],
+    queryFn: readPlayersScores,
+  });
+
+  const rows = React.useMemo(() => {
+    const mine =
+      tab === 'today' ? scoreForDay(scores, dayKey) : tab === 'month' ? scoreForMonth(scores, dayKey) : scoreOverall(scores);
+    const built: LeaderboardRow[] = roster.map((member) => ({
+      user_id: member.user_id,
+      name: member.name,
+      avatar_url: member.avatar_url,
+      value: userId != null && member.user_id === userId ? mine : null,
+    }));
+    return orderRows(built);
+  }, [dayKey, roster, scores, tab, userId]);
+
+  const subtitle =
+    tab === 'today'
+      ? 'Prem Predictions · today'
+      : tab === 'month'
+        ? `Prem Predictions · ${monthLabel}`
+        : 'Prem Predictions · overall';
+  const valueLabel = tab === 'today' ? 'Today' : tab === 'month' ? monthLabel.slice(0, 3) : 'Total';
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG, paddingTop: insets.top }}>
-      <View style={{ height: 56, paddingHorizontal: t.space[4], justifyContent: 'center' }}>
-        <View style={{ height: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={close}
-            style={({ pressed }) => ({
-              position: 'absolute',
-              left: 0,
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: pressed ? 'rgba(255,255,255,0.12)' : 'transparent',
-            })}
-          >
-            <Ionicons name="close" size={24} color={CHROME_WHITE} />
-          </Pressable>
-          <TotlText style={{ fontWeight: '900', fontSize: 18, lineHeight: 22, color: CHROME_WHITE }}>
-            Scoreboard
-          </TotlText>
-        </View>
-      </View>
+    <Screen fullBleed>
+      <View style={{ flex: 1 }}>
+        <AppTopHeader
+          hideProfile
+          hideChat
+          onPressChat={() => undefined}
+          onPressProfile={() => undefined}
+          hasLiveGames={false}
+          centerContent={<View />}
+        />
 
-      <View style={{ paddingHorizontal: t.space[4], paddingTop: 4, paddingBottom: 12 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            backgroundColor: 'rgba(255,255,255,0.12)',
-            borderRadius: 14,
-            padding: 4,
-          }}
-        >
-          <TabButton label="Today" active={tab === 'today'} onPress={() => setTab('today')} />
-          <TabButton label="All Time" active={tab === 'allTime'} onPress={() => setTab('allTime')} />
-        </View>
-      </View>
+        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: t.space[4] }}>
+          <View style={{ marginTop: 4, minHeight: 36, justifyContent: 'center' }}>
+            <TotlText
+              style={{
+                textAlign: 'center',
+                fontWeight: '900',
+                fontSize: 20,
+                lineHeight: 24,
+                color: t.color.text,
+                paddingHorizontal: 44,
+              }}
+            >
+              Totl Daily - The Players
+            </TotlText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close scoreboard"
+              onPress={close}
+              style={({ pressed }) => ({
+                position: 'absolute',
+                right: 0,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: pressed ? '#CBD5E1' : t.color.surface2,
+                borderWidth: 1,
+                borderColor: t.color.border,
+              })}
+            >
+              <Ionicons name="close" size={22} color={t.color.text} />
+            </Pressable>
+          </View>
+          <View style={{ marginTop: 12 }}>
+            <UnderlineTabs
+              items={[
+                { key: 'today', label: 'Today' },
+                { key: 'month', label: monthLabel },
+                { key: 'overall', label: 'Overall' },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+          </View>
 
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: t.space[4],
-          paddingBottom: insets.bottom + 28,
-          paddingTop: 4,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        {tab === 'today' ? (
-          <>
-            <TotlText
-              style={{
-                fontFamily: RETRO_PIXEL_FONT,
-                fontSize: 14,
-                lineHeight: 20,
-                color: '#5EEAD4',
-                textAlign: 'center',
-              }}
-            >
-              The Players
-            </TotlText>
-            <TotlText
-              style={{
-                marginTop: 6,
-                textAlign: 'center',
-                fontWeight: '700',
-                fontSize: 13,
-                color: 'rgba(255,255,255,0.65)',
-              }}
-            >
-              Today’s board
-            </TotlText>
-          </>
-        ) : (
-          <>
-            <TotlText
-              style={{
-                fontFamily: RETRO_PIXEL_FONT,
-                fontSize: 14,
-                lineHeight: 20,
-                color: '#5EEAD4',
-                textAlign: 'center',
-              }}
-            >
-              ALL TIME
-            </TotlText>
-            <TotlText
-              style={{
-                marginTop: 6,
-                textAlign: 'center',
-                fontWeight: '700',
-                fontSize: 13,
-                color: 'rgba(255,255,255,0.65)',
-              }}
-            >
-              Cumulative correct picks across every day
-            </TotlText>
-          </>
-        )}
-
-        <View
-          style={{
-            marginTop: 22,
-            borderRadius: 20,
-            backgroundColor: '#FFFFFF',
-            overflow: 'hidden',
-            paddingVertical: 6,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: '#E2E8F0',
-            }}
-          >
-            <TotlText style={{ width: 36, fontWeight: '800', fontSize: 11, color: '#94A3B8' }}>#</TotlText>
-            <TotlText style={{ flex: 1, fontWeight: '800', fontSize: 11, color: '#94A3B8' }}>Player</TotlText>
-            <TotlText style={{ width: 56, textAlign: 'right', fontWeight: '800', fontSize: 11, color: '#94A3B8' }}>
-              {scoreHeader}
+          <View style={{ marginTop: 14, marginBottom: 10 }}>
+            <TotlText variant="sectionSubtitle" style={{ fontSize: 13, lineHeight: 18 }} numberOfLines={1}>
+              {subtitle}
             </TotlText>
           </View>
 
-          {rows.map((row, i) => (
-            <View
-              key={`${scoreHeader}-${row.name}`}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-                paddingVertical: 14,
-                backgroundColor: row.you ? 'rgba(28,131,118,0.1)' : 'transparent',
-                borderBottomWidth: i === rows.length - 1 ? 0 : 1,
-                borderBottomColor: '#F1F5F9',
-              }}
-            >
-              <TotlText
-                style={{
-                  width: 36,
-                  fontFamily: RETRO_PIXEL_FONT,
-                  fontSize: 14,
-                  color: row.rank <= 3 ? '#0F766E' : '#334155',
-                }}
-              >
-                {row.rank}
-              </TotlText>
-              <TotlText
-                style={{
-                  flex: 1,
-                  fontWeight: row.you ? '900' : '700',
-                  fontSize: 15,
-                  color: t.color.text,
-                }}
-                numberOfLines={1}
-              >
-                {row.name}
-                {row.you ? '  · you' : ''}
-              </TotlText>
-              <TotlText
-                style={{
-                  width: 56,
-                  textAlign: 'right',
-                  fontFamily: RETRO_PIXEL_FONT,
-                  fontSize: 16,
-                  color: t.color.text,
-                }}
-              >
-                {row.score}
-              </TotlText>
-            </View>
-          ))}
+          {rosterLoading ? <TotlText variant="muted">Loading the table…</TotlText> : null}
+
+          {!rosterLoading && rows.length === 0 ? (
+            <TotlText variant="muted">Prem Predictions isn’t on this account yet.</TotlText>
+          ) : null}
+
+          {rows.length > 0 ? (
+            <LeaderboardTable
+              rows={rows}
+              valueLabel={valueLabel}
+              highlightUserId={userId}
+              style={{ flex: 1, marginHorizontal: -t.space[4], marginBottom: -24 }}
+            />
+          ) : null}
         </View>
-
-        <TotlText
-          style={{
-            marginTop: 16,
-            textAlign: 'center',
-            fontSize: 12,
-            fontWeight: '600',
-            color: 'rgba(255,255,255,0.5)',
-          }}
-        >
-          Prototype rankings — live boards ship with the real daily seed.
-        </TotlText>
-      </ScrollView>
-    </View>
-  );
-}
-
-function TabButton({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        height: 40,
-        borderRadius: 11,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: active ? TEAL : 'transparent',
-        opacity: pressed && !active ? 0.75 : 1,
-      })}
-    >
-      <TotlText style={{ fontWeight: '800', fontSize: 14, color: CHROME_WHITE }}>{label}</TotlText>
-    </Pressable>
+      </View>
+    </Screen>
   );
 }

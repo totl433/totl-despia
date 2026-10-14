@@ -56,6 +56,7 @@ export declare const LiveScoreSchema: z.ZodObject<{
     updated_at: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     goals: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
     red_cards: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
+    lineups: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
 }, z.core.$strip>;
 export type LiveScore = z.infer<typeof LiveScoreSchema>;
 export declare const GwResultRowSchema: z.ZodObject<{
@@ -149,6 +150,7 @@ export declare const HomeSnapshotSchema: z.ZodObject<{
         updated_at: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         goals: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
         red_cards: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
+        lineups: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
     }, z.core.$strip>>;
     gwResults: z.ZodArray<z.ZodObject<{
         fixture_index: z.ZodNumber;

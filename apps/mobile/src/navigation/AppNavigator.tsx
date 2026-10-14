@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { DarkTheme, DefaultTheme, NavigationContainer, createNavigationContainerRef, type Theme } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
 import { useTokens } from '@totl/ui';
 
 import TabsNavigator from './TabsNavigator';
@@ -24,6 +24,7 @@ import JoinMiniLeagueScreen from '../screens/JoinMiniLeagueScreen';
 import { useDeepLink } from '../context/DeepLinkContext';
 import { resolveDeepLinkTarget } from '../lib/deepLinks';
 import { api } from '../lib/api';
+import { navigationRef } from './navigationRef';
 export type RootStackParamList = {
   Tabs: undefined;
   LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
@@ -45,7 +46,8 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+export { navigationRef };
 
 export default function AppNavigator() {
   const t = useTokens();
@@ -74,6 +76,17 @@ export default function AppNavigator() {
     }
     if (target.type === 'predictions') {
       navigationRef.navigate('Tabs' as any, { screen: 'Predictions' } as any);
+      return true;
+    }
+    if (target.type === 'players') {
+      navigationRef.navigate('RetroTotlDailyPlayersFlow');
+      return true;
+    }
+    if (target.type === 'matchCenter') {
+      navigationRef.navigate('Tabs' as any, {
+        screen: 'Predictions',
+        params: { screen: 'MatchCenter' },
+      } as any);
       return true;
     }
     if (target.type === 'brandedLeaderboard') {

@@ -1,11 +1,12 @@
 /**
- * Starter Premier League player×club appearance pack for The Players daily.
- * Numbers are curated career PL apps (approx where noted) — good enough for
- * puzzle brackets; replace/extend via `retro_player_club_apps` when backfilling
- * full history from FBref etc.
+ * Checked list used to fill `retro_player_club_apps`.
+ * The game reads that table, not this file.
+ * The starter rows below are not used.
  *
  * Multiple rows with the same player+club = separate spells (e.g. returns).
  */
+
+import { playerKeyFromName, VERIFIED_PLAYER_CLUB_SPELLS } from './verifiedApps';
 
 export type ClubSpell = {
   firstSeason?: string;
@@ -20,6 +21,8 @@ export type PlayerClubApp = {
   clubName: string;
   /** Total PL apps at this club (sum of spells). */
   appearances: number;
+  /** English Wikipedia views for this player. Same on every club row. */
+  wikiViews?: number;
   firstSeason?: string;
   lastSeason?: string;
   /** Separate stints at the club (one entry if continuous). */
@@ -379,11 +382,20 @@ export const RETRO_PLAYER_CLUB_SEED: Array<Omit<PlayerClubApp, 'spells'> & { spe
   row('Ross Barkley', 'AVL', 'Aston Villa', 40, '2024/25', '2024/25'),
 ];
 
-/** Merge seed rows: same player+club with different seasons = multiple spells. */
+/** Checked spells only. Same player+club with different seasons = multiple spells. */
 export function getCleanPlayerClubSeed(): PlayerClubApp[] {
   const map = new Map<string, PlayerClubApp>();
+  const checked = VERIFIED_PLAYER_CLUB_SPELLS.map((r) => ({
+    playerName: r.playerName,
+    playerKey: playerKeyFromName(r.playerName),
+    clubCode: r.clubCode,
+    clubName: r.clubName,
+    appearances: r.appearances,
+    firstSeason: r.firstSeason,
+    lastSeason: r.lastSeason,
+  }));
 
-  for (const r of RETRO_PLAYER_CLUB_SEED) {
+  for (const r of checked) {
     if (!r.appearances || r.appearances <= 0) continue;
     if (!r.clubCode || r.clubCode.length > 3) continue;
 

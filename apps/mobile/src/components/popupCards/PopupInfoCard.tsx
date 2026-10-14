@@ -51,6 +51,16 @@ import {
   scoreStringsForFixtureRow,
 } from '../../lib/scoreSheetLiveScores';
 
+const PREDICTIONS_CARD_DISMISS_MS = 280;
+
+function openPredictionsFlowAfterCardDismiss() {
+  setTimeout(() => {
+    if (navigationRef.isReady()) {
+      navigationRef.navigate('PredictionsFlow');
+    }
+  }, PREDICTIONS_CARD_DISMISS_MS);
+}
+
 type GwPointsRow = { user_id: string; gw: number; points: number };
 type UserRow = { id: string; name: string | null; avatar_url: string | null };
 
@@ -1906,11 +1916,9 @@ function DoPredictionsCardBody({ eventKey, onClose }: { eventKey?: string; onClo
 
   const handleDoPredictions = () => {
     onClose?.();
-    requestAnimationFrame(() => {
-      if (navigationRef.isReady()) {
-        navigationRef.navigate('PredictionsFlow');
-      }
-    });
+    // iOS drops a modal presented while this card's swipe gesture is ending,
+    // which left people on Home having to tap the banner as well.
+    openPredictionsFlowAfterCardDismiss();
   };
 
   return (
@@ -2148,11 +2156,7 @@ function WelcomeCardBody({ kind, eventKey, onClose }: { kind?: PopupCardKind; ev
 
     if (kind === 'welcome4' && canPredict) {
       onClose?.();
-      requestAnimationFrame(() => {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('PredictionsFlow');
-        }
-      });
+      openPredictionsFlowAfterCardDismiss();
     }
   };
 

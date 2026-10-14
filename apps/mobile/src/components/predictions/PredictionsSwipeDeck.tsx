@@ -16,11 +16,7 @@ import { TotlText } from '@totl/ui';
 
 import SwipePredictionCard from './SwipePredictionCard';
 import FlippableSwipePredictionCard, { CARD_FLIP_MS } from './FlippableSwipePredictionCard';
-import {
-  buildMatchPreviewStatsFromCache,
-  buildMockMatchPreviewStats,
-  type MatchPreviewStats,
-} from '../../lib/matchPreviewStats';
+import type { MatchPreviewStats } from '../../lib/matchPreviewStats';
 
 type FixtureForms = { home: string | null; away: string | null };
 type CardSnapshot = {
@@ -141,24 +137,37 @@ function buildCardSnapshot(
   };
 }
 
+function nextDeckIndex(
+  fixtures: Fixture[],
+  picks: Record<number, Pick>,
+  currentIndex: number,
+  browseAll: boolean
+): number {
+  if (browseAll) return currentIndex + 1 < fixtures.length ? currentIndex + 1 : -1;
+  return findNextUnpickedIndex(fixtures, picks, currentIndex);
+}
+
 function buildDeckCards(
   fixtures: Fixture[],
   formsByFixtureIndex: Map<number, FixtureForms>,
   picks: Record<number, Pick>,
-  startIndex?: number
+  startIndex?: number,
+  browseAll = false
 ): DeckCards {
   const currentIndex =
     typeof startIndex === 'number'
       ? startIndex
-      : (() => {
-          const first = findFirstUnpickedIndex(fixtures, picks);
-          return first >= 0 ? first : Math.max(0, fixtures.length - 1);
-        })();
+      : browseAll
+        ? 0
+        : (() => {
+            const first = findFirstUnpickedIndex(fixtures, picks);
+            return first >= 0 ? first : Math.max(0, fixtures.length - 1);
+          })();
 
   const current = buildCardSnapshot(fixtures, formsByFixtureIndex, currentIndex);
-  const nextIndex = current ? findNextUnpickedIndex(fixtures, picks, current.index) : -1;
+  const nextIndex = current ? nextDeckIndex(fixtures, picks, current.index, browseAll) : -1;
   const next = buildCardSnapshot(fixtures, formsByFixtureIndex, nextIndex);
-  const queuedIndex = next ? findNextUnpickedIndex(fixtures, picks, next.index) : -1;
+  const queuedIndex = next ? nextDeckIndex(fixtures, picks, next.index, browseAll) : -1;
   const queued = buildCardSnapshot(fixtures, formsByFixtureIndex, queuedIndex);
   return { current, next, queued };
 }
@@ -174,6 +183,7 @@ export default function PredictionsSwipeDeck({
   onCommitPick,
   onCurrentIndexChange,
   enableCardFlip = false,
+  browseAll = false,
   statsByFixtureIndex,
 }: {
   fixtures: Fixture[];
@@ -185,8 +195,10 @@ export default function PredictionsSwipeDeck({
   disabled: boolean;
   onCommitPick: (fixtureIndex: number, pick: Pick) => void;
   onCurrentIndexChange?: (index: number) => void;
-  /** Admin Make Your Predictions Test: tap card to flip and see stats. */
+  /** Tap the card to flip and see stats. */
   enableCardFlip?: boolean;
+  /** Walk every fixture in order. Used once picks are locked so stats stay browsable. */
+  browseAll?: boolean;
   /** Real cached preview stats keyed by fixture_index. Falls back to mock if missing. */
   statsByFixtureIndex?: Map<number, MatchPreviewStats> | Record<number, MatchPreviewStats>;
 }) {
@@ -260,9 +272,9 @@ export default function PredictionsSwipeDeck({
     setSettlingTopCard(false);
     setCardFlipped(false);
     setLocalPicks(picks);
-    setDeck(buildDeckCards(fixtures, formsByFixtureIndex, picks));
+    setDeck(buildDeckCards(fixtures, formsByFixtureIndex, picks, undefined, browseAll));
     resetMotion();
-  }, [deckIdentity, fixtures, formsByFixtureIndex, picks, resetMotion]);
+  }, [browseAll, deckIdentity, fixtures, formsByFixtureIndex, picks, resetMotion]);
 
   const currentCard = transition?.outgoing ?? deck.current;
 
@@ -275,19 +287,9 @@ export default function PredictionsSwipeDeck({
     }
   }, [deck.current?.fixture.fixture_index]);
 
-  const toggleCardFlip = React.useCallback(() => {
-    if (!enableCardFlip || disabled || transition || flipAnimating) return;
-    setFlipAnimating(true);
-    setCardFlipped((v) => !v);
-    if (flipAnimTimeoutRef.current) clearTimeout(flipAnimTimeoutRef.current);
-    flipAnimTimeoutRef.current = setTimeout(() => {
-      setFlipAnimating(false);
-      flipAnimTimeoutRef.current = null;
-    }, CARD_FLIP_MS);
-  }, [disabled, enableCardFlip, flipAnimating, transition]);
-
-  const statsForCard = React.useCallback(
-    (fixture: Fixture) => {
+  const cachedStatsForCard = React.useCallback(
+    (fixture: Fixture | null | undefined): MatchPreviewStats | null => {
+      if (!fixture) return null;
       // React Query can rehydrate a Map as a plain object — never assume `.get` exists.
       let cached: MatchPreviewStats | undefined;
       if (statsByFixtureIndex instanceof Map) {
@@ -295,29 +297,41 @@ export default function PredictionsSwipeDeck({
       } else if (statsByFixtureIndex && typeof statsByFixtureIndex === 'object') {
         cached = (statsByFixtureIndex as Record<number, MatchPreviewStats>)[fixture.fixture_index];
       }
-      if (cached) return cached;
-      return buildMockMatchPreviewStats({
-        homeCode: fixture.home_code,
-        awayCode: fixture.away_code,
-        gw: typeof fixture.gw === 'number' ? fixture.gw : 99,
-      });
+      return cached ?? null;
     },
     [statsByFixtureIndex]
   );
+
+  const canFlipFixture = React.useCallback(
+    (fixture: Fixture | null | undefined) => enableCardFlip && cachedStatsForCard(fixture) != null,
+    [cachedStatsForCard, enableCardFlip]
+  );
+
+  const toggleCardFlip = React.useCallback(() => {
+    if (!canFlipFixture(deck.current?.fixture) || transition || flipAnimating) return;
+    setFlipAnimating(true);
+    setCardFlipped((v) => !v);
+    if (flipAnimTimeoutRef.current) clearTimeout(flipAnimTimeoutRef.current);
+    flipAnimTimeoutRef.current = setTimeout(() => {
+      setFlipAnimating(false);
+      flipAnimTimeoutRef.current = null;
+    }, CARD_FLIP_MS);
+  }, [canFlipFixture, deck.current?.fixture, flipAnimating, transition]);
 
   const renderCard = React.useCallback(
     (
       snapshot: CardSnapshot,
       opts: { showSwipeHint: boolean; flipped?: boolean }
     ) => {
-      if (enableCardFlip) {
+      const stats = cachedStatsForCard(snapshot.fixture);
+      if (stats) {
         return (
           <FlippableSwipePredictionCard
             fixture={snapshot.fixture}
             showSwipeHint={opts.showSwipeHint}
             homeForm={snapshot.forms.home}
             awayForm={snapshot.forms.away}
-            stats={statsForCard(snapshot.fixture)}
+            stats={stats}
             flipped={opts.flipped ?? false}
           />
         );
@@ -331,7 +345,7 @@ export default function PredictionsSwipeDeck({
         />
       );
     },
-    [enableCardFlip, statsForCard]
+    [cachedStatsForCard]
   );
 
   React.useEffect(() => {
@@ -450,7 +464,7 @@ export default function PredictionsSwipeDeck({
       };
       const promoted = currentDeck.next;
       const nextDeck = promoted
-        ? buildDeckCards(fixturesRef.current, formsByFixtureIndexRef.current, nextPicks, promoted.index)
+        ? buildDeckCards(fixturesRef.current, formsByFixtureIndexRef.current, nextPicks, promoted.index, browseAll)
         : { current: null, next: null, queued: null };
 
       const transitionState: Exclude<TransitionState, null> = {
@@ -479,19 +493,41 @@ export default function PredictionsSwipeDeck({
         runOnJS(finalizePickTransition)(transitionState);
       });
     },
-    [disabled, finalizePickTransition, isAnimatingSV, opacity, revealProgress, scale, screenHeight, screenWidth, transition, tx, ty]
+    [browseAll, disabled, finalizePickTransition, isAnimatingSV, opacity, revealProgress, scale, screenHeight, screenWidth, transition, tx, ty]
+  );
+
+  const stepBrowse = React.useCallback(
+    (direction: 1 | -1) => {
+      const current = deckRef.current.current;
+      if (!current || transition || isAnimatingSV.value) return;
+      const nextIndex = current.index + direction;
+      if (nextIndex < 0 || nextIndex >= fixturesRef.current.length) return;
+      setCardFlipped(false);
+      setDeck(
+        buildDeckCards(
+          fixturesRef.current,
+          formsByFixtureIndexRef.current,
+          localPicksRef.current,
+          nextIndex,
+          true
+        )
+      );
+      resetMotion();
+    },
+    [isAnimatingSV, resetMotion, transition]
   );
 
   const gesture = React.useMemo(() => {
+    const picksOpen = !disabled && !browseAll;
     const pan = Gesture.Pan()
-      .enabled(!disabled && !transition && !flipAnimating)
+      .enabled((picksOpen || browseAll) && !transition && !flipAnimating)
       .maxPointers(1)
       // Don’t claim the gesture until the finger clearly moves — lets a clean tap flip.
       .activeOffsetX([-18, 18])
       .activeOffsetY([-18, 18])
       .runOnJS(false)
       .onUpdate((e) => {
-        if (disabled || transition || isAnimatingSV.value) return;
+        if ((!picksOpen && !browseAll) || transition || isAnimatingSV.value) return;
         tx.value = e.translationX;
         ty.value = e.translationY;
         const absX = Math.abs(e.translationX);
@@ -500,11 +536,21 @@ export default function PredictionsSwipeDeck({
         revealProgress.value = Math.min(1, Math.max(absX, absY) / progressThreshold);
       })
       .onEnd((e) => {
-        if (disabled || transition || isAnimatingSV.value) return;
+        if ((!picksOpen && !browseAll) || transition || isAnimatingSV.value) return;
         const dx = e.translationX ?? 0;
         const dy = e.translationY ?? 0;
         const absX = Math.abs(dx);
         const absY = Math.abs(dy);
+
+        if (browseAll) {
+          if (absX >= SWIPE_THRESHOLD && absX > absY * DIRECTION_RATIO) {
+            runOnJS(stepBrowse)(dx < 0 ? 1 : -1);
+          }
+          tx.value = withSpring(0, RESET_SPRING);
+          ty.value = withSpring(0, RESET_SPRING);
+          revealProgress.value = withSpring(0, RESET_SPRING);
+          return;
+        }
 
         let pick: Pick | null = null;
         if (absX >= SWIPE_THRESHOLD && absX > absY * DIRECTION_RATIO) pick = dx > 0 ? 'A' : 'H';
@@ -520,10 +566,10 @@ export default function PredictionsSwipeDeck({
         revealProgress.value = withSpring(0, RESET_SPRING);
       });
 
-    if (!enableCardFlip) return pan;
+    if (!canFlipFixture(currentCard?.fixture)) return pan;
 
     const tap = Gesture.Tap()
-      .enabled(!disabled && !transition && !flipAnimating)
+      .enabled(!transition && !flipAnimating)
       .maxDuration(250)
       // Fail the tap as soon as the finger wanders — otherwise swipe attempts flip the card.
       .maxDistance(12)
@@ -536,9 +582,12 @@ export default function PredictionsSwipeDeck({
     // when tap had Exclusive priority).
     return Gesture.Exclusive(pan, tap);
   }, [
+    browseAll,
+    canFlipFixture,
+    currentCard?.fixture,
     disabled,
-    enableCardFlip,
     flipAnimating,
+    stepBrowse,
     isAnimatingSV,
     revealProgress,
     startPickTransition,
@@ -653,7 +702,7 @@ export default function PredictionsSwipeDeck({
         </View>
       </GestureDetector>
 
-      {enableCardFlip ? (
+      {canFlipFixture(deck.current?.fixture) ? (
         <FlipHintLabel
           flipped={cardFlipped}
           pulseKey={deck.current?.fixture.fixture_index ?? 'none'}
@@ -663,7 +712,7 @@ export default function PredictionsSwipeDeck({
         />
       ) : null}
 
-      <View style={{ height: enableCardFlip ? 18 : 32 }} />
+      <View style={{ height: canFlipFixture(deck.current?.fixture) ? 18 : 32 }} />
 
       <View style={{ width: '100%' }}>
         <View style={{ flexDirection: 'row', gap: 10 }}>

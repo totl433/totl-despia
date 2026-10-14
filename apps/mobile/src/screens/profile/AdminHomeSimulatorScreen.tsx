@@ -32,6 +32,7 @@ import {
   ordinalLabel,
   sortFixturesByFixtureIndex,
 } from '../../lib/homeFixtureUi';
+import { buildHpSimMlSwipeLeagues, HP_SIM_ML_USER_ID } from '../../lib/hpSimMlSwipe';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
 import { useThemePreference, type ThemePreference } from '../../context/ThemePreferenceContext';
 import usePopupCards from '../../hooks/usePopupCards';
@@ -986,6 +987,8 @@ export default function AdminHomeSimulatorScreen() {
                                       homeScorers={homeScorers}
                                       awayScorers={awayScorers}
                                       fixtureDateLabel={fixtureDateLabel(f.kickoff_time ?? null)}
+                                      mlSwipeLeagues={buildHpSimMlSwipeLeagues(Number(fixture_index))}
+                                      mlSwipeUserId={HP_SIM_ML_USER_ID}
                                     />
                                   </View>
                                 </Reanimated.View>
@@ -1148,6 +1151,8 @@ export default function AdminHomeSimulatorScreen() {
                                 hideRepeatedKickoffInDetails={hideRepeatedKickoffInDetails}
                                 hideRepeatedKickoffInCompact={hideRepeatedKickoffInCompact}
                                 hideRepeatedKickoffInLiveScheduled={hideRepeatedKickoffInLiveScheduled}
+                                mlSwipeLeagues={buildHpSimMlSwipeLeagues(Number(fixture_index))}
+                                mlSwipeUserId={HP_SIM_ML_USER_ID}
                                 onLayout={(height) => {
                                   setCardHeightsById((prev) => {
                                     const existing = prev[fixtureId];

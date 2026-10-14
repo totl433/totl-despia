@@ -6,6 +6,8 @@ export type DeepLinkTarget =
   | { type: 'miniLeagueInvite'; code: string }
   | { type: 'leagues' }
   | { type: 'predictions' }
+  | { type: 'players' }
+  | { type: 'matchCenter' }
   | { type: 'brandedLeaderboard'; idOrSlug: string; initialTab?: 'broadcast' }
   | {
       type: 'league';
@@ -73,6 +75,14 @@ export function resolveDeepLinkTarget(rawUrl: string): DeepLinkTarget | null {
 
   if (/^\/predictions\/?$/i.test(pathname)) {
     return { type: 'predictions' };
+  }
+
+  if (/^\/players\/?$/i.test(pathname)) {
+    return { type: 'players' };
+  }
+
+  if (/^\/match-center\/?$/i.test(pathname)) {
+    return { type: 'matchCenter' };
   }
 
   const brandedMatch = pathname.match(/^\/branded-leaderboards\/([^/?#]+)\/?$/i);

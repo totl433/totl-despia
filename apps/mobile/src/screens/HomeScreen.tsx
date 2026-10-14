@@ -853,10 +853,10 @@ export default function HomeScreen() {
                           const derivedOutcome: Pick | null =
                             hasFinalResult
                               ? resultFromDb
-                              : typeof ls?.home_score === 'number' && typeof ls?.away_score === 'number'
-                                ? ls.home_score > ls.away_score
+                              : hasScore
+                                ? (ls?.home_score ?? 0) > (ls?.away_score ?? 0)
                                   ? 'H'
-                                  : ls.home_score < ls.away_score
+                                  : (ls?.home_score ?? 0) < (ls?.away_score ?? 0)
                                     ? 'A'
                                     : 'D'
                                 : null;
@@ -1028,10 +1028,10 @@ export default function HomeScreen() {
                   const derivedOutcome: Pick | null =
                     hasFinalResult
                       ? resultFromDb
-                      : typeof ls?.home_score === 'number' && typeof ls?.away_score === 'number'
-                        ? ls.home_score > ls.away_score
+                      : hasScore
+                        ? (ls?.home_score ?? 0) > (ls?.away_score ?? 0)
                           ? 'H'
-                          : ls.home_score < ls.away_score
+                          : (ls?.home_score ?? 0) < (ls?.away_score ?? 0)
                             ? 'A'
                             : 'D'
                         : null;

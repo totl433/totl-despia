@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { LiveStatus, Pick } from '@totl/domain';
 import type { GameweekState } from '../../lib/gameweekState';
+import type { FixtureMlSwipeLeague } from './fixtureMlSwipeTypes';
 
 export interface MiniFixtureCardProps {
   fixtureId: string;
@@ -47,6 +48,10 @@ export interface MiniFixtureCardProps {
   awayRedCardCount?: number;
 
   fixtureDateLabel: string;
+
+  /** Post-deadline: swipe expanded card through these mini-leagues (empty = no swipe). */
+  mlSwipeLeagues?: FixtureMlSwipeLeague[];
+  mlSwipeUserId?: string | null;
 }
 
 export interface ExpandedFixtureCardProps {
@@ -94,6 +99,10 @@ export interface ExpandedFixtureCardProps {
   hideRepeatedKickoffInDetails: boolean;
   hideRepeatedKickoffInCompact: boolean;
   hideRepeatedKickoffInLiveScheduled: boolean;
+
+  /** Post-deadline: swipe expanded card through these mini-leagues (empty = no swipe). */
+  mlSwipeLeagues?: FixtureMlSwipeLeague[];
+  mlSwipeUserId?: string | null;
 
   onLayout?: (height: number) => void;
 }

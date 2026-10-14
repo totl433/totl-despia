@@ -1,8 +1,9 @@
 import React from 'react';
-import { AppState, Linking, View, type AppStateStatus } from 'react-native';
+import { AppState, Linking, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { HomeSnapshot } from '@totl/domain';
 
+import { navigationRef } from '../../navigation/navigationRef';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
@@ -218,6 +219,12 @@ function isDoPredictionsEventKey(eventKey: string | null | undefined): boolean {
   return typeof eventKey === 'string' && eventKey.startsWith('doPredictions:gw');
 }
 
+function isPredictionsFlowOpen(): boolean {
+  if (!navigationRef.isReady()) return false;
+  const state = navigationRef.getRootState();
+  return state.routes.some((route) => route.name === 'PredictionsFlow' || route.name === 'PredictionsTestFlow');
+}
+
 export default function PopupCardsProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [activeStack, setActiveStack] = React.useState<ActivePopupStack | null>(null);
@@ -228,7 +235,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
   const autoOpenInFlightRef = React.useRef(false);
   const sessionDismissedEventKeysRef = React.useRef<Set<string>>(new Set());
   const lastGwSnapshotRef = React.useRef<{ viewingGw: number | null; currentGw: number | null } | null>(null);
-  const appStateRef = React.useRef<AppStateStatus>(AppState.currentState);
+  const sawBackgroundRef = React.useRef(false);
 
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
@@ -261,10 +268,14 @@ export default function PopupCardsProvider({ children }: { children: React.React
 
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      const previousState = appStateRef.current;
-      appStateRef.current = nextState;
-      const returnedToForeground = previousState !== 'active' && nextState === 'active';
-      if (!returnedToForeground) return;
+      if (nextState === 'background') {
+        sawBackgroundRef.current = true;
+      }
+      // Opening the predictions modal goes inactive then active. That is not
+      // a return to the app, and treating it as one brought this card straight back.
+      const returnedFromBackground = nextState === 'active' && sawBackgroundRef.current;
+      if (!returnedFromBackground) return;
+      sawBackgroundRef.current = false;
 
       sessionDismissedEventKeysRef.current.forEach((eventKey) => {
         if (isDoPredictionsEventKey(eventKey)) {
@@ -694,7 +705,8 @@ export default function PopupCardsProvider({ children }: { children: React.React
           typeof currentGw === 'number' &&
           viewingGw === currentGw &&
           !home.hasSubmittedViewingGw &&
-          !suppressPredictionsPromptUntilForegroundRef.current
+          !suppressPredictionsPromptUntilForegroundRef.current &&
+          !isPredictionsFlowOpen()
         ) {
           const doPredictionsCard = createPopupCard('doPredictions', {
             id: `do-predictions-gw${viewingGw}`,

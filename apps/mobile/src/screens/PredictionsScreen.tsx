@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, useScrollToTop } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Fixture, Pick } from '@totl/domain';
+import type { Fixture, HomeSnapshot, Pick } from '@totl/domain';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
@@ -23,6 +23,7 @@ import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import {
   buildMatchPreviewStatsFromCache,
   computeCleanSheetsFromResults,
+  computeSeasonRecordFromResults,
   hasSeasonStats,
   type MatchPreviewStats,
   type TeamFormsDbRow,
@@ -78,6 +79,34 @@ const REVIEW_TIP_STORAGE_KEY = 'predictionsReviewTipDismissed:v1';
 
 function isPick(v: unknown): v is Pick {
   return v === 'H' || v === 'D' || v === 'A';
+}
+
+/** Keep a stored season snapshot. If those columns are empty, count them from results. */
+function seasonStatsForCard(
+  stored: TeamFormsDbRow | null,
+  teamCode: string,
+  scoreRows: Array<{
+    home_code?: string | null;
+    away_code?: string | null;
+    home_score?: number | null;
+    away_score?: number | null;
+  }>
+): TeamFormsDbRow | null {
+  if (!teamCode) return stored;
+  if (hasSeasonStats(stored)) return stored;
+  const record = computeSeasonRecordFromResults(scoreRows, teamCode);
+  if (record.played <= 0 && !stored) return stored;
+  return {
+    team_code: teamCode,
+    form: stored?.form ?? null,
+    league_position: stored?.league_position ?? null,
+    played: record.played,
+    won: record.won,
+    drawn: record.drawn,
+    lost: record.lost,
+    goals_for: record.goalsFor,
+    goals_against: record.goalsAgainst,
+  };
 }
 
 function fixtureDateLabel(kickoff: string | null | undefined) {
@@ -287,19 +316,24 @@ export default function PredictionsScreen() {
     [testModePredictions?.fixtures]
   );
   const testGw = typeof testModePredictions?.gw === 'number' ? testModePredictions.gw : null;
+  const liveFixtures = React.useMemo(() => ((data?.fixtures ?? []) as Fixture[]), [data?.fixtures]);
+  const liveGw = typeof data?.gw === 'number' ? data.gw : null;
+  const statsFixtures = isTestMode ? testFixtures : liveFixtures;
+  const statsGw = isTestMode ? testGw : liveGw;
 
   const { data: flipStatsByFixtureIndex } = useQuery({
     queryKey: [
       'match-preview-stats',
-      'test',
-      testGw,
-      testFixtures.map((f) => `${f.fixture_index}:${f.api_match_id ?? ''}`).join('|'),
+      isTestMode ? 'test' : 'live',
+      'results-fallback',
+      statsGw,
+      statsFixtures.map((f) => `${f.fixture_index}:${f.api_match_id ?? ''}`).join('|'),
     ],
-    enabled: isTestMode && testGw != null && testFixtures.length > 0,
+    enabled: statsGw != null && statsFixtures.length > 0,
     staleTime: 60_000,
     queryFn: async () => {
-      const gw = testGw as number;
-      const apiMatchIds = testFixtures
+      const gw = statsGw as number;
+      const apiMatchIds = statsFixtures
         .map((f) => Number(f.api_match_id))
         .filter((id) => Number.isFinite(id) && id > 0);
 
@@ -379,11 +413,11 @@ export default function PredictionsScreen() {
       });
 
       const out = new Map<number, MatchPreviewStats>();
-      for (const fixture of testFixtures) {
+      for (const fixture of statsFixtures) {
         const homeCode = normalizeTeamCode(fixture.home_code);
         const awayCode = normalizeTeamCode(fixture.away_code);
-        const homeForms = formsByCode.get(homeCode) ?? null;
-        const awayForms = formsByCode.get(awayCode) ?? null;
+        const homeForms = seasonStatsForCard(formsByCode.get(homeCode) ?? null, homeCode, scoreRows);
+        const awayForms = seasonStatsForCard(formsByCode.get(awayCode) ?? null, awayCode, scoreRows);
         const matchId = Number(fixture.api_match_id);
         const h2h = Number.isFinite(matchId) ? h2hByMatchId.get(matchId) ?? null : null;
         const cleanSheets =
@@ -580,28 +614,26 @@ export default function PredictionsScreen() {
     return fixtures.every((f) => isPick(picks[f.fixture_index]));
   }, [fixtures, picks]);
 
-  // Never force list/lock in admin test — always allow swipe + flip.
-  const forceListMode = isTestMode ? false : submitted || deadlineExpired;
+  // Picks lock after submit or the deadline. Cards stay available so the stats flip
+  // can be used once the gameweek is live. The admin test never locks.
+  const picksLocked = isTestMode ? false : submitted || deadlineExpired;
+  const forceListMode = picksLocked;
   const [mode, setMode] = React.useState<Mode>('list');
   const currentViewMode: 'swipe' | 'list' = mode === 'cards' ? 'swipe' : 'list';
 
   const handleViewModeChange = React.useCallback(
     (nextView: 'swipe' | 'list') => {
-      if (forceListMode) return;
       if (nextView === 'swipe') {
         setMode('cards');
         return;
       }
-      setMode('review');
+      setMode(picksLocked ? 'list' : 'review');
     },
-    [forceListMode]
+    [picksLocked]
   );
 
   React.useEffect(() => {
-    if (forceListMode) {
-      if (mode !== 'list') setMode('list');
-      return;
-    }
+    if (picksLocked) return;
     // Default UX: cards until complete, then review.
     if (allPicksMade) {
       if (mode === 'cards') setMode('review');
@@ -609,7 +641,7 @@ export default function PredictionsScreen() {
       return;
     }
     if (mode === 'list') setMode('cards');
-  }, [allPicksMade, forceListMode, mode]);
+  }, [allPicksMade, mode, picksLocked]);
 
   // Bottom tab bar behavior:
   // - Hide while making/reviewing picks (full-screen flow).
@@ -707,6 +739,9 @@ export default function PredictionsScreen() {
       }
       // Clear draft immediately (server is now canonical).
       setDraftPicks({});
+      queryClient.setQueryData<HomeSnapshot>(['homeSnapshot'], (current) =>
+        current ? { ...current, hasSubmittedViewingGw: true } : current
+      );
       confetti.fire({
         origin: { x: screenWidth / 2, y: -10 },
         count: 320,
@@ -855,9 +890,7 @@ export default function PredictionsScreen() {
                 right: 0,
               }}
             >
-              {!forceListMode ? (
-                <PredictionsViewToggle value={currentViewMode} onChange={handleViewModeChange} />
-              ) : null}
+              <PredictionsViewToggle value={currentViewMode} onChange={handleViewModeChange} />
             </View>
           </View>
         </View>
@@ -962,10 +995,11 @@ export default function PredictionsScreen() {
               cardWidth={cardWidth}
               screenWidth={screenWidth}
               screenHeight={screenHeight}
-              disabled={isTestMode ? false : submitted || deadlineExpired}
+              disabled={picksLocked}
               onCommitPick={setPickLocal}
               onCurrentIndexChange={setCardIndex}
-              enableCardFlip={isTestMode}
+              enableCardFlip
+              browseAll={picksLocked}
               statsByFixtureIndex={flipStatsMap}
             />
           ) : (
@@ -1146,6 +1180,11 @@ export default function PredictionsScreen() {
         }
         hideProfile={isStandalonePredictionsFlow}
         hideChat={isStandalonePredictionsFlow}
+        rightAction={
+          fixtures.length > 0 ? (
+            <PredictionsViewToggle value={currentViewMode} onChange={handleViewModeChange} />
+          ) : undefined
+        }
       />
 
       <ScrollView

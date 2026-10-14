@@ -5,6 +5,8 @@ import Reanimated from 'react-native-reanimated';
 import { TotlText, useTokens } from '@totl/ui';
 import type { Pick } from '@totl/domain';
 import WinnerShimmer from '../WinnerShimmer';
+import ExpandedFixtureMlSwipe from './ExpandedFixtureMlSwipe';
+import { isFixtureMlSwipeState } from './fixtureMlSwipeTypes';
 import type { ExpandedFixtureCardProps } from './fixtureCardTypes';
 
 function FixtureHeaderMorph({
@@ -159,6 +161,8 @@ export default function ExpandedFixtureCard({
   hideRepeatedKickoffInDetails,
   hideRepeatedKickoffInCompact,
   hideRepeatedKickoffInLiveScheduled,
+  mlSwipeLeagues = [],
+  mlSwipeUserId = null,
   onLayout,
 }: ExpandedFixtureCardProps) {
   const t = useTokens();
@@ -254,6 +258,13 @@ export default function ExpandedFixtureCard({
                     </View>
                   </View>
                 ) : null}
+                <ExpandedFixtureMlSwipe
+                  enabled={isFixtureMlSwipeState(gwState) && isExpandedVisual}
+                  leagues={mlSwipeLeagues}
+                  currentUserId={mlSwipeUserId}
+                  outcome={derivedOutcome}
+                  resetKey={`${fixtureId}-${isExpandedVisual}`}
+                >
                 {showTabsRow ? (
                   <View style={{ marginTop: isLiveOrResultsCard ? 12 : 4, flexDirection: 'row', gap: isLiveOrResultsCard ? 6 : 8, paddingHorizontal: 12 }}>
                     {(['H', 'D', 'A'] as const).map((side) => {
@@ -364,6 +375,7 @@ export default function ExpandedFixtureCard({
                     })}
                   </View>
                 ) : null}
+                </ExpandedFixtureMlSwipe>
                 {isLiveOrResultsCard && tabsAboveScorers && homeScorers.length + awayScorers.length > 0 ? (
                   <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 12 }}>
                     <View style={{ width: '40%', alignItems: 'flex-end', paddingRight: 6 }}>

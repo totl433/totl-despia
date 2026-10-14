@@ -214,6 +214,11 @@ export default function NotificationCentreScreen() {
               description: 'Get a reminder 5 hours before the deadline to make your predictions',
             },
             {
+              id: 'daily-game-reminders',
+              label: 'Daily Game Reminders',
+              description: 'A nudge at 3pm when the new Players game is ready',
+            },
+            {
               id: 'score-updates',
               label: 'Match Updates',
               description: 'Get notified about match updates including kickoffs, goals, and scorers',

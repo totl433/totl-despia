@@ -1,24 +1,21 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import ConfettiCannon from 'react-native-confetti-cannon';
 import { useSharedValue } from 'react-native-reanimated';
 import { TotlText, useTokens } from '@totl/ui';
 
-import {
-  createPlayersPuzzle,
-  PLAYERS_TIMER_MS,
-  type PlayersClubOption,
-  type PlayersPuzzle,
-} from '../../lib/retroPlayers/buildPuzzle';
+import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type PlayersPuzzle } from '../../lib/retroPlayers/buildPuzzle';
+import { playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
+import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
+import { readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
+import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
 import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
 import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { normalizeTeamCode } from '../../lib/teamColors';
-import RetroDailyCountdownCard from '../../components/retroDaily/RetroDailyCountdownCard';
 import RetroDailyLogoBack from '../../components/retroDaily/RetroDailyLogoBack';
 import RetroDailyProgressPips from '../../components/retroDaily/RetroDailyProgressPips';
 import RetroDailySwipeStack, {
@@ -33,14 +30,12 @@ import RetroPlayersPromoteFlipCard, {
   RETRO_PROMOTE_FLIP_MS,
 } from '../../components/retroPlayers/RetroPlayersPromoteFlipCard';
 import RetroPlayersRevealCard, {
-  PLAYERS_REVEAL_FLIP_MS,
-  PLAYERS_REVEAL_HOLD_MS,
   type PlayersRoundOutcome,
 } from '../../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersScoreCard, { playersScoreBlurb } from '../../components/retroPlayers/RetroPlayersScoreCard';
 import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
 
-type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
+type Phase = 'intro' | 'playing' | 'reveal' | 'score';
 
 const BG = '#0B1F3A';
 const CHROME_WHITE = '#FFFFFF';
@@ -73,13 +68,18 @@ export default function RetroTotlDailyPlayersScreen() {
   const t = useTokens();
   const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyPlayersStackParamList>>();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
 
-  const [puzzle, setPuzzle] = React.useState<PlayersPuzzle>(() => createPlayersPuzzle());
-  const cards = puzzle.cards;
+  const [playedToday, setPlayedToday] = React.useState(false);
+  const playedRef = React.useRef(false);
+  const [practice, setPractice] = React.useState(false);
+  const practiceRef = React.useRef(false);
+  const [puzzle, setPuzzle] = React.useState<PlayersPuzzle | null>(null);
+  const [loadError, setLoadError] = React.useState(false);
+  const [catalogAttempt, setCatalogAttempt] = React.useState(0);
+  const rowsRef = React.useRef<PlayerClubApp[]>([]);
+  const cards = puzzle?.cards ?? [];
   const [phase, setPhase] = React.useState<Phase>('intro');
   const [index, setIndex] = React.useState(0);
-  const [countdown, setCountdown] = React.useState(3);
   const [outcomes, setOutcomes] = React.useState<PlayersRoundOutcome[]>([]);
   const [lastCorrect, setLastCorrect] = React.useState(false);
   const [lastTimedOut, setLastTimedOut] = React.useState(false);
@@ -92,13 +92,6 @@ export default function RetroTotlDailyPlayersScreen() {
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [hotCode, setHotCode] = React.useState<string | null>(null);
   const [dragSnap, setDragSnap] = React.useState({ x: 0, y: 0 });
-  const [confettiShot, setConfettiShot] = React.useState<{
-    key: number;
-    count: number;
-    explosionSpeed: number;
-    fallSpeed: number;
-    ttlMs: number;
-  } | null>(null);
 
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -119,6 +112,14 @@ export default function RetroTotlDailyPlayersScreen() {
 
   const card = cards[index] ?? null;
   const score = outcomes.filter((o) => o.correct).length;
+
+  React.useEffect(() => {
+    if (phase !== 'score' || practiceRef.current || cards.length === 0) return;
+    void savePlayersDayScore(playersDayKey(), { correct: score, total: cards.length }).then(() => {
+      playedRef.current = true;
+      setPlayedToday(true);
+    });
+  }, [cards.length, phase, score]);
   const perfect =
     score === cards.length && outcomes.length === cards.length && outcomes.every((o) => o.correct);
   const fromCountdown = cardKey.startsWith('play-0-') && !cardKey.includes('-instant-');
@@ -129,25 +130,41 @@ export default function RetroTotlDailyPlayersScreen() {
   const showNext = phase !== 'score';
   const showQueued =
     phase === 'intro' ||
-    phase === 'countdown' ||
     phase === 'playing' ||
     (phase === 'reveal' && !revealLeadsToScore);
   const headerBlock = 56;
+  const waitingForNext = playedToday && !practice;
 
-  const fireConfetti = React.useCallback(
-    (opts?: { count?: number; explosionSpeed?: number; fallSpeed?: number; ttlMs?: number }) => {
-      const fallSpeed = opts?.fallSpeed ?? 2800;
-      const ttlMs = Math.max(opts?.ttlMs ?? 4200, fallSpeed + 1400);
-      setConfettiShot({
-        key: Date.now(),
-        count: opts?.count ?? 160,
-        explosionSpeed: opts?.explosionSpeed ?? 380,
-        fallSpeed,
-        ttlMs,
+  React.useEffect(() => {
+    let cancelled = false;
+    void readPlayersScores().then((store) => {
+      if (cancelled) return;
+      const played = Boolean(store[playersDayKey()]);
+      playedRef.current = played;
+      setPlayedToday(played);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoadError(false);
+    loadPlayerClubApps()
+      .then((rows) => {
+        if (cancelled) return;
+        rowsRef.current = rows;
+        setPuzzle(createPlayersPuzzle(rows, playersDaySeed()));
+      })
+      .catch((error) => {
+        console.error('[RetroTotlDailyPlayers] load failed:', error);
+        if (!cancelled) setLoadError(true);
       });
-    },
-    []
-  );
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogAttempt]);
 
   const close = React.useCallback(() => {
     const parent = navigation.getParent?.() as
@@ -169,13 +186,17 @@ export default function RetroTotlDailyPlayersScreen() {
     navigation.navigate('RetroTotlDailyPlayersScoreboard');
   }, [navigation]);
 
-  const restart = React.useCallback(() => {
+  const deal = React.useCallback((mode: 'daily' | 'practice') => {
+    const rows = rowsRef.current;
+    if (!rows.length) return;
+    const nextPractice = mode === 'practice';
+    practiceRef.current = nextPractice;
+    setPractice(nextPractice);
     timerEpoch.current += 1;
     if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
-    setPuzzle(createPlayersPuzzle());
+    setPuzzle(createPlayersPuzzle(rows, nextPractice ? Date.now() : playersDaySeed()));
     setPhase('intro');
     setIndex(0);
-    setCountdown(3);
     setOutcomes([]);
     setLastCorrect(false);
     setLastTimedOut(false);
@@ -192,39 +213,9 @@ export default function RetroTotlDailyPlayersScreen() {
 
   const startFromIntro = React.useCallback(() => {
     if (phaseRef.current !== 'intro') return;
+    if (playedRef.current && !practiceRef.current) return;
     setFlyAwayNonce((n) => n + 1);
   }, []);
-
-  React.useEffect(() => {
-    if (phase !== 'countdown') return;
-    setInteractive(false);
-    if (countdown < 1) return;
-    const id = setTimeout(() => {
-      if (countdown <= 1) {
-        setPhase('playing');
-        setIndex(0);
-        setCardKey(`play-0-${Date.now()}`);
-        setFlipKey((k) => k + 1);
-      } else {
-        setCountdown((c) => c - 1);
-      }
-    }, 1000);
-    return () => clearTimeout(id);
-  }, [countdown, phase]);
-
-  React.useEffect(() => {
-    if (!confettiShot) return;
-    const id = setTimeout(() => setConfettiShot(null), confettiShot.ttlMs);
-    return () => clearTimeout(id);
-  }, [confettiShot]);
-
-  React.useEffect(() => {
-    if (phase !== 'reveal' || !lastCorrect) return;
-    const id = setTimeout(() => {
-      fireConfetti({ count: 90, explosionSpeed: 340, fallSpeed: 2200, ttlMs: 2800 });
-    }, PLAYERS_REVEAL_HOLD_MS);
-    return () => clearTimeout(id);
-  }, [fireConfetti, flipKey, lastCorrect, phase]);
 
   React.useEffect(() => {
     if (phase !== 'playing' && phase !== 'reveal') {
@@ -243,7 +234,7 @@ export default function RetroTotlDailyPlayersScreen() {
           ? 280
           : (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
             RETRO_PROMOTE_FLIP_MS
-        : PLAYERS_REVEAL_HOLD_MS + PLAYERS_REVEAL_FLIP_MS;
+        : 0;
     const epoch = ++timerEpoch.current;
     const isPlaying = phase === 'playing';
 
@@ -346,11 +337,8 @@ export default function RetroTotlDailyPlayersScreen() {
       setPhase('score');
       setCardKey(`score-${Date.now()}`);
       setInteractive(true);
-      if (lastCorrectRef.current && indexRef.current === cardsLenRef.current - 1) {
-        fireConfetti({ count: 280, explosionSpeed: 480, fallSpeed: 3600, ttlMs: 5800 });
-      }
     },
-    [dragX, dragY, fireConfetti]
+    [dragX, dragY]
   );
 
   const swipeToNext = React.useCallback(() => {
@@ -367,9 +355,11 @@ export default function RetroTotlDailyPlayersScreen() {
       const p = phaseRef.current;
 
       if (p === 'intro') {
-        setPhase('countdown');
-        setCountdown(3);
-        setCardKey(`countdown-${Date.now()}`);
+        if (playedRef.current && !practiceRef.current) return;
+        setPhase('playing');
+        setIndex(0);
+        setCardKey(`play-0-instant-${Date.now()}`);
+        setFlipKey((k) => k + 1);
         setInteractive(false);
         return;
       }
@@ -388,16 +378,18 @@ export default function RetroTotlDailyPlayersScreen() {
       }
 
       if (p === 'score') {
-        restart();
+        return;
       }
     },
-    [advanceFromReveal, commitPick, dragX, dragY, restart]
+    [advanceFromReveal, commitPick, dragX, dragY]
   );
 
   const timerRunning = phase === 'playing' && interactive;
   const secondsLeft = timerRunning ? Math.max(1, Math.ceil(timerPct * 10)) : 10;
   const pipTimerPct = timerRunning ? timerPct : 1;
-  const scoreBlurb = playersScoreBlurb(score, cards.length, perfect);
+  const scoreBlurb = practice
+    ? 'Practice. This one does not count.'
+    : playersScoreBlurb(score, cards.length, perfect);
   const logoBack = <RetroDailyLogoBack seasonLabel="The Players" />;
   const scoreFace = (
     <RetroPlayersScoreCard cards={cards} outcomes={outcomes} score={score} perfect={perfect} />
@@ -405,9 +397,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
   let face: React.ReactNode = null;
   if (phase === 'intro') {
-    face = <RetroPlayersIntroCard />;
-  } else if (phase === 'countdown') {
-    face = <RetroDailyCountdownCard value={Math.max(1, countdown)} />;
+    face = <RetroPlayersIntroCard practice={practice} played={waitingForNext} nextGame={playersNextGameLine()} />;
   } else if (phase === 'playing' && card) {
     face = fromInstant ? (
       <RetroPlayersCard card={card} />
@@ -415,8 +405,7 @@ export default function RetroTotlDailyPlayersScreen() {
       <RetroPlayersPromoteFlipCard
         card={card}
         flipKey={flipKey}
-        holdMs={fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS}
-        backFace={fromCountdown ? <RetroDailyCountdownCard value={1} /> : undefined}
+        holdMs={RETRO_PROMOTE_FLIP_DELAY_MS}
       />
     );
   } else if (phase === 'reveal' && revealCard) {
@@ -445,6 +434,43 @@ export default function RetroTotlDailyPlayersScreen() {
     phase === 'playing' && interactive && dragSnap.y > 0 && absY >= absX * 1.05 && absY > 30;
   const highlightRight =
     phase === 'playing' && interactive && dragSnap.x > 0 && absX >= absY * 1.15 && absX > 30;
+
+  if (!puzzle) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: BG,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 24,
+          gap: 16,
+        }}
+      >
+        <TotlText style={{ color: CHROME_WHITE, fontWeight: '800', fontSize: 16, textAlign: 'center' }}>
+          {loadError ? "Couldn't load the players." : 'Loading the players…'}
+        </TotlText>
+        {loadError ? (
+          <Pressable
+            onPress={() => setCatalogAttempt((n) => n + 1)}
+            style={{
+              height: 48,
+              width: '100%',
+              maxWidth: 320,
+              borderRadius: 16,
+              backgroundColor: ACTIVE_BG,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <TotlText style={{ color: CHROME_WHITE, fontWeight: '800', fontSize: 16 }}>Try again</TotlText>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -543,10 +569,10 @@ export default function RetroTotlDailyPlayersScreen() {
           showNext={showNext}
           showQueued={showQueued}
           flyAwayNonce={flyAwayNonce}
-          tapAdvances={phase === 'intro' || (phase === 'reveal' && !revealContinues)}
+          tapAdvances={(phase === 'intro' && !waitingForNext) || (phase === 'reveal' && !revealContinues)}
           nextFace={
-            phase === 'intro' ? (
-              <RetroDailyCountdownCard value={3} />
+            phase === 'intro' && cards[0] ? (
+              <RetroPlayersCard card={cards[0]} />
             ) : revealLeadsToScore ? (
               scoreFace
             ) : revealContinues && nextCard ? (
@@ -560,7 +586,7 @@ export default function RetroTotlDailyPlayersScreen() {
           dragY={dragY}
           disabled={
             !interactive ||
-            phase === 'countdown' ||
+            waitingForNext ||
             phase === 'score' ||
             (phase === 'reveal' && revealContinues)
           }
@@ -582,7 +608,7 @@ export default function RetroTotlDailyPlayersScreen() {
         {phase === 'intro' ? (
           <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
             <Pressable
-              onPress={startFromIntro}
+              onPress={waitingForNext ? () => deal('practice') : startFromIntro}
               style={({ pressed }) => ({
                 height: 52,
                 width: '100%',
@@ -593,7 +619,9 @@ export default function RetroTotlDailyPlayersScreen() {
                 opacity: pressed ? 0.9 : 1,
               })}
             >
-              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>Start</TotlText>
+              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>
+                {waitingForNext ? 'Practice mode' : 'Start'}
+              </TotlText>
             </Pressable>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
@@ -719,20 +747,37 @@ export default function RetroTotlDailyPlayersScreen() {
 
         {phase === 'score' ? (
           <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
-            <Pressable
-              onPress={restart}
-              style={({ pressed }) => ({
-                height: 52,
-                width: '100%',
-                borderRadius: 16,
-                backgroundColor: ACTIVE_BG,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.9 : 1,
-              })}
-            >
-              <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Play again</TotlText>
-            </Pressable>
+            <View style={{ width: '100%', flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={openScoreboard}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  height: 52,
+                  borderRadius: 16,
+                  backgroundColor: ACTIVE_BG,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.9 : 1,
+                })}
+              >
+                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Scoreboard</TotlText>
+              </Pressable>
+              <Pressable
+                onPress={() => deal('practice')}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  height: 52,
+                  borderRadius: 16,
+                  borderWidth: 1.5,
+                  borderColor: CHROME_WHITE,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.75 : 1,
+                })}
+              >
+                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Practice</TotlText>
+              </Pressable>
+            </View>
             <RetroDailyProgressPips
               total={cards.length}
               completed={outcomes.length}
@@ -747,19 +792,6 @@ export default function RetroTotlDailyPlayersScreen() {
           </View>
         ) : null}
       </View>
-
-      {confettiShot ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 9999, elevation: 9999 }]}>
-          <ConfettiCannon
-            key={confettiShot.key}
-            count={confettiShot.count}
-            origin={{ x: screenWidth / 2, y: -10 }}
-            explosionSpeed={confettiShot.explosionSpeed}
-            fallSpeed={confettiShot.fallSpeed}
-            fadeOut
-          />
-        </View>
-      ) : null}
     </View>
   );
 }

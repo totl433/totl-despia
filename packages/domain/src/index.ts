@@ -42,6 +42,7 @@ export const LiveScoreSchema = z.object({
   updated_at: z.string().nullable().optional(),
   goals: z.unknown().nullable().optional(),
   red_cards: z.unknown().nullable().optional(),
+  lineups: z.unknown().nullable().optional(),
 });
 export type LiveScore = z.infer<typeof LiveScoreSchema>;
 
