@@ -10,7 +10,7 @@ import { TotlText, useTokens } from '@totl/ui';
 import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type PlayersPuzzle } from '../../lib/retroPlayers/buildPuzzle';
 import { playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
 import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
-import { readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
+import { playersDayAlreadySaved, savePlayersDayScore } from '../../lib/retroPlayers/scores';
 import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
 import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
 import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
@@ -137,9 +137,8 @@ export default function RetroTotlDailyPlayersScreen() {
 
   React.useEffect(() => {
     let cancelled = false;
-    void readPlayersScores().then((store) => {
+    void playersDayAlreadySaved(playersDayKey()).then((played) => {
       if (cancelled) return;
-      const played = Boolean(store[playersDayKey()]);
       playedRef.current = played;
       setPlayedToday(played);
     });

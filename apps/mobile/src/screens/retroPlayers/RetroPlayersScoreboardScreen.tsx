@@ -8,14 +8,13 @@ import { Screen, TotlText, useTokens } from '@totl/ui';
 import AppTopHeader from '../../components/AppTopHeader';
 import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
 import UnderlineTabs from '../../components/UnderlineTabs';
-import { api } from '../../lib/api';
 import { playersDayKey, playersMonthName } from '../../lib/retroPlayers/day';
-import { readPlayersScores, scoreForDay, scoreForMonth, scoreOverall } from '../../lib/retroPlayers/scores';
+import { readSharedPlayersScores, scoreForDay, scoreForMonth, scoreOverall, type PlayersScoreStore } from '../../lib/retroPlayers/scores';
 import { supabase } from '../../lib/supabase';
 
 type BoardTab = 'today' | 'month' | 'overall';
 
-const PREM_PREDICTIONS = 'prem predictions';
+type PlayerName = { id: string; name: string | null; avatar_url: string | null };
 
 function orderRows(rows: LeaderboardRow[]): LeaderboardRow[] {
   return [...rows].sort((a, b) => {
@@ -48,45 +47,52 @@ export default function RetroPlayersScoreboardScreen() {
   });
   const userId = userData?.id ?? null;
 
-  const { data: roster = [], isLoading: rosterLoading } = useQuery({
-    queryKey: ['players-scoreboard-roster'],
-    queryFn: async () => {
-      const { leagues } = await api.listLeagues();
-      const league = leagues.find((row) => row.name.trim().toLowerCase() === PREM_PREDICTIONS);
-      if (!league) return [];
-      const detail = await api.getLeague(String(league.id));
-      return detail.members.map((member) => ({
-        user_id: String(member.id),
-        name: member.name || 'Player',
-        avatar_url: member.avatar_url ?? null,
-      }));
-    },
-    staleTime: 60_000,
+  const { data: scoresByUser = {}, isLoading: scoresLoading } = useQuery({
+    queryKey: ['players-shared-scores', userId],
+    enabled: !!userId,
+    queryFn: readSharedPlayersScores,
+    refetchOnMount: 'always',
   });
 
-  const { data: scores = {} } = useQuery({
-    queryKey: ['players-day-scores'],
-    queryFn: readPlayersScores,
+  const playerIds = React.useMemo(() => Object.keys(scoresByUser).sort(), [scoresByUser]);
+
+  const { data: names = [], isLoading: namesLoading } = useQuery({
+    queryKey: ['players-scoreboard-names', playerIds.join(',')],
+    enabled: playerIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users').select('id, name, avatar_url').in('id', playerIds);
+      if (error) throw error;
+      return (data ?? []) as PlayerName[];
+    },
   });
 
   const rows = React.useMemo(() => {
-    const mine =
-      tab === 'today' ? scoreForDay(scores, dayKey) : tab === 'month' ? scoreForMonth(scores, dayKey) : scoreOverall(scores);
-    const built: LeaderboardRow[] = roster.map((member) => ({
-      user_id: member.user_id,
-      name: member.name,
-      avatar_url: member.avatar_url,
-      value: userId != null && member.user_id === userId ? mine : null,
-    }));
+    const nameById = new Map(names.map((player) => [player.id, player]));
+    const built: LeaderboardRow[] = [];
+    for (const id of playerIds) {
+      const store: PlayersScoreStore = scoresByUser[id] ?? {};
+      const value =
+        tab === 'today' ? scoreForDay(store, dayKey) : tab === 'month' ? scoreForMonth(store, dayKey) : scoreOverall(store);
+      if (value == null) continue;
+      const player = nameById.get(id);
+      built.push({
+        user_id: id,
+        name: player?.name?.trim() || 'Player',
+        avatar_url: player?.avatar_url ?? null,
+        value,
+      });
+    }
     return orderRows(built);
-  }, [dayKey, roster, scores, tab, userId]);
+  }, [dayKey, names, playerIds, scoresByUser, tab]);
+
+  const winnerUserIds = React.useMemo(() => {
+    const top = rows[0]?.value;
+    if (top == null || top <= 0) return [];
+    return rows.filter((row) => row.value === top).map((row) => row.user_id);
+  }, [rows]);
 
   const subtitle =
-    tab === 'today'
-      ? 'Prem Predictions · today'
-      : tab === 'month'
-        ? `Prem Predictions · ${monthLabel}`
-        : 'Prem Predictions · overall';
+    tab === 'today' ? 'All players · today' : tab === 'month' ? `All players · ${monthLabel}` : 'All players · overall';
   const valueLabel = tab === 'today' ? 'Today' : tab === 'month' ? monthLabel.slice(0, 3) : 'Total';
 
   return (
@@ -153,10 +159,12 @@ export default function RetroPlayersScoreboardScreen() {
             </TotlText>
           </View>
 
-          {rosterLoading ? <TotlText variant="muted">Loading the table…</TotlText> : null}
+          {scoresLoading || (namesLoading && rows.length === 0) ? (
+            <TotlText variant="muted">Loading the table…</TotlText>
+          ) : null}
 
-          {!rosterLoading && rows.length === 0 ? (
-            <TotlText variant="muted">Prem Predictions isn’t on this account yet.</TotlText>
+          {!scoresLoading && !namesLoading && rows.length === 0 ? (
+            <TotlText variant="muted">No scores yet.</TotlText>
           ) : null}
 
           {rows.length > 0 ? (
@@ -164,6 +172,7 @@ export default function RetroPlayersScoreboardScreen() {
               rows={rows}
               valueLabel={valueLabel}
               highlightUserId={userId}
+              winnerUserIds={winnerUserIds}
               style={{ flex: 1, marginHorizontal: -t.space[4], marginBottom: -24 }}
             />
           ) : null}
