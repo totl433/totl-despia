@@ -1985,8 +1985,8 @@ export default function MatchCenterScreen() {
     [navigation]
   );
 
-  const backToAdmin = React.useCallback(() => {
-    navigation.navigate('Profile', { screen: 'AdminHome' });
+  const leaveToHome = React.useCallback(() => {
+    navigation.navigate('HomeMain');
   }, [navigation]);
 
   const gwState = board
@@ -2168,7 +2168,10 @@ export default function MatchCenterScreen() {
     <Screen fullBleed>
       <AppTopHeader
         onPressChat={() => navigation.navigate('ChatHub')}
-        onPressProfile={() => navigation.navigate('Profile')}
+        onPressProfile={() => {
+          navigation.navigate('HomeMain');
+          navigation.navigate('Profile');
+        }}
         avatarUrl={profileSummary?.avatar_url}
         hasLiveGames={hasLiveGames}
         centerContent={headerPill}
@@ -2188,10 +2191,10 @@ export default function MatchCenterScreen() {
           <TotlText style={{ color: t.color.text, fontWeight: '800', fontSize: 18, lineHeight: 22 }}>
             Match Center
           </TotlText>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to admin" onPress={backToAdmin} hitSlop={8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to home" onPress={leaveToHome} hitSlop={8}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Ionicons name="chevron-back" size={16} color={t.color.brand} />
-              <TotlText style={{ color: t.color.brand, fontWeight: '700', fontSize: 13 }}>Admin</TotlText>
+              <TotlText style={{ color: t.color.brand, fontWeight: '700', fontSize: 13 }}>Home</TotlText>
             </View>
           </Pressable>
         </View>

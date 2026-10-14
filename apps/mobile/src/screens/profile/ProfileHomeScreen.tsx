@@ -28,7 +28,7 @@ export default function ProfileHomeScreen() {
       return;
     }
     // Fallback: explicitly navigate to Tabs → Home.
-    parent?.navigate?.('Tabs', { screen: 'Home' });
+    parent?.navigate?.('Tabs', { screen: 'Predictions', params: { screen: 'HomeMain' } });
   }, [navigation]);
 
   const goEditAvatar = React.useCallback(() => {

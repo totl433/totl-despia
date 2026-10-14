@@ -20,11 +20,18 @@ export default function AdminHomeScreen() {
   });
 
   const goBack = React.useCallback(() => {
-    if (navigation.canGoBack?.()) {
-      navigation.goBack();
+    const state = navigation.getState?.();
+    const routes = (state?.routes ?? []) as Array<{ name: string }>;
+    const index = typeof state?.index === 'number' ? state.index : 0;
+    const profileHomeIndex = routes.findIndex((route) => route.name === 'ProfileHome');
+    if (profileHomeIndex >= 0 && profileHomeIndex < index) {
+      navigation.pop(index - profileHomeIndex);
       return;
     }
-    navigation.navigate('ProfileHome');
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'ProfileHome' }],
+    });
   }, [navigation]);
 
   const openUrl = React.useCallback(async (url: string) => {

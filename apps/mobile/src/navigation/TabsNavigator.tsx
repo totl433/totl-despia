@@ -129,6 +129,16 @@ export default function TabsNavigator() {
           title: 'Predictions',
           tabBarIcon: ({ color }) => <TabSvgIcon xml={PREDICTIONS_SVG} size={35} color={color} />,
         }}
+        listeners={({ navigation, route }) => ({
+          tabPress: (event) => {
+            const nested = navigation.getState().routes.find((item) => item.key === route.key)?.state;
+            if (!nested || typeof nested.index !== 'number') return;
+            const current = nested.routes[nested.index]?.name;
+            if (!current || current === 'HomeMain') return;
+            event.preventDefault();
+            navigation.navigate('Predictions', { screen: 'HomeMain' });
+          },
+        })}
       />
       <Tab.Screen
         name="Leagues"
