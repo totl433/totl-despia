@@ -1,100 +1,129 @@
 import React from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useSharedValue } from 'react-native-reanimated';
-import { TotlText, useTokens } from '@totl/ui';
+import Animated, {
+  Easing,
+  FadeIn,
+  SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { captureRef } from 'react-native-view-shot';
+import { TotlText } from '@totl/ui';
 
 import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type PlayersPuzzle } from '../../lib/retroPlayers/buildPuzzle';
 import { playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
 import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
-import { playersDayAlreadySaved, savePlayersDayScore } from '../../lib/retroPlayers/scores';
+import { playersDayAlreadySaved, readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
 import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
-import { RETRO_PIXEL_FONT } from '../../lib/retroDaily/retroFont';
+import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
 import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
-import { TEAM_BADGES } from '../../lib/teamBadges';
-import { normalizeTeamCode } from '../../lib/teamColors';
-import RetroDailyLogoBack from '../../components/retroDaily/RetroDailyLogoBack';
-import RetroDailyProgressPips from '../../components/retroDaily/RetroDailyProgressPips';
 import RetroDailySwipeStack, {
   DRAW_THRESHOLD,
   SWIPE_THRESHOLD,
 } from '../../components/retroDaily/RetroDailySwipeStack';
-import RetroPlayersIntroCard from '../../components/retroPlayers/RetroPlayersIntroCard';
-import RetroPlayersCard from '../../components/retroPlayers/RetroPlayersCard';
-import RetroPlayersPromoteFlipCard, {
-  RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS,
-  RETRO_PROMOTE_FLIP_DELAY_MS,
-  RETRO_PROMOTE_FLIP_MS,
-} from '../../components/retroPlayers/RetroPlayersPromoteFlipCard';
-import RetroPlayersRevealCard, {
-  type PlayersRoundOutcome,
-} from '../../components/retroPlayers/RetroPlayersRevealCard';
-import RetroPlayersScoreCard, { playersScoreBlurb } from '../../components/retroPlayers/RetroPlayersScoreCard';
+import type { PlayersRoundOutcome } from '../../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
+import {
+  PlayersBackFace,
+  PlayersCountdownFace,
+  PlayersFinishedFace,
+  PlayersFlipIn,
+  PlayersIntroFace,
+  PlayersQuestionFace,
+  PlayersRevealFace,
+} from '../../components/retroPlayers/PlayersFaces';
+import { PlayersAnswerTiles, PlayersButton, PlayersTextLink } from '../../components/retroPlayers/PlayersControls';
+import PlayersProgressDots, { type PlayersDotState } from '../../components/retroPlayers/PlayersProgressDots';
+import {
+  PLAYERS_CARD,
+  PLAYERS_COLORS,
+  PLAYERS_FONTS,
+  PlayersCardScale,
+} from '../../components/retroPlayers/playersTheme';
 
-type Phase = 'intro' | 'playing' | 'reveal' | 'score';
+type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
-const BG = '#0B1F3A';
-const CHROME_WHITE = '#FFFFFF';
-const ACTIVE_BG = '#1C8376';
-const BOTTOM_SLOT_H = 148;
+const COUNTDOWN = ['3', '2', '1', 'GO!'] as const;
+const COUNTDOWN_STEP_MS = 1000;
+/** GO! holds, the navy slides in, then the card flips to question one, then the answers rise. */
+const GO_HOLD_MS = 800;
+const BG_SLIDE_MS = 750;
+const FIRST_FLIP_DELAY_MS = 650;
+const FIRST_FLIP_MS = 850;
+const FLIP_MS = 600;
+const TILES_RISE_DELAY_MS = FIRST_FLIP_DELAY_MS + FIRST_FLIP_MS * 0.6;
+const TILES_RISE_MS = 650;
+const REVEAL_FLIP_MS = 420;
+/** Instant swaps (after a correct answer) unlock a beat after the card lands. */
+const INSTANT_HOLD_MS = 280;
+/** How long a correct answer stays up before the next card. */
+const CORRECT_HOLD_MS = 1100;
+
+const BOTTOM_SLOT_H = 93;
+const CARD_TO_SLOT_GAP = 40;
 
 /** Left / down / right → options[0] / [1] / [2] — same thresholds as fixtures H/D/A. */
-function optionFromSwipe(
-  dx: number,
-  dy: number,
-  options: PlayersClubOption[]
-): PlayersClubOption | null {
-  if (options.length === 0) return null;
+function optionIndexFromSwipe(dx: number, dy: number, count: number): number | null {
+  if (count === 0) return null;
   const absX = Math.abs(dx);
   const absY = Math.abs(dy);
-  const left = options[0]!;
-  const mid = options[1] ?? left;
-  const right = options[2] ?? mid;
-  if (absX >= SWIPE_THRESHOLD && absX > absY * 1.15) return dx > 0 ? right : left;
+  const right = Math.min(2, count - 1);
+  const mid = Math.min(1, count - 1);
+  if (absX >= SWIPE_THRESHOLD && absX > absY * 1.15) return dx > 0 ? right : 0;
   if (dy >= DRAW_THRESHOLD && dy > absX * 1.05) return mid;
-  if (absX >= absY) return dx >= 0 ? right : left;
+  if (absX >= absY) return dx >= 0 ? right : 0;
   return mid;
+}
+
+function optionFromSwipe(dx: number, dy: number, options: PlayersClubOption[]): PlayersClubOption | null {
+  const i = optionIndexFromSwipe(dx, dy, options.length);
+  return i == null ? null : options[i] ?? null;
 }
 
 /**
  * Retro Totl Daily — The Players (admin prototype).
- * Matches web: player + season clue, three clubs, streak auto-advance.
+ * White intro + countdown, then the navy game: player + season clue, three clubs, streak.
  */
 export default function RetroTotlDailyPlayersScreen() {
-  const t = useTokens();
   const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyPlayersStackParamList>>();
   const insets = useSafeAreaInsets();
+  const { width: screenW, height: screenH } = useWindowDimensions();
 
   const [playedToday, setPlayedToday] = React.useState(false);
   const playedRef = React.useRef(false);
   const [practice, setPractice] = React.useState(false);
   const practiceRef = React.useRef(false);
+  const [bestBefore, setBestBefore] = React.useState<number | null>(null);
   const [puzzle, setPuzzle] = React.useState<PlayersPuzzle | null>(null);
   const [loadError, setLoadError] = React.useState(false);
   const [catalogAttempt, setCatalogAttempt] = React.useState(0);
   const rowsRef = React.useRef<PlayerClubApp[]>([]);
   const cards = puzzle?.cards ?? [];
   const [phase, setPhase] = React.useState<Phase>('intro');
+  const [countdownStep, setCountdownStep] = React.useState(0);
   const [index, setIndex] = React.useState(0);
   const [outcomes, setOutcomes] = React.useState<PlayersRoundOutcome[]>([]);
   const [lastCorrect, setLastCorrect] = React.useState(false);
   const [lastTimedOut, setLastTimedOut] = React.useState(false);
   const [revealCard, setRevealCard] = React.useState<(typeof cards)[0] | null>(null);
+  const [frozenTimer, setFrozenTimer] = React.useState({ secs: 10, frac: 1 });
   const [timerPct, setTimerPct] = React.useState(1);
   const [interactive, setInteractive] = React.useState(true);
   const [cardKey, setCardKey] = React.useState('intro');
-  const [flipKey, setFlipKey] = React.useState(0);
   const [flyAwayNonce, setFlyAwayNonce] = React.useState(0);
   const [rulesOpen, setRulesOpen] = React.useState(false);
-  const [hotCode, setHotCode] = React.useState<string | null>(null);
   const [dragSnap, setDragSnap] = React.useState({ x: 0, y: 0 });
+  const [sharing, setSharing] = React.useState(false);
 
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
+  const navyX = useSharedValue(screenW);
+  const shareRef = React.useRef<View>(null);
   const timerEpoch = React.useRef(0);
   const timerRaf = React.useRef<number | null>(null);
   const phaseRef = React.useRef(phase);
@@ -112,6 +141,46 @@ export default function RetroTotlDailyPlayersScreen() {
 
   const card = cards[index] ?? null;
   const score = outcomes.filter((o) => o.correct).length;
+  const firstCard = cardKey.startsWith('play-0-first');
+  const instantCard = cardKey.includes('-instant-');
+  const revealContinues = lastCorrect && index < cards.length - 1;
+  const revealLeadsToScore = phase === 'reveal' && !revealContinues;
+  const nextCard = revealContinues ? cards[index + 1] ?? null : null;
+  const waitingForNext = playedToday && !practice;
+  const personalBest = !practice && bestBefore != null && score > bestBefore;
+  const onNavy = phase === 'playing' || phase === 'reveal' || phase === 'score';
+
+  // Card + layout: the design's 353 × 459 card, shrunk to fit shorter phones.
+  const topBarH = 44;
+  const headerH = 92;
+  const cardTop = insets.top + topBarH + headerH;
+  const bottomReserve = CARD_TO_SLOT_GAP + BOTTOM_SLOT_H + Math.max(insets.bottom, 16) + 12;
+  const maxCardW = Math.min(353, screenW - PLAYERS_CARD.sideInset * 2);
+  const maxCardH = Math.max(320, screenH - cardTop - bottomReserve);
+  const cardH = Math.min(maxCardW / PLAYERS_CARD.aspectRatio, maxCardH);
+  const cardW = cardH * PLAYERS_CARD.aspectRatio;
+  const cardSize = React.useMemo(() => ({ width: cardW, height: cardH }), [cardW, cardH]);
+  const scale = cardW / 353;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const today = playersDayKey();
+    void playersDayAlreadySaved(today).then((played) => {
+      if (cancelled) return;
+      playedRef.current = played;
+      setPlayedToday(played);
+    });
+    void readPlayersScores().then((store) => {
+      if (cancelled) return;
+      const previous = Object.entries(store)
+        .filter(([day]) => day !== today)
+        .map(([, s]) => s.correct);
+      setBestBefore(previous.length ? Math.max(...previous) : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     if (phase !== 'score' || practiceRef.current || cards.length === 0) return;
@@ -120,32 +189,6 @@ export default function RetroTotlDailyPlayersScreen() {
       setPlayedToday(true);
     });
   }, [cards.length, phase, score]);
-  const perfect =
-    score === cards.length && outcomes.length === cards.length && outcomes.every((o) => o.correct);
-  const fromCountdown = cardKey.startsWith('play-0-') && !cardKey.includes('-instant-');
-  const fromInstant = cardKey.includes('-instant-');
-  const revealContinues = lastCorrect && index < cards.length - 1;
-  const revealLeadsToScore = phase === 'reveal' && !revealContinues;
-  const nextCard = revealContinues ? cards[index + 1] ?? null : null;
-  const showNext = phase !== 'score';
-  const showQueued =
-    phase === 'intro' ||
-    phase === 'playing' ||
-    (phase === 'reveal' && !revealLeadsToScore);
-  const headerBlock = 56;
-  const waitingForNext = playedToday && !practice;
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void playersDayAlreadySaved(playersDayKey()).then((played) => {
-      if (cancelled) return;
-      playedRef.current = played;
-      setPlayedToday(played);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -195,6 +238,7 @@ export default function RetroTotlDailyPlayersScreen() {
     if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
     setPuzzle(createPlayersPuzzle(rows, nextPractice ? Date.now() : playersDaySeed()));
     setPhase('intro');
+    setCountdownStep(0);
     setIndex(0);
     setOutcomes([]);
     setLastCorrect(false);
@@ -202,19 +246,29 @@ export default function RetroTotlDailyPlayersScreen() {
     setRevealCard(null);
     setTimerPct(1);
     setInteractive(true);
-    setCardKey('intro');
-    setFlipKey(0);
-    setHotCode(null);
+    setCardKey(`intro-${Date.now()}`);
     setDragSnap({ x: 0, y: 0 });
     dragX.value = 0;
     dragY.value = 0;
-  }, [dragX, dragY]);
+    navyX.value = withTiming(screenW, { duration: BG_SLIDE_MS, easing: Easing.in(Easing.cubic) });
+  }, [dragX, dragY, navyX, screenW]);
 
-  const startFromIntro = React.useCallback(() => {
-    if (phaseRef.current !== 'intro') return;
-    if (playedRef.current && !practiceRef.current) return;
-    setFlyAwayNonce((n) => n + 1);
-  }, []);
+  // 3 · 2 · 1 · GO! then the navy slides in and the card flips to question one.
+  React.useEffect(() => {
+    if (phase !== 'countdown') return;
+    if (countdownStep < COUNTDOWN.length - 1) {
+      const id = setTimeout(() => setCountdownStep((n) => n + 1), COUNTDOWN_STEP_MS);
+      return () => clearTimeout(id);
+    }
+    const id = setTimeout(() => {
+      setIndex(0);
+      setPhase('playing');
+      setCardKey(`play-0-first-${Date.now()}`);
+      setInteractive(false);
+      navyX.value = withTiming(0, { duration: BG_SLIDE_MS, easing: Easing.inOut(Easing.cubic) });
+    }, GO_HOLD_MS);
+    return () => clearTimeout(id);
+  }, [countdownStep, navyX, phase]);
 
   React.useEffect(() => {
     if (phase !== 'playing' && phase !== 'reveal') {
@@ -225,15 +279,9 @@ export default function RetroTotlDailyPlayersScreen() {
 
     setInteractive(false);
     setTimerPct(1);
-    setHotCode(null);
     setDragSnap({ x: 0, y: 0 });
     const hold =
-      phase === 'playing'
-        ? fromInstant
-          ? 280
-          : (fromCountdown ? RETRO_PROMOTE_FLIP_DELAY_FROM_COUNTDOWN_MS : RETRO_PROMOTE_FLIP_DELAY_MS) +
-            RETRO_PROMOTE_FLIP_MS
-        : 0;
+      phase === 'playing' ? (firstCard ? FIRST_FLIP_DELAY_MS + FIRST_FLIP_MS : instantCard ? INSTANT_HOLD_MS : FLIP_MS) : REVEAL_FLIP_MS;
     const epoch = ++timerEpoch.current;
     const isPlaying = phase === 'playing';
 
@@ -244,8 +292,7 @@ export default function RetroTotlDailyPlayersScreen() {
         const started = performance.now();
         const tick = (now: number) => {
           if (timerEpoch.current !== epoch) return;
-          const elapsed = now - started;
-          const left = Math.max(0, 1 - elapsed / PLAYERS_TIMER_MS);
+          const left = Math.max(0, 1 - (now - started) / PLAYERS_TIMER_MS);
           setTimerPct(left);
           if (left <= 0) return;
           timerRaf.current = requestAnimationFrame(tick);
@@ -253,7 +300,7 @@ export default function RetroTotlDailyPlayersScreen() {
         timerRaf.current = requestAnimationFrame(tick);
         return;
       }
-      if (phase === 'reveal' && !(lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1)) {
+      if (!(lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1)) {
         setInteractive(true);
       }
     }, hold);
@@ -265,11 +312,11 @@ export default function RetroTotlDailyPlayersScreen() {
           if (!c) return;
           setOutcomes((prev) => [...prev, { card: c, pick: null, correct: false, timedOut: true }]);
           setRevealCard(c);
+          setFrozenTimer({ secs: 0, frac: 0 });
           setLastCorrect(false);
           setLastTimedOut(true);
           setPhase('reveal');
           setCardKey(`reveal-${c.id}-${Date.now()}`);
-          setFlipKey((k) => k + 1);
           setInteractive(false);
           setTimerPct(1);
         }, hold + PLAYERS_TIMER_MS)
@@ -281,9 +328,9 @@ export default function RetroTotlDailyPlayersScreen() {
       if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
       // Don't bump timerEpoch here — that races the next unlock after streak fly-away.
     };
-  }, [cardKey, cards, fromCountdown, fromInstant, index, phase]);
+  }, [cardKey, cards, firstCard, instantCard, index, phase]);
 
-  // Mirror SharedValue drag into React state for button highlight
+  // Mirror SharedValue drag into React state for tile highlight
   React.useEffect(() => {
     if (phase !== 'playing' || !interactive) {
       setDragSnap({ x: 0, y: 0 });
@@ -295,6 +342,10 @@ export default function RetroTotlDailyPlayersScreen() {
     return () => clearInterval(id);
   }, [dragX, dragY, interactive, phase]);
 
+  const timerRunning = phase === 'playing' && interactive;
+  const secondsLeft = timerRunning ? Math.max(1, Math.ceil(timerPct * 10)) : 10;
+  const timerFraction = timerRunning ? timerPct : 1;
+
   const commitPick = React.useCallback((pick: PlayersClubOption) => {
     if (phaseRef.current !== 'playing' || !interactiveRef.current) return;
     const c = cardRef.current;
@@ -304,61 +355,60 @@ export default function RetroTotlDailyPlayersScreen() {
     const correct = pick.clubCode === c.correct.clubCode;
     setOutcomes((prev) => [...prev, { card: c, pick, correct, timedOut: false }]);
     setRevealCard(c);
+    setFrozenTimer({ secs: secondsLeft, frac: timerFraction });
     setLastCorrect(correct);
     setLastTimedOut(false);
     setPhase('reveal');
     setCardKey(`reveal-${c.id}-${Date.now()}`);
-    setFlipKey((k) => k + 1);
     setInteractive(false);
     setTimerPct(1);
-    setHotCode(null);
     setDragSnap({ x: 0, y: 0 });
     dragX.value = 0;
     dragY.value = 0;
-  }, [dragX, dragY]);
+  }, [dragX, dragY, secondsLeft, timerFraction]);
 
-  const advanceFromReveal = React.useCallback(
-    (opts?: { instant?: boolean }) => {
-      timerEpoch.current += 1;
-      setHotCode(null);
-      setDragSnap({ x: 0, y: 0 });
-      dragX.value = 0;
-      dragY.value = 0;
-      if (lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1) {
-        const next = indexRef.current + 1;
-        setIndex(next);
-        setPhase('playing');
-        setCardKey(opts?.instant ? `play-${next}-instant-${Date.now()}` : `play-${next}-${Date.now()}`);
-        if (!opts?.instant) setFlipKey((k) => k + 1);
-        setInteractive(false);
-        return;
-      }
-      setPhase('score');
-      setCardKey(`score-${Date.now()}`);
-      setInteractive(true);
-    },
-    [dragX, dragY]
-  );
+  const advanceFromReveal = React.useCallback(() => {
+    timerEpoch.current += 1;
+    setDragSnap({ x: 0, y: 0 });
+    dragX.value = 0;
+    dragY.value = 0;
+    if (lastCorrectRef.current && indexRef.current < cardsLenRef.current - 1) {
+      const next = indexRef.current + 1;
+      setIndex(next);
+      setPhase('playing');
+      setCardKey(`play-${next}-instant-${Date.now()}`);
+      setInteractive(false);
+      return;
+    }
+    setPhase('score');
+    setCardKey(`score-${Date.now()}`);
+    setInteractive(true);
+  }, [dragX, dragY]);
 
   const swipeToNext = React.useCallback(() => {
     setFlyAwayNonce((n) => n + 1);
   }, []);
 
+  // A correct answer holds briefly, then the next question flies in.
+  React.useEffect(() => {
+    if (phase !== 'reveal' || !revealContinues) return;
+    const id = setTimeout(swipeToNext, CORRECT_HOLD_MS);
+    return () => clearTimeout(id);
+  }, [cardKey, phase, revealContinues, swipeToNext]);
+
   const onSwipeAway = React.useCallback(
     (dx: number, dy: number) => {
       timerEpoch.current += 1;
       setDragSnap({ x: 0, y: 0 });
-      setHotCode(null);
       dragX.value = 0;
       dragY.value = 0;
       const p = phaseRef.current;
 
       if (p === 'intro') {
         if (playedRef.current && !practiceRef.current) return;
-        setPhase('playing');
-        setIndex(0);
-        setCardKey(`play-0-instant-${Date.now()}`);
-        setFlipKey((k) => k + 1);
+        setCountdownStep(0);
+        setPhase('countdown');
+        setCardKey(`countdown-${Date.now()}`);
         setInteractive(false);
         return;
       }
@@ -371,426 +421,276 @@ export default function RetroTotlDailyPlayersScreen() {
         return;
       }
 
-      if (p === 'reveal') {
-        advanceFromReveal({ instant: true });
-        return;
-      }
-
-      if (p === 'score') {
-        return;
-      }
+      if (p === 'reveal') advanceFromReveal();
     },
     [advanceFromReveal, commitPick, dragX, dragY]
   );
 
-  const timerRunning = phase === 'playing' && interactive;
-  const secondsLeft = timerRunning ? Math.max(1, Math.ceil(timerPct * 10)) : 10;
-  const pipTimerPct = timerRunning ? timerPct : 1;
-  const scoreBlurb = practice
-    ? 'Practice. This one does not count.'
-    : playersScoreBlurb(score, cards.length, perfect);
-  const logoBack = <RetroDailyLogoBack seasonLabel="The Players" />;
-  const scoreFace = (
-    <RetroPlayersScoreCard cards={cards} outcomes={outcomes} score={score} perfect={perfect} />
+  const shareScore = React.useCallback(async () => {
+    if (sharing || !shareRef.current) return;
+    setSharing(true);
+    try {
+      const filePath = await captureRef(shareRef, { format: 'png', quality: 1, result: 'tmpfile' });
+      await shareCapturedImage({
+        filePath,
+        target: 'more',
+        message: `I got ${score}/${cards.length} on The Players. Can you beat it? https://playtotl.com`,
+        title: 'Share score',
+      });
+    } catch (error) {
+      if (!isShareCancelled(error)) console.error('[RetroTotlDailyPlayers] share failed:', error);
+    } finally {
+      setSharing(false);
+    }
+  }, [cards.length, score, sharing]);
+
+  const navyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: navyX.value }] }));
+
+  const finishedFace = (
+    <PlayersFinishedFace score={score} total={cards.length} personalBest={personalBest} practice={practice} />
+  );
+  const questionFace = (c: NonNullable<typeof card>, secs = 10, frac = 1) => (
+    <PlayersQuestionFace card={c} secondsLeft={secs} timerFraction={frac} />
   );
 
-  let face: React.ReactNode = null;
+  let face: React.ReactNode = <PlayersBackFace />;
   if (phase === 'intro') {
-    face = <RetroPlayersIntroCard practice={practice} played={waitingForNext} nextGame={playersNextGameLine()} />;
-  } else if (phase === 'playing' && card) {
-    face = fromInstant ? (
-      <RetroPlayersCard card={card} />
-    ) : (
-      <RetroPlayersPromoteFlipCard
-        card={card}
-        flipKey={flipKey}
-        holdMs={RETRO_PROMOTE_FLIP_DELAY_MS}
+    face = (
+      <PlayersIntroFace
+        mode={waitingForNext ? 'played' : practice ? 'practice' : 'daily'}
+        nextGame={playersNextGameLine()}
       />
+    );
+  } else if (phase === 'countdown') {
+    face = <PlayersCountdownFace value={COUNTDOWN[countdownStep] ?? 'GO!'} />;
+  } else if (phase === 'playing' && card) {
+    face = firstCard ? (
+      <PlayersFlipIn
+        flipKey={cardKey}
+        delayMs={FIRST_FLIP_DELAY_MS}
+        durationMs={FIRST_FLIP_MS}
+        front={<PlayersCountdownFace value="GO!" />}
+        back={questionFace(card, secondsLeft, timerFraction)}
+      />
+    ) : (
+      questionFace(card, secondsLeft, timerFraction)
     );
   } else if (phase === 'reveal' && revealCard) {
     face = (
-      <RetroPlayersRevealCard
-        card={revealCard}
-        correct={lastCorrect}
-        timedOut={lastTimedOut}
-        flipKey={flipKey}
-        autoContinue={revealContinues}
-        swipeReady={interactive}
-        onAutoAdvance={swipeToNext}
+      <PlayersFlipIn
+        flipKey={cardKey}
+        delayMs={0}
+        durationMs={REVEAL_FLIP_MS}
+        front={questionFace(revealCard, frozenTimer.secs, frozenTimer.frac)}
+        back={<PlayersRevealFace card={revealCard} correct={lastCorrect} timedOut={lastTimedOut} />}
       />
     );
   } else if (phase === 'score') {
-    face = scoreFace;
-  } else {
-    face = logoBack;
+    face = (
+      <View ref={shareRef} collapsable={false} style={{ flex: 1 }}>
+        {finishedFace}
+      </View>
+    );
   }
 
-  const absX = Math.abs(dragSnap.x);
-  const absY = Math.abs(dragSnap.y);
-  const highlightLeft =
-    phase === 'playing' && interactive && dragSnap.x < 0 && absX >= absY * 1.15 && absX > 30;
-  const highlightMid =
-    phase === 'playing' && interactive && dragSnap.y > 0 && absY >= absX * 1.05 && absY > 30;
-  const highlightRight =
-    phase === 'playing' && interactive && dragSnap.x > 0 && absX >= absY * 1.15 && absX > 30;
+  const nextFace =
+    phase === 'intro' ? (
+      <PlayersCountdownFace value={COUNTDOWN[0]} />
+    ) : revealLeadsToScore && interactive ? (
+      // Only plant the result once the reveal flip has landed, or it shows through mid-flip.
+      finishedFace
+    ) : revealContinues && nextCard ? (
+      questionFace(nextCard)
+    ) : (
+      <PlayersBackFace />
+    );
+
+  // Header: label + ten dots
+  const dotStates: PlayersDotState[] = cards.map((_, i) => {
+    const o = outcomes[i];
+    if (o) return o.correct ? 'correct' : 'wrong';
+    if (phase === 'playing' && i === index) return 'active';
+    return 'todo';
+  });
+  const headerLabel =
+    phase === 'countdown'
+      ? 'The Players · Totl Daily'
+      : phase === 'score'
+        ? `${outcomes.length} of ${cards.length}`
+        : `${Math.min(index + 1, cards.length)} of ${cards.length}`;
+
+  const hotIndex =
+    phase === 'playing' && interactive && (Math.abs(dragSnap.x) > 30 || Math.abs(dragSnap.y) > 30)
+      ? optionIndexFromSwipe(dragSnap.x, dragSnap.y, card?.options.length ?? 0)
+      : null;
+
+  const chrome = onNavy ? PLAYERS_COLORS.white : PLAYERS_COLORS.inkSoft;
 
   if (!puzzle) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: BG,
-          paddingTop: insets.top,
-          paddingBottom: insets.bottom,
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: 24,
-          gap: 16,
-        }}
-      >
-        <TotlText style={{ color: CHROME_WHITE, fontWeight: '800', fontSize: 16, textAlign: 'center' }}>
+      <View style={[styles.fill, styles.loading, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <TotlText style={styles.loadingText}>
           {loadError ? "Couldn't load the players." : 'Loading the players…'}
         </TotlText>
         {loadError ? (
-          <Pressable
-            onPress={() => setCatalogAttempt((n) => n + 1)}
-            style={{
-              height: 48,
-              width: '100%',
-              maxWidth: 320,
-              borderRadius: 16,
-              backgroundColor: ACTIVE_BG,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <TotlText style={{ color: CHROME_WHITE, fontWeight: '800', fontSize: 16 }}>Try again</TotlText>
-          </Pressable>
+          <View style={{ width: '100%', maxWidth: 353 }}>
+            <PlayersButton label="Try again" height={60} onPress={() => setCatalogAttempt((n) => n + 1)} />
+          </View>
         ) : null}
       </View>
     );
   }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: BG,
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom,
-        paddingLeft: insets.left,
-        paddingRight: insets.right,
-      }}
-    >
-      <RetroPlayersRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
+    <PlayersCardScale.Provider value={scale}>
+      <View style={[styles.fill, { backgroundColor: PLAYERS_COLORS.paper }]}>
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.navy, navyStyle]} />
 
-      <View style={{ paddingHorizontal: t.space[4], height: headerBlock, justifyContent: 'center' }}>
-        <View style={{ height: 48, justifyContent: 'center', alignItems: 'center' }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={close}
-            style={({ pressed }) => ({
-              position: 'absolute',
-              left: 0,
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <Ionicons name="close" size={24} color={CHROME_WHITE} />
-          </Pressable>
-          <View style={{ alignItems: 'center', paddingHorizontal: 48 }}>
-            <TotlText style={{ fontWeight: '900', fontSize: 14, lineHeight: 18, color: CHROME_WHITE }}>
-              Retro Totl Daily
-            </TotlText>
-            <TotlText
-              style={{
-                marginTop: 4,
-                fontFamily: RETRO_PIXEL_FONT,
-                fontSize: 13,
-                lineHeight: 18,
-                color: CHROME_WHITE,
-              }}
-            >
-              The Players
-            </TotlText>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Scoreboard"
-            onPress={openScoreboard}
-            style={({ pressed }) => ({
-              position: 'absolute',
-              right: 0,
-              paddingVertical: 6,
-              paddingHorizontal: 4,
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <TotlText style={{ fontWeight: '800', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>
-              Scoreboard
-            </TotlText>
-          </Pressable>
-        </View>
-      </View>
-
-      {phase === 'score' ? (
-        <TotlText
+        <View
           style={{
-            paddingHorizontal: t.space[4],
-            marginBottom: 8,
-            textAlign: 'center',
-            fontWeight: '800',
-            fontSize: 14,
-            lineHeight: 18,
-            color: 'rgba(255,255,255,0.85)',
+            flex: 1,
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
           }}
         >
-          {scoreBlurb}
-        </TotlText>
-      ) : null}
+          <RetroPlayersRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
 
-      <View
-        style={{
-          flex: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: t.space[4],
-        }}
-      >
-        <RetroDailySwipeStack
-          cardKey={cardKey}
-          seasonLabel="The Players"
-          showNext={showNext}
-          showQueued={showQueued}
-          flyAwayNonce={flyAwayNonce}
-          tapAdvances={(phase === 'intro' && !waitingForNext) || (phase === 'reveal' && !revealContinues)}
-          nextFace={
-            phase === 'intro' && cards[0] ? (
-              <RetroPlayersCard card={cards[0]} />
-            ) : revealLeadsToScore ? (
-              scoreFace
-            ) : revealContinues && nextCard ? (
-              <RetroPlayersCard card={nextCard} />
-            ) : (
-              logoBack
-            )
-          }
-          queuedFace={logoBack}
-          dragX={dragX}
-          dragY={dragY}
-          disabled={
-            !interactive ||
-            waitingForNext ||
-            phase === 'score' ||
-            (phase === 'reveal' && revealContinues)
-          }
-          onSwipeAway={onSwipeAway}
-        >
-          {face}
-        </RetroDailySwipeStack>
-      </View>
-
-      <View
-        style={{
-          minHeight: BOTTOM_SLOT_H,
-          paddingHorizontal: t.space[4],
-          paddingBottom: 8,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        {phase === 'intro' ? (
-          <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
+          {/* Intro: close above the Rules / Scoreboard links. Game: close beside the centred progress label. */}
+          <View style={{ height: topBarH + headerH }}>
             <Pressable
-              onPress={waitingForNext ? () => deal('practice') : startFromIntro}
-              style={({ pressed }) => ({
-                height: 52,
-                width: '100%',
-                borderRadius: 16,
-                backgroundColor: ACTIVE_BG,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: pressed ? 0.9 : 1,
-              })}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={close}
+              hitSlop={10}
+              style={({ pressed }) => [
+                styles.close,
+                { top: phase === 'intro' ? (topBarH - 24) / 2 : 15, opacity: pressed ? 0.6 : 1 },
+              ]}
             >
-              <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>
-                {waitingForNext ? 'Practice mode' : 'Start'}
-              </TotlText>
+              <Ionicons name="close" size={24} color={chrome} />
             </Pressable>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <Pressable
-                onPress={() => setRulesOpen(true)}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 999,
-                  borderWidth: 1.5,
-                  borderColor: CHROME_WHITE,
-                  opacity: pressed ? 0.75 : 1,
-                })}
-              >
-                <TotlText style={{ fontWeight: '800', color: CHROME_WHITE }}>Rules</TotlText>
-              </Pressable>
-              <Pressable
-                onPress={openScoreboard}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 20,
-                  paddingVertical: 12,
-                  borderRadius: 999,
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(255,255,255,0.5)',
-                  opacity: pressed ? 0.75 : 1,
-                })}
-              >
-                <TotlText style={{ fontWeight: '800', color: 'rgba(255,255,255,0.9)' }}>
-                  Scoreboard
-                </TotlText>
-              </Pressable>
-            </View>
+            {phase === 'intro' ? (
+              <View style={[styles.linkRow, { marginTop: topBarH + 6 }]}>
+                <PlayersTextLink label="Rules" onPress={() => setRulesOpen(true)} />
+                <PlayersTextLink label="Scoreboard" onPress={openScoreboard} />
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', marginTop: 17 }}>
+                <TotlText style={[styles.headerLabel, { color: chrome }]}>{headerLabel}</TotlText>
+                <View style={{ marginTop: 24 }}>
+                  <PlayersProgressDots states={dotStates} />
+                </View>
+              </View>
+            )}
           </View>
-        ) : null}
 
-        {phase === 'reveal' && !revealContinues && interactive ? (
-          <Pressable
-            onPress={() => advanceFromReveal({ instant: true })}
-            style={({ pressed }) => ({
-              height: 52,
-              width: '100%',
-              marginBottom: 10,
-              borderRadius: 16,
-              backgroundColor: ACTIVE_BG,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.9 : 1,
-            })}
-          >
-            <TotlText style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>See score</TotlText>
-          </Pressable>
-        ) : null}
-
-        {phase === 'playing' ? (
-          <View style={{ width: '100%', gap: 10 }}>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              {(card?.options ?? []).map((opt, i) => {
-                const dragHot =
-                  (i === 0 && highlightLeft) ||
-                  (i === 1 && highlightMid) ||
-                  (i === 2 && highlightRight);
-                const hot = dragHot || hotCode === opt.clubCode;
-                const badge = TEAM_BADGES[normalizeTeamCode(opt.clubCode)] ?? null;
-                return (
-                  <Pressable
-                    key={opt.clubCode}
-                    disabled={!interactive}
-                    onPress={() => commitPick(opt)}
-                    onPressIn={() => setHotCode(opt.clubCode)}
-                    onPressOut={() => setHotCode(null)}
-                    style={({ pressed }) => ({
-                      flex: 1,
-                      height: 68,
-                      borderRadius: 16,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      paddingHorizontal: 4,
-                      backgroundColor: hot ? ACTIVE_BG : 'rgba(255,255,255,0.2)',
-                      transform: [{ scale: hot ? 1.03 : 1 }],
-                      opacity: !interactive ? 0.5 : pressed ? 0.88 : 1,
-                    })}
-                  >
-                    {badge ? (
-                      <Image source={badge} style={{ width: 28, height: 28 }} resizeMode="contain" />
-                    ) : null}
-                    <TotlText
-                      style={{
-                        color: '#FFFFFF',
-                        fontWeight: '800',
-                        fontSize: 11,
-                        textAlign: 'center',
-                        lineHeight: 13,
-                      }}
-                      numberOfLines={2}
-                    >
-                      {opt.clubName}
-                    </TotlText>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <RetroDailyProgressPips
-              total={cards.length}
-              completed={outcomes.length}
-              current={index}
-              mode="countdown"
-              secondsLeft={secondsLeft}
-              timerPct={pipTimerPct}
-            />
+          <View style={{ alignItems: 'center' }}>
+            <RetroDailySwipeStack
+              cardKey={cardKey}
+              cardSize={cardSize}
+              showNext={phase !== 'score' && phase !== 'countdown'}
+              showQueued={false}
+              flyAwayNonce={flyAwayNonce}
+              tapAdvances={phase === 'intro' && !waitingForNext}
+              nextFace={nextFace}
+              queuedFace={<PlayersBackFace />}
+              dragX={dragX}
+              dragY={dragY}
+              disabled={
+                !interactive ||
+                waitingForNext ||
+                phase === 'countdown' ||
+                phase === 'score' ||
+                (phase === 'reveal' && revealContinues)
+              }
+              onSwipeAway={onSwipeAway}
+            >
+              {face}
+            </RetroDailySwipeStack>
           </View>
-        ) : null}
 
-        {phase === 'reveal' ? (
-          <RetroDailyProgressPips
-            total={cards.length}
-            completed={outcomes.length}
-            current={index}
-            mode="progress"
-            secondsLeft={secondsLeft}
-            timerPct={1}
-          />
-        ) : null}
+          <View style={{ marginTop: CARD_TO_SLOT_GAP, paddingHorizontal: (screenW - cardW) / 2 - insets.left }}>
+            {phase === 'intro' && waitingForNext ? (
+              <Animated.View entering={FadeIn.duration(200)}>
+                <PlayersButton label="Practice mode" onPress={() => deal('practice')} />
+              </Animated.View>
+            ) : null}
 
-        {phase === 'score' ? (
-          <View style={{ width: '100%', alignItems: 'center', gap: 10 }}>
-            <View style={{ width: '100%', flexDirection: 'row', gap: 10 }}>
-              <Pressable
-                onPress={openScoreboard}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  height: 52,
-                  borderRadius: 16,
-                  backgroundColor: ACTIVE_BG,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.9 : 1,
-                })}
-              >
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Scoreboard</TotlText>
-              </Pressable>
-              <Pressable
-                onPress={() => deal('practice')}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  height: 52,
-                  borderRadius: 16,
-                  borderWidth: 1.5,
-                  borderColor: CHROME_WHITE,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.75 : 1,
-                })}
-              >
-                <TotlText style={{ color: '#FFFFFF', fontWeight: '900' }}>Practice</TotlText>
-              </Pressable>
-            </View>
-            <RetroDailyProgressPips
-              total={cards.length}
-              completed={outcomes.length}
-              current={Math.max(0, outcomes.length - 1)}
-              mode="results"
-              results={cards.map((c) => {
-                const o = outcomes.find((x) => x.card.id === c.id);
-                if (!o) return 'pending';
-                return o.correct ? 'correct' : 'wrong';
-              })}
-            />
+            {(phase === 'playing' || (phase === 'reveal' && revealContinues)) && card ? (
+              <Animated.View entering={SlideInDown.duration(TILES_RISE_MS)
+                  .delay(firstCard ? TILES_RISE_DELAY_MS : 0)
+                  .easing(Easing.out(Easing.cubic))}>
+                <PlayersAnswerTiles
+                  options={(phase === 'reveal' ? revealCard ?? card : card).options}
+                  hotIndex={hotIndex}
+                  correctCode={phase === 'reveal' ? revealCard?.correct.clubCode : null}
+                  disabled={!interactive || phase !== 'playing'}
+                  onPick={commitPick}
+                />
+              </Animated.View>
+            ) : null}
+
+            {phase === 'reveal' && !revealContinues ? (
+              <Animated.View entering={FadeIn.duration(200)}>
+                <PlayersButton label="Continue" arrow onPress={swipeToNext} />
+              </Animated.View>
+            ) : null}
+
+            {phase === 'score' ? (
+              <Animated.View entering={FadeIn.duration(250)} style={{ alignItems: 'center', gap: 14 }}>
+                <PlayersButton
+                  label="Share score"
+                  tone={personalBest ? 'gold' : 'green'}
+                  glow
+                  busy={sharing}
+                  height={Math.min(93, BOTTOM_SLOT_H)}
+                  onPress={() => void shareScore()}
+                />
+                <View style={styles.linkRow}>
+                  <PlayersTextLink label="Scoreboard" color="rgba(255,255,255,0.8)" onPress={openScoreboard} />
+                  <PlayersTextLink label="Practice mode" color="rgba(255,255,255,0.8)" onPress={() => deal('practice')} />
+                </View>
+              </Animated.View>
+            ) : null}
           </View>
-        ) : null}
+        </View>
       </View>
-    </View>
+    </PlayersCardScale.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  navy: { backgroundColor: PLAYERS_COLORS.navy },
+  loading: {
+    backgroundColor: PLAYERS_COLORS.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  loadingText: {
+    fontFamily: PLAYERS_FONTS.medium,
+    fontSize: 16,
+    color: PLAYERS_COLORS.inkSoft,
+    textAlign: 'center',
+  },
+  close: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 1,
+  },
+  headerLabel: {
+    fontFamily: PLAYERS_FONTS.body,
+    fontSize: 16,
+    lineHeight: 20.8,
+  },
+  linkRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+});

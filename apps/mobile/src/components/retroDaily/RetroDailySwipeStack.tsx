@@ -36,6 +36,8 @@ type Props = {
   dragX: SharedValue<number>;
   dragY: SharedValue<number>;
   onSwipeAway: (dx: number, dy: number) => void;
+  /** Override the default card size (The Players uses the design's 353 × 459 card). */
+  cardSize?: { width: number; height: number };
 };
 
 /**
@@ -56,10 +58,11 @@ export default function RetroDailySwipeStack({
   dragX,
   dragY,
   onSwipeAway,
+  cardSize,
 }: Props) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const cardWidth = Math.min(420, screenWidth - 32);
-  const cardHeight = cardWidth / 0.75;
+  const cardWidth = cardSize?.width ?? Math.min(420, screenWidth - 32);
+  const cardHeight = cardSize?.height ?? cardWidth / 0.75;
 
   const childrenRef = React.useRef(children);
   childrenRef.current = children;
