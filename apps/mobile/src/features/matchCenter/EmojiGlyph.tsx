@@ -14,6 +14,12 @@ const BITMAPS: Record<number, number> = {
   0x1f64c: require('../../../assets/emoji/hands.png'),
   0x1f62c: require('../../../assets/emoji/grimace.png'),
   0x1f605: require('../../../assets/emoji/sweat.png'),
+  0x1f44d: require('../../../assets/emoji/thumb.png'),
+  0x2764: require('../../../assets/emoji/heart.png'),
+  0x1f602: require('../../../assets/emoji/joy.png'),
+  0x1f525: require('../../../assets/emoji/fire.png'),
+  0x1f62e: require('../../../assets/emoji/wow.png'),
+  0x1f622: require('../../../assets/emoji/cry.png'),
 };
 
 export function hasEmojiBitmap(codePoint: number): boolean {

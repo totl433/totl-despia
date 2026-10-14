@@ -13,6 +13,7 @@ import HeaderLiveScore from '../components/HeaderLiveScore';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
+import { useLeagueChatReactions, type ReactionSummary } from '../hooks/useLeagueChatReactions';
 import usePopupCards from '../hooks/usePopupCards';
 import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
@@ -739,6 +740,48 @@ function Face({ uri, label, size }: { uri?: string | null; label: string; size: 
   );
 }
 
+const MESSAGE_REACTS = ['👍', '❤️', '😂', '🔥', '😮', '😢'] as const;
+
+const REACT_GLYPH: Record<string, number> = {
+  '👍': 0x1f44d,
+  '❤': 0x2764,
+  '❤️': 0x2764,
+  '😂': 0x1f602,
+  '🔥': 0x1f525,
+  '😮': 0x1f62e,
+  '😢': 0x1f622,
+};
+
+function ReactGlyph({ emoji, size }: { emoji: string; size: number }) {
+  const codePoint = REACT_GLYPH[emoji] ?? emoji.codePointAt(0);
+  if (codePoint == null || !hasEmojiBitmap(codePoint)) return null;
+  return <EmojiGlyph codePoint={codePoint} size={size} />;
+}
+
+function chatRecordId(itemId: string): string | null {
+  if (!itemId.startsWith('chat:')) return null;
+  const id = itemId.slice(5);
+  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+function toggleReactionList(current: ReactionSummary[] | undefined, emoji: string): ReactionSummary[] {
+  const list = current ? [...current] : [];
+  const index = list.findIndex((row) => row.emoji === emoji);
+  const mine = index >= 0 && list[index].hasUserReacted;
+  if (mine) {
+    const nextCount = list[index].count - 1;
+    if (nextCount <= 0) list.splice(index, 1);
+    else list[index] = { ...list[index], count: nextCount, hasUserReacted: false };
+    return list;
+  }
+  if (index >= 0) {
+    list[index] = { ...list[index], count: list[index].count + 1, hasUserReacted: true };
+    return list;
+  }
+  list.push({ emoji, count: 1, hasUserReacted: true });
+  return list;
+}
+
 function MessageRow({
   item,
   onOpen,
@@ -747,10 +790,14 @@ function MessageRow({
   replying,
   replyDraft,
   sendingReply,
+  reacting,
+  reactions,
   youAvatar,
   onToggleReply,
   onChangeReply,
   onSendReply,
+  onToggleReact,
+  onReact,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem) => void;
@@ -759,10 +806,14 @@ function MessageRow({
   replying: boolean;
   replyDraft: string;
   sendingReply: boolean;
+  reacting: boolean;
+  reactions: ReactionSummary[];
   youAvatar?: string | null;
   onToggleReply: () => void;
   onChangeReply: (value: string) => void;
   onSendReply: () => void;
+  onToggleReact: () => void;
+  onReact: (emoji: string) => void;
 }) {
   const { width: screenWidth } = useWindowDimensions();
   const nameSize = screenWidth < 360 ? 14 : screenWidth < 400 ? 15 : 16;
@@ -850,18 +901,80 @@ function MessageRow({
           <TotlText style={{ marginTop: 12, fontSize: 17, lineHeight: 23, fontWeight: '700', color: ink }}>{item.body}</TotlText>
         </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Reply to ${item.title}`}
-              onPress={onToggleReply}
-              hitSlop={8}
-              style={{ flexDirection: 'row', alignItems: 'center' }}
-            >
-              <Ionicons name="arrow-undo" size={15} color={ink} />
-              <TotlText style={{ marginLeft: 6, fontSize: 15, fontWeight: '800', color: ink }}>Reply</TotlText>
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Reply to ${item.title}`}
+                onPress={onToggleReply}
+                hitSlop={8}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
+                <Ionicons name="arrow-undo" size={15} color={ink} />
+                <TotlText style={{ marginLeft: 6, fontSize: 15, fontWeight: '800', color: ink }}>Reply</TotlText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`React to ${item.title}`}
+                onPress={onToggleReact}
+                hitSlop={8}
+                style={{ flexDirection: 'row', alignItems: 'center' }}
+              >
+                <Ionicons name="happy-outline" size={16} color={ink} />
+                <TotlText style={{ marginLeft: 6, fontSize: 15, fontWeight: '800', color: ink }}>React</TotlText>
+              </Pressable>
+            </View>
             <TotlText style={{ fontSize: 12, fontWeight: '800', color: '#6B5420' }}>{item.stamp || item.timeLabel}</TotlText>
           </View>
+          {reactions.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+              {reactions.map((reaction) => (
+                <Pressable
+                  key={reaction.emoji}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${reaction.hasUserReacted ? 'Remove' : 'Add'} ${reaction.emoji}`}
+                  onPress={() => onReact(reaction.emoji)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: reaction.hasUserReacted ? '#1C1408' : 'rgba(255,255,255,0.62)',
+                  }}
+                >
+                  <ReactGlyph emoji={reaction.emoji} size={18} />
+                  <TotlText style={{ marginLeft: 6, fontSize: 13, fontWeight: '800', color: reaction.hasUserReacted ? '#FFE08A' : ink }}>
+                    {reaction.count}
+                  </TotlText>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          {reacting ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              {MESSAGE_REACTS.map((emoji) => {
+                const mine = reactions.some((reaction) => reaction.emoji === emoji && reaction.hasUserReacted);
+                return (
+                  <Pressable
+                    key={emoji}
+                    accessibilityRole="button"
+                    accessibilityLabel={`React with ${emoji}`}
+                    onPress={() => onReact(emoji)}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: mine ? '#1C1408' : 'rgba(255,255,255,0.72)',
+                    }}
+                  >
+                    <ReactGlyph emoji={emoji} size={22} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
           {replying ? (
             <View
               style={{
@@ -1312,6 +1425,8 @@ export default function MatchCenterScreen() {
   const [replyId, setReplyId] = React.useState<string | null>(null);
   const [replyDraft, setReplyDraft] = React.useState('');
   const [sendingReply, setSendingReply] = React.useState(false);
+  const [reactId, setReactId] = React.useState<string | null>(null);
+  const [localReactions, setLocalReactions] = React.useState<Record<string, ReactionSummary[]>>({});
   const [localReplies, setLocalReplies] = React.useState<FeedItem[]>([]);
   const queryClient = useQueryClient();
   const prevLeagueRanks = React.useRef<Map<string, number> | null>(null);
@@ -1853,6 +1968,8 @@ export default function MatchCenterScreen() {
     setLocalReplies([]);
     setReplyId(null);
     setReplyDraft('');
+    setReactId(null);
+    setLocalReactions({});
   }, [gw, mode, playRun]);
 
   React.useEffect(() => {
@@ -1864,10 +1981,43 @@ export default function MatchCenterScreen() {
     );
   }, [chatItems]);
 
+  const chatRecordIds = React.useMemo(
+    () => (chatItems ?? []).map((item) => chatRecordId(item.id)).filter((id): id is string => id != null),
+    [chatItems]
+  );
+  const { reactions, toggleReaction } = useLeagueChatReactions({
+    leagueId: mode === 'live' && chatRecordIds.length > 0 ? 'match-center' : null,
+    messageIds: chatRecordIds,
+    userId,
+    enabled: mode === 'live' && !!userId,
+  });
+
   const toggleReply = React.useCallback((item: FeedItem) => {
     setReplyId((current) => (current === item.id ? null : item.id));
     setReplyDraft('');
+    setReactId(null);
   }, []);
+
+  const toggleReact = React.useCallback((item: FeedItem) => {
+    setReactId((current) => (current === item.id ? null : item.id));
+    setReplyId(null);
+    setReplyDraft('');
+  }, []);
+
+  const reactToMessage = React.useCallback(
+    (item: FeedItem, emoji: string) => {
+      const recordId = chatRecordId(item.id);
+      if (mode === 'live' && recordId && userId) {
+        void toggleReaction(recordId, emoji);
+        return;
+      }
+      setLocalReactions((current) => ({
+        ...current,
+        [item.id]: toggleReactionList(current[item.id], emoji),
+      }));
+    },
+    [mode, toggleReaction, userId]
+  );
 
   const sendReply = React.useCallback(
     async (item: FeedItem) => {
@@ -2333,10 +2483,18 @@ export default function MatchCenterScreen() {
                 replying={replyId === item.id}
                 replyDraft={replyId === item.id ? replyDraft : ''}
                 sendingReply={sendingReply}
+                reacting={reactId === item.id}
+                reactions={
+                  (chatRecordId(item.id) ? reactions[chatRecordId(item.id) as string] : null) ??
+                  localReactions[item.id] ??
+                  []
+                }
                 youAvatar={profileSummary?.avatar_url ?? null}
                 onToggleReply={() => toggleReply(item)}
                 onChangeReply={setReplyDraft}
                 onSendReply={() => void sendReply(item)}
+                onToggleReact={() => toggleReact(item)}
+                onReact={(emoji) => reactToMessage(item, emoji)}
               />
             );
           }
