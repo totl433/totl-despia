@@ -1,9 +1,12 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Asset } from 'expo-asset';
+import { SvgUri } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Screen, TotlText, useTokens } from '@totl/ui';
+import { TotlText, useTokens } from '@totl/ui';
 
 import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
 import UnderlineTabs from '../../components/UnderlineTabs';
@@ -12,6 +15,8 @@ import { readSharedPlayersScores, scoreForDay, scoreForMonth, scoreOverall, type
 import { supabase } from '../../lib/supabase';
 
 type BoardTab = 'today' | 'month' | 'overall';
+
+const WORDMARK = Asset.fromModule(require('../../../assets/players/players-scoreboard-wordmark.svg')).uri;
 
 type PlayerName = { id: string; name: string | null; avatar_url: string | null };
 
@@ -28,6 +33,7 @@ function orderRows(rows: LeaderboardRow[]): LeaderboardRow[] {
 /** The Players board, laid out like the 2026/27 leaderboard. */
 export default function RetroPlayersScoreboardScreen() {
   const t = useTokens();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [tab, setTab] = React.useState<BoardTab>('today');
   const dayKey = playersDayKey();
@@ -95,31 +101,26 @@ export default function RetroPlayersScoreboardScreen() {
   const valueLabel = tab === 'today' ? 'Today' : tab === 'month' ? monthLabel.slice(0, 3) : 'Total';
 
   return (
-    <Screen fullBleed>
+    // A plain view with the inset applied here, as the game does: Screen's native SafeAreaView
+    // sometimes misses the top inset on this pushed screen, putting the close button under the status bar.
+    <View style={{ flex: 1, backgroundColor: t.color.background }}>
       <View style={{ flex: 1 }}>
-        {/* Same header as the game: close top left, small centred title (Figma 123:33149). */}
-        <View style={{ paddingTop: 15, paddingHorizontal: 16, paddingBottom: 4 }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close scoreboard"
-            onPress={close}
-            hitSlop={10}
-            style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.6 : 1 })}
-          >
-            <Ionicons name="close" size={24} color="#0A0A0A" />
-          </Pressable>
-          <TotlText
-            style={{
-              marginTop: 37,
-              textAlign: 'center',
-              fontFamily: 'Gramatika-Regular',
-              fontSize: 16,
-              lineHeight: 20.8,
-              color: '#0A0A0A',
-            }}
-          >
-            Totl Daily - The Players
-          </TotlText>
+        {/* Header (Figma 123:33267): close top left, placed as in the game, over THE PLAYERS wordmark. */}
+        <View style={{ paddingTop: insets.top + 15, paddingBottom: 4, alignItems: 'center' }}>
+          <View style={{ alignSelf: 'stretch', paddingHorizontal: 16 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close scoreboard"
+              onPress={close}
+              hitSlop={10}
+              style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.6 : 1 })}
+            >
+              <Ionicons name="close" size={24} color="#0A0A0A" />
+            </Pressable>
+          </View>
+          <View accessible accessibilityRole="header" accessibilityLabel="The Players scoreboard">
+            <SvgUri uri={WORDMARK} width={109.665} height={58} />
+          </View>
         </View>
 
         <View style={{ flex: 1, minHeight: 0, paddingHorizontal: t.space[4] }}>
@@ -161,6 +162,6 @@ export default function RetroPlayersScoreboardScreen() {
           ) : null}
         </View>
       </View>
-    </Screen>
+    </View>
   );
 }
