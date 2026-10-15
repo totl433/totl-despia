@@ -1,17 +1,21 @@
 import React from 'react';
-import { Animated, Platform, Pressable, View, useWindowDimensions } from 'react-native';
+import { Animated, Platform, View, useWindowDimensions } from 'react-native';
 
-import { useNavigation, useScrollToTop } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
-import { Ionicons } from '@expo/vector-icons';
 import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import type { Fixture, GwResultRow, GwResults, HomeRanks, HomeSnapshot, LiveScore, LiveStatus, Pick } from '@totl/domain';
 import { TotlRefreshControl } from '../lib/refreshControl';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
 import { getGameweekStateFromSnapshot, type GameweekState } from '../lib/gameweekState';
-import SectionHeaderRow from '../components/home/SectionHeaderRow';
+import HomeGameweekBox from '../components/home/HomeGameweekBox';
+import HomeGameweekMenu from '../components/home/HomeGameweekMenu';
+import PlayersHomeCard from '../components/home/PlayersHomeCard';
+import { playersDayKey } from '../lib/retroPlayers/day';
+import { readSharedPlayersScores } from '../lib/retroPlayers/scores';
+import { playersOverallRank, playersStreak } from '../lib/retroPlayers/stats';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../lib/layout';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
@@ -297,9 +301,6 @@ export default function HomeScreen() {
   const supportsMiniCompactLayout =
     gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED' || gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW';
   const isMiniLayoutSelected = supportsMiniCompactLayout && gwOpenLayout === 'mini';
-  const isAllExpandedMiniMode = isMiniLayoutSelected && miniExpandedFixtureId === '__all__';
-  const isMiniToggleActive = isMiniLayoutSelected && !isAllExpandedMiniMode;
-  const isExpandedToggleActive = isAllExpandedMiniMode || !isMiniLayoutSelected;
   const miniLayoutTransition = React.useMemo(
     () => LinearTransition.springify().damping(42).stiffness(260).mass(0.7),
     []
@@ -311,6 +312,59 @@ export default function HomeScreen() {
       includeResults: !!home?.hasSubmittedViewingGw,
     });
   }, [currentGw, home?.hasSubmittedViewingGw, openManualRoundUpStack, showReadyToMoveOn, viewingGw]);
+  // The Players card: streak and all-time rank, from the same scores as its Scoreboard.
+  const { data: playersScoresByUser, refetch: refetchPlayersScores } = useQuery({
+    queryKey: ['players-shared-scores', userId],
+    enabled: !!userId,
+    queryFn: readSharedPlayersScores,
+    staleTime: 60_000,
+  });
+  useFocusEffect(
+    React.useCallback(() => {
+      if (userId) void refetchPlayersScores();
+    }, [refetchPlayersScores, userId])
+  );
+  const playersStreakDays = React.useMemo(
+    () => (userId && playersScoresByUser ? playersStreak(playersScoresByUser[userId] ?? {}, playersDayKey(new Date(nowMs))) : 0),
+    [nowMs, playersScoresByUser, userId]
+  );
+  const playersRank = React.useMemo(
+    () => (userId && playersScoresByUser ? playersOverallRank(playersScoresByUser, userId) : null),
+    [playersScoresByUser, userId]
+  );
+  const openPlayers = React.useCallback(() => {
+    navigation.navigate('RetroTotlDailyPlayersFlow');
+  }, [navigation]);
+  const showGameweekBox = (showMakePicksBanner && typeof viewingGw === 'number') || showComingSoonBanner;
+  const gameweekMenuItems = [
+    ...(showRoundUpButton
+      ? [{ key: 'roundup', label: 'Roundup', icon: 'copy-outline' as const, onPress: handleViewRoundUp }]
+      : []),
+    ...(supportsMiniCompactLayout
+      ? [
+          {
+            key: 'grid',
+            label: 'Grid view',
+            icon: 'grid-outline' as const,
+            onPress: () => {
+              setGwOpenLayout('mini');
+              setMiniExpandedFixtureId(null);
+              setShowAllExpanded(false);
+            },
+          },
+          {
+            key: 'card',
+            label: 'Card view',
+            icon: 'tablet-landscape-outline' as const,
+            onPress: () => {
+              setGwOpenLayout('mini');
+              setMiniExpandedFixtureId('__all__');
+              setShowAllExpanded(true);
+            },
+          },
+        ]
+      : []),
+  ];
   const isDetailsOnlyState = gwState === 'GW_OPEN' || gwState === 'GW_PREDICTED' || gwState === 'DEADLINE_PASSED';
   const isDetailsViewActive = isDetailsOnlyState || showAllExpanded;
   const collapsedStackStep = gwState === 'GW_OPEN' ? 58 : 125;
@@ -336,7 +390,8 @@ export default function HomeScreen() {
   );
 
   const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
-  const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary;
+  // While the next GW is coming soon, last week's score sits in the gameweek box instead.
+  const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary && !showComingSoonBanner;
   const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
   const liveHeaderGw = typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : null;
   const { data: headerGwLiveTable } = useQuery({
@@ -436,18 +491,39 @@ export default function HomeScreen() {
         >
         {isHomeLoading && <TotlText variant="muted">Loading…</TotlText>}
 
-        {/* GW Coming soon banner (RESULTS_PRE_GW, next GW not yet published) */}
-        {showComingSoonBanner ? (
-          <TopStatusBanner
-            title={
-              typeof currentGw === 'number'
-                ? `Gameweek ${currentGw + 1} coming soon`
-                : 'Gameweek coming soon'
-            }
-            icon="info"
-            gradientBackground
-          />
-        ) : null}
+        {/* Gameweek message (deadline / coming soon) beside The Players; The Players goes full width when there's nothing to say. */}
+        <View style={{ flexDirection: 'row', gap: 23, marginBottom: 16 }}>
+          {showGameweekBox ? (
+            <View style={{ flex: 1 }}>
+              {showComingSoonBanner ? (
+                <HomeGameweekBox
+                  kind="comingSoon"
+                  nextGw={typeof currentGw === 'number' ? currentGw + 1 : null}
+                  lastGw={typeof viewingGw === 'number' ? viewingGw : null}
+                  lastScore={headerScoreLabel}
+                />
+              ) : (
+                <HomeGameweekBox
+                  kind="deadline"
+                  deadlineMs={deadline?.atMs ?? null}
+                  expired={deadlineExpired}
+                  onPress={() => {
+                    if (advanceTransition.isAnimating || deadlineExpired) return;
+                    navigation.navigate('PredictionsFlow');
+                  }}
+                />
+              )}
+            </View>
+          ) : null}
+          <View style={{ flex: 1 }}>
+            <PlayersHomeCard
+              size={showGameweekBox ? 'square' : 'wide'}
+              streak={playersStreakDays}
+              rank={playersRank}
+              onPress={openPlayers}
+            />
+          </View>
+        </View>
 
         {/* GW Transition banner (RESULTS_PRE_GW but next GW published) */}
         {showReadyToMoveOn ? (
@@ -468,78 +544,6 @@ export default function HomeScreen() {
               });
             }}
           />
-        ) : null}
-
-        {/* Predictions banner (after move-on, user hasn't submitted for current GW) */}
-        {showMakePicksBanner && typeof viewingGw === 'number' ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go to predictions"
-            disabled={advanceTransition.isAnimating || deadlineExpired}
-            onPress={() => {
-              if (advanceTransition.isAnimating) return;
-              if (deadlineExpired) return;
-              navigation.navigate('PredictionsFlow');
-            }}
-            style={({ pressed }) => ({
-              backgroundColor: t.color.surface,
-              borderRadius: 16,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              marginBottom: 10,
-              opacity: deadlineExpired ? 0.6 : pressed ? 0.92 : 1,
-            })}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flexShrink: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      backgroundColor: '#1C8376',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 10,
-                    }}
-                  >
-                    <TotlText style={{ color: '#FFFFFF', fontSize: 10, lineHeight: 10 }}>!</TotlText>
-                  </View>
-                  <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 18 }}>
-                    Gameweek {viewingGw} Predictions
-                  </TotlText>
-                </View>
-                <TotlText variant="muted" style={{ marginLeft: 30 }}>
-                  Deadline{' '}
-                  {deadline?.text ? (
-                    <TotlText style={{ color: deadlineExpired ? '#64748B' : '#1C8376', fontFamily: t.font.medium }}>
-                      {deadline.text}
-                    </TotlText>
-                  ) : (
-                    '—'
-                  )}
-                </TotlText>
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: t.radius.pill,
-                    backgroundColor: deadlineExpired ? '#94A3B8' : '#1C8376',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <TotlText style={{ color: '#FFFFFF', fontFamily: t.font.medium }}>Go</TotlText>
-                  <View style={{ width: 6 }} />
-                  <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                </View>
-              </View>
-            </View>
-          </Pressable>
         ) : null}
 
         {(homeError || leaguesError) && (
@@ -648,143 +652,20 @@ export default function HomeScreen() {
 
         {/* Predictions section */}
         <View style={{ marginTop: 8 }}>
-          <SectionHeaderRow
-            title={typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
-            titleRight={
-              showRoundUpButton ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="View Gameweek round up"
-                  onPress={handleViewRoundUp}
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.72 : 1,
-                    borderRadius: 999,
-                    minHeight: 44,
-                    paddingHorizontal: 14,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
-                    backgroundColor: t.color.surface,
-                    borderWidth: 1,
-                    borderColor: 'rgba(148,163,184,0.26)',
-                  })}
-                >
-                  <View style={{ width: 19, height: 17, marginRight: 7 }}>
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 7,
-                        width: 9,
-                        height: 12,
-                        borderRadius: 2.5,
-                        borderWidth: 1.4,
-                        borderColor: 'rgba(28,131,118,0.32)',
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 2,
-                        left: 4,
-                        width: 10,
-                        height: 13,
-                        borderRadius: 2.8,
-                        borderWidth: 1.4,
-                        borderColor: 'rgba(28,131,118,0.55)',
-                        backgroundColor: t.color.surface,
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 4,
-                        left: 1,
-                        width: 11,
-                        height: 13,
-                        borderRadius: 3,
-                        borderWidth: 1.5,
-                        borderColor: '#1C8376',
-                        backgroundColor: t.color.surface,
-                      }}
-                    />
-                  </View>
-                  <TotlText
-                    style={{
-                      color: '#1C8376',
-                      fontFamily: 'Gramatika-Bold',
-                      fontWeight: '900',
-                      fontSize: 13,
-                      lineHeight: 16,
-                    }}
-                  >
-                    Round Up
-                  </TotlText>
-                </Pressable>
-              ) : null
-            }
-            right={
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {supportsMiniCompactLayout ? (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: 'rgba(148,163,184,0.26)',
-                      backgroundColor: t.color.surface,
-                      padding: 4,
-                    }}
-                  >
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Mini view"
-                      onPress={() => {
-                        setGwOpenLayout('mini');
-                        setMiniExpandedFixtureId(null);
-                        setShowAllExpanded(false);
-                      }}
-                      style={({ pressed }) => ({
-                        width: 34,
-                        height: 34,
-                        borderRadius: 17,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isMiniToggleActive ? 'rgba(28,131,118,0.14)' : 'transparent',
-                        opacity: pressed ? 0.86 : 1,
-                      })}
-                    >
-                      <Ionicons name="grid-outline" size={18} color={isMiniToggleActive ? '#1C8376' : '#475569'} />
-                    </Pressable>
-
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Expanded view"
-                      onPress={() => {
-                        setGwOpenLayout('mini');
-                        setMiniExpandedFixtureId('__all__');
-                        setShowAllExpanded(true);
-                      }}
-                      style={({ pressed }) => ({
-                        width: 34,
-                        height: 34,
-                        borderRadius: 17,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isExpandedToggleActive ? 'rgba(28,131,118,0.14)' : 'transparent',
-                        opacity: pressed ? 0.86 : 1,
-                      })}
-                    >
-                      <Ionicons name="tablet-landscape-outline" size={18} color={isExpandedToggleActive ? '#1C8376' : '#475569'} />
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={{ width: 48, height: 48 }} />
-                )}
-              </View>
-            }
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <TotlText
+              style={{
+                color: '#000000',
+                fontFamily: 'Gramatika-Regular',
+                fontSize: 23,
+                lineHeight: 29.9,
+                letterSpacing: -0.3788,
+              }}
+            >
+              {typeof home?.viewingGw === 'number' ? `Gameweek ${home.viewingGw}` : 'Gameweek'}
+            </TotlText>
+            <HomeGameweekMenu items={gameweekMenuItems} />
+          </View>
         </View>
 
         <Animated.View

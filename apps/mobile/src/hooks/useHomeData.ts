@@ -23,7 +23,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 function deadlineCountdown(
   fixtures: Fixture[],
   nowMs: number
-): { text: string; expired: boolean } | null {
+): { text: string; expired: boolean; atMs: number } | null {
   const firstKickoff = fixtures
     .map((f) => (f.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN))
     .filter((t) => Number.isFinite(t))
@@ -33,14 +33,14 @@ function deadlineCountdown(
   const DEADLINE_BUFFER_MINUTES = 75;
   const deadline = firstKickoff - DEADLINE_BUFFER_MINUTES * 60 * 1000;
   const diffMs = deadline - nowMs;
-  if (diffMs <= 0) return { text: '0d 0h 0m', expired: true };
+  if (diffMs <= 0) return { text: '0d 0h 0m', expired: true, atMs: deadline };
 
   const totalMinutes = Math.floor(diffMs / (1000 * 60));
   const days = Math.floor(totalMinutes / (60 * 24));
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
   const minutes = totalMinutes % 60;
 
-  return { text: `${days}d ${hours}h ${minutes}m`, expired: false };
+  return { text: `${days}d ${hours}h ${minutes}m`, expired: false, atMs: deadline };
 }
 
 export function useHomeData() {
