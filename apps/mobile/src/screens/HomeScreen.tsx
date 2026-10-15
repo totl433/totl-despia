@@ -335,7 +335,8 @@ export default function HomeScreen() {
   const openPlayers = React.useCallback(() => {
     navigation.navigate('RetroTotlDailyPlayersFlow');
   }, [navigation]);
-  const showGameweekBox = (showMakePicksBanner && typeof viewingGw === 'number') || showComingSoonBanner;
+  const showGameweekBox =
+    (showMakePicksBanner && typeof viewingGw === 'number') || showComingSoonBanner || showReadyToMoveOn;
   const gameweekMenuItems = [
     ...(showRoundUpButton
       ? [{ key: 'roundup', label: 'Roundup', icon: 'copy-outline' as const, onPress: handleViewRoundUp }]
@@ -390,8 +391,8 @@ export default function HomeScreen() {
   );
 
   const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
-  // While the next GW is coming soon, last week's score sits in the gameweek box instead.
-  const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary && !showComingSoonBanner;
+  // While the next GW is coming soon or ready, last week's score sits in the gameweek box instead.
+  const showStaticResultsHeaderScore = isResultsPreGw && !!scoreSummary && !showComingSoonBanner && !showReadyToMoveOn;
   const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
   const liveHeaderGw = typeof viewingGw === 'number' ? viewingGw : typeof currentGw === 'number' ? currentGw : null;
   const { data: headerGwLiveTable } = useQuery({
@@ -495,7 +496,14 @@ export default function HomeScreen() {
         <View style={{ flexDirection: 'row', gap: 23, marginBottom: 16 }}>
           {showGameweekBox ? (
             <View style={{ flex: 1 }}>
-              {showComingSoonBanner ? (
+              {showReadyToMoveOn ? (
+                <HomeGameweekBox
+                  kind="ready"
+                  nextGw={typeof currentGw === 'number' ? currentGw : null}
+                  lastGw={typeof viewingGw === 'number' ? viewingGw : null}
+                  lastScore={headerScoreLabel}
+                />
+              ) : showComingSoonBanner ? (
                 <HomeGameweekBox
                   kind="comingSoon"
                   nextGw={typeof currentGw === 'number' ? currentGw + 1 : null}
@@ -530,6 +538,8 @@ export default function HomeScreen() {
           <TopStatusBanner
             title="Ready to move on?"
             icon="flash"
+            bordered
+            style={{ marginTop: 0, marginBottom: 16 }}
             actionLabel={typeof currentGw === 'number' ? `Gameweek ${currentGw}` : 'Gameweek'}
             actionAccessibilityLabel="Move to next gameweek"
             actionDisabled={advanceTransition.isAnimating}

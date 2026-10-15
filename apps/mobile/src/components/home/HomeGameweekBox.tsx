@@ -15,11 +15,17 @@ function formatDeadline(ms: number): string {
 
 type Props =
   | { kind: 'deadline'; deadlineMs: number | null; expired: boolean; onPress: () => void }
-  | { kind: 'comingSoon'; nextGw: number | null; lastGw: number | null; lastScore: string | null };
+  | {
+      kind: 'comingSoon' | 'ready';
+      nextGw: number | null;
+      lastGw: number | null;
+      lastScore: string | null;
+    };
 
 /**
  * Gameweek message beside The Players card on home (Figma "information box"):
- * the predictions deadline until picks are in, or "coming soon" with last week's score.
+ * the predictions deadline until picks are in, or the next gameweek ("Coming soon", then
+ * "Ready" once it's published) with last week's score.
  */
 export default function HomeGameweekBox(props: Props) {
   if (props.kind === 'deadline') {
@@ -47,13 +53,14 @@ export default function HomeGameweekBox(props: Props) {
     );
   }
 
-  const { nextGw, lastGw, lastScore } = props;
+  const { kind, nextGw, lastGw, lastScore } = props;
+  const status = kind === 'ready' ? 'Ready' : 'Coming soon';
   return (
-    <View style={styles.box} accessible accessibilityLabel={`Gameweek ${nextGw ?? ''} coming soon`}>
+    <View style={styles.box} accessible accessibilityLabel={`Gameweek ${nextGw ?? ''} ${status.toLowerCase()}`}>
       <View style={styles.content}>
         <View style={{ gap: 2 }}>
           <TotlText style={styles.title}>{nextGw != null ? `Gameweek ${nextGw}` : 'Gameweek'}</TotlText>
-          <TotlText style={styles.body}>Coming soon</TotlText>
+          <TotlText style={styles.body}>{status}</TotlText>
         </View>
         {lastScore && lastGw != null ? (
           <TotlText style={[styles.body, { color: BRAND }]}>{`GW ${lastGw}: ${lastScore}`}</TotlText>

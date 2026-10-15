@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TotlText, useTokens } from '@totl/ui';
@@ -14,6 +14,8 @@ export default function TopStatusBanner({
   onActionPress,
   actionDisabled = false,
   gradientBackground = false,
+  bordered = false,
+  style,
 }: {
   title: string;
   icon?: BannerIcon;
@@ -22,6 +24,9 @@ export default function TopStatusBanner({
   onActionPress?: () => void;
   actionDisabled?: boolean;
   gradientBackground?: boolean;
+  /** Light green outline, as on the home "Ready to move on?" row. */
+  bordered?: boolean;
+  style?: ViewStyle;
 }) {
   const t = useTokens();
   const iconName = icon === 'flash' ? 'flash' : 'information-circle';
@@ -35,6 +40,8 @@ export default function TopStatusBanner({
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
+    ...(bordered ? { borderWidth: 1, borderColor: '#CED5D2' } : null),
+    ...style,
   };
 
   const content = (
