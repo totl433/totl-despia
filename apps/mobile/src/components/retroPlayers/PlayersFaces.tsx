@@ -61,6 +61,7 @@ export function PlayersFlipIn({
   durationMs: number;
 }) {
   const [showBack, setShowBack] = React.useState(instant);
+  const bornInstant = React.useRef(instant).current;
   React.useEffect(() => {
     if (instant) return;
     setShowBack(false);
@@ -68,8 +69,11 @@ export function PlayersFlipIn({
     return () => clearTimeout(id);
   }, [delayMs, flipKey, instant]);
 
-  if (instant) return <View style={{ flex: 1 }}>{back}</View>;
-  return <RetroDailyFlip resetKey={flipKey} showB={showBack} durationMs={durationMs} faceA={front} faceB={back} />;
+  if (bornInstant) return <View style={{ flex: 1 }}>{back}</View>;
+  // Turning instant on a mounted flip keeps the same tree, so the landed back face isn't remounted.
+  return (
+    <RetroDailyFlip resetKey={flipKey} showB={showBack || instant} durationMs={durationMs} faceA={front} faceB={back} />
+  );
 }
 
 export function PlayersIntroFace({
@@ -208,7 +212,7 @@ export function PlayersRevealFace({
   const detail = {
     fontFamily: PLAYERS_FONTS.body,
     fontSize: 16 * s,
-    lineHeight: 22 * s,
+    lineHeight: 19.2 * s,
     letterSpacing: 0.16 * s,
     textAlign: 'center' as const,
   };
@@ -227,8 +231,9 @@ export function PlayersRevealFace({
         <View style={{ width: crest, height: crest, alignItems: 'center', justifyContent: 'center' }}>
           {badge ? <Image source={badge} style={{ width: crest, height: crest }} resizeMode="contain" /> : null}
         </View>
-        <View style={{ alignItems: 'center' }}>
-          <TotlText style={[detail, { color: PLAYERS_COLORS.ink }]}>
+        {/* Figma 76:14926: club · years on one line, appearances 8pt below. */}
+        <View style={{ alignSelf: 'stretch', alignItems: 'center', gap: 8 * s }}>
+          <TotlText style={[detail, { color: PLAYERS_COLORS.ink }]} numberOfLines={1} adjustsFontSizeToFit>
             {card.correct.clubName}
             {card.yearsAtClub ? ` · ${card.yearsAtClub}` : ''}
           </TotlText>

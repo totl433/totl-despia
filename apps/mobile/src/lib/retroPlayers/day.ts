@@ -1,5 +1,3 @@
-const LONDON = 'Europe/London';
-
 const MONTHS = [
   'January',
   'February',
@@ -15,36 +13,23 @@ const MONTHS = [
   'December',
 ];
 
-function londonParts(now: Date): { year: number; month: number; day: number; hour: number } {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: LONDON,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now);
-  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0');
-  return { year: read('year'), month: read('month'), day: read('day'), hour: read('hour') };
-}
-
 /** Players days whose shared puzzle was redealt. */
 const RESHUFFLED_DAYS: Record<string, string> = {
   '2026-10-13': 'reshuffle-1',
 };
 
 /**
- * The Players day rolls at 3pm London.
- * A card dealt at 14:00 still belongs to the previous day's puzzle.
+ * The Players day rolls at midnight GMT (UTC), the same moment for every player
+ * wherever they are. That is 1am in London during British Summer Time.
  */
 export function playersDayKey(now = new Date()): string {
-  const parts = londonParts(now);
-  let utc = Date.UTC(parts.year, parts.month - 1, parts.day);
-  if (parts.hour < 15) utc -= 24 * 60 * 60 * 1000;
-  const date = new Date(utc);
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${date.getUTCFullYear()}-${month}-${day}`;
+  return now.toISOString().slice(0, 10);
+}
+
+/** Milliseconds until the next Players day starts. */
+export function msUntilNextPlayersDay(now = new Date()): number {
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return next - now.getTime();
 }
 
 /** Same seed for every player on a given Players day. */
@@ -59,10 +44,13 @@ export function playersDaySeed(now = new Date()): number {
   return hash >>> 0;
 }
 
+/** "Next game in 5h 12m" — counts down to midnight GMT. */
 export function playersNextGameLine(now = new Date()): string {
-  const parts = londonParts(now);
-  if (parts.hour < 15) return 'Next game available at 3pm';
-  return "Tomorrow's game available at 3pm";
+  const minutes = Math.max(1, Math.ceil(msUntilNextPlayersDay(now) / 60000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `Next game in ${m}m`;
+  return m === 0 ? `Next game in ${h}h` : `Next game in ${h}h ${m}m`;
 }
 
 export function playersMonthName(dayKey: string): string {

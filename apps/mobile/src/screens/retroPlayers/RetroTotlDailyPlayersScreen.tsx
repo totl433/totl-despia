@@ -7,6 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, {
   Easing,
   FadeIn,
+  FadeOut,
   SlideInDown,
   useAnimatedStyle,
   useSharedValue,
@@ -16,7 +17,7 @@ import { captureRef } from 'react-native-view-shot';
 import { TotlText } from '@totl/ui';
 
 import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type PlayersPuzzle } from '../../lib/retroPlayers/buildPuzzle';
-import { playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
+import { msUntilNextPlayersDay, playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
 import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
 import { playersDayAlreadySaved, readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
 import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
@@ -28,6 +29,7 @@ import RetroDailySwipeStack, {
 } from '../../components/retroDaily/RetroDailySwipeStack';
 import type { PlayersRoundOutcome } from '../../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
+import PlayersReview from '../../components/retroPlayers/PlayersReview';
 import {
   PlayersBackFace,
   PlayersCountdownFace,
@@ -64,6 +66,13 @@ const INSTANT_HOLD_MS = 280;
 /** How long a correct answer stays up before the next card. */
 const CORRECT_HOLD_MS = 1100;
 
+/** Intro links ⇄ progress header. */
+const HEADER_FADE_MS = 220;
+/** Intro and finished text links sit 61pt below the close button's top (Figma 76:14603). */
+const LINKS_TOP = 15 + 61;
+/** Results review in and out (over the reveal card flying away, then over the score card). */
+const REVIEW_FADE_MS = 280;
+
 const BOTTOM_SLOT_H = 93;
 const CARD_TO_SLOT_GAP = 40;
 
@@ -99,6 +108,11 @@ export default function RetroTotlDailyPlayersScreen() {
   const [practice, setPractice] = React.useState(false);
   const practiceRef = React.useRef(false);
   const [bestBefore, setBestBefore] = React.useState<number | null>(null);
+  // Ticks each minute (for "Next game in…") and at midnight GMT, when a new day starts.
+  const [now, setNow] = React.useState(() => Date.now());
+  const dayKey = playersDayKey(new Date(now));
+  /** The day the daily puzzle on screen belongs to; its score saves against this day. */
+  const dealtDayRef = React.useRef(dayKey);
   const [puzzle, setPuzzle] = React.useState<PlayersPuzzle | null>(null);
   const [loadError, setLoadError] = React.useState(false);
   const [catalogAttempt, setCatalogAttempt] = React.useState(0);
@@ -119,6 +133,8 @@ export default function RetroTotlDailyPlayersScreen() {
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [dragSnap, setDragSnap] = React.useState({ x: 0, y: 0 });
   const [sharing, setSharing] = React.useState(false);
+  /** After the last card: the player-by-player review, then Continue to the score card. */
+  const [reviewing, setReviewing] = React.useState(false);
 
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -163,8 +179,27 @@ export default function RetroTotlDailyPlayersScreen() {
   const scale = cardW / 353;
 
   React.useEffect(() => {
+    let id: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const t = Date.now();
+      const toMinute = 60000 - (t % 60000);
+      id = setTimeout(() => {
+        setNow(Date.now());
+        schedule();
+      }, Math.min(toMinute, msUntilNextPlayersDay(new Date(t))) + 50);
+    };
+    schedule();
+    return () => clearTimeout(id);
+  }, []);
+
+  React.useEffect(() => {
     let cancelled = false;
-    const today = playersDayKey();
+    const today = dayKey;
+    if (dealtDayRef.current !== today) {
+      // A new day has started while the screen was open.
+      playedRef.current = false;
+      setPlayedToday(false);
+    }
     void playersDayAlreadySaved(today).then((played) => {
       if (cancelled) return;
       playedRef.current = played;
@@ -180,11 +215,12 @@ export default function RetroTotlDailyPlayersScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dayKey]);
 
   React.useEffect(() => {
     if (phase !== 'score' || practiceRef.current || cards.length === 0) return;
-    void savePlayersDayScore(playersDayKey(), { correct: score, total: cards.length }).then(() => {
+    // A game started before midnight still counts for the day it was dealt.
+    void savePlayersDayScore(dealtDayRef.current, { correct: score, total: cards.length }).then(() => {
       playedRef.current = true;
       setPlayedToday(true);
     });
@@ -197,6 +233,7 @@ export default function RetroTotlDailyPlayersScreen() {
       .then((rows) => {
         if (cancelled) return;
         rowsRef.current = rows;
+        dealtDayRef.current = playersDayKey();
         setPuzzle(createPlayersPuzzle(rows, playersDaySeed()));
       })
       .catch((error) => {
@@ -236,6 +273,8 @@ export default function RetroTotlDailyPlayersScreen() {
     setPractice(nextPractice);
     timerEpoch.current += 1;
     if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
+    if (!nextPractice) dealtDayRef.current = playersDayKey();
+    setReviewing(false);
     setPuzzle(createPlayersPuzzle(rows, nextPractice ? Date.now() : playersDaySeed()));
     setPhase('intro');
     setCountdownStep(0);
@@ -252,6 +291,12 @@ export default function RetroTotlDailyPlayersScreen() {
     dragY.value = 0;
     navyX.value = withTiming(screenW, { duration: BG_SLIDE_MS, easing: Easing.in(Easing.cubic) });
   }, [dragX, dragY, navyX, screenW]);
+
+  // Midnight GMT: once back on the intro, swap in the new day's puzzle. A game in progress finishes first.
+  React.useEffect(() => {
+    if (phase !== 'intro' || dealtDayRef.current === dayKey || !rowsRef.current.length) return;
+    deal('daily');
+  }, [dayKey, deal, phase]);
 
   // 3 · 2 · 1 · GO! then the navy slides in and the card flips to question one.
   React.useEffect(() => {
@@ -381,6 +426,7 @@ export default function RetroTotlDailyPlayersScreen() {
       return;
     }
     setPhase('score');
+    setReviewing(true);
     setCardKey(`score-${Date.now()}`);
     setInteractive(true);
   }, [dragX, dragY]);
@@ -458,7 +504,7 @@ export default function RetroTotlDailyPlayersScreen() {
     face = (
       <PlayersIntroFace
         mode={waitingForNext ? 'played' : practice ? 'practice' : 'daily'}
-        nextGame={playersNextGameLine()}
+        nextGame={playersNextGameLine(new Date(now))}
       />
     );
   } else if (phase === 'countdown') {
@@ -557,7 +603,7 @@ export default function RetroTotlDailyPlayersScreen() {
         >
           <RetroPlayersRulesSheet open={rulesOpen} onClose={() => setRulesOpen(false)} />
 
-          {/* Intro: close above the Rules / Scoreboard links. Game: close beside the centred progress label. */}
+          {/* Intro and finished: close above the text links. Game: close beside the centred progress label. */}
           <View style={{ height: topBarH + headerH }}>
             <Pressable
               accessibilityRole="button"
@@ -566,23 +612,44 @@ export default function RetroTotlDailyPlayersScreen() {
               hitSlop={10}
               style={({ pressed }) => [
                 styles.close,
-                { top: phase === 'intro' ? (topBarH - 24) / 2 : 15, opacity: pressed ? 0.6 : 1 },
+                { top: 15, opacity: pressed ? 0.6 : 1 },
               ]}
             >
               <Ionicons name="close" size={24} color={chrome} />
             </Pressable>
+            {/* Cross-fade rather than snap when the game starts or ends. */}
             {phase === 'intro' ? (
-              <View style={[styles.linkRow, { marginTop: topBarH + 6 }]}>
+              <Animated.View
+                key="links"
+                entering={FadeIn.duration(HEADER_FADE_MS)}
+                exiting={FadeOut.duration(HEADER_FADE_MS)}
+                style={[styles.linkRow, { marginTop: LINKS_TOP }]}
+              >
                 <PlayersTextLink label="Rules" onPress={() => setRulesOpen(true)} />
                 <PlayersTextLink label="Scoreboard" onPress={openScoreboard} />
-              </View>
+              </Animated.View>
+            ) : phase === 'score' ? (
+              <Animated.View
+                key="score-links"
+                entering={FadeIn.duration(HEADER_FADE_MS).delay(HEADER_FADE_MS / 2)}
+                exiting={FadeOut.duration(HEADER_FADE_MS)}
+                style={[styles.linkRow, { marginTop: LINKS_TOP }]}
+              >
+                <PlayersTextLink label="Scoreboard" color={PLAYERS_COLORS.white} onPress={openScoreboard} />
+                <PlayersTextLink label="Practice mode" color={PLAYERS_COLORS.white} onPress={() => deal('practice')} />
+              </Animated.View>
             ) : (
-              <View style={{ alignItems: 'center', marginTop: 17 }}>
+              <Animated.View
+                key="progress"
+                entering={FadeIn.duration(HEADER_FADE_MS).delay(HEADER_FADE_MS / 2)}
+                exiting={FadeOut.duration(HEADER_FADE_MS)}
+                style={{ alignItems: 'center', marginTop: 17 }}
+              >
                 <TotlText style={[styles.headerLabel, { color: chrome }]}>{headerLabel}</TotlText>
                 <View style={{ marginTop: 24 }}>
                   <PlayersProgressDots states={dotStates} />
                 </View>
-              </View>
+              </Animated.View>
             )}
           </View>
 
@@ -590,6 +657,8 @@ export default function RetroTotlDailyPlayersScreen() {
             <RetroDailySwipeStack
               cardKey={cardKey}
               cardSize={cardSize}
+              keepChildrenMounted
+              smoothTap
               showNext={phase !== 'score' && phase !== 'countdown'}
               showQueued={false}
               flyAwayNonce={flyAwayNonce}
@@ -639,7 +708,7 @@ export default function RetroTotlDailyPlayersScreen() {
             ) : null}
 
             {phase === 'score' ? (
-              <Animated.View entering={FadeIn.duration(250)} style={{ alignItems: 'center', gap: 14 }}>
+              <Animated.View entering={FadeIn.duration(250)}>
                 <PlayersButton
                   label="Share score"
                   tone={personalBest ? 'gold' : 'green'}
@@ -648,14 +717,20 @@ export default function RetroTotlDailyPlayersScreen() {
                   height={Math.min(93, BOTTOM_SLOT_H)}
                   onPress={() => void shareScore()}
                 />
-                <View style={styles.linkRow}>
-                  <PlayersTextLink label="Scoreboard" color="rgba(255,255,255,0.8)" onPress={openScoreboard} />
-                  <PlayersTextLink label="Practice mode" color="rgba(255,255,255,0.8)" onPress={() => deal('practice')} />
-                </View>
               </Animated.View>
             ) : null}
           </View>
         </View>
+
+        {phase === 'score' && reviewing ? (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, { zIndex: 20 }]}
+            entering={FadeIn.duration(REVIEW_FADE_MS)}
+            exiting={FadeOut.duration(REVIEW_FADE_MS)}
+          >
+            <PlayersReview cards={cards} outcomes={outcomes} onContinue={() => setReviewing(false)} />
+          </Animated.View>
+        ) : null}
       </View>
     </PlayersCardScale.Provider>
   );

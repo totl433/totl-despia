@@ -38,6 +38,17 @@ type Props = {
   onSwipeAway: (dx: number, dy: number) => void;
   /** Override the default card size (The Players uses the design's 353 × 459 card). */
   cardSize?: { width: number; height: number };
+  /**
+   * Never remount a card mid-swipe. The top card's own view becomes the outgoing
+   * card (no frozen copy), and the new top card mounts once. By default a fresh
+   * copy flies off and the new face mounts twice, so images can flash as they reload.
+   */
+  keepChildrenMounted?: boolean;
+  /**
+   * A tap sends the card off with the same eased wind-up and exit as `flyAwayNonce`
+   * (an answer pick), rather than dropping it straight down.
+   */
+  smoothTap?: boolean;
 };
 
 /**
@@ -59,6 +70,8 @@ export default function RetroDailySwipeStack({
   dragY,
   onSwipeAway,
   cardSize,
+  keepChildrenMounted = false,
+  smoothTap = false,
 }: Props) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const cardWidth = cardSize?.width ?? Math.min(420, screenWidth - 32);
@@ -73,6 +86,10 @@ export default function RetroDailySwipeStack({
 
   const [outgoing, setOutgoing] = React.useState<React.ReactNode | null>(null);
   const [settling, setSettling] = React.useState(false);
+  /** keepChildrenMounted: bumps on each fly, so the old top card's view carries on as the outgoing card. */
+  const [layer, setLayer] = React.useState(0);
+  const [outgoingLayer, setOutgoingLayer] = React.useState(0);
+  const layerRef = React.useRef(0);
   const flyingRef = React.useRef(false);
   const lastFlyNonce = React.useRef(0);
   const flyTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,6 +99,8 @@ export default function RetroDailySwipeStack({
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
   const reveal = useSharedValue(0);
+  /** keepChildrenMounted: 1 holds the new top card still while the outgoing card flies. */
+  const held = useSharedValue(0);
 
   const busy = outgoing != null || settling;
 
@@ -91,9 +110,10 @@ export default function RetroDailySwipeStack({
     opacity.value = 1;
     scale.value = 1;
     reveal.value = 0;
+    held.value = 0;
     dragX.value = 0;
     dragY.value = 0;
-  }, [dragX, dragY, opacity, reveal, scale, tx, ty]);
+  }, [dragX, dragY, held, opacity, reveal, scale, tx, ty]);
 
   const finishFly = React.useCallback(() => {
     if (flyTimer.current) {
@@ -138,6 +158,11 @@ export default function RetroDailySwipeStack({
       }
 
       setOutgoing(leaving);
+      if (keepChildrenMounted) {
+        setOutgoingLayer(layerRef.current);
+        layerRef.current += 1;
+        setLayer(layerRef.current);
+      }
       onSwipeAwayRef.current(opts?.force ? -140 : dx, opts?.force ? -80 : dy);
       dragX.value = 0;
       dragY.value = 0;
@@ -151,6 +176,8 @@ export default function RetroDailySwipeStack({
         scale.value = 1;
         reveal.value = opts?.force ? 0.55 : Math.min(1, Math.max(absX, absY) / SWIPE_THRESHOLD);
         requestAnimationFrame(() => {
+          // Backstop for the layout effect: by now the outgoing copy is on screen.
+          if (keepChildrenMounted) held.value = 1;
           tx.value = withTiming(offX, fly);
           ty.value = withTiming(offY, fly);
           reveal.value = withTiming(1, fly);
@@ -161,8 +188,18 @@ export default function RetroDailySwipeStack({
 
       flyTimer.current = setTimeout(finishFly, duration + 80);
     },
-    [dragX, dragY, finishFly, opacity, reveal, scale, screenHeight, screenWidth, settling, tx, ty]
+    [dragX, dragY, finishFly, held, keepChildrenMounted, opacity, reveal, scale, screenHeight, screenWidth, settling, tx, ty]
   );
+
+  const tapFlyOff = React.useCallback(() => {
+    if (!smoothTap) {
+      startFlyOff(0, 160);
+      return;
+    }
+    // Same guards as a swipe, then the answer-pick motion.
+    if (disabledRef.current || settling) return;
+    startFlyOff(-140, -80, { force: true });
+  }, [settling, smoothTap, startFlyOff]);
 
   React.useEffect(() => {
     if (!flyAwayNonce || flyAwayNonce === lastFlyNonce.current) return;
@@ -187,7 +224,8 @@ export default function RetroDailySwipeStack({
       .enabled(!disabled && !busy)
       .maxPointers(1)
       .onUpdate((e) => {
-        if (disabled || flyingRef.current) return;
+        // No flyingRef here: a ref read in a worklet is frozen in dev, which breaks the JS-side guard.
+        if (disabled) return;
         tx.value = e.translationX;
         ty.value = e.translationY;
         dragX.value = e.translationX;
@@ -197,7 +235,7 @@ export default function RetroDailySwipeStack({
         reveal.value = Math.min(1, Math.max(absX, absY) / SWIPE_THRESHOLD);
       })
       .onEnd((e) => {
-        if (disabled || flyingRef.current) return;
+        if (disabled) return;
         const dx = e.translationX ?? 0;
         const dy = e.translationY ?? 0;
         if (Math.abs(dx) > 60 || Math.abs(dy) > 60) {
@@ -217,11 +255,11 @@ export default function RetroDailySwipeStack({
       .enabled(!disabled && !busy)
       .maxDuration(280)
       .onEnd(() => {
-        runOnJS(startFlyOff)(0, 160);
+        runOnJS(tapFlyOff)();
       });
 
     return Gesture.Exclusive(tap, pan);
-  }, [busy, disabled, dragX, dragY, reveal, startFlyOff, tapAdvances, tx, ty]);
+  }, [busy, disabled, dragX, dragY, reveal, startFlyOff, tapAdvances, tapFlyOff, tx, ty]);
 
   const flyStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -232,6 +270,25 @@ export default function RetroDailySwipeStack({
       { scale: scale.value },
     ],
   }));
+
+  // The new top card sits under the outgoing card (same position) until held, then stays put.
+  const topCardStyle = useAnimatedStyle(() => {
+    if (held.value) return { opacity: 1, transform: [{ translateX: 0 }, { translateY: 0 }, { rotateZ: '0deg' }, { scale: 1 }] };
+    return {
+      opacity: opacity.value,
+      transform: [
+        { translateX: tx.value },
+        { translateY: ty.value },
+        { rotateZ: `${(tx.value / Math.max(1, screenWidth)) * 14}deg` },
+        { scale: scale.value },
+      ],
+    };
+  });
+
+  // Hold the new top card once the outgoing copy is on screen above it, before the fly starts.
+  React.useLayoutEffect(() => {
+    if (keepChildrenMounted && outgoing) held.value = 1;
+  }, [held, keepChildrenMounted, outgoing]);
 
   const promotedCardStyle = useAnimatedStyle(() => {
     const progress = reveal.value;
@@ -263,13 +320,29 @@ export default function RetroDailySwipeStack({
           </Animated.View>
         ) : null}
 
-        {busy ? (
+        {keepChildrenMounted ? (
+          <>
+            <Animated.View key={`card-${layer}`} style={[FILL, { zIndex: 3 }, topCardStyle]}>
+              {children as React.ReactElement}
+            </Animated.View>
+            {outgoing ? (
+              <Animated.View
+                key={`card-${outgoingLayer}`}
+                pointerEvents="none"
+                collapsable={false}
+                style={[FILL, { zIndex: 4 }, flyStyle]}
+              >
+                {outgoing as React.ReactElement}
+              </Animated.View>
+            ) : null}
+          </>
+        ) : busy ? (
           <View style={[FILL, { zIndex: 3 }]}>{children}</View>
         ) : (
           <Animated.View style={[FILL, { zIndex: 3 }, flyStyle]}>{children as React.ReactElement}</Animated.View>
         )}
 
-        {outgoing ? (
+        {outgoing && !keepChildrenMounted ? (
           <Animated.View pointerEvents="none" collapsable={false} style={[FILL, { zIndex: 4 }, flyStyle]}>
             {outgoing as React.ReactElement}
           </Animated.View>
