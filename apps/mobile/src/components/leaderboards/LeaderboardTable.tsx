@@ -63,6 +63,7 @@ export default function LeaderboardTable({
   compactLiveValueLabel,
   highlightUserId,
   winnerUserIds,
+  tightWinners = false,
   style,
   listRef,
   onPressRow,
@@ -77,6 +78,8 @@ export default function LeaderboardTable({
   highlightUserId?: string | null;
   /** When provided, rows with these user_ids get the winner shiny pill background (monthly tab). */
   winnerUserIds?: string[];
+  /** No gap or divider under the pinned winners, so 2nd place follows straight on (The Players). */
+  tightWinners?: boolean;
   style?: ViewStyle;
   listRef?: React.RefObject<FlatList<any> | null>;
   onPressRow?: (row: LeaderboardRow) => void;
@@ -464,7 +467,7 @@ export default function LeaderboardTable({
                 {renderRow(item)}
               </React.Fragment>
             ))}
-            {showDividerAndShadow ? (
+            {showDividerAndShadow && !tightWinners ? (
               <View style={{ paddingTop: 12 }}>
                 <View style={{ height: 1, backgroundColor: t.color.border, marginHorizontal: -t.space[4] }} />
               </View>

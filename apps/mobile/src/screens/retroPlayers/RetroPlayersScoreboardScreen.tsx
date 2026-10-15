@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Screen, TotlText, useTokens } from '@totl/ui';
 
-import AppTopHeader from '../../components/AppTopHeader';
 import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { playersDayKey, playersMonthName } from '../../lib/retroPlayers/day';
@@ -98,50 +97,33 @@ export default function RetroPlayersScoreboardScreen() {
   return (
     <Screen fullBleed>
       <View style={{ flex: 1 }}>
-        <AppTopHeader
-          hideProfile
-          hideChat
-          onPressChat={() => undefined}
-          onPressProfile={() => undefined}
-          hasLiveGames={false}
-          centerContent={<View />}
-        />
+        {/* Same header as the game: close top left, small centred title (Figma 123:33149). */}
+        <View style={{ paddingTop: 15, paddingHorizontal: 16, paddingBottom: 4 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close scoreboard"
+            onPress={close}
+            hitSlop={10}
+            style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.6 : 1 })}
+          >
+            <Ionicons name="close" size={24} color="#0A0A0A" />
+          </Pressable>
+          <TotlText
+            style={{
+              marginTop: 37,
+              textAlign: 'center',
+              fontFamily: 'Gramatika-Regular',
+              fontSize: 16,
+              lineHeight: 20.8,
+              color: '#0A0A0A',
+            }}
+          >
+            Totl Daily - The Players
+          </TotlText>
+        </View>
 
         <View style={{ flex: 1, minHeight: 0, paddingHorizontal: t.space[4] }}>
-          <View style={{ marginTop: 4, minHeight: 36, justifyContent: 'center' }}>
-            <TotlText
-              style={{
-                textAlign: 'center',
-                fontWeight: '900',
-                fontSize: 20,
-                lineHeight: 24,
-                color: t.color.text,
-                paddingHorizontal: 44,
-              }}
-            >
-              Totl Daily - The Players
-            </TotlText>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close scoreboard"
-              onPress={close}
-              style={({ pressed }) => ({
-                position: 'absolute',
-                right: 0,
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: pressed ? '#CBD5E1' : t.color.surface2,
-                borderWidth: 1,
-                borderColor: t.color.border,
-              })}
-            >
-              <Ionicons name="close" size={22} color={t.color.text} />
-            </Pressable>
-          </View>
-          <View style={{ marginTop: 12 }}>
+          <View style={{ marginTop: 24 }}>
             <UnderlineTabs
               items={[
                 { key: 'today', label: 'Today' },
@@ -173,6 +155,7 @@ export default function RetroPlayersScoreboardScreen() {
               valueLabel={valueLabel}
               highlightUserId={userId}
               winnerUserIds={winnerUserIds}
+              tightWinners
               style={{ flex: 1, marginHorizontal: -t.space[4], marginBottom: -24 }}
             />
           ) : null}
