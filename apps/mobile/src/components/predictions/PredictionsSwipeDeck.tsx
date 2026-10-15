@@ -8,6 +8,7 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -15,7 +16,10 @@ import Animated, {
 import { TotlText } from '@totl/ui';
 
 import SwipePredictionCard from './SwipePredictionCard';
-import FlippableSwipePredictionCard, { CARD_FLIP_MS } from './FlippableSwipePredictionCard';
+import FlippableSwipePredictionCard, {
+  CARD_FLIP_MS,
+  TAP_FLIP_PEAK_SCALE,
+} from './FlippableSwipePredictionCard';
 import type { MatchPreviewStats } from '../../lib/matchPreviewStats';
 
 type FixtureForms = { home: string | null; away: string | null };
@@ -57,13 +61,15 @@ const SWIPE_THRESHOLD = 110;
 const DRAW_SWIPE_THRESHOLD = 140;
 const DIRECTION_RATIO = 1.2;
 
-/** Bold under-card cue; soft opacity pulse a couple of times when a new card lands. */
+/** Bold under-card cue. Pulses by growing and shrinking, never by fading out. */
 function FlipHintLabel({
   flipped,
   pulseKey,
   tx,
   ty,
   hidden,
+  emphasize = false,
+  pulseToken = 0,
 }: {
   flipped: boolean;
   pulseKey: string | number;
@@ -71,25 +77,52 @@ function FlipHintLabel({
   ty: Animated.SharedValue<number>;
   /** Hide while a pick transition is in flight. */
   hidden?: boolean;
+  /** Grow the label a few times on the first visit. */
+  emphasize?: boolean;
+  /** Bump to play the grow pulse again. */
+  pulseToken?: number;
 }) {
-  const pulseOpacity = useSharedValue(1);
+  const pulseScale = useSharedValue(1);
+  const hiddenSv = useSharedValue(hidden ? 1 : 0);
+  const emphasizeRef = React.useRef(emphasize);
+  emphasizeRef.current = emphasize;
 
   React.useEffect(() => {
-    pulseOpacity.value = 1;
-    pulseOpacity.value = withSequence(
-      withTiming(0.35, { duration: 340, easing: Easing.inOut(Easing.ease) }),
-      withTiming(1, { duration: 340, easing: Easing.inOut(Easing.ease) }),
-      withTiming(0.35, { duration: 340, easing: Easing.inOut(Easing.ease) }),
-      withTiming(1, { duration: 340, easing: Easing.inOut(Easing.ease) })
+    hiddenSv.value = hidden ? 1 : 0;
+  }, [hidden, hiddenSv]);
+
+  const playGrowPulse = React.useCallback(() => {
+    const up = { duration: 280, easing: Easing.out(Easing.quad) };
+    const down = { duration: 280, easing: Easing.in(Easing.quad) };
+    pulseScale.value = 1;
+    pulseScale.value = withRepeat(
+      withSequence(withTiming(1.22, up), withTiming(1, down)),
+      3,
+      false
     );
-  }, [pulseKey, pulseOpacity]);
+  }, [pulseScale]);
+
+  React.useEffect(() => {
+    if (!emphasize) {
+      pulseScale.value = 1;
+      return;
+    }
+    playGrowPulse();
+  }, [emphasize, playGrowPulse, pulseScale, pulseToken]);
+
+  React.useEffect(() => {
+    if (emphasizeRef.current) return;
+    playGrowPulse();
+  }, [playGrowPulse, pulseKey]);
 
   const style = useAnimatedStyle(() => {
     // Fade out as soon as the card starts moving so the hint stays under the stack, not on the swipe.
     const drag = Math.min(1, (Math.abs(tx.value) + Math.abs(ty.value)) / 28);
-    const base = pulseOpacity.value * (1 - drag);
-    return { opacity: hidden ? 0 : base };
-  }, [hidden]);
+    return {
+      opacity: hiddenSv.value ? 0 : 1 - drag,
+      transform: [{ scale: pulseScale.value }],
+    };
+  });
 
   return (
     <Animated.View
@@ -110,7 +143,7 @@ function FlipHintLabel({
           color: '#334155',
         }}
       >
-        Tap card to {flipped ? 'flip back' : 'see stats'}
+        Tap card to {emphasize || !flipped ? 'see stats' : 'flip back'}
       </TotlText>
     </Animated.View>
   );
@@ -318,10 +351,51 @@ export default function PredictionsSwipeDeck({
     }, CARD_FLIP_MS);
   }, [canFlipFixture, deck.current?.fixture, flipAnimating, transition]);
 
+  const introFlipStartedRef = React.useRef(false);
+  const [introHintPulse, setIntroHintPulse] = React.useState(true);
+  const [hintPulseToken, setHintPulseToken] = React.useState(0);
+  const [introFlipPeak, setIntroFlipPeak] = React.useState(TAP_FLIP_PEAK_SCALE);
+  const statsReadyForIntro = canFlipFixture(deck.current?.fixture);
+  // One show of the stats side when the deck first appears, then back to the pick.
+  React.useEffect(() => {
+    if (introFlipStartedRef.current || !statsReadyForIntro || !enableCardFlip || transition) return;
+    introFlipStartedRef.current = true;
+    const pauseMs = 1000;
+    const holdMs = 900;
+    const introPeak = 1.55;
+    let flipped = false;
+    const toStats = setTimeout(() => {
+      flipped = true;
+      setIntroFlipPeak(introPeak);
+      setFlipAnimating(true);
+      setCardFlipped(true);
+    }, pauseMs);
+    const toPick = setTimeout(() => {
+      setCardFlipped(false);
+    }, pauseMs + CARD_FLIP_MS + holdMs);
+    const backAt = pauseMs + CARD_FLIP_MS + holdMs + CARD_FLIP_MS;
+    const hintPulseMs = 1680;
+    const done = setTimeout(() => {
+      setFlipAnimating(false);
+      setIntroFlipPeak(TAP_FLIP_PEAK_SCALE);
+      setHintPulseToken((token) => token + 1);
+    }, backAt);
+    const endHint = setTimeout(() => {
+      setIntroHintPulse(false);
+    }, backAt + hintPulseMs);
+    return () => {
+      clearTimeout(toStats);
+      clearTimeout(toPick);
+      clearTimeout(done);
+      clearTimeout(endHint);
+      if (!flipped) introFlipStartedRef.current = false;
+    };
+  }, [enableCardFlip, statsReadyForIntro, transition]);
+
   const renderCard = React.useCallback(
     (
       snapshot: CardSnapshot,
-      opts: { showSwipeHint: boolean; flipped?: boolean }
+      opts: { showSwipeHint: boolean; flipped?: boolean; flipPeakScale?: number }
     ) => {
       const stats = cachedStatsForCard(snapshot.fixture);
       if (stats) {
@@ -333,6 +407,7 @@ export default function PredictionsSwipeDeck({
             awayForm={snapshot.forms.away}
             stats={stats}
             flipped={opts.flipped ?? false}
+            flipPeakScale={opts.flipPeakScale}
           />
         );
       }
@@ -679,7 +754,11 @@ export default function PredictionsSwipeDeck({
                   topCardStyle,
                 ]}
               >
-                {renderCard(deck.current, { showSwipeHint: true, flipped: cardFlipped })}
+                {renderCard(deck.current, {
+                  showSwipeHint: true,
+                  flipped: cardFlipped,
+                  flipPeakScale: introFlipPeak,
+                })}
               </Animated.View>
             )
           ) : null}
@@ -708,7 +787,9 @@ export default function PredictionsSwipeDeck({
           pulseKey={deck.current?.fixture.fixture_index ?? 'none'}
           tx={tx}
           ty={ty}
-          hidden={!!transition || settlingTopCard || flipAnimating}
+          emphasize={introHintPulse}
+          pulseToken={hintPulseToken}
+          hidden={!!transition || settlingTopCard || (flipAnimating && !introHintPulse)}
         />
       ) : null}
 

@@ -19,6 +19,8 @@ import type { MatchPreviewStats } from '../../lib/matchPreviewStats';
  * Rotates around the card centre; mid-flip scale pops it toward you.
  */
 export const CARD_FLIP_MS = 480;
+/** Mid-flip size for a tap. The opening demo uses a larger peak. */
+export const TAP_FLIP_PEAK_SCALE = 1.32;
 
 export default function FlippableSwipePredictionCard({
   fixture,
@@ -27,6 +29,7 @@ export default function FlippableSwipePredictionCard({
   stats,
   showSwipeHint = true,
   flipped,
+  flipPeakScale = TAP_FLIP_PEAK_SCALE,
 }: {
   fixture: Fixture;
   homeForm?: string | null;
@@ -34,8 +37,14 @@ export default function FlippableSwipePredictionCard({
   stats: MatchPreviewStats;
   showSwipeHint?: boolean;
   flipped: boolean;
+  flipPeakScale?: number;
 }) {
   const progress = useSharedValue(flipped ? 1 : 0);
+  const peakScale = useSharedValue(flipPeakScale);
+
+  React.useEffect(() => {
+    peakScale.value = flipPeakScale;
+  }, [flipPeakScale, peakScale]);
 
   React.useEffect(() => {
     progress.value = withTiming(flipped ? 1 : 0, {
@@ -45,7 +54,7 @@ export default function FlippableSwipePredictionCard({
   }, [flipped, progress]);
 
   const shellStyle = useAnimatedStyle(() => {
-    const scale = interpolate(progress.value, [0, 0.5, 1], [1, 1.32, 1]);
+    const scale = interpolate(progress.value, [0, 0.5, 1], [1, peakScale.value, 1]);
     return {
       flex: 1,
       transform: [{ perspective: 1400 }, { scale }],
