@@ -11,6 +11,9 @@ const TILE_FIELD = { width: 640, height: 820 };
 
 export type PlayersPatternVariant = 'green' | 'light';
 
+/** Base colour of each tile, shown if the image is a frame late (no white flash on remount). */
+const TILE_BASE: Record<PlayersPatternVariant, string> = { green: '#03362C', light: '#FAFAFA' };
+
 /**
  * The Players card surface: the football tile pattern, either tinted brand green
  * (intro / countdown) or washed out to near-white (questions / results).
@@ -27,10 +30,11 @@ export default function PlayersPatternCard({
 }) {
   return (
     <View style={[styles.shadow, style]}>
-      <View style={styles.clip}>
+      <View style={[styles.clip, { backgroundColor: TILE_BASE[variant] }]}>
         <Image
           source={variant === 'green' ? TILE_GREEN : TILE_LIGHT}
           resizeMode="repeat"
+          fadeDuration={0}
           style={{
             position: 'absolute',
             left: PLAYERS_CARD.tileOffset.x,
