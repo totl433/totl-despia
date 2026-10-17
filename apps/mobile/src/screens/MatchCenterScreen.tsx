@@ -2543,19 +2543,21 @@ export default function MatchCenterScreen() {
   const rankingsOnTicker = firstKoMs != null && clockMs >= firstKoMs;
 
   // Previous-GW ranks for ticker "move" arrows — rarely change once the previous GW is closed.
+  // A plain object, not a Map: query results are saved to the phone as JSON, which turns a Map
+  // into {} and crashed Match Center on the next launch.
   const { data: tickerPrevLeagueRanks } = useQuery({
     enabled: rankingsOnTicker && typeof gw === 'number' && gw > 1 && !!userId && leagueIds.length > 0,
     queryKey: ['match-center-ticker-prev-leagues', gw, leagueIds, userId],
     staleTime: MC_HEAVY_STALE_MS,
-    queryFn: async (): Promise<Map<string, number>> => {
+    queryFn: async (): Promise<Record<string, number>> => {
       const previousGw = (gw as number) - 1;
-      const out = new Map<string, number>();
+      const out: Record<string, number> = {};
       await Promise.all(
         (leaguesData?.leagues ?? []).map(async (league) => {
           try {
             const previous = await api.getLeagueGwTable(league.id, previousGw);
             const before = userId ? tickerTableRank(previous.rows, userId) : null;
-            if (before) out.set(league.id, before);
+            if (before) out[league.id] = before;
           } catch {
             /* ignore */
           }
@@ -2570,7 +2572,8 @@ export default function MatchCenterScreen() {
     return leagueTables.flatMap((league) => {
       const rank = tickerTableRank(league.rows, userId);
       if (!rank) return [];
-      const before = tickerPrevLeagueRanks?.get(league.id) ?? null;
+      const saved = tickerPrevLeagueRanks?.[league.id];
+      const before = typeof saved === 'number' ? saved : null;
       return [
         {
           id: league.id,
