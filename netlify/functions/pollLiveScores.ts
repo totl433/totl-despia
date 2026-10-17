@@ -72,8 +72,12 @@ function normalizeTeamName(apiTeamName: string | null | undefined): string | nul
 
 /** Official XIs land about 75 minutes before kickoff. Poll from then, not earlier. */
 const LINEUP_LEAD_MS = 75 * 60 * 1000;
-/** Pre-match lineup checks only — live games still poll every minute. */
-const LINEUP_RETRY_MS = 5 * 60 * 1000;
+/**
+ * Pre-match lineup checks only — live games still poll every minute.
+ * Match the Netlify cron (* * * * *) so we re-hit FD each minute until XIs land.
+ * Cap below keeps this at ≤ MAX_LINEUP_POLLS_PER_RUN calls/min (safe vs ~20–30/min plans).
+ */
+const LINEUP_RETRY_MS = 60 * 1000;
 /** Hard cap so a busy gameweek cannot burn the Football Data quota on XI fetches. */
 const MAX_LINEUP_POLLS_PER_RUN = 3;
 
