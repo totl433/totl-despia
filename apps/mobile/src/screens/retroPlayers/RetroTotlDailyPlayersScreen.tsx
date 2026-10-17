@@ -20,6 +20,12 @@ import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type Pla
 import { msUntilNextPlayersDay, playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
 import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
 import { playersDayAlreadySaved, readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
+import { playersResultShareMessage } from '../../lib/retroPlayers/results';
+import {
+  loadPlayersResultCards,
+  markPlayersResultSeenFor,
+  type PlayersResultCards,
+} from '../../lib/retroPlayers/resultsStore';
 import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
 import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
 import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
@@ -30,6 +36,7 @@ import RetroDailySwipeStack, {
 import type { PlayersRoundOutcome } from '../../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
 import PlayersReview from '../../components/retroPlayers/PlayersReview';
+import PlayersResultFace from '../../components/retroPlayers/PlayersResultFace';
 import {
   PlayersBackFace,
   PlayersCountdownFace,
@@ -48,7 +55,8 @@ import {
   PlayersCardScale,
 } from '../../components/retroPlayers/playersTheme';
 
-type Phase = 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
+/** `results`: last month's, last week's and yesterday's result cards, before the intro. */
+type Phase = 'results' | 'intro' | 'countdown' | 'playing' | 'reveal' | 'score';
 
 const COUNTDOWN = ['3', '2', '1', 'GO!'] as const;
 const COUNTDOWN_STEP_MS = 1000;
@@ -72,6 +80,9 @@ const HEADER_FADE_MS = 220;
 const LINKS_TOP = 15 + 61;
 /** Results review in and out (over the reveal card flying away, then over the score card). */
 const REVIEW_FADE_MS = 280;
+
+/** Longest the result cards may hold up the game while they load; later, they wait for the next visit. */
+const RESULTS_WAIT_MS = 3000;
 
 const BOTTOM_SLOT_H = 93;
 const CARD_TO_SLOT_GAP = 40;
@@ -135,6 +146,10 @@ export default function RetroTotlDailyPlayersScreen() {
   const [sharing, setSharing] = React.useState(false);
   /** After the last card: the player-by-player review, then Continue to the score card. */
   const [reviewing, setReviewing] = React.useState(false);
+  /** Result cards to show before the intro, and which one is up. */
+  const [resultCards, setResultCards] = React.useState<PlayersResultCards | null>(null);
+  const [resultsReady, setResultsReady] = React.useState(false);
+  const [resultIndex, setResultIndex] = React.useState(0);
 
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
@@ -148,6 +163,10 @@ export default function RetroTotlDailyPlayersScreen() {
   const indexRef = React.useRef(0);
   const lastCorrectRef = React.useRef(false);
   const cardsLenRef = React.useRef(cards.length);
+  const resultCardsRef = React.useRef(resultCards);
+  const resultIndexRef = React.useRef(resultIndex);
+  resultCardsRef.current = resultCards;
+  resultIndexRef.current = resultIndex;
   phaseRef.current = phase;
   interactiveRef.current = interactive;
   cardRef.current = cards[index] ?? null;
@@ -156,6 +175,8 @@ export default function RetroTotlDailyPlayersScreen() {
   cardsLenRef.current = cards.length;
 
   const card = cards[index] ?? null;
+  const result = phase === 'results' ? resultCards?.results[resultIndex] ?? null : null;
+  const nextResult = phase === 'results' ? resultCards?.results[resultIndex + 1] ?? null : null;
   const score = outcomes.filter((o) => o.correct).length;
   const firstCard = cardKey.startsWith('play-0-first');
   const instantCard = cardKey.includes('-instant-');
@@ -226,6 +247,36 @@ export default function RetroTotlDailyPlayersScreen() {
     });
   }, [cards.length, phase, score]);
 
+  // Result cards come first. The game waits briefly for them, never longer than RESULTS_WAIT_MS.
+  React.useEffect(() => {
+    let settled = false;
+    const giveUp = setTimeout(() => {
+      settled = true;
+      setResultsReady(true);
+    }, RESULTS_WAIT_MS);
+    loadPlayersResultCards(playersDayKey())
+      .then((loaded) => {
+        if (settled) return;
+        if (loaded?.results.length) {
+          setResultCards(loaded);
+          setResultIndex(0);
+          setPhase('results');
+          setCardKey(`result-0-${Date.now()}`);
+        }
+      })
+      .catch((error) => console.error('[RetroTotlDailyPlayers] results failed:', error))
+      .finally(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(giveUp);
+        setResultsReady(true);
+      });
+    return () => {
+      settled = true;
+      clearTimeout(giveUp);
+    };
+  }, []);
+
   React.useEffect(() => {
     let cancelled = false;
     setLoadError(false);
@@ -245,7 +296,18 @@ export default function RetroTotlDailyPlayersScreen() {
     };
   }, [catalogAttempt]);
 
+  /** The result card on screen counts as seen once it is swiped on or closed. */
+  const acknowledgeResult = React.useCallback(() => {
+    const loaded = resultCardsRef.current;
+    const current = loaded?.results[resultIndexRef.current];
+    if (!loaded || !current) return;
+    void markPlayersResultSeenFor(loaded.userId, current.period, current.key).catch((error) =>
+      console.error('[RetroTotlDailyPlayers] mark result seen failed:', error)
+    );
+  }, []);
+
   const close = React.useCallback(() => {
+    if (phaseRef.current === 'results') acknowledgeResult();
     const parent = navigation.getParent?.() as
       | { canGoBack?: () => boolean; goBack?: () => void; navigate?: (name: string, params?: object) => void }
       | undefined;
@@ -259,7 +321,7 @@ export default function RetroTotlDailyPlayersScreen() {
       return;
     }
     parent?.navigate?.('Tabs', { screen: 'Profile' });
-  }, [navigation]);
+  }, [acknowledgeResult, navigation]);
 
   const openScoreboard = React.useCallback(() => {
     navigation.navigate('RetroTotlDailyPlayersScoreboard');
@@ -317,7 +379,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
   React.useEffect(() => {
     if (phase !== 'playing' && phase !== 'reveal') {
-      setInteractive(phase === 'intro' || phase === 'score');
+      setInteractive(phase === 'results' || phase === 'intro' || phase === 'score');
       setTimerPct(1);
       return;
     }
@@ -450,6 +512,19 @@ export default function RetroTotlDailyPlayersScreen() {
       dragY.value = 0;
       const p = phaseRef.current;
 
+      if (p === 'results') {
+        acknowledgeResult();
+        const next = resultIndexRef.current + 1;
+        if (next < (resultCardsRef.current?.results.length ?? 0)) {
+          setResultIndex(next);
+          setCardKey(`result-${next}-${Date.now()}`);
+        } else {
+          setPhase('intro');
+          setCardKey(`intro-${Date.now()}`);
+        }
+        return;
+      }
+
       if (p === 'intro') {
         if (playedRef.current && !practiceRef.current) return;
         setCountdownStep(0);
@@ -469,7 +544,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
       if (p === 'reveal') advanceFromReveal();
     },
-    [advanceFromReveal, commitPick, dragX, dragY]
+    [acknowledgeResult, advanceFromReveal, commitPick, dragX, dragY]
   );
 
   const shareScore = React.useCallback(async () => {
@@ -480,15 +555,17 @@ export default function RetroTotlDailyPlayersScreen() {
       await shareCapturedImage({
         filePath,
         target: 'more',
-        message: `I got ${score}/${cards.length} on The Players. Can you beat it? https://playtotl.com`,
-        title: 'Share score',
+        message: result
+          ? playersResultShareMessage(result)
+          : `I got ${score}/${cards.length} on The Players. Can you beat it? https://playtotl.com`,
+        title: result ? 'Share result' : 'Share score',
       });
     } catch (error) {
       if (!isShareCancelled(error)) console.error('[RetroTotlDailyPlayers] share failed:', error);
     } finally {
       setSharing(false);
     }
-  }, [cards.length, score, sharing]);
+  }, [cards.length, result, score, sharing]);
 
   const navyStyle = useAnimatedStyle(() => ({ transform: [{ translateX: navyX.value }] }));
 
@@ -499,14 +576,24 @@ export default function RetroTotlDailyPlayersScreen() {
     <PlayersQuestionFace card={c} secondsLeft={secs} timerFraction={frac} />
   );
 
+  const resultFace = (r: NonNullable<typeof result>) =>
+    resultCards ? <PlayersResultFace result={r} userId={resultCards.userId} names={resultCards.names} /> : null;
+  const introFace = (
+    <PlayersIntroFace
+      mode={waitingForNext ? 'played' : practice ? 'practice' : 'daily'}
+      nextGame={playersNextGameLine(new Date(now))}
+    />
+  );
+
   let face: React.ReactNode = <PlayersBackFace />;
-  if (phase === 'intro') {
+  if (phase === 'results' && result) {
     face = (
-      <PlayersIntroFace
-        mode={waitingForNext ? 'played' : practice ? 'practice' : 'daily'}
-        nextGame={playersNextGameLine(new Date(now))}
-      />
+      <View ref={shareRef} collapsable={false} style={{ flex: 1 }}>
+        {resultFace(result)}
+      </View>
     );
+  } else if (phase === 'intro') {
+    face = introFace;
   } else if (phase === 'countdown') {
     face = <PlayersCountdownFace value={COUNTDOWN[countdownStep] ?? 'GO!'} />;
   } else if (phase === 'playing' && card) {
@@ -540,7 +627,9 @@ export default function RetroTotlDailyPlayersScreen() {
   }
 
   const nextFace =
-    phase === 'intro' ? (
+    phase === 'results' ? (
+      nextResult ? resultFace(nextResult) : introFace
+    ) : phase === 'intro' ? (
       <PlayersCountdownFace value={COUNTDOWN[0]} />
     ) : revealLeadsToScore && interactive ? (
       // Only plant the result once the reveal flip has landed, or it shows through mid-flip.
@@ -572,7 +661,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
   const chrome = onNavy ? PLAYERS_COLORS.white : PLAYERS_COLORS.inkSoft;
 
-  if (!puzzle) {
+  if (!puzzle || !resultsReady) {
     return (
       <View style={[styles.fill, styles.loading, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TotlText style={styles.loadingText}>
@@ -618,7 +707,7 @@ export default function RetroTotlDailyPlayersScreen() {
               <Ionicons name="close" size={24} color={chrome} />
             </Pressable>
             {/* Cross-fade rather than snap when the game starts or ends. */}
-            {phase === 'intro' ? (
+            {phase === 'intro' || phase === 'results' ? (
               <Animated.View
                 key="links"
                 entering={FadeIn.duration(HEADER_FADE_MS)}
@@ -669,7 +758,7 @@ export default function RetroTotlDailyPlayersScreen() {
               dragY={dragY}
               disabled={
                 !interactive ||
-                waitingForNext ||
+                (phase === 'intro' && waitingForNext) ||
                 phase === 'countdown' ||
                 phase === 'score' ||
                 (phase === 'reveal' && revealContinues)
@@ -681,6 +770,15 @@ export default function RetroTotlDailyPlayersScreen() {
           </View>
 
           <View style={{ marginTop: CARD_TO_SLOT_GAP, paddingHorizontal: (screenW - cardW) / 2 - insets.left }}>
+            {phase === 'results' ? (
+              <PlayersButton
+                label="Share"
+                busy={sharing}
+                height={BOTTOM_SLOT_H}
+                onPress={() => void shareScore()}
+              />
+            ) : null}
+
             {phase === 'intro' && waitingForNext ? (
               <Animated.View entering={FadeIn.duration(200)}>
                 <PlayersButton label="Practice mode" onPress={() => deal('practice')} />
