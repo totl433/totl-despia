@@ -70,6 +70,48 @@ function normalizeTeamName(apiTeamName: string | null | undefined): string | nul
     .trim();
 }
 
+/** Official XIs land about 75 minutes before kickoff. Poll from then, not earlier. */
+const LINEUP_LEAD_MS = 75 * 60 * 1000;
+/** Pre-match lineup checks only — live games still poll every minute. */
+const LINEUP_RETRY_MS = 5 * 60 * 1000;
+/** Hard cap so a busy gameweek cannot burn the Football Data quota on XI fetches. */
+const MAX_LINEUP_POLLS_PER_RUN = 3;
+
+type StoredLineup = {
+  home: { formation: string | null; players: Array<{ name: string; position: string | null; shirtNumber: number | null }> };
+  away: { formation: string | null; players: Array<{ name: string; position: string | null; shirtNumber: number | null }> };
+};
+
+function readXi(team: any): StoredLineup['home'] | null {
+  const lineup = Array.isArray(team?.lineup) ? team.lineup : [];
+  const players = lineup
+    .map((player: any) => ({
+      name: typeof player?.name === 'string' ? player.name.trim() : '',
+      position: typeof player?.position === 'string' ? player.position : null,
+      shirtNumber: typeof player?.shirtNumber === 'number' ? player.shirtNumber : null,
+    }))
+    .filter((player: { name: string }) => player.name.length > 0)
+    .slice(0, 11);
+  if (players.length < 11) return null;
+  return {
+    formation: typeof team?.formation === 'string' && team.formation.trim() ? team.formation.trim() : null,
+    players,
+  };
+}
+
+function readMatchLineup(matchData: any): StoredLineup | null {
+  const home = readXi(matchData?.homeTeam);
+  const away = readXi(matchData?.awayTeam);
+  if (!home || !away) return null;
+  return { home, away };
+}
+
+function lineupIsIn(lineups: unknown): boolean {
+  if (!lineups || typeof lineups !== 'object') return false;
+  const row = lineups as { home?: { players?: unknown[] }; away?: { players?: unknown[] } };
+  return (row.home?.players?.length ?? 0) >= 11 && (row.away?.players?.length ?? 0) >= 11;
+}
+
 // Initialize Supabase admin client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -178,29 +220,43 @@ async function pollAllLiveScores() {
 
     // Check current status of fixtures in database to skip FINISHED games
     const apiMatchIds = allFixtures.map(f => f.api_match_id);
-    const { data: existingScores } = await supabase
+    let lineupColumn = true;
+    let existingResult = await supabase
       .from('live_scores')
-      .select('api_match_id, status')
+      .select('api_match_id, status, lineups, updated_at')
       .in('api_match_id', apiMatchIds);
+    if (existingResult.error && String(existingResult.error.message || '').includes('lineups')) {
+      lineupColumn = false;
+      console.warn('[pollLiveScores] live_scores.lineups is missing. Run supabase/sql/add_lineups_to_live_scores.sql');
+      existingResult = await supabase
+        .from('live_scores')
+        .select('api_match_id, status')
+        .in('api_match_id', apiMatchIds);
+    }
+    const existingScores = existingResult.data;
 
     const finishedMatchIds = new Set<number>();
     const existingStatusByMatchId = new Map<number, string>();
+    const existingByMatchId = new Map<number, { lineups?: unknown; updated_at?: string | null }>();
     (existingScores || []).forEach((score: any) => {
       existingStatusByMatchId.set(score.api_match_id, score.status);
+      existingByMatchId.set(score.api_match_id, { lineups: score.lineups, updated_at: score.updated_at });
       if (score.status === 'FINISHED') {
         finishedMatchIds.add(score.api_match_id);
       }
     });
 
-    // Filter fixtures to only poll games that have started (or should have started)
-    // We continue polling until the API explicitly says the game is FINISHED
+    // Live games poll every minute. Official XIs land ~75 minutes before kickoff
+    // on the same match payload, so those fixtures are checked at most every
+    // 5 minutes until both XIs are stored, then left alone until KO.
     const now = Date.now();
-    
-    const fixturesToPoll = allFixtures.filter(f => {
-      // Skip if already finished (according to our database)
-      if (finishedMatchIds.has(f.api_match_id)) {
-        return false;
-      }
+
+    type PollCandidate = PollFixture & { prematchLineup?: boolean };
+    const liveOrStarted: PollCandidate[] = [];
+    const lineupCandidates: PollCandidate[] = [];
+
+    for (const f of allFixtures) {
+      if (finishedMatchIds.has(f.api_match_id)) continue;
 
       // Hard stop for historical fixtures (e.g. current_gw accidentally reset in off-season).
       // Never re-poll matches whose kickoff was days ago — Football Data still returns them
@@ -209,38 +265,54 @@ async function pollAllLiveScores() {
         console.log(
           `[pollLiveScores] Skipping stale fixture api_match_id=${f.api_match_id} kickoff=${f.kickoff_time}`
         );
-        return false;
+        continue;
       }
-      
-      // If we have a kickoff time, only poll if the game has started (or should have started)
+
       if (f.kickoff_time) {
         try {
           const kickoffTime = new Date(f.kickoff_time).getTime();
-          const hasStarted = now >= kickoffTime;
-          
-          // Poll if:
-          // 1. Game has started (current time >= kickoff time)
-          // 2. Game is not yet marked as FINISHED in our database
-          // We continue polling until the API tells us it's FINISHED
-          return hasStarted;
+          if (now >= kickoffTime) {
+            liveOrStarted.push(f);
+            continue;
+          }
+
+          if (!lineupColumn || now < kickoffTime - LINEUP_LEAD_MS) continue;
+          const existing = existingByMatchId.get(f.api_match_id);
+          if (lineupIsIn(existing?.lineups)) continue;
+          const updatedAt = existing?.updated_at ? new Date(existing.updated_at).getTime() : 0;
+          if (updatedAt && now - updatedAt < LINEUP_RETRY_MS) continue;
+          lineupCandidates.push({ ...f, prematchLineup: true });
+          continue;
         } catch (e) {
-          // If we can't parse the kickoff time, include it to be safe
           console.warn(`[pollLiveScores] Error parsing kickoff_time for fixture ${f.api_match_id}:`, e);
-          return true;
+          liveOrStarted.push(f);
+          continue;
         }
       }
-      
-      // If no kickoff time, check if we have an existing status
-      // If status exists and is not FINISHED, poll it
-      // If no status exists, poll it (might be a game without kickoff time)
+
       const existingScore = (existingScores || []).find((s: any) => s.api_match_id === f.api_match_id);
       if (existingScore) {
-        return existingScore.status !== 'FINISHED';
+        if (existingScore.status !== 'FINISHED') liveOrStarted.push(f);
+        continue;
       }
-      
-      // No kickoff time and no existing status - include it to be safe
-      return true;
+
+      liveOrStarted.push(f);
+    }
+
+    // Soonest kickoffs first, and never more than a few XI fetches per minute run.
+    lineupCandidates.sort((a, b) => {
+      const aKo = a.kickoff_time ? new Date(a.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
+      const bKo = b.kickoff_time ? new Date(b.kickoff_time).getTime() : Number.MAX_SAFE_INTEGER;
+      return aKo - bKo;
     });
+    const lineupToPoll = lineupCandidates.slice(0, MAX_LINEUP_POLLS_PER_RUN);
+    if (lineupCandidates.length > lineupToPoll.length) {
+      console.log(
+        `[pollLiveScores] Capped lineup polls at ${MAX_LINEUP_POLLS_PER_RUN} (deferred ${lineupCandidates.length - lineupToPoll.length})`
+      );
+    }
+
+    const fixturesToPoll: PollCandidate[] = [...liveOrStarted, ...lineupToPoll];
 
     if (fixturesToPoll.length === 0) {
       console.log('[pollLiveScores] No fixtures currently eligible for polling');
@@ -256,14 +328,24 @@ async function pollAllLiveScores() {
     const skippedCount = allFixtures.length - fixturesToPoll.length;
     const finishedCount = Array.from(finishedMatchIds).length;
     const notStartedCount = skippedCount - finishedCount;
-    console.log(`[pollLiveScores] Polling ${fixturesToPoll.length} fixtures (skipped ${skippedCount}: ${finishedCount} finished, ${notStartedCount} not yet started)`);
+    console.log(
+      `[pollLiveScores] Polling ${fixturesToPoll.length} fixtures (${liveOrStarted.length} live/started, ${lineupToPoll.length} lineup; skipped ${skippedCount}: ${finishedCount} finished, ${notStartedCount} not yet started)`
+    );
 
     // Poll each fixture with a small delay to avoid rate limits
     const updates: any[] = [];
     const resultsUpserts: FinishedResultRow[] = [];
     // Fallback GW for live_scores when fixture.gw is missing
     const defaultGw = runtime.seasonGw ?? runtime.legacyGw ?? 1;
-    
+
+    // Live matches first so a XI catch-up never delays an in-play score tick.
+    fixturesToPoll.sort((a, b) => {
+      const aPrematch = !!a.prematchLineup;
+      const bPrematch = !!b.prematchLineup;
+      if (aPrematch === bPrematch) return 0;
+      return aPrematch ? 1 : -1;
+    });
+
     for (let i = 0; i < fixturesToPoll.length; i++) {
       const fixture = fixturesToPoll[i];
       const apiMatchId = fixture.api_match_id;
@@ -437,6 +519,9 @@ async function pollAllLiveScores() {
         kickoff_time: fixture.kickoff_time || matchData.utcDate,
         goals: alignedGoals,
         red_cards: redCards.length > 0 ? redCards : null,
+        ...(lineupColumn
+          ? { lineups: readMatchLineup(matchData) ?? existingByMatchId.get(apiMatchId)?.lineups ?? null }
+          : {}),
       });
 
       // If finished, write outcomes to every stack that owns this fixture
