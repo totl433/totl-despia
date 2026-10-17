@@ -20,6 +20,8 @@ export default function AppTopHeader({
   rightAction,
   hasLiveGames = false,
   showLeftLiveBadge = true,
+  /** Hide the MC entry icon (Match Center screen only). Independent of the LIVE score pill. */
+  hideMatchCenterEntry = false,
   embedded = false,
   isRefreshing = false,
   hideProfile = false,
@@ -34,6 +36,7 @@ export default function AppTopHeader({
   rightAction?: React.ReactNode;
   hasLiveGames?: boolean;
   showLeftLiveBadge?: boolean;
+  hideMatchCenterEntry?: boolean;
   embedded?: boolean;
   isRefreshing?: boolean;
   hideProfile?: boolean;
@@ -54,9 +57,11 @@ export default function AppTopHeader({
   const showUnreadBadge = unreadCount > 0;
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
   const matchCenterLive = useMatchCenterLiveSignal();
-  // Hidden on Match Center itself (showLeftLiveBadge=false) and outside the MC live window.
-  const showLiveSignal = showLeftLiveBadge && matchCenterLive;
+  // Stay visible for the whole MC window (until round-up), even when the center LIVE score pill is on.
+  // Only hide on Match Center itself.
+  const showLiveSignal = !hideMatchCenterEntry && matchCenterLive;
   void hasLiveGames;
+  void showLeftLiveBadge;
   void isRefreshing;
 
   const openMatchCenter = React.useCallback(() => {

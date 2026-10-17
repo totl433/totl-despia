@@ -2525,7 +2525,7 @@ export default function MatchCenterScreen() {
         hasLiveGames={hasLiveGames}
         title="Match Center"
         centerContent={headerPill}
-        showLeftLiveBadge={false}
+        hideMatchCenterEntry
       />
       <ScrollView
         ref={scrollRef}
