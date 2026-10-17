@@ -33,6 +33,26 @@ export type FeedKind =
   | 'round-up'
   | 'message';
 
+/** Cards that take global Fire / Cool / Melt reactions in Match Center. */
+export const MATCH_CENTER_REACTABLE_KINDS: ReadonlySet<FeedKind> = new Set([
+  'goal',
+  'kickoff',
+  'half-time',
+  'full-time',
+  'lineup',
+  'xi',
+  'ruled-out',
+]);
+
+export function isMatchCenterReactable(kind: FeedKind): boolean {
+  return MATCH_CENTER_REACTABLE_KINDS.has(kind);
+}
+
+/** Stable reaction key — includes GW so fixture indexes don't collide across weeks. */
+export function matchCenterReactionCardId(gw: number, itemId: string): string {
+  return `mc:gw${gw}:${itemId}`;
+}
+
 export type FeedMatch = {
   homeCode: string;
   awayCode: string;
@@ -450,6 +470,64 @@ export function firstKickoffMs(fixtures: Fixture[]): number | null {
   return Math.min(...times);
 }
 
+export function lastKickoffMs(fixtures: Fixture[]): number | null {
+  const times = fixtures.map(kickoffMs).filter((ms): ms is number => typeof ms === 'number');
+  if (!times.length) return null;
+  return Math.max(...times);
+}
+
+/**
+ * Match Center stays open through the calendar day after the last kickoff,
+ * then closes at local midnight (start of the following day).
+ * e.g. last game Sat 14:00 → open through Sunday → closes Mon 00:00 local.
+ */
+export function matchCenterClosesAtMs(fixtures: Fixture[]): number | null {
+  const last = lastKickoffMs(fixtures);
+  if (last == null) return null;
+  const close = new Date(last);
+  close.setHours(0, 0, 0, 0);
+  close.setDate(close.getDate() + 2);
+  return close.getTime();
+}
+
+/** Minutes before first kickoff when the first MC cards (opener / line-ups) land. */
+export const MATCH_CENTER_LINEUP_LEAD_MS = 75 * 60_000;
+
+/**
+ * Header LIVE control: on once the first Match Center card is live,
+ * off once every fixture is finished (round-up message lands).
+ */
+export function isMatchCenterLiveSignalActive(input: {
+  fixtures: Fixture[];
+  liveByFixtureIndex: Map<number, LiveScore>;
+  liveByApiMatchId?: Map<number, LiveScore>;
+  nowMs?: number;
+}): boolean {
+  const { fixtures, liveByFixtureIndex, liveByApiMatchId } = input;
+  if (!fixtures.length) return false;
+  const nowMs = input.nowMs ?? Date.now();
+  const resolve = (fixture: Fixture) => resolveLive(fixture, liveByFixtureIndex, liveByApiMatchId);
+  const allFinished = fixtures.every((fixture) => resolve(fixture)?.status === 'FINISHED');
+  if (allFinished) return false;
+  const first = firstKickoffMs(fixtures);
+  if (first == null) return false;
+  const anyLineup = fixtures.some((fixture) => parseStoredLineup(resolve(fixture)?.lineups));
+  return anyLineup && nowMs >= first - MATCH_CENTER_LINEUP_LEAD_MS;
+}
+
+/** Countdown for the waiting card, always including seconds — e.g. "2h 08m 05s". */
+export function formatCountdownShort(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  if (hours > 0) return `${hours}h ${mm}m ${ss}s`;
+  if (minutes > 0) return `${minutes}m ${ss}s`;
+  return `${seconds}s`;
+}
+
 type OutcomeEvent = {
   sortAt: number;
   stamp: string;
@@ -506,19 +584,25 @@ export function buildMatchFeed(input: {
     };
   };
   const first = firstKickoffMs(fixtures);
-  const lineupLeadMs = 90 * 60_000;
+  // Official XIs land about 75 minutes before kickoff — opener + teams cards from then.
+  const lineupLeadMs = 75 * 60_000;
   const anyLineup = fixtures.some((fixture) => parseStoredLineup(resolve(fixture)?.lineups));
-  if (first !== null && nowMs < first && !anyLineup) {
+  // Coming-soon stays up until Here We Go can land, then it is gone — never both.
+  const hereWeGoReady = anyLineup && first !== null && nowMs >= first - lineupLeadMs;
+  if (first !== null && nowMs < first && !hereWeGoReady) {
+    const teamsAt = first - lineupLeadMs;
+    const msToTeams = teamsAt - nowMs;
+    const countdown = msToTeams > 0 ? formatCountdownShort(msToTeams) : 'any second';
     return [
       {
         id: 'waiting',
         sortAt: first,
-        timeLabel: formatLocalTimeHHmm(new Date(first).toISOString()),
-        stamp: formatLocalTimeHHmm(new Date(first).toISOString()),
+        timeLabel: countdown,
+        stamp: countdown,
         kind: 'waiting',
         eyebrow: `Gameweek ${gw}`,
-        title: 'Sit tight',
-        body: `First ball is ${formatLocalTimeHHmm(new Date(first).toISOString())}. We'll start the feed there.`,
+        title: `Gameweek ${gw} starting soon!`,
+        body: 'Make sure everybody in your Mini Leagues has made their predictions',
       },
     ];
   }

@@ -5,9 +5,11 @@ import { useTokens } from '@totl/ui';
 import HomeScreen from '../screens/HomeScreen';
 import MatchCenterScreen from '../screens/MatchCenterScreen';
 
+export type MatchCenterEntry = 'current' | 'last' | 'example';
+
 export type HomeStackParamList = {
   HomeMain: undefined;
-  MatchCenter: undefined;
+  MatchCenter: { entry?: MatchCenterEntry } | undefined;
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();

@@ -20,6 +20,9 @@ const BITMAPS: Record<number, number> = {
   0x1f525: require('../../../assets/emoji/fire.png'),
   0x1f62e: require('../../../assets/emoji/wow.png'),
   0x1f622: require('../../../assets/emoji/cry.png'),
+  0x1f60a: require('../../../assets/emoji/smile.png'),
+  0x1f60e: require('../../../assets/emoji/sunglasses.png'),
+  0x1fae0: require('../../../assets/emoji/melt.png'),
 };
 
 export function hasEmojiBitmap(codePoint: number): boolean {

@@ -1,11 +1,14 @@
 import React from 'react';
-import { Animated, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useNavigation } from '@react-navigation/native';
 import { TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RoundIconButton from './home/RoundIconButton';
 import HeaderTotlLogo from './HeaderTotlLogo';
+import LiveSignalIcon from './LiveSignalIcon';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
+import { useMatchCenterLiveSignal } from '../hooks/useMatchCenterLiveSignal';
 
 export default function AppTopHeader({
   onPressChat,
@@ -38,6 +41,7 @@ export default function AppTopHeader({
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const { unreadByLeagueId } = useLeagueUnreadCounts();
   const unreadCount = React.useMemo(
     () =>
@@ -49,23 +53,19 @@ export default function AppTopHeader({
   );
   const showUnreadBadge = unreadCount > 0;
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
-  const liveDotOpacity = React.useRef(new Animated.Value(1)).current;
+  const matchCenterLive = useMatchCenterLiveSignal();
+  // Hidden on Match Center itself (showLeftLiveBadge=false) and outside the MC live window.
+  const showLiveSignal = showLeftLiveBadge && matchCenterLive;
+  void hasLiveGames;
+  void isRefreshing;
 
-  React.useEffect(() => {
-    if (!hasLiveGames) {
-      liveDotOpacity.stopAnimation();
-      liveDotOpacity.setValue(1);
-      return;
-    }
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(liveDotOpacity, { toValue: 0.25, duration: 420, useNativeDriver: true }),
-        Animated.timing(liveDotOpacity, { toValue: 1, duration: 420, useNativeDriver: true }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [hasLiveGames, liveDotOpacity]);
+  const openMatchCenter = React.useCallback(() => {
+    // Works from any tab: Predictions stack hosts Match Center.
+    navigation.navigate('Predictions', {
+      screen: 'MatchCenter',
+      params: { entry: 'current' },
+    });
+  }, [navigation]);
 
   return (
     <View
@@ -85,30 +85,26 @@ export default function AppTopHeader({
               imageUri={avatarUrl}
             />
           )}
-          {hasLiveGames && showLeftLiveBadge ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
-              <Animated.View
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 999,
-                  backgroundColor: '#EF4444',
-                  marginRight: 7,
-                  opacity: liveDotOpacity,
-                }}
-              />
-              <TotlText
-                style={{
-                  color: '#EF4444',
-                  fontWeight: '900',
-                  fontSize: 14,
-                  lineHeight: 15,
-                  letterSpacing: 0.6,
-                }}
-              >
-                LIVE
-              </TotlText>
-            </View>
+          {showLiveSignal ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open live Match Center"
+              onPress={openMatchCenter}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                marginLeft: 2,
+                width: 38,
+                height: 38,
+                borderRadius: 999,
+                backgroundColor: '#E8E8E8',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.75 : 1,
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              })}
+            >
+              <LiveSignalIcon size={24} color="#EF4444" pulse />
+            </Pressable>
           ) : null}
           {/* TS note: monorepo React type duplication can cause ReactNode incompatibilities. */}
           {leftAction ? <View>{leftAction as any}</View> : null}

@@ -1,9 +1,19 @@
 import React from 'react';
 import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import Reanimated, {
+  cancelAnimation,
+  Easing as ReEasing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import type { Fixture, LiveScore, Pick } from '@totl/domain';
 import { Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { TEAM_BADGES } from '../lib/teamBadges';
@@ -14,6 +24,11 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useLeagueChatReactions, type ReactionSummary } from '../hooks/useLeagueChatReactions';
+import {
+  applySingleCardReaction,
+  MATCH_CENTER_CARD_REACTS,
+  useMatchCenterCardReactions,
+} from '../hooks/useMatchCenterCardReactions';
 import usePopupCards from '../hooks/usePopupCards';
 import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
@@ -32,11 +47,15 @@ import { getMonthForGw, SEASON_2026_27_LABEL, type LeaderboardSeasonKey } from '
 import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../lib/leagueSeasonPile';
 import { fetchAllSupabaseRows } from '../lib/profileStreakRows';
 import { useViewerSeason } from '../lib/useViewerSeason';
+import { VOLLEY_USER_ID } from '../lib/volley';
 import {
   buildMatchFeed,
   buildRoundUp,
   chatMessageItem,
   firstKickoffMs,
+  isMatchCenterReactable,
+  matchCenterClosesAtMs,
+  matchCenterReactionCardId,
   overallChangeItem,
   rankChangeItem,
   rankOf,
@@ -500,6 +519,9 @@ function FeedCard({
   celebrate,
   arriveDelay = 0,
   tuck = false,
+  tuckSoft = false,
+  reactions = [],
+  onReact,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem) => void;
@@ -507,6 +529,10 @@ function FeedCard({
   arriveDelay?: number;
   /** Sit over the card above, so a league update reads as part of that moment. */
   tuck?: boolean;
+  /** Gentler overlap when the card above has reaction chips. */
+  tuckSoft?: boolean;
+  reactions?: ReactionSummary[];
+  onReact?: (emoji: string) => void;
 }) {
   const t = useTokens();
   const confetti = useConfetti();
@@ -519,7 +545,9 @@ function FeedCard({
   const youWin = item.kind === 'round-up' && (item.title === 'You win' || item.title === 'Take a bow');
   const rainbow = cardWasCorrect(item);
   const canOpen = Boolean(item.link && (item.link.to === 'overall' || item.link.leagueId));
+  const canReact = isMatchCenterReactable(item.kind) && typeof onReact === 'function';
   const onDark = youWin || item.kind === 'round-up';
+  const reactInk = onDark ? '#FDE68A' : t.color.text;
   const shell = youWin
     ? { backgroundColor: '#0F766E' }
     : item.kind === 'round-up'
@@ -530,6 +558,8 @@ function FeedCard({
           ? { backgroundColor: 'rgba(28,131,118,0.12)' }
         : item.kind === 'opener'
           ? { backgroundColor: '#FFF7ED', overflow: 'hidden' as const }
+          : item.kind === 'waiting'
+            ? { backgroundColor: '#ECFDF5', overflow: 'hidden' as const }
           : { backgroundColor: t.color.surface };
 
   React.useEffect(() => {
@@ -575,8 +605,17 @@ function FeedCard({
   }, [arriveDelay, confetti, item.kind, rainbow]);
 
   const card = (
-    <Card style={{ padding: 14, marginBottom: rainbow ? 0 : 12, overflow: 'visible', borderRadius: 16, ...shell }}>
-      {item.kind === 'opener' ? <TickerShimmer /> : null}
+    <Card
+      style={{
+        padding: 14,
+        paddingBottom: canReact ? 16 : 14,
+        marginBottom: rainbow ? 0 : canReact ? 18 : 12,
+        overflow: 'visible',
+        borderRadius: 16,
+        ...shell,
+      }}
+    >
+      {item.kind === 'opener' || item.kind === 'waiting' ? <TickerShimmer /> : null}
       {item.kind === 'lineup' ? (
         <View>
           <TotlText style={{ color: t.color.brand, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginBottom: 8 }}>
@@ -670,11 +709,77 @@ function FeedCard({
           <PickSplit match={item.match} />
         </View>
       ) : null}
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-        <TotlText style={{ fontSize: 11, fontWeight: '700', color: onDark ? 'rgba(255,255,255,0.65)' : t.color.muted }}>
-          {item.stamp || item.timeLabel}
-        </TotlText>
-      </View>
+      {item.kind === 'waiting' ? (
+        <View style={{ marginTop: 16, marginLeft: 8 }}>
+          <TotlText style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: t.color.muted, marginBottom: 2 }}>
+            FIRST TEAMS IN
+          </TotlText>
+          <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '700', color: t.color.text, fontVariant: ['tabular-nums'] }}>
+            {item.stamp || item.timeLabel}
+          </TotlText>
+        </View>
+      ) : (
+        <View style={{ marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            {canReact ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {MATCH_CENTER_CARD_REACTS.map((emoji) => {
+                  const reaction = reactions.find((row) => row.emoji === emoji);
+                  const mine = Boolean(reaction?.hasUserReacted);
+                  const count = reaction?.count ?? 0;
+                  return (
+                    <Pressable
+                      key={emoji}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        mine ? `Remove ${emoji} reaction` : count > 0 ? `React ${emoji}, ${count}` : `React ${emoji}`
+                      }
+                      onPress={() => onReact?.(emoji)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        minWidth: 40,
+                        height: 34,
+                        paddingHorizontal: count > 0 ? 10 : 8,
+                        borderRadius: 17,
+                        justifyContent: 'center',
+                        backgroundColor: mine
+                          ? onDark
+                            ? 'rgba(253,230,138,0.28)'
+                            : 'rgba(28,131,118,0.16)'
+                          : onDark
+                            ? 'rgba(255,255,255,0.14)'
+                            : 'rgba(15,23,42,0.06)',
+                        borderWidth: mine ? 1.5 : 0,
+                        borderColor: mine ? (onDark ? '#FDE68A' : '#1C8376') : 'transparent',
+                      }}
+                    >
+                      <ReactGlyph emoji={emoji} size={18} />
+                      {count > 0 ? (
+                        <TotlText
+                          style={{
+                            marginLeft: 5,
+                            fontSize: 12,
+                            fontWeight: '800',
+                            color: mine ? (onDark ? '#FDE68A' : '#1C8376') : reactInk,
+                          }}
+                        >
+                          {count}
+                        </TotlText>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View />
+            )}
+            <TotlText style={{ fontSize: 11, fontWeight: '700', color: onDark ? 'rgba(255,255,255,0.65)' : t.color.muted }}>
+              {item.stamp || item.timeLabel}
+            </TotlText>
+          </View>
+        </View>
+      )}
     </Card>
   );
 
@@ -692,10 +797,11 @@ function FeedCard({
   );
 
   const tilt = item.kind === 'rank' ? '8deg' : bigGoal ? '-8deg' : '4deg';
+  const tuckOffset = tuck ? (tuckSoft ? -8 : -28) : 0;
   return (
     <Animated.View
       style={{
-        marginTop: tuck ? -28 : 0,
+        marginTop: tuckOffset,
         zIndex: tuck ? 2 : 0,
         shadowColor: tuck ? '#0F172A' : 'transparent',
         shadowOffset: { width: 0, height: tuck ? -6 : 0 },
@@ -750,12 +856,18 @@ const REACT_GLYPH: Record<string, number> = {
   '🔥': 0x1f525,
   '😮': 0x1f62e,
   '😢': 0x1f622,
+  '😊': 0x1f60a,
+  '😎': 0x1f60e,
+  '🫠': 0x1fae0,
 };
 
 function ReactGlyph({ emoji, size }: { emoji: string; size: number }) {
   const codePoint = REACT_GLYPH[emoji] ?? emoji.codePointAt(0);
-  if (codePoint == null || !hasEmojiBitmap(codePoint)) return null;
-  return <EmojiGlyph codePoint={codePoint} size={size} />;
+  if (codePoint != null && hasEmojiBitmap(codePoint)) {
+    return <EmojiGlyph codePoint={codePoint} size={size} />;
+  }
+  // Happy (😊) and any missing bitmaps still render on device emoji fonts.
+  return <TotlText style={{ fontSize: size, lineHeight: size + 2 }}>{emoji}</TotlText>;
 }
 
 function chatRecordId(itemId: string): string | null {
@@ -1230,7 +1342,7 @@ function FixtureTicker({
   boards: TickerBoard[];
 }) {
   const t = useTokens();
-  const shift = React.useRef(new Animated.Value(0)).current;
+  const shift = useSharedValue(0);
   const wash = React.useRef(new Animated.Value(0)).current;
   const [loopWidth, setLoopWidth] = React.useState(0);
   const contentKey = [
@@ -1241,18 +1353,20 @@ function FixtureTicker({
 
   React.useEffect(() => {
     if (loopWidth <= 0) return;
-    shift.setValue(0);
-    const animation = Animated.loop(
-      Animated.timing(shift, {
-        toValue: -loopWidth,
-        duration: Math.max(12000, loopWidth * 8),
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
+    cancelAnimation(shift);
+    shift.value = 0;
+    const duration = Math.max(12000, loopWidth * 8);
+    shift.value = withRepeat(
+      withTiming(-loopWidth, { duration, easing: ReEasing.linear }),
+      -1,
+      false
     );
-    animation.start();
-    return () => animation.stop();
+    return () => cancelAnimation(shift);
   }, [contentKey, loopWidth, shift]);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shift.value }],
+  }));
 
   React.useEffect(() => {
     const sheen = Animated.loop(
@@ -1274,31 +1388,31 @@ function FixtureTicker({
       const bar = item.pick ? <TickerPickBar correct={!known || correct} finished={item.finished && correct} /> : null;
       return (
         <View key={`${copy}-${item.key}`} style={{ flexDirection: 'row', alignItems: 'flex-start', marginRight: 32 }}>
-          <View style={{ width: 34, alignItems: 'center' }}>
+          <View style={{ width: 32, alignItems: 'center' }}>
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Crest code={item.homeCode} size={32} />
             </View>
-            <View style={{ height: 14 }} />
             <View style={{ height: 8, alignItems: 'center', justifyContent: 'center' }}>{item.pick === 'H' ? bar : null}</View>
+            <View style={{ height: 18 }} />
           </View>
-          <View style={{ width: 56, alignItems: 'center' }}>
+          <View style={{ width: 52, alignItems: 'center' }}>
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 18, fontWeight: '800', color: t.color.text }}>
                 {hasScore ? `${item.homeScore} v ${item.awayScore}` : 'v'}
               </TotlText>
             </View>
-            <View style={{ height: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              {item.live ? <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#DC2626', marginRight: 3 }} /> : null}
-              <TotlText style={{ fontSize: 11, lineHeight: 13, fontWeight: '700', color: t.color.muted }}>{item.statusLabel}</TotlText>
-            </View>
             <View style={{ height: 8, alignItems: 'center', justifyContent: 'center' }}>{item.pick === 'D' ? bar : null}</View>
+            <View style={{ height: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              {item.live ? <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#DC2626', marginRight: 3 }} /> : null}
+              <TotlText style={{ fontSize: 11, lineHeight: 14, fontWeight: '700', color: t.color.muted }}>{item.statusLabel}</TotlText>
+            </View>
           </View>
-          <View style={{ width: 34, alignItems: 'center' }}>
+          <View style={{ width: 32, alignItems: 'center' }}>
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Crest code={item.awayCode} size={32} />
             </View>
-            <View style={{ height: 14 }} />
             <View style={{ height: 8, alignItems: 'center', justifyContent: 'center' }}>{item.pick === 'A' ? bar : null}</View>
+            <View style={{ height: 18 }} />
           </View>
         </View>
       );
@@ -1356,7 +1470,7 @@ function FixtureTicker({
         left: 0,
         right: 0,
         bottom: 0,
-        height: 72,
+        height: 78,
         backgroundColor: '#FFF7ED',
         borderTopWidth: 1,
         borderTopColor: t.color.border,
@@ -1396,18 +1510,20 @@ function FixtureTicker({
       >
         <LinearGradient colors={['transparent', 'rgba(255,255,255,0.85)', 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1 }} />
       </Animated.View>
-      <Animated.View style={{ flexDirection: 'row', alignItems: 'center', transform: [{ translateX: shift }] }}>
+      <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'center' }, trackStyle]}>
         <View
           style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}
           onLayout={(event) => {
-            const width = Math.round(event.nativeEvent.layout.width);
+            // Exact width (no rounding) so the duplicate strip lands on the same pixel.
+            const width = event.nativeEvent.layout.width;
             setLoopWidth((current) => (current === width ? current : width));
           }}
         >
           {renderStrip('a')}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>{renderStrip('b')}</View>
-      </Animated.View>
+        {/* Identical copy — same padding — so the loop seam is invisible */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}>{renderStrip('b')}</View>
+      </Reanimated.View>
     </View>
   );
 }
@@ -1415,10 +1531,12 @@ function FixtureTicker({
 export default function MatchCenterScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<HomeStackParamList, 'MatchCenter'>>();
+  const entry = route.params?.entry ?? 'current';
   const { useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
   const { openManualResultsScoreSheetShare } = usePopupCards();
-  const [mode, setMode] = React.useState<Mode>('play');
-  const [week, setWeek] = React.useState<'current' | 'last'>('current');
+  const [mode, setMode] = React.useState<Mode>(() => (entry === 'example' ? 'play' : 'live'));
+  const [week, setWeek] = React.useState<'current' | 'last'>(() => (entry === 'last' ? 'last' : 'current'));
   const [played, setPlayed] = React.useState(1);
   const [playRun, setPlayRun] = React.useState(0);
   const [rankCards, setRankCards] = React.useState<FeedItem[]>([]);
@@ -1432,6 +1550,24 @@ export default function MatchCenterScreen() {
   const prevLeagueRanks = React.useRef<Map<string, number> | null>(null);
   const prevGwRank = React.useRef<number | null>(null);
   const scrollRef = React.useRef<ScrollView>(null);
+
+  // Admin can open Last GW / Example; normal entry is always the live current GW.
+  React.useEffect(() => {
+    if (entry === 'last') {
+      setWeek('last');
+      setMode('live');
+      return;
+    }
+    if (entry === 'example') {
+      setWeek('current');
+      setPlayed(1);
+      setPlayRun((run) => run + 1);
+      setMode('play');
+      return;
+    }
+    setWeek('current');
+    setMode('live');
+  }, [entry]);
 
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
@@ -1775,19 +1911,27 @@ export default function MatchCenterScreen() {
     return ko === null ? null : new Date(ko).toISOString();
   }, [board?.fixtures]);
 
+  // MC chat window ends at midnight on the day after the last kickoff.
+  const chatUntil = React.useMemo(() => {
+    const closes = matchCenterClosesAtMs(board?.fixtures ?? []);
+    return closes === null ? null : new Date(closes).toISOString();
+  }, [board?.fixtures]);
+
   const { data: chatItems, isFetched: chatFetched } = useQuery({
-    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince,
-    queryKey: ['match-center-chat', leagueIds, chatSince, userId],
+    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince && !!chatUntil,
+    queryKey: ['match-center-chat', leagueIds, chatSince, chatUntil, userId],
     refetchInterval: 15_000,
     queryFn: async (): Promise<FeedItem[]> => {
       const leagues = leaguesData?.leagues ?? [];
       const ids = leagues.map((league) => league.id);
-      if (!chatSince || !ids.length) return [];
+      if (!chatSince || !chatUntil || !ids.length) return [];
       const { data, error } = await supabase
         .from('league_messages')
         .select('id, league_id, user_id, content, created_at, reply_to:league_messages!reply_to_message_id(content)')
         .in('league_id', ids)
+        .neq('user_id', VOLLEY_USER_ID)
         .gte('created_at', chatSince)
+        .lt('created_at', chatUntil)
         .order('created_at', { ascending: false })
         .limit(150);
       if (error) throw error;
@@ -1822,6 +1966,10 @@ export default function MatchCenterScreen() {
         .slice()
         .reverse()
         .flatMap((row) => {
+          // Volley system messages belong in league chat, not Match Center.
+          if (String(row.user_id) === VOLLEY_USER_ID) return [];
+          const at = String(row.created_at);
+          if (at < chatSince || at >= chatUntil) return [];
           const body = String(row.content ?? '').trim();
           if (!body) return [];
           const replyRaw = row.reply_to;
@@ -1830,7 +1978,7 @@ export default function MatchCenterScreen() {
           return [
             chatMessageItem({
               id: String(row.id),
-              at: String(row.created_at),
+              at,
               leagueId: String(row.league_id),
               leagueName: leagueName.get(String(row.league_id)) ?? 'Mini-league',
               author: nameById.get(String(row.user_id)) ?? 'Someone',
@@ -1844,6 +1992,16 @@ export default function MatchCenterScreen() {
         });
     },
   });
+
+  // Tick while we're waiting on the first teams announcement so the countdown stays live.
+  const [clockMs, setClockMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const first = firstKickoffMs(board?.fixtures ?? []);
+    if (mode !== 'live' || first == null || Date.now() >= first) return;
+    setClockMs(Date.now());
+    const id = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [board?.fixtures, mode]);
 
   const feed = React.useMemo(() => {
     if (mode === 'sample' || mode === 'play') {
@@ -1862,7 +2020,7 @@ export default function MatchCenterScreen() {
       percents: pickPercents,
       teamForms,
       teamPositions,
-      nowMs: Date.now(),
+      nowMs: clockMs,
       userId,
       leagues: replayOn ? leaguePicks : [],
       overall: overallReplay ? { ...overallReplay, userAvatar: profileSummary?.avatar_url ?? null } : null,
@@ -1881,7 +2039,7 @@ export default function MatchCenterScreen() {
     return [...match, ...extra, ...roundUp, ...(chatItems ?? []), ...localReplies].sort(
       (a, b) => a.sortAt - b.sortAt || a.id.localeCompare(b.id)
     );
-  }, [allFinished, board, chatItems, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
+  }, [allFinished, board, chatItems, clockMs, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
 
   const seenIds = React.useRef<Set<string> | null>(null);
   const seenMode = React.useRef(mode);
@@ -1909,7 +2067,11 @@ export default function MatchCenterScreen() {
       if (board && !liveScoresLoading) setScoresReady(true);
       return;
     }
-    if (matchIds.some((id) => liveByApiMatchId.has(id))) setScoresReady(true);
+    // Pre-match: fixtures exist but live_scores is still empty. Once the fetch
+    // finishes, stop blocking on scores so the coming-soon card can show.
+    if (matchIds.some((id) => liveByApiMatchId.has(id)) || !liveScoresLoading) {
+      setScoresReady(true);
+    }
   }, [board, gw, liveByApiMatchId, liveScoresError, liveScoresLoading, mode]);
 
   const positionsEnabled = typeof gw === 'number' && Object.keys(predictedPositions).length < 20;
@@ -1921,20 +2083,24 @@ export default function MatchCenterScreen() {
   const resultsEnabled = mode === 'live' && allFinished && typeof gw === 'number';
   const chatEnabled = mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince;
   const stillFetching = (enabled: boolean, fetched: boolean) => enabled && !fetched;
+  // Before the first teams are out, the feed is only the coming-soon card —
+  // don't hold the spinner for leagues, chat, tables, and the rest.
+  const preMatchHold = feed.length === 1 && feed[0]?.kind === 'waiting';
   const prepping =
     mode === 'live' &&
     !boardError &&
     (boardLoading ||
       !scoresReady ||
-      stillFetching(typeof gw === 'number', predictionsFetched) ||
-      stillFetching(positionsEnabled, positionsFetched) ||
-      stillFetching(true, leaguesFetched) ||
-      stillFetching(tablesEnabled, tablesFetched) ||
-      stillFetching(picksEnabled, picksFetched) ||
-      stillFetching(percentsEnabled, percentsFetched) ||
-      stillFetching(overallEnabled, overallFetched) ||
-      stillFetching(resultsEnabled, resultsFetched) ||
-      stillFetching(chatEnabled, chatFetched));
+      (!preMatchHold &&
+        (stillFetching(typeof gw === 'number', predictionsFetched) ||
+          stillFetching(positionsEnabled, positionsFetched) ||
+          stillFetching(true, leaguesFetched) ||
+          stillFetching(tablesEnabled, tablesFetched) ||
+          stillFetching(picksEnabled, picksFetched) ||
+          stillFetching(percentsEnabled, percentsFetched) ||
+          stillFetching(overallEnabled, overallFetched) ||
+          stillFetching(resultsEnabled, resultsFetched) ||
+          stillFetching(chatEnabled, chatFetched))));
 
   if (mode === 'live' && !prepping && seenIds.current === null) {
     seenIds.current = new Set(feed.map((item) => item.id));
@@ -1992,6 +2158,19 @@ export default function MatchCenterScreen() {
     enabled: mode === 'live' && !!userId,
   });
 
+  const cardReactionIds = React.useMemo(() => {
+    if (typeof gw !== 'number') return [] as string[];
+    return feed
+      .filter((item) => isMatchCenterReactable(item.kind))
+      .map((item) => matchCenterReactionCardId(gw, item.id));
+  }, [feed, gw]);
+
+  const { reactions: cardReactions, toggleReaction: toggleCardReaction } = useMatchCenterCardReactions({
+    cardIds: cardReactionIds,
+    userId,
+    enabled: mode === 'live' && !!userId && typeof gw === 'number',
+  });
+
   const toggleReply = React.useCallback((item: FeedItem) => {
     setReplyId((current) => (current === item.id ? null : item.id));
     setReplyDraft('');
@@ -2017,6 +2196,22 @@ export default function MatchCenterScreen() {
       }));
     },
     [mode, toggleReaction, userId]
+  );
+
+  const reactToCard = React.useCallback(
+    (item: FeedItem, emoji: string) => {
+      if (!isMatchCenterReactable(item.kind)) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (mode === 'live' && userId && typeof gw === 'number') {
+        void toggleCardReaction(matchCenterReactionCardId(gw, item.id), emoji);
+        return;
+      }
+      setLocalReactions((current) => ({
+        ...current,
+        [item.id]: applySingleCardReaction(current[item.id], emoji),
+      }));
+    },
+    [gw, mode, toggleCardReaction, userId]
   );
 
   const sendReply = React.useCallback(
@@ -2135,10 +2330,6 @@ export default function MatchCenterScreen() {
     [navigation]
   );
 
-  const leaveToHome = React.useCallback(() => {
-    navigation.navigate('HomeMain');
-  }, [navigation]);
-
   const gwState = board
     ? getGameweekStateFromSnapshot({
         fixtures: board.fixtures,
@@ -2196,8 +2387,12 @@ export default function MatchCenterScreen() {
     [board?.fixtures, board?.userPicks, liveByApiMatchId, liveByFixtureIndex]
   );
 
+  // ML + Overall/Monthly/GW ranks only join the ticker once the first game has kicked off.
+  const firstKoMs = firstKickoffMs(fixtures);
+  const rankingsOnTicker = firstKoMs != null && clockMs >= firstKoMs;
+
   const { data: tickerLeagues } = useQuery({
-    enabled: typeof gw === 'number' && !!userId && (leaguesData?.leagues.length ?? 0) > 0,
+    enabled: rankingsOnTicker && typeof gw === 'number' && !!userId && (leaguesData?.leagues.length ?? 0) > 0,
     queryKey: ['match-center-ticker-leagues', gw, leagueIds, userId],
     staleTime: 20_000,
     refetchInterval: 30_000,
@@ -2232,7 +2427,7 @@ export default function MatchCenterScreen() {
   });
 
   const { data: tickerBoards } = useQuery({
-    enabled: typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
+    enabled: rankingsOnTicker && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-ticker-boards', gw, userId, useSeasonStack ? seasonId : 'legacy', seasonLabel],
     staleTime: 20_000,
     refetchInterval: 30_000,
@@ -2308,7 +2503,7 @@ export default function MatchCenterScreen() {
   });
 
   const waiting = feed.length === 1 && feed[0]?.kind === 'waiting';
-  const firstKo = firstKickoffMs(fixtures);
+  const firstKo = firstKoMs;
   const hasLiveGames = fixtures.some((fixture) => {
     const status = liveByFixtureIndex.get(fixture.fixture_index)?.status;
     return status === 'IN_PLAY' || status === 'PAUSED';
@@ -2324,91 +2519,10 @@ export default function MatchCenterScreen() {
         }}
         avatarUrl={profileSummary?.avatar_url}
         hasLiveGames={hasLiveGames}
+        title="Match Center"
         centerContent={headerPill}
-        showLeftLiveBadge={!headerPill}
+        showLeftLiveBadge={false}
       />
-      <View
-        style={{
-          paddingHorizontal: t.space[4],
-          paddingTop: 4,
-          paddingBottom: 8,
-          backgroundColor: t.color.background,
-          borderBottomWidth: 1,
-          borderBottomColor: t.color.border,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <TotlText style={{ color: t.color.text, fontWeight: '800', fontSize: 18, lineHeight: 22 }}>
-            Match Center
-          </TotlText>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to home" onPress={leaveToHome} hitSlop={8}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="chevron-back" size={16} color={t.color.brand} />
-              <TotlText style={{ color: t.color.brand, fontWeight: '700', fontSize: 13 }}>Home</TotlText>
-            </View>
-          </Pressable>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setWeek('current');
-              setMode('live');
-            }}
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 999,
-              backgroundColor: mode === 'live' && !viewingLast ? t.color.brand : 'rgba(148,163,184,0.16)',
-            }}
-          >
-            <TotlText style={{ fontWeight: '800', fontSize: 13, lineHeight: 16, color: mode === 'live' && !viewingLast ? '#fff' : t.color.text }}>
-              This GW
-            </TotlText>
-          </Pressable>
-          {typeof lastGw === 'number' ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Last gameweek, gameweek ${lastGw}`}
-              onPress={() => {
-                setWeek('last');
-                setMode('live');
-              }}
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 999,
-                backgroundColor: mode === 'live' && viewingLast ? t.color.brand : 'rgba(148,163,184,0.16)',
-              }}
-            >
-              <TotlText style={{ fontWeight: '800', fontSize: 13, lineHeight: 16, color: mode === 'live' && viewingLast ? '#fff' : t.color.text }}>
-                Last GW
-              </TotlText>
-            </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setPlayed(1);
-              setPlayRun((run) => run + 1);
-              setMode('play');
-            }}
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              borderRadius: 999,
-              backgroundColor: mode === 'play' ? t.color.brand : 'rgba(148,163,184,0.16)',
-            }}
-          >
-            <TotlText style={{ fontWeight: '800', fontSize: 13, lineHeight: 16, color: mode === 'play' ? '#fff' : t.color.text }}>
-              Example
-            </TotlText>
-          </Pressable>
-          <TotlText variant="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
-            {typeof gw === 'number' ? `GW ${gw}` : ''}
-          </TotlText>
-        </View>
-      </View>
       <ScrollView
         ref={scrollRef}
         onScroll={onFeedScroll}
@@ -2503,6 +2617,10 @@ export default function MatchCenterScreen() {
             (item.kind === 'rank' ||
               item.kind === 'overall' ||
               (item.kind === 'xi' && previous?.kind === 'lineup'));
+          const tuckSoft = tuck && previous != null && isMatchCenterReactable(previous.kind);
+          const cardKey =
+            typeof gw === 'number' && mode === 'live' ? matchCenterReactionCardId(gw, item.id) : item.id;
+          const cardReactable = isMatchCenterReactable(item.kind);
           return (
             <FeedCard
               key={key}
@@ -2511,6 +2629,15 @@ export default function MatchCenterScreen() {
               celebrate={celebrateIds.has(item.id)}
               arriveDelay={arriveDelay}
               tuck={tuck}
+              tuckSoft={tuckSoft}
+              reactions={
+                cardReactable
+                  ? mode === 'live'
+                    ? cardReactions[cardKey] ?? []
+                    : localReactions[item.id] ?? []
+                  : []
+              }
+              onReact={cardReactable ? (emoji) => reactToCard(item, emoji) : undefined}
             />
           );
         })}
@@ -2518,8 +2645,13 @@ export default function MatchCenterScreen() {
         )}
       </ScrollView>
       {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} /> : null}
-      {tickerFixtures.length || tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null) ? (
-        <FixtureTicker games={tickerFixtures} leagues={tickerLeagues ?? []} boards={tickerBoards ?? []} />
+      {tickerFixtures.length ||
+      (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))) ? (
+        <FixtureTicker
+          games={tickerFixtures}
+          leagues={rankingsOnTicker ? tickerLeagues ?? [] : []}
+          boards={rankingsOnTicker ? tickerBoards ?? [] : []}
+        />
       ) : null}
     </Screen>
   );

@@ -49,13 +49,16 @@ export default function AdminHomeScreen() {
     parent?.navigate?.('PredictionsTestFlow');
   }, [navigation]);
 
-  const openMatchCenter = React.useCallback(() => {
-    const parent = navigation.getParent?.();
-    parent?.navigate?.('Tabs', {
-      screen: 'Predictions',
-      params: { screen: 'MatchCenter' },
-    });
-  }, [navigation]);
+  const openMatchCenter = React.useCallback(
+    (entry: 'current' | 'last' | 'example' = 'current') => {
+      const parent = navigation.getParent?.();
+      parent?.navigate?.('Tabs', {
+        screen: 'Predictions',
+        params: { screen: 'MatchCenter', params: { entry } },
+      });
+    },
+    [navigation]
+  );
 
   const openRetroTotlDailyPlayers = React.useCallback(() => {
     const parent = navigation.getParent?.();
@@ -145,8 +148,8 @@ export default function AdminHomeScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Match Center"
-            onPress={openMatchCenter}
+            accessibilityLabel="Match Center current gameweek"
+            onPress={() => openMatchCenter('current')}
             style={({ pressed }) => ({
               paddingVertical: 14,
               flexDirection: 'row',
@@ -157,7 +160,48 @@ export default function AdminHomeScreen() {
               opacity: pressed ? 0.85 : 1,
             })}
           >
-            <TotlText style={{ fontWeight: '700' }}>Match Center</TotlText>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <TotlText style={{ fontWeight: '700' }}>Match Center</TotlText>
+              <TotlText variant="muted" style={{ marginTop: 2, fontSize: 12 }}>
+                Current GW · from team sheets until midnight after the last game
+              </TotlText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Match Center last gameweek"
+            onPress={() => openMatchCenter('last')}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>Match Center — Last GW</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Match Center example"
+            onPress={() => openMatchCenter('example')}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontWeight: '700' }}>Match Center — Example</TotlText>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 

@@ -85,7 +85,7 @@ export default function AppNavigator() {
     if (target.type === 'matchCenter') {
       navigationRef.navigate('Tabs' as any, {
         screen: 'Predictions',
-        params: { screen: 'MatchCenter' },
+        params: { screen: 'MatchCenter', params: { entry: 'current' } },
       } as any);
       return true;
     }
