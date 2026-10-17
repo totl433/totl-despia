@@ -24,6 +24,7 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { useLeagueChatReactions, type ReactionSummary } from '../hooks/useLeagueChatReactions';
+import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import {
   applySingleCardReaction,
   MATCH_CENTER_CARD_REACTS,
@@ -49,6 +50,7 @@ import { fetchAllSupabaseRows } from '../lib/profileStreakRows';
 import { useViewerSeason } from '../lib/useViewerSeason';
 import { VOLLEY_USER_ID } from '../lib/volley';
 import {
+  alignChatSortAtMs,
   buildMatchFeed,
   buildRoundUp,
   chatMessageItem,
@@ -56,7 +58,6 @@ import {
   isMatchCenterReactable,
   matchCenterClosesAtMs,
   matchCenterReactionCardId,
-  overallChangeItem,
   rankChangeItem,
   rankOf,
   sampleFeed,
@@ -70,6 +71,13 @@ import {
 } from '../features/matchCenter/feed';
 
 type Mode = 'live' | 'sample' | 'play';
+
+/** Match Center data cadence — Realtime for scores/chat; BFF polls stay sparse. */
+const MC_TABLE_MS = 60_000;
+const MC_LIVE_BOARD_MS = 60_000;
+const MC_CHAT_POLL_MS = 60_000; // backup; INSERT Realtime invalidates sooner
+const MC_TICKER_MS = 60_000;
+const MC_HEAVY_STALE_MS = 5 * 60_000;
 
 function Crest({ code, size }: { code: string; size: number }) {
   const badge = TEAM_BADGES[code];
@@ -1039,27 +1047,42 @@ function MessageRow({
           </View>
           {reactions.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-              {reactions.map((reaction) => (
-                <Pressable
-                  key={reaction.emoji}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${reaction.hasUserReacted ? 'Remove' : 'Add'} ${reaction.emoji}`}
-                  onPress={() => onReact(reaction.emoji)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                    backgroundColor: reaction.hasUserReacted ? '#1C1408' : 'rgba(255,255,255,0.62)',
-                  }}
-                >
-                  <ReactGlyph emoji={reaction.emoji} size={18} />
-                  <TotlText style={{ marginLeft: 6, fontSize: 13, fontWeight: '800', color: reaction.hasUserReacted ? '#FFE08A' : ink }}>
-                    {reaction.count}
-                  </TotlText>
-                </Pressable>
-              ))}
+              {reactions.map((reaction) => {
+                const mine = Boolean(reaction.hasUserReacted);
+                return (
+                  <Pressable
+                    key={reaction.emoji}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${mine ? 'Remove' : 'Add'} ${reaction.emoji}`}
+                    onPress={() => onReact(reaction.emoji)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      minWidth: 40,
+                      height: 34,
+                      paddingHorizontal: 10,
+                      borderRadius: 17,
+                      justifyContent: 'center',
+                      // Match post/card react outline (teal on yellow bubbles).
+                      backgroundColor: mine ? 'rgba(28,131,118,0.16)' : 'rgba(28,20,8,0.06)',
+                      borderWidth: mine ? 1.5 : 0,
+                      borderColor: mine ? '#1C8376' : 'transparent',
+                    }}
+                  >
+                    <ReactGlyph emoji={reaction.emoji} size={18} />
+                    <TotlText
+                      style={{
+                        marginLeft: 5,
+                        fontSize: 12,
+                        fontWeight: '800',
+                        color: mine ? '#1C8376' : ink,
+                      }}
+                    >
+                      {reaction.count}
+                    </TotlText>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : null}
           {reacting ? (
@@ -1078,7 +1101,9 @@ function MessageRow({
                       borderRadius: 18,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: mine ? '#1C1408' : 'rgba(255,255,255,0.72)',
+                      backgroundColor: mine ? 'rgba(28,131,118,0.16)' : 'rgba(255,255,255,0.72)',
+                      borderWidth: mine ? 1.5 : 0,
+                      borderColor: mine ? '#1C8376' : 'transparent',
                     }}
                   >
                     <ReactGlyph emoji={emoji} size={22} />
@@ -1560,7 +1585,6 @@ export default function MatchCenterScreen() {
   const [localReplies, setLocalReplies] = React.useState<FeedItem[]>([]);
   const queryClient = useQueryClient();
   const prevLeagueRanks = React.useRef<Map<string, number> | null>(null);
-  const prevGwRank = React.useRef<number | null>(null);
   const scrollRef = React.useRef<ScrollView>(null);
 
   // Admin can open Last GW / Example; normal entry is always the live current GW.
@@ -1652,6 +1676,8 @@ export default function MatchCenterScreen() {
   const { data: leagueTables, isFetched: tablesFetched } = useQuery({
     enabled: mode === 'live' && typeof gw === 'number' && leagueIds.length > 0,
     queryKey: ['match-center-tables', gw, leagueIds],
+    staleTime: MC_TABLE_MS,
+    refetchInterval: MC_TABLE_MS,
     queryFn: async (): Promise<LeagueTableSnap[]> => {
       const leagues = leaguesData?.leagues ?? [];
       const snaps = await Promise.all(
@@ -1684,7 +1710,6 @@ export default function MatchCenterScreen() {
         rows: league.rows.map((row) => ({ ...row, avatarUrl: avatarById.get(row.user_id) ?? null })),
       }));
     },
-    refetchInterval: 20_000,
   });
 
   const memberIds = React.useMemo(() => {
@@ -1714,7 +1739,7 @@ export default function MatchCenterScreen() {
   const { data: pickPercentageRows, isFetched: percentsFetched } = useQuery({
     enabled: mode === 'live' && typeof gw === 'number' && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-pick-pct', gw, useSeasonStack ? seasonId : 'legacy'],
-    staleTime: 30_000,
+    staleTime: MC_HEAVY_STALE_MS,
     queryFn: async () => {
       const tables = useSeasonStack && seasonId ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
       return fetchAllSupabaseRows<{ fixture_index: number; pick: string | null }>((from, to) => {
@@ -1754,7 +1779,7 @@ export default function MatchCenterScreen() {
   const { data: overallReplay, isFetched: overallFetched } = useQuery({
     enabled: mode === 'live' && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-overall-replay', gw, useSeasonStack ? seasonId : 'legacy', monthLabel],
-    staleTime: 60_000,
+    staleTime: MC_HEAVY_STALE_MS,
     queryFn: async (): Promise<OverallReplay> => {
       const currentGw = gw as number;
       const pileB = useSeasonStack && !!seasonId;
@@ -1834,7 +1859,8 @@ export default function MatchCenterScreen() {
     enabled: typeof gw === 'number',
     queryKey: ['match-center-gw-live', gw],
     queryFn: () => api.getGlobalGwLiveTable(gw as number),
-    refetchInterval: 20_000,
+    staleTime: MC_LIVE_BOARD_MS,
+    refetchInterval: MC_LIVE_BOARD_MS,
   });
 
   const fixtures = board?.fixtures ?? [];
@@ -1869,22 +1895,15 @@ export default function MatchCenterScreen() {
         if (card) fresh.push(card);
       }
     }
-    const gwRank = userId ? rankOf(liveTable?.rows ?? [], userId) : null;
-    if (prevGwRank.current && gwRank) {
-      const card = overallChangeItem(prevGwRank.current, gwRank, at);
-      if (card) fresh.push(card);
-    }
     if (prevLeagueRanks.current && fresh.length) {
       setRankCards((current) => [...current, ...fresh]);
     }
     prevLeagueRanks.current = next;
-    if (gwRank) prevGwRank.current = gwRank;
-  }, [leagueTables, liveTable?.rows, mode, replayOn, userId]);
+  }, [leagueTables, mode, replayOn, userId]);
 
   React.useEffect(() => {
     setRankCards([]);
     prevLeagueRanks.current = null;
-    prevGwRank.current = null;
   }, [gw]);
 
   React.useEffect(() => {
@@ -1936,7 +1955,8 @@ export default function MatchCenterScreen() {
   const { data: chatItems, isFetched: chatFetched } = useQuery({
     enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince && !!chatUntil,
     queryKey: ['match-center-chat', leagueIds, chatSince, chatUntil, userId],
-    refetchInterval: 15_000,
+    staleTime: 15_000,
+    refetchInterval: MC_CHAT_POLL_MS,
     queryFn: async (): Promise<FeedItem[]> => {
       const leagues = leaguesData?.leagues ?? [];
       const ids = leagues.map((league) => league.id);
@@ -2009,6 +2029,28 @@ export default function MatchCenterScreen() {
     },
   });
 
+  // Push chat into the feed when messages land — avoid 15s hammering of league_messages.
+  React.useEffect(() => {
+    if (mode !== 'live' || !leagueIds || !chatSince || !chatUntil) return;
+    const ids = leagueIds.split(',').filter(Boolean);
+    if (!ids.length) return;
+    const channel = supabase
+      .channel(`mc-chat:${leagueIds.slice(0, 64)}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'league_messages' },
+        (payload) => {
+          const leagueId = String((payload.new as { league_id?: string } | null)?.league_id ?? '');
+          if (!ids.includes(leagueId)) return;
+          void queryClient.invalidateQueries({ queryKey: ['match-center-chat'] });
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [chatSince, chatUntil, leagueIds, mode, queryClient]);
+
   // Tick while we're waiting on the first teams announcement so the countdown stays live.
   const [clockMs, setClockMs] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -2051,9 +2093,35 @@ export default function MatchCenterScreen() {
             overallAfter: gwResults?.leaderboardChanges.overall.after ?? null,
           })
         : [];
-    const extra = replayOn ? rankCards.filter((card) => card.kind !== 'rank') : rankCards;
-    return [...match, ...extra, ...roundUp, ...(chatItems ?? []), ...localReplies].sort(
-      (a, b) => a.sortAt - b.sortAt || a.id.localeCompare(b.id)
+    // Mini-league move cards only — no "this gameweek / overall" flash cards.
+    const extra = replayOn ? [] : rankCards.filter((card) => card.kind === 'rank');
+    const placeChat = (item: FeedItem): FeedItem => ({
+      ...item,
+      sortAt: alignChatSortAtMs({
+        createdAtMs: item.sortAt,
+        fixtures: board.fixtures,
+        liveByFixtureIndex,
+        liveByApiMatchId,
+        nowMs: clockMs,
+      }),
+    });
+    const serverChat = (chatItems ?? []).map(placeChat);
+    const pendingLocal = localReplies
+      .filter((local) => {
+        const body = local.body.trim();
+        return body.length > 0 && !serverChat.some((row) => row.mine && row.body.trim() === body);
+      })
+      .map(placeChat);
+    const kindRank = (kind: FeedItem['kind']): number => {
+      if (kind === 'half-time') return 10;
+      if (kind === 'second-half') return 20;
+      if (kind === 'goal' || kind === 'ruled-out') return 30;
+      if (kind === 'rank') return 40;
+      if (kind === 'message') return 50;
+      return 35;
+    };
+    return [...match, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(
+      (a, b) => a.sortAt - b.sortAt || kindRank(a.kind) - kindRank(b.kind) || a.id.localeCompare(b.id)
     );
   }, [allFinished, board, chatItems, clockMs, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
 
@@ -2163,14 +2231,51 @@ export default function MatchCenterScreen() {
     setLocalReactions({});
   }, [gw, mode, playRun]);
 
+  // Drop optimistic bubbles once the server copy lands. Don't require replyTo to
+  // match — the join can briefly return null and that used to leave a duplicate.
   React.useEffect(() => {
     if (!chatItems?.length) return;
     setLocalReplies((current) =>
-      current.filter(
-        (local) => !chatItems.some((row) => row.mine && row.body === local.body && row.replyTo === local.replyTo)
-      )
+      current.filter((local) => {
+        const body = local.body.trim();
+        if (!body) return false;
+        return !chatItems.some((row) => row.mine && row.body.trim() === body);
+      })
     );
   }, [chatItems]);
+
+  const { optimisticallyClear } = useLeagueUnreadCounts();
+
+  // Messages shown in Match Center count as read — clear the header chat badge
+  // for those leagues (same receipts table as opening the league chat).
+  React.useEffect(() => {
+    if (mode !== 'live' || !userId || !chatItems?.length) return;
+    const leagueIds = new Set<string>();
+    for (const item of chatItems) {
+      const leagueId = item.link?.leagueId;
+      if (!leagueId || item.id.startsWith('chat:local')) continue;
+      leagueIds.add(leagueId);
+    }
+    if (!leagueIds.size) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      // Use "now" (same as opening league chat) so we never rewind last_read_at.
+      const lastReadAt = new Date().toISOString();
+      leagueIds.forEach((leagueId) => {
+        optimisticallyClear(leagueId);
+        void supabase.from('league_message_reads').upsert(
+          { league_id: leagueId, user_id: userId, last_read_at: lastReadAt },
+          { onConflict: 'league_id,user_id' }
+        );
+      });
+    }, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [chatItems, mode, optimisticallyClear, userId]);
 
   const chatRecordIds = React.useMemo(
     () => (chatItems ?? []).map((item) => chatRecordId(item.id)).filter((id): id is string => id != null),
@@ -2213,12 +2318,14 @@ export default function MatchCenterScreen() {
       const recordId = chatRecordId(item.id);
       if (mode === 'live' && recordId && userId) {
         void toggleReaction(recordId, emoji);
-        return;
+      } else {
+        setLocalReactions((current) => ({
+          ...current,
+          [item.id]: toggleReactionList(current[item.id], emoji),
+        }));
       }
-      setLocalReactions((current) => ({
-        ...current,
-        [item.id]: toggleReactionList(current[item.id], emoji),
-      }));
+      // Collapse the emoji tray after a choice (same as tapping “React” closed).
+      setReactId(null);
     },
     [mode, toggleReaction, userId]
   );
@@ -2416,67 +2523,111 @@ export default function MatchCenterScreen() {
   const firstKoMs = firstKickoffMs(fixtures);
   const rankingsOnTicker = firstKoMs != null && clockMs >= firstKoMs;
 
-  const { data: tickerLeagues } = useQuery({
-    enabled: rankingsOnTicker && typeof gw === 'number' && !!userId && (leaguesData?.leagues.length ?? 0) > 0,
-    queryKey: ['match-center-ticker-leagues', gw, leagueIds, userId],
-    staleTime: 20_000,
-    refetchInterval: 30_000,
-    queryFn: async (): Promise<TickerLeague[]> => {
-      const leagues = leaguesData?.leagues ?? [];
-      const currentGw = gw as number;
-      const previousGw = currentGw > 1 ? currentGw - 1 : null;
-      const snaps = await Promise.all(
-        leagues.map(async (league) => {
+  // Previous-GW ranks for ticker "move" arrows — rarely change once the previous GW is closed.
+  const { data: tickerPrevLeagueRanks } = useQuery({
+    enabled: rankingsOnTicker && typeof gw === 'number' && gw > 1 && !!userId && leagueIds.length > 0,
+    queryKey: ['match-center-ticker-prev-leagues', gw, leagueIds, userId],
+    staleTime: MC_HEAVY_STALE_MS,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const previousGw = (gw as number) - 1;
+      const out = new Map<string, number>();
+      await Promise.all(
+        (leaguesData?.leagues ?? []).map(async (league) => {
           try {
-            const [current, previous] = await Promise.all([
-              api.getLeagueGwTable(league.id, currentGw),
-              previousGw ? api.getLeagueGwTable(league.id, previousGw).catch(() => null) : Promise.resolve(null),
-            ]);
-            const rank = userId ? tickerTableRank(current.rows, userId) : null;
-            if (!rank) return null;
-            const before = previous && userId ? tickerTableRank(previous.rows, userId) : null;
-            return {
-              id: league.id,
-              name: league.name,
-              avatarUri: resolveLeagueAvatarUri(league.avatar || getDefaultMlAvatarFilename(league.id)),
-              rank,
-              move: tickerMove(before, rank),
-            } satisfies TickerLeague;
+            const previous = await api.getLeagueGwTable(league.id, previousGw);
+            const before = userId ? tickerTableRank(previous.rows, userId) : null;
+            if (before) out.set(league.id, before);
           } catch {
-            return null;
+            /* ignore */
           }
         })
       );
-      return snaps.filter((row): row is TickerLeague => row != null);
+      return out;
+    },
+  });
+
+  const tickerLeagues = React.useMemo((): TickerLeague[] => {
+    if (!rankingsOnTicker || !userId || !leagueTables?.length) return [];
+    return leagueTables.flatMap((league) => {
+      const rank = tickerTableRank(league.rows, userId);
+      if (!rank) return [];
+      const before = tickerPrevLeagueRanks?.get(league.id) ?? null;
+      return [
+        {
+          id: league.id,
+          name: league.name,
+          avatarUri: league.avatarUrl ?? resolveLeagueAvatarUri(getDefaultMlAvatarFilename(league.id)),
+          rank,
+          move: tickerMove(before, rank),
+        } satisfies TickerLeague,
+      ];
+    });
+  }, [leagueTables, rankingsOnTicker, tickerPrevLeagueRanks, userId]);
+
+  // Season points baseline for overall/monthly ticker — once per session window, not every tick.
+  const { data: tickerPointsBaseline } = useQuery({
+    enabled: rankingsOnTicker && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
+    queryKey: ['match-center-ticker-points', useSeasonStack ? seasonId : 'legacy'],
+    staleTime: MC_HEAVY_STALE_MS,
+    queryFn: async () => {
+      const pileB = useSeasonStack && !!seasonId;
+      const pointsTable = pileB ? SEASON_PILE_TABLES.gwPoints : LEGACY_PILE_TABLES.gwPoints;
+      return fetchAllSupabaseRows<{ user_id: string; gw: number; points: number }>((from, to) => {
+        let query = (supabase as any)
+          .from(pointsTable)
+          .select('user_id, gw, points')
+          .order('gw', { ascending: true })
+          .order('user_id', { ascending: true })
+          .range(from, to);
+        if (pileB) query = query.eq('season_id', seasonId);
+        return query;
+      }).catch(() => [] as Array<{ user_id: string; gw: number; points: number }>);
     },
   });
 
   const { data: tickerBoards } = useQuery({
     enabled: rankingsOnTicker && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-ticker-boards', gw, userId, useSeasonStack ? seasonId : 'legacy', seasonLabel],
-    staleTime: 20_000,
-    refetchInterval: 30_000,
+    staleTime: MC_TICKER_MS,
+    refetchInterval: MC_TICKER_MS,
     queryFn: async (): Promise<TickerBoard[]> => {
       const currentGw = gw as number;
       const seasonKey: LeaderboardSeasonKey = seasonLabel === SEASON_2026_27_LABEL ? '2026/27' : '2025/26';
       const month = getMonthForGw(currentGw, seasonKey);
-      const pileB = useSeasonStack && !!seasonId;
-      const pointsTable = pileB ? SEASON_PILE_TABLES.gwPoints : LEGACY_PILE_TABLES.gwPoints;
       const [currentLive, previousLive, points] = await Promise.all([
-        api.getGlobalGwLiveTable(currentGw).catch(() => ({ gw: currentGw, rows: [] as Array<{ user_id: string; name: string; score: number }> })),
+        queryClient.fetchQuery({
+          queryKey: ['match-center-gw-live', currentGw],
+          queryFn: () => api.getGlobalGwLiveTable(currentGw),
+          staleTime: MC_LIVE_BOARD_MS,
+        }).catch(() => ({ gw: currentGw, rows: [] as Array<{ user_id: string; name: string; score: number }> })),
         currentGw > 1
-          ? api.getGlobalGwLiveTable(currentGw - 1).catch(() => null)
+          ? queryClient.fetchQuery({
+              queryKey: ['match-center-gw-live', currentGw - 1],
+              queryFn: () => api.getGlobalGwLiveTable(currentGw - 1),
+              staleTime: MC_HEAVY_STALE_MS,
+            }).catch(() => null)
           : Promise.resolve(null),
-        fetchAllSupabaseRows<{ user_id: string; gw: number; points: number }>((from, to) => {
-          let query = (supabase as any)
-            .from(pointsTable)
-            .select('user_id, gw, points')
-            .order('gw', { ascending: true })
-            .order('user_id', { ascending: true })
-            .range(from, to);
-          if (pileB) query = query.eq('season_id', seasonId);
-          return query;
-        }).catch(() => [] as Array<{ user_id: string; gw: number; points: number }>),
+        Promise.resolve(
+          tickerPointsBaseline ??
+            (await queryClient.fetchQuery({
+              queryKey: ['match-center-ticker-points', useSeasonStack ? seasonId : 'legacy'],
+              queryFn: async () => {
+                const pileB = useSeasonStack && !!seasonId;
+                const pointsTable = pileB ? SEASON_PILE_TABLES.gwPoints : LEGACY_PILE_TABLES.gwPoints;
+                return fetchAllSupabaseRows<{ user_id: string; gw: number; points: number }>((from, to) => {
+                  let query = (supabase as any)
+                    .from(pointsTable)
+                    .select('user_id, gw, points')
+                    .order('gw', { ascending: true })
+                    .order('user_id', { ascending: true })
+                    .range(from, to);
+                  if (pileB) query = query.eq('season_id', seasonId);
+                  return query;
+                }).catch(() => [] as Array<{ user_id: string; gw: number; points: number }>);
+              },
+              staleTime: MC_HEAVY_STALE_MS,
+            }))
+        ),
       ]);
 
       const byUser = new Map<string, Map<number, number>>();
@@ -2639,9 +2790,7 @@ export default function MatchCenterScreen() {
           }
           const tuck =
             index > 0 &&
-            (item.kind === 'rank' ||
-              item.kind === 'overall' ||
-              (item.kind === 'xi' && previous?.kind === 'lineup'));
+            (item.kind === 'rank' || (item.kind === 'xi' && previous?.kind === 'lineup'));
           const tuckSoft = tuck && previous != null && isMatchCenterReactable(previous.kind);
           const cardKey =
             typeof gw === 'number' && mode === 'live' ? matchCenterReactionCardId(gw, item.id) : item.id;

@@ -493,9 +493,140 @@ export function matchCenterClosesAtMs(fixtures: Fixture[]): number | null {
 /** Minutes before first kickoff when the first MC cards (opener / line-ups) land. */
 export const MATCH_CENTER_LINEUP_LEAD_MS = 75 * 60_000;
 
+const MINUTE_MS = 60_000;
+/** Keep HT after any 45' goals, and second-half before any 46' goals (same wall-ms bucket). */
+const HT_SORT_OFFSET_MS = 500;
+const SECOND_HALF_SORT_OFFSET_MS = -500;
+
+function parseUpdatedAtMs(live: LiveScore | null | undefined): number | null {
+  const raw = live?.updated_at;
+  if (typeof raw !== 'string' || !raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Wall-clock anchors for half-time / second-half — match minute ≠ real time
+ * (stoppage + HT break). Prefer walking back from "now" using the live minute.
+ */
+function halfTimeWallMs(ko: number, live: LiveScore | null | undefined, nowMs: number): number {
+  const minute = typeof live?.minute === 'number' ? live.minute : null;
+  const updated = parseUpdatedAtMs(live);
+  if (live?.status === 'PAUSED') {
+    return updated ?? nowMs;
+  }
+  if (minute != null && minute >= 46) {
+    const shWall = secondHalfWallMs(ko, live, nowMs);
+    // Typical break ~15m; never before KO+45'.
+    return Math.max(ko + 45 * MINUTE_MS, shWall - 15 * MINUTE_MS);
+  }
+  return updated ?? ko + 45 * MINUTE_MS;
+}
+
+function secondHalfWallMs(ko: number, live: LiveScore | null | undefined, nowMs: number): number {
+  const minute = typeof live?.minute === 'number' ? live.minute : null;
+  const updated = parseUpdatedAtMs(live);
+  if (live?.status === 'PAUSED') {
+    return Math.max(ko + 46 * MINUTE_MS, (updated ?? nowMs) + MINUTE_MS);
+  }
+  if (minute != null && minute >= 46) {
+    // Live minute ticks in playing time — walk back from now to restart.
+    return Math.max(ko + 46 * MINUTE_MS, nowMs - (minute - 46) * MINUTE_MS);
+  }
+  return updated ?? ko + 46 * MINUTE_MS;
+}
+
+/**
+ * Wall-clock time for a goal/score card. Match minute is only a label (46'),
+ * not KO+46 minutes on the wall.
+ */
+function goalWallMs(input: {
+  ko: number;
+  goalMinute: number;
+  live: LiveScore;
+  nowMs: number;
+  isLatestGoal: boolean;
+}): number {
+  const { ko, goalMinute, live, nowMs, isLatestGoal } = input;
+  const liveMinute = typeof live.minute === 'number' ? live.minute : null;
+  const updated = parseUpdatedAtMs(live);
+
+  // Fresh goal that just landed — trust the row's updated_at.
+  if (isLatestGoal && updated != null && liveMinute != null && liveMinute - goalMinute <= 2) {
+    return updated;
+  }
+
+  if (goalMinute >= 46) {
+    const shWall = secondHalfWallMs(ko, live, nowMs);
+    if (liveMinute != null && liveMinute >= goalMinute) {
+      return shWall + (goalMinute - 46) * MINUTE_MS;
+    }
+    return updated ?? shWall + Math.max(0, goalMinute - 46) * MINUTE_MS;
+  }
+
+  // First-half goal: place across the real first-half wall span (includes stoppage).
+  const htWall = halfTimeWallMs(ko, live, nowMs);
+  const span = Math.max(MINUTE_MS, htWall - ko);
+  return ko + Math.min(1, Math.max(0, goalMinute / 45)) * span;
+}
+
+/**
+ * Match events use a synthetic kickoff+minute clock; chat uses wall clock.
+ * Long half-time breaks make wall-clock messages land *after* the synthetic
+ * "second half" card. Remap HT-break chat into the gap between HT and SH.
+ */
+export function alignChatSortAtMs(input: {
+  createdAtMs: number;
+  fixtures: Fixture[];
+  liveByFixtureIndex: Map<number, LiveScore>;
+  liveByApiMatchId?: Map<number, LiveScore>;
+  nowMs?: number;
+}): number {
+  const createdAtMs = input.createdAtMs;
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return createdAtMs;
+  const nowMs = input.nowMs ?? Date.now();
+  const { fixtures, liveByFixtureIndex, liveByApiMatchId } = input;
+  if (!fixtures.length) return createdAtMs;
+
+  // Prefer the live/paused fixture; else earliest kickoff still in the MC window.
+  const ranked = fixtures
+    .map((fixture) => {
+      const live = resolveLive(fixture, liveByFixtureIndex, liveByApiMatchId);
+      const ko = kickoffMs(fixture);
+      return { fixture, live, ko };
+    })
+    .filter((row): row is { fixture: Fixture; live: LiveScore | undefined; ko: number } => typeof row.ko === 'number');
+  if (!ranked.length) return createdAtMs;
+
+  const focus =
+    ranked.find((row) => row.live?.status === 'PAUSED') ??
+    ranked.find((row) => row.live?.status === 'IN_PLAY') ??
+    ranked.find((row) => row.live?.status === 'FINISHED') ??
+    ranked.sort((a, b) => a.ko - b.ko)[0];
+  if (!focus) return createdAtMs;
+
+  const { live, ko } = focus;
+  const minute = typeof live?.minute === 'number' ? live.minute : null;
+  const pastHalf =
+    live?.status === 'PAUSED' ||
+    live?.status === 'FINISHED' ||
+    (minute !== null && minute >= 46);
+  if (!pastHalf || createdAtMs < ko || !live) return createdAtMs;
+
+  // Match cards now use wall-clock sortAts — chat created_at already interleaves.
+  // Keep a light clamp so HT-break messages sit between HT and SH cards.
+  const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
+  const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
+  if (createdAtMs > htWall && createdAtMs < shWall) return createdAtMs;
+  return createdAtMs;
+}
+
 /**
  * Header LIVE control: on once the first Match Center card is live,
  * off once every fixture is finished (round-up message lands).
+ *
+ * Stay on through kickoff / in-play even if lineup JSON is missing from a
+ * stale home snapshot (common when the header doesn't hold a Realtime channel).
  */
 export function isMatchCenterLiveSignalActive(input: {
   fixtures: Fixture[];
@@ -511,8 +642,16 @@ export function isMatchCenterLiveSignalActive(input: {
   if (allFinished) return false;
   const first = firstKickoffMs(fixtures);
   if (first == null) return false;
+  if (nowMs < first - MATCH_CENTER_LINEUP_LEAD_MS) return false;
   const anyLineup = fixtures.some((fixture) => parseStoredLineup(resolve(fixture)?.lineups));
-  return anyLineup && nowMs >= first - MATCH_CENTER_LINEUP_LEAD_MS;
+  if (anyLineup) return true;
+  // Mid-GW fallback: any fixture kicked off or marked live/finished keeps the entry visible.
+  return fixtures.some((fixture) => {
+    const status = resolve(fixture)?.status;
+    if (status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED') return true;
+    const ko = kickoffMs(fixture);
+    return ko != null && nowMs >= ko;
+  });
 }
 
 /** Countdown for the waiting card, always including seconds — e.g. "2h 08m 05s". */
@@ -723,17 +862,29 @@ export function buildMatchFeed(input: {
     if (goals.length === 0) {
       if (live.status !== 'FINISHED') {
         const minute = typeof live.minute === 'number' ? live.minute : 0;
-        noteOutcome(fixture.fixture_index, homeScore, awayScore, ko + minute * 60_000, minute ? `${minute}'` : '0\'', homeScore + awayScore > 0, null);
+        const wallMs = goalWallMs({ ko, goalMinute: minute || 1, live, nowMs, isLatestGoal: true });
+        noteOutcome(
+          fixture.fixture_index,
+          homeScore,
+          awayScore,
+          wallMs,
+          formatLocalTimeHHmm(new Date(wallMs).toISOString()),
+          homeScore + awayScore > 0,
+          null
+        );
       }
     } else {
       noteOutcome(fixture.fixture_index, 0, 0, ko, formatLocalTimeHHmm(new Date(ko).toISOString()), false, null);
     }
     if (goals.length === 0 && (homeScore > 0 || awayScore > 0)) {
       const minute = typeof live.minute === 'number' ? live.minute : 1;
+      const wallMs = goalWallMs({ ko, goalMinute: minute, live, nowMs, isLatestGoal: true });
+      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
       items.push({
         id: `score:${fixture.fixture_index}:${homeScore}-${awayScore}`,
-        sortAt: ko + minute * 60_000,
+        sortAt: wallMs,
         timeLabel: typeof live.minute === 'number' ? `${live.minute}'` : 'Live',
+        stamp,
         kind: 'goal',
         eyebrow: 'Goal',
         title: 'GOAL',
@@ -744,6 +895,7 @@ export function buildMatchFeed(input: {
     }
     let home = 0;
     let away = 0;
+    const lastGoalIndex = goals.length - 1;
     goals.forEach((goal, index) => {
       const side = sideForGoal(fixture, goal.team);
       const ruledOut = ruledOutGoal(goal);
@@ -761,12 +913,21 @@ export function buildMatchFeed(input: {
       const scorer = goal.scorer?.trim() || 'Someone';
       const own = goal.isOwnGoal ? ' (og)' : '';
       const pen = goal.isPenalty ? ' (pen)' : '';
-      const sortAt = ko + minute * 60_000;
-      if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, sortAt, `${minute}'`, true, scorer);
+      // Wall clock for stamp/sort — match minute is only the label (46'), not KO+46'.
+      const wallMs = goalWallMs({
+        ko,
+        goalMinute: minute,
+        live,
+        nowMs,
+        isLatestGoal: index === lastGoalIndex,
+      });
+      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
+      if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, wallMs, stamp, true, scorer);
       items.push({
         id: `goal:${fixture.fixture_index}:${minute}:${index}`,
-        sortAt,
+        sortAt: wallMs,
         timeLabel: `${minute}'`,
+        stamp,
         kind: ruledOut ? 'ruled-out' : 'goal',
         eyebrow: ruledOut ? 'VAR' : 'Goal',
         title: ruledOut ? 'Goal ruled out' : 'GOAL',
@@ -783,10 +944,13 @@ export function buildMatchFeed(input: {
     if (pastHalf) {
       const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45);
       const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
+      const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
+      const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());
       items.push({
         id: `ht:${fixture.fixture_index}`,
-        sortAt: ko + 45 * 60_000,
+        sortAt: htWall,
         timeLabel: 'HT',
+        stamp: htStamp,
         kind: 'half-time',
         eyebrow: 'Half-time',
         title: halfTimeTitle(),
@@ -796,10 +960,13 @@ export function buildMatchFeed(input: {
       });
     }
     if (live.status === 'IN_PLAY' && minute !== null && minute >= 46) {
+      const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
+      const shStamp = formatLocalTimeHHmm(new Date(shWall).toISOString());
       items.push({
         id: `sh:${fixture.fixture_index}`,
-        sortAt: ko + 46 * 60_000,
+        sortAt: shWall,
         timeLabel: "46'",
+        stamp: shStamp,
         kind: 'second-half',
         eyebrow: 'Second half',
         title: "They're back",
@@ -863,8 +1030,27 @@ export function buildMatchFeed(input: {
     item.stamp = item.stamp || clockStamp(item.sortAt, item.timeLabel);
   }
 
-  items.sort((a, b) => a.sortAt - b.sortAt || a.id.localeCompare(b.id));
+  items.sort((a, b) => a.sortAt - b.sortAt || feedKindRank(a.kind) - feedKindRank(b.kind) || a.id.localeCompare(b.id));
   return items;
+}
+
+/** Tie-break when sortAt collides — keeps HT → second half → goal → ML. */
+function feedKindRank(kind: FeedKind): number {
+  switch (kind) {
+    case 'half-time':
+      return 10;
+    case 'second-half':
+      return 20;
+    case 'goal':
+    case 'ruled-out':
+      return 30;
+    case 'rank':
+      return 40;
+    case 'message':
+      return 50;
+    default:
+      return 35;
+  }
 }
 
 type Standing = { rank: number; sole: boolean; points: number };

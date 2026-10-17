@@ -3,16 +3,53 @@ import { AppState } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import type { Fixture, HomeSnapshot, LiveScore } from '@totl/domain';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import {
   firstKickoffMs,
   isMatchCenterLiveSignalActive,
   MATCH_CENTER_LINEUP_LEAD_MS,
 } from '../features/matchCenter/feed';
-import { useLiveScores } from './useLiveScores';
+
+/** Snapshot cadence for fixtures / GW — not used for second-by-second scores. */
+const BOARD_STALE_MS = 45_000;
+/** Slim live_scores poll — enough for lineups/status without a Realtime channel. */
+const LIVE_POLL_MS = 45_000;
+
+function mergeLiveMaps(
+  fixtures: Fixture[],
+  fromBoard: LiveScore[] | null | undefined,
+  fromPoll: LiveScore[] | null | undefined
+): { liveByFixtureIndex: Map<number, LiveScore>; liveByApiMatchId: Map<number, LiveScore> } {
+  const liveByFixtureIndex = new Map<number, LiveScore>();
+  const liveByApiMatchId = new Map<number, LiveScore>();
+  const apiToIdx = new Map<number, number>();
+  fixtures.forEach((f) => {
+    if (typeof f.api_match_id === 'number') apiToIdx.set(f.api_match_id, f.fixture_index);
+  });
+  const apply = (rows: LiveScore[] | null | undefined) => {
+    (rows ?? []).forEach((ls) => {
+      if (typeof ls.api_match_id === 'number') liveByApiMatchId.set(ls.api_match_id, ls);
+      const idx =
+        typeof ls.fixture_index === 'number'
+          ? ls.fixture_index
+          : typeof ls.api_match_id === 'number'
+            ? apiToIdx.get(ls.api_match_id)
+            : undefined;
+      if (typeof idx === 'number') liveByFixtureIndex.set(idx, ls);
+    });
+  };
+  // Poll overlays snapshot so lineups/status stay fresh.
+  apply(fromBoard);
+  apply(fromPoll);
+  return { liveByFixtureIndex, liveByApiMatchId };
+}
 
 /**
  * App-wide: true from the first Match Center card until the round-up
  * (all fixtures finished). Used by the header LIVE control.
+ *
+ * Avoids a full `useLiveScores` Realtime subscription (Home/MC already own
+ * those). Uses home snapshot + a slim live_scores poll instead.
  */
 export function useMatchCenterLiveSignal(): boolean {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
@@ -20,7 +57,8 @@ export function useMatchCenterLiveSignal(): boolean {
   const { data: home } = useQuery<HomeSnapshot>({
     queryKey: ['homeSnapshot'],
     queryFn: () => api.getHomeSnapshot(),
-    staleTime: 30_000,
+    staleTime: BOARD_STALE_MS,
+    refetchInterval: BOARD_STALE_MS,
   });
 
   const currentGw = typeof home?.currentGw === 'number' ? home.currentGw : null;
@@ -31,36 +69,33 @@ export function useMatchCenterLiveSignal(): boolean {
     enabled: needsCurrentBoard,
     queryKey: ['homeSnapshot', 'live-signal', currentGw],
     queryFn: () => api.getHomeSnapshot({ gw: currentGw as number }),
-    staleTime: 30_000,
+    staleTime: BOARD_STALE_MS,
+    refetchInterval: BOARD_STALE_MS,
   });
 
   const board = needsCurrentBoard ? currentBoard : home;
   const fixtures: Fixture[] = board?.fixtures ?? [];
   const gw = currentGw;
 
-  const { liveByFixtureIndex, liveByApiMatchId } = useLiveScores(gw, {
-    initial: board?.liveScores ?? [],
+  const { data: polledLive } = useQuery<LiveScore[]>({
+    enabled: typeof gw === 'number',
+    queryKey: ['match-center-live-signal-scores', gw],
+    staleTime: LIVE_POLL_MS,
+    refetchInterval: LIVE_POLL_MS,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('live_scores')
+        .select('api_match_id, fixture_index, status, lineups, updated_at')
+        .eq('gw', gw as number);
+      if (error) throw error;
+      return (data ?? []) as LiveScore[];
+    },
   });
 
-  const liveByIndex = React.useMemo(() => {
-    if (liveByFixtureIndex.size > 0) return liveByFixtureIndex;
-    const m = new Map<number, LiveScore>();
-    const apiToIdx = new Map<number, number>();
-    fixtures.forEach((f) => {
-      if (typeof f.api_match_id === 'number') apiToIdx.set(f.api_match_id, f.fixture_index);
-    });
-    (board?.liveScores ?? []).forEach((ls) => {
-      const idx =
-        typeof ls.fixture_index === 'number'
-          ? ls.fixture_index
-          : typeof ls.api_match_id === 'number'
-            ? apiToIdx.get(ls.api_match_id)
-            : undefined;
-      if (typeof idx !== 'number') return;
-      m.set(idx, ls);
-    });
-    return m;
-  }, [board?.liveScores, fixtures, liveByFixtureIndex]);
+  const { liveByFixtureIndex, liveByApiMatchId } = React.useMemo(
+    () => mergeLiveMaps(fixtures, board?.liveScores, polledLive),
+    [board?.liveScores, fixtures, polledLive]
+  );
 
   const firstKo = React.useMemo(() => firstKickoffMs(fixtures), [fixtures]);
   const teamsAtMs = firstKo != null ? firstKo - MATCH_CENTER_LINEUP_LEAD_MS : null;
@@ -73,6 +108,12 @@ export function useMatchCenterLiveSignal(): boolean {
   }, [teamsAtMs]);
 
   React.useEffect(() => {
+    // Keep "kickoff passed" fallback honest while fixtures are live.
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') setNowMs(Date.now());
     });
@@ -83,10 +124,10 @@ export function useMatchCenterLiveSignal(): boolean {
     () =>
       isMatchCenterLiveSignalActive({
         fixtures,
-        liveByFixtureIndex: liveByIndex,
+        liveByFixtureIndex,
         liveByApiMatchId,
         nowMs,
       }),
-    [fixtures, liveByApiMatchId, liveByIndex, nowMs]
+    [fixtures, liveByApiMatchId, liveByFixtureIndex, nowMs]
   );
 }
