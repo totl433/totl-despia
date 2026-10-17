@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Animated, Easing, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Easing, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -56,6 +56,7 @@ import {
   chatMessageItem,
   firstKickoffMs,
   isMatchCenterReactable,
+  lastKickoffMs,
   matchCenterClosesAtMs,
   matchCenterReactionCardId,
   rankChangeItem,
@@ -2051,15 +2052,39 @@ export default function MatchCenterScreen() {
     };
   }, [chatSince, chatUntil, leagueIds, mode, queryClient]);
 
-  // Tick while we're waiting on the first teams announcement so the countdown stays live.
+  // Tick until the *last* kickoff so late XIs unlock without leaving Match Center.
+  // (Previously stopped at the first KO, which froze later Saturday 15:00 line-ups.)
   const [clockMs, setClockMs] = React.useState(() => Date.now());
   React.useEffect(() => {
-    const first = firstKickoffMs(board?.fixtures ?? []);
-    if (mode !== 'live' || first == null || Date.now() >= first) return;
+    if (mode !== 'live') return;
+    const last = lastKickoffMs(board?.fixtures ?? []);
     setClockMs(Date.now());
+    if (last == null || Date.now() >= last) return;
     const id = setInterval(() => setClockMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, [board?.fixtures, mode]);
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setClockMs(Date.now());
+    });
+    return () => sub.remove();
+  }, []);
+
+  const lineupArrivalMs = React.useRef(new Map<number, number>());
+  const lineupArrivalGw = React.useRef<number | null>(null);
+  if (typeof gw === 'number' && lineupArrivalGw.current !== gw) {
+    lineupArrivalGw.current = gw;
+    lineupArrivalMs.current = new Map();
+  }
+
+  const seenIds = React.useRef<Set<string> | null>(null);
+  const seenMode = React.useRef(mode);
+  const seenGw = React.useRef<number | null>(typeof gw === 'number' ? gw : null);
+  if (seenMode.current !== mode || seenGw.current !== gw) {
+    seenMode.current = mode;
+    seenGw.current = typeof gw === 'number' ? gw : null;
+    seenIds.current = null;
+  }
 
   const feed = React.useMemo(() => {
     if (mode === 'sample' || mode === 'play') {
@@ -2082,6 +2107,9 @@ export default function MatchCenterScreen() {
       userId,
       leagues: replayOn ? leaguePicks : [],
       overall: overallReplay ? { ...overallReplay, userAvatar: profileSummary?.avatar_url ?? null } : null,
+      lineupArrivalMs: lineupArrivalMs.current,
+      // After the first painted live feed, new XIs sort by wall clock at the live end.
+      sessionLive: seenIds.current !== null,
     });
     const roundUp =
       allFinished && userId
@@ -2124,15 +2152,6 @@ export default function MatchCenterScreen() {
       (a, b) => a.sortAt - b.sortAt || kindRank(a.kind) - kindRank(b.kind) || a.id.localeCompare(b.id)
     );
   }, [allFinished, board, chatItems, clockMs, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
-
-  const seenIds = React.useRef<Set<string> | null>(null);
-  const seenMode = React.useRef(mode);
-  const seenGw = React.useRef<number | null>(typeof gw === 'number' ? gw : null);
-  if (seenMode.current !== mode || seenGw.current !== gw) {
-    seenMode.current = mode;
-    seenGw.current = typeof gw === 'number' ? gw : null;
-    seenIds.current = null;
-  }
 
   const [scoresReady, setScoresReady] = React.useState(false);
   React.useEffect(() => {

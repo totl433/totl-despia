@@ -690,6 +690,14 @@ export function buildMatchFeed(input: {
   userId?: string | null;
   leagues?: LeaguePickSnap[];
   overall?: OverallReplay | null;
+  /**
+   * Stable wall/historical ms when each fixture's XI first appeared in this session.
+   * Mutated as new lineups land so late XIs sort into the live end of the feed
+   * instead of inserting silently above the viewport.
+   */
+  lineupArrivalMs?: Map<number, number>;
+  /** True once the live feed has already painted once (not the initial catch-up). */
+  sessionLive?: boolean;
 }): FeedItem[] {
   const { gw, fixtures, liveByFixtureIndex, picks, nowMs } = input;
   const resolve = (fixture: Fixture) => resolveLive(fixture, liveByFixtureIndex, input.liveByApiMatchId);
@@ -776,6 +784,13 @@ export function buildMatchFeed(input: {
     const ko = kickoffMs(fixture);
     if (!xi || ko === null || nowMs < ko - lineupLeadMs) continue;
     const announced = ko - lineupLeadMs;
+    const idx = fixture.fixture_index;
+    if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
+      // Catch-up open: keep story order at the official XI window.
+      // Mid-session arrival: wall-clock so the cards appear at the live end.
+      input.lineupArrivalMs.set(idx, input.sessionLive ? nowMs : announced);
+    }
+    const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
     const top = lineupTopFor(fixture);
     const match = board(
       fixture,
@@ -784,8 +799,8 @@ export function buildMatchFeed(input: {
       live && started(live.status) ? (live.away_score ?? null) : null,
       live?.status
     );
-    const stamp = clockStamp(announced, 'XI');
-    const pairAt = announced + fixture.fixture_index * 2;
+    const stamp = clockStamp(arrived, 'XI');
+    const pairAt = arrived + fixture.fixture_index * 2;
     items.push({
       id: `xi:${fixture.fixture_index}`,
       sortAt: pairAt,

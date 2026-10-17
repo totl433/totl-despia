@@ -202,9 +202,18 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
                 changed = true;
               }
             } else {
-              const newRow = payload.new as LiveScore;
-              if (!isNumber(newRow.api_match_id)) return prev;
-              const prevRow = prev.get(newRow.api_match_id);
+              const incoming = payload.new as LiveScore;
+              if (!isNumber(incoming.api_match_id)) return prev;
+              const prevRow = prev.get(incoming.api_match_id);
+              // Merge so a slim realtime payload can't wipe lineups we already have.
+              const newRow: LiveScore = {
+                ...(prevRow ?? ({} as LiveScore)),
+                ...incoming,
+                lineups:
+                  incoming.lineups !== undefined && incoming.lineups !== null
+                    ? incoming.lineups
+                    : (prevRow?.lineups ?? incoming.lineups),
+              };
               if (scoreChanged(prevRow, newRow)) {
                 next.set(newRow.api_match_id, newRow);
                 changed = true;
