@@ -61,3 +61,25 @@ export function playersMonthName(dayKey: string): string {
 export function playersMonthKey(dayKey: string): string {
   return dayKey.slice(0, 7);
 }
+
+/** The Players day `days` after (or before, if negative) the given one. */
+export function shiftPlayersDay(dayKey: string, days: number): string {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * A Players week runs Monday to Sunday on the same GMT days as the game,
+ * so there is no daylight-saving shift. Returns that Monday's day key.
+ */
+export function playersWeekStart(dayKey: string): string {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return shiftPlayersDay(dayKey, -((weekday + 6) % 7));
+}
+
+/** Number of days in the month of the given day key. */
+export function playersDaysInMonth(dayKey: string): number {
+  const [y, m] = dayKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
