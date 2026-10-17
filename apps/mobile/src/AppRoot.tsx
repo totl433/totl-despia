@@ -226,6 +226,7 @@ export default function AppRoot() {
         <ThemePreferenceProvider>
           <ThemedApp
             authed={authed}
+            sessionUserId={sessionUserId}
             pendingPasswordReset={pendingPasswordReset}
             onPasswordResetComplete={() => setPendingPasswordReset(false)}
           />
@@ -237,10 +238,12 @@ export default function AppRoot() {
 
 function ThemedApp({
   authed,
+  sessionUserId,
   pendingPasswordReset,
   onPasswordResetComplete,
 }: {
   authed: boolean;
+  sessionUserId: string | null;
   pendingPasswordReset: boolean;
   onPasswordResetComplete: () => void;
 }) {
@@ -261,10 +264,23 @@ function ThemedApp({
     let alive = true;
     setProfileError(null);
     setProfileReady(false);
-    supabase.auth
-      .getUser()
-      .then(async ({ data }) => {
-        const userId = data.user?.id;
+
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string) =>
+      Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(label)), ms);
+        }),
+      ]);
+
+    void (async () => {
+      try {
+        // Prefer the restored session id — getUser() can hang forever on a bad network.
+        let userId = sessionUserId;
+        if (!userId) {
+          const { data } = await withTimeout(supabase.auth.getUser(), 8_000, 'Auth user timed out.');
+          userId = data.user?.id ?? null;
+        }
         if (!userId) {
           if (alive) {
             setNeedsUsername(false);
@@ -272,26 +288,28 @@ function ThemedApp({
           }
           return;
         }
-        const status = await Promise.race([
-          resolveProfileStatus(userId),
-          new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Profile setup timed out.')), 12_000);
-          }),
-        ]);
+        const status = await withTimeout(resolveProfileStatus(userId), 10_000, 'Profile setup timed out.');
         if (!alive) return;
         setNeedsUsername(status === 'needs-username');
         setProfileReady(true);
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!alive) return;
         console.warn('[AppRoot] Profile resolution failed', error instanceof Error ? error.message : String(error));
+        // Session is already known — don't trap the user on a spinner. Continue and let
+        // in-app screens recover; only force username if we never confirmed a name.
+        if (sessionUserId) {
+          setNeedsUsername(false);
+          setProfileReady(true);
+          return;
+        }
         setProfileError('We couldn’t finish signing you in. Check your connection and try again.');
-      });
+      }
+    })();
 
     return () => {
       alive = false;
     };
-  }, [authed, profileAttempt]);
+  }, [authed, profileAttempt, sessionUserId]);
 
   return (
     <ThemeProvider tokens={isDark ? undefined : lightThemeTokens}>
