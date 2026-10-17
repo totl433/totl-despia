@@ -1344,41 +1344,60 @@ function FixtureTicker({
 }) {
   const t = useTokens();
   const shift = useSharedValue(0);
-  const wash = React.useRef(new Animated.Value(0)).current;
   const [loopWidth, setLoopWidth] = React.useState(0);
-  const contentKey = [
+  // Structure only — scores/ranks/moves must NOT restart the marquee (that was the glitch).
+  const structureKey = [
     games.map((game) => game.key).join('|'),
-    leagues.map((league) => `${league.id}:${league.rank}:${league.move ?? ''}`).join('|'),
-    boards.map((board) => `${board.key}:${board.rank ?? ''}:${board.move ?? ''}`).join('|'),
+    leagues.map((league) => league.id).join('|'),
+    boards.map((board) => board.key).join('|'),
   ].join('~');
+  const structureRef = React.useRef(structureKey);
+  const loopWidthRef = React.useRef(0);
 
   React.useEffect(() => {
     if (loopWidth <= 0) return;
+    const structureChanged = structureRef.current !== structureKey;
+    structureRef.current = structureKey;
+    const prevWidth = loopWidthRef.current;
+    loopWidthRef.current = loopWidth;
+
     cancelAnimation(shift);
-    shift.value = 0;
-    const duration = Math.max(12000, loopWidth * 8);
-    shift.value = withRepeat(
-      withTiming(-loopWidth, { duration, easing: ReEasing.linear }),
-      -1,
-      false
-    );
+    // ~100px/s — steady on device; duration scales with strip length
+    const msPerPx = 10;
+    const fullDuration = Math.max(16000, loopWidth * msPerPx);
+
+    if (structureChanged || prevWidth <= 0) {
+      shift.value = 0;
+      shift.value = withRepeat(
+        withTiming(-loopWidth, { duration: fullDuration, easing: ReEasing.linear }),
+        -1,
+        false
+      );
+      return () => cancelAnimation(shift);
+    }
+
+    // Width reflow (score text etc.): keep progress, finish the lap, then loop.
+    const traveled = Math.abs(shift.value);
+    const progress = prevWidth > 0 ? Math.min(1, traveled / prevWidth) : 0;
+    shift.value = -progress * loopWidth;
+    const remaining = Math.max(0, loopWidth + shift.value);
+    const firstMs = Math.max(200, remaining * msPerPx);
+    shift.value = withTiming(-loopWidth, { duration: firstMs, easing: ReEasing.linear }, (finished) => {
+      'worklet';
+      if (!finished) return;
+      shift.value = 0;
+      shift.value = withRepeat(
+        withTiming(-loopWidth, { duration: fullDuration, easing: ReEasing.linear }),
+        -1,
+        false
+      );
+    });
     return () => cancelAnimation(shift);
-  }, [contentKey, loopWidth, shift]);
+  }, [structureKey, loopWidth, shift]);
 
   const trackStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shift.value }],
   }));
-
-  React.useEffect(() => {
-    const sheen = Animated.loop(
-      Animated.sequence([
-        Animated.timing(wash, { toValue: 1, duration: 4800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(wash, { toValue: 0, duration: 4800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
-    sheen.start();
-    return () => sheen.stop();
-  }, [wash]);
 
   const renderChips = (copy: string) =>
     games.map((item) => {
@@ -1396,16 +1415,31 @@ function FixtureTicker({
             <View style={{ height: 8, alignItems: 'center', justifyContent: 'center' }}>{item.pick === 'H' ? bar : null}</View>
             <View style={{ height: 18 }} />
           </View>
-          <View style={{ width: 52, alignItems: 'center' }}>
+          {/* Fixed score column so live score/minute text does not reflow the strip width. */}
+          <View style={{ width: 64, alignItems: 'center' }}>
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <TotlText numberOfLines={1} style={{ fontSize: 16, lineHeight: 18, fontWeight: '800', color: t.color.text }}>
-                {hasScore ? `${item.homeScore} v ${item.awayScore}` : 'v'}
+              <TotlText
+                numberOfLines={1}
+                style={{
+                  fontSize: 16,
+                  lineHeight: 18,
+                  fontWeight: '800',
+                  color: t.color.text,
+                  fontVariant: ['tabular-nums'],
+                }}
+              >
+                {hasScore ? `${item.homeScore}–${item.awayScore}` : 'v'}
               </TotlText>
             </View>
             <View style={{ height: 8, alignItems: 'center', justifyContent: 'center' }}>{item.pick === 'D' ? bar : null}</View>
-            <View style={{ height: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ height: 18, width: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               {item.live ? <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#DC2626', marginRight: 3 }} /> : null}
-              <TotlText style={{ fontSize: 11, lineHeight: 14, fontWeight: '700', color: t.color.muted }}>{item.statusLabel}</TotlText>
+              <TotlText
+                numberOfLines={1}
+                style={{ fontSize: 11, lineHeight: 14, fontWeight: '700', color: t.color.muted, fontVariant: ['tabular-nums'] }}
+              >
+                {item.statusLabel}
+              </TotlText>
             </View>
           </View>
           <View style={{ width: 32, alignItems: 'center' }}>
@@ -1483,41 +1517,19 @@ function FixtureTicker({
         colors={['#FEF3C7', '#FBCFE8', '#DDD6FE', '#BAE6FD', '#A7F3D0']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.55 }}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.45 }}
       />
-      <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: wash }}>
-        <LinearGradient
-          colors={['#A7F3D0', '#BAE6FD', '#FBCFE8', '#FEF3C7']}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: -20,
-          bottom: -20,
-          width: 140,
-          opacity: wash.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.45] }),
-          transform: [
-            {
-              translateX: wash.interpolate({ inputRange: [0, 1], outputRange: [-160, 420] }),
-            },
-            { rotate: '16deg' },
-          ],
-        }}
-      >
-        <LinearGradient colors={['transparent', 'rgba(255,255,255,0.85)', 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1 }} />
-      </Animated.View>
       <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'center' }, trackStyle]}>
         <View
           style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}
           onLayout={(event) => {
-            // Exact width (no rounding) so the duplicate strip lands on the same pixel.
             const width = event.nativeEvent.layout.width;
-            setLoopWidth((current) => (current === width ? current : width));
+            // Ignore tiny reflows from live score/minute text so the loop does not hitch.
+            setLoopWidth((current) => {
+              if (current === 0) return width;
+              if (Math.abs(current - width) < 4) return current;
+              return width;
+            });
           }}
         >
           {renderStrip('a')}
