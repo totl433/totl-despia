@@ -2102,21 +2102,30 @@ export default function MatchCenterScreen() {
   // Before the first teams are out, the feed is only the coming-soon card —
   // don't hold the spinner for leagues, chat, tables, and the rest.
   const preMatchHold = feed.length === 1 && feed[0]?.kind === 'waiting';
+  // Niceties (overall replay, ML tables, chat…) can hang on a flaky network and
+  // used to trap "Preparing the Match Center" forever. Essentials = board + scores.
+  const extrasPending =
+    !preMatchHold &&
+    (stillFetching(typeof gw === 'number', predictionsFetched) ||
+      stillFetching(positionsEnabled, positionsFetched) ||
+      stillFetching(true, leaguesFetched) ||
+      stillFetching(tablesEnabled, tablesFetched) ||
+      stillFetching(picksEnabled, picksFetched) ||
+      stillFetching(percentsEnabled, percentsFetched) ||
+      stillFetching(overallEnabled, overallFetched) ||
+      stillFetching(resultsEnabled, resultsFetched) ||
+      stillFetching(chatEnabled, chatFetched));
+  const [allowPartialFeed, setAllowPartialFeed] = React.useState(false);
+  React.useEffect(() => {
+    setAllowPartialFeed(false);
+    if (mode !== 'live' || boardLoading || !scoresReady || boardError || !extrasPending) return;
+    const id = setTimeout(() => setAllowPartialFeed(true), 6_000);
+    return () => clearTimeout(id);
+  }, [boardError, boardLoading, extrasPending, gw, mode, scoresReady]);
   const prepping =
     mode === 'live' &&
     !boardError &&
-    (boardLoading ||
-      !scoresReady ||
-      (!preMatchHold &&
-        (stillFetching(typeof gw === 'number', predictionsFetched) ||
-          stillFetching(positionsEnabled, positionsFetched) ||
-          stillFetching(true, leaguesFetched) ||
-          stillFetching(tablesEnabled, tablesFetched) ||
-          stillFetching(picksEnabled, picksFetched) ||
-          stillFetching(percentsEnabled, percentsFetched) ||
-          stillFetching(overallEnabled, overallFetched) ||
-          stillFetching(resultsEnabled, resultsFetched) ||
-          stillFetching(chatEnabled, chatFetched))));
+    (boardLoading || !scoresReady || (extrasPending && !allowPartialFeed));
 
   if (mode === 'live' && !prepping && seenIds.current === null) {
     seenIds.current = new Set(feed.map((item) => item.id));
