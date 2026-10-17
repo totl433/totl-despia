@@ -54,7 +54,6 @@ import {
   chatMessageItem,
   firstKickoffMs,
   isMatchCenterReactable,
-  MATCH_CENTER_LINEUP_LEAD_MS,
   matchCenterClosesAtMs,
   matchCenterReactionCardId,
   overallChangeItem,
@@ -1921,10 +1920,11 @@ export default function MatchCenterScreen() {
 
   // Chat joins the feed when Match Center opens (line-up window), not at kickoff —
   // otherwise pre-KO banter never appears while the XI cards are already live.
+  // Inline 75m (same as MATCH_CENTER_LINEUP_LEAD_MS) to avoid a Hermes TDZ on the named export.
   const chatSince = React.useMemo(() => {
     const ko = firstKickoffMs(board?.fixtures ?? []);
     if (ko === null) return null;
-    return new Date(ko - MATCH_CENTER_LINEUP_LEAD_MS).toISOString();
+    return new Date(ko - 75 * 60_000).toISOString();
   }, [board?.fixtures]);
 
   // MC chat window ends at midnight on the day after the last kickoff.
