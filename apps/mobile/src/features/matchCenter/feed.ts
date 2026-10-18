@@ -787,8 +787,10 @@ export function buildMatchFeed(input: {
     const idx = fixture.fixture_index;
     if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
       // Catch-up open: keep story order at the official XI window.
-      // Mid-session arrival: wall-clock so the cards appear at the live end.
-      input.lineupArrivalMs.set(idx, input.sessionLive ? nowMs : announced);
+      // Mid-session arrival: wall-clock so the cards appear at the live end, but only
+      // before kickoff. A team sheet that loads once the game is on isn't news, so it
+      // keeps its announced time rather than jumping to the top of the feed.
+      input.lineupArrivalMs.set(idx, input.sessionLive && nowMs < ko ? nowMs : announced);
     }
     const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
     const top = lineupTopFor(fixture);
@@ -1194,6 +1196,15 @@ function leagueMomentsFromEvents(
     if (place) previous.set(league.id, place);
   });
   const cards: FeedItem[] = [];
+  // Two moments can share a fixture and a time (a late goal and the final whistle), so the
+  // id counts repeats; the order is fixed above, so each card keeps its id between updates.
+  const idCounts = new Map<string, number>();
+  const cardId = (event: OutcomeEvent): string => {
+    const base = `ml:${event.fixtureIndex}:${event.sortAt}`;
+    const seen = idCounts.get(base) ?? 0;
+    idCounts.set(base, seen + 1);
+    return seen === 0 ? base : `${base}:${seen}`;
+  };
   ordered.forEach((event) => {
     const beforePlaces = overall ? placesNow(overall, outcomes, userId) : null;
     outcomes.set(event.fixtureIndex, event.outcome);
@@ -1218,7 +1229,7 @@ function leagueMomentsFromEvents(
     if (!snapshot.length && !boards.length) return;
     if (!moved.length && !event.finalWhistle) return;
     cards.push({
-      id: `ml:${event.fixtureIndex}:${event.sortAt}`,
+      id: cardId(event),
       sortAt: event.finalWhistle ? event.sortAt + 0.5 : event.sortAt + 1,
       timeLabel: event.stamp,
       stamp: event.stamp,

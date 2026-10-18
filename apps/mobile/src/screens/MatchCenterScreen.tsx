@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Animated, AppState, Easing, Image, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +43,14 @@ import {
   formatHeaderScoreLabel,
 } from '../lib/headerLiveScore';
 import EmojiGlyph, { hasEmojiBitmap } from '../features/matchCenter/EmojiGlyph';
+import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips } from '../features/gameCentre/cards';
+import GameCentreCard, {
+  GameCentreAuthorHeader,
+  GameCentreCardHeader,
+  GameCentreReactionBar,
+  GameCentreReplyInput,
+} from '../components/gameCentre/GameCentreCard';
+import { GameCentreMenuButton, useGameCentreMenu } from '../components/gameCentre/GameCentreDrawer';
 import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import { getMonthForGw, SEASON_2026_27_LABEL, type LeaderboardSeasonKey } from '../lib/leaderboardMonths';
 import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../lib/leagueSeasonPile';
@@ -55,7 +63,6 @@ import {
   buildRoundUp,
   chatMessageItem,
   firstKickoffMs,
-  isMatchCenterReactable,
   lastKickoffMs,
   matchCenterClosesAtMs,
   matchCenterReactionCardId,
@@ -169,7 +176,7 @@ function LineupBoard({ item }: { item: FeedItem }) {
     </View>
   );
   return (
-    <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+    <View style={{ flexDirection: 'row', gap: 16 }}>
       {column(xi.homeCode ?? '', xi.homeName ?? '', xi.homeFormation, xi.home)}
       {column(xi.awayCode ?? '', xi.awayName ?? '', xi.awayFormation, xi.away)}
     </View>
@@ -474,75 +481,30 @@ function cardWasCorrect(item: FeedItem): boolean {
   return match.pick === pickOutcome(match.homeScore, match.awayScore);
 }
 
-function TickerShimmer() {
-  const wash = React.useRef(new Animated.Value(0)).current;
-  React.useEffect(() => {
-    const sheen = Animated.loop(
-      Animated.sequence([
-        Animated.timing(wash, { toValue: 1, duration: 4800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(wash, { toValue: 0, duration: 4800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
-    sheen.start();
-    return () => sheen.stop();
-  }, [wash]);
-  return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: -14, right: -14, bottom: -14, left: -14 }}>
-      <LinearGradient
-        colors={['#FEF3C7', '#FBCFE8', '#DDD6FE', '#BAE6FD', '#A7F3D0']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.55 }}
-      />
-      <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: wash }}>
-        <LinearGradient
-          colors={['#A7F3D0', '#BAE6FD', '#FBCFE8', '#FEF3C7']}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: -20,
-          bottom: -20,
-          width: 140,
-          opacity: wash.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.45] }),
-          transform: [
-            { translateX: wash.interpolate({ inputRange: [0, 1], outputRange: [-160, 420] }) },
-            { rotate: '16deg' },
-          ],
-        }}
-      >
-        <LinearGradient colors={['transparent', 'rgba(255,255,255,0.85)', 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flex: 1 }} />
-      </Animated.View>
-    </View>
-  );
-}
+/** Space between Game Centre cards (Figma 272:32628). */
+const CARD_GAP = 20;
 
-function FeedCard({
+/** No reactions yet. One shared array so memoised cards see the same value each time. */
+const NO_REACTIONS: ReactionSummary[] = [];
+
+// Cards are memoised, and their handlers take the item, so the parent can pass the same
+// functions to every card: a feed of 100+ cards only redraws the ones that changed.
+function FeedCardView({
   item,
   onOpen,
   celebrate,
   arriveDelay = 0,
-  tuck = false,
-  tuckSoft = false,
-  reactions = [],
-  onReact,
+  reactions = NO_REACTIONS,
+  onReact: reactFor,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem) => void;
   celebrate: boolean;
   arriveDelay?: number;
-  /** Sit over the card above, so a league update reads as part of that moment. */
-  tuck?: boolean;
-  /** Gentler overlap when the card above has reaction chips. */
-  tuckSoft?: boolean;
   reactions?: ReactionSummary[];
-  onReact?: (emoji: string) => void;
+  onReact?: (item: FeedItem, emoji: string) => void;
 }) {
+  const onReact = reactFor ? (emoji: string) => reactFor(item, emoji) : undefined;
   const t = useTokens();
   const confetti = useConfetti();
   const confettiFired = React.useRef(false);
@@ -554,9 +516,8 @@ function FeedCard({
   const youWin = item.kind === 'round-up' && (item.title === 'You win' || item.title === 'Take a bow');
   const rainbow = cardWasCorrect(item);
   const canOpen = Boolean(item.link && (item.link.to === 'overall' || item.link.leagueId));
-  const canReact = isMatchCenterReactable(item.kind) && typeof onReact === 'function';
+  const canReact = gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
   const onDark = youWin || item.kind === 'round-up';
-  const reactInk = onDark ? '#FDE68A' : t.color.text;
   const shell = youWin
     ? { backgroundColor: '#0F766E' }
     : item.kind === 'round-up'
@@ -565,10 +526,6 @@ function FeedCard({
         ? { backgroundColor: t.color.surface }
         : item.kind === 'overall'
           ? { backgroundColor: 'rgba(28,131,118,0.12)' }
-        : item.kind === 'opener'
-          ? { backgroundColor: '#FFF7ED', overflow: 'hidden' as const }
-          : item.kind === 'waiting'
-            ? { backgroundColor: '#ECFDF5', overflow: 'hidden' as const }
           : { backgroundColor: t.color.surface };
 
   React.useEffect(() => {
@@ -613,183 +570,101 @@ function FeedCard({
     return () => clearTimeout(timer);
   }, [arriveDelay, confetti, item.kind, rainbow]);
 
-  const card = (
-    <Card
-      style={{
-        padding: 14,
-        paddingBottom: canReact ? 16 : 14,
-        marginBottom: rainbow ? 0 : canReact ? 18 : 12,
-        overflow: 'visible',
-        borderRadius: 16,
-        ...shell,
-      }}
-    >
-      {item.kind === 'opener' || item.kind === 'waiting' ? <TickerShimmer /> : null}
-      {item.kind === 'lineup' ? (
-        <View>
-          <TotlText style={{ color: t.color.brand, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginBottom: 8 }}>
-            {item.eyebrow.toUpperCase()}
-          </TotlText>
-          <MixedText style={{ fontSize: 22, lineHeight: 28, fontWeight: '800', marginBottom: 22, color: t.color.text }}>{item.title}</MixedText>
-          <LineupTop item={item} />
-        </View>
-      ) : item.kind === 'xi' ? (
-        <TotlText style={{ color: t.color.brand, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, marginBottom: 8 }}>
-          {item.eyebrow.toUpperCase()}
+  const header = gameCentreCardHeader(item);
+  const content: React.ReactNode[] = [];
+  if (header.body) {
+    content.push(
+      <MixedText key="body" style={{ fontSize: 16, lineHeight: 21, marginBottom: 12, color: onDark ? 'rgba(255,255,255,0.88)' : t.color.text }}>
+        {header.body}
+      </MixedText>
+    );
+  }
+  if (item.kind === 'lineup') content.push(<LineupTop key="lineup" item={item} />);
+  else if (item.kind === 'xi') content.push(<LineupBoard key="xi" item={item} />);
+  else if (item.match) content.push(<Scoreboard key="score" item={item} />);
+  if (item.match) {
+    content.push(
+      <View key="split" style={{ marginTop: item.kind === 'lineup' ? 14 : 0 }}>
+        <PickSplit match={item.match} />
+      </View>
+    );
+  }
+  if (item.honours?.length) {
+    content.push(
+      <View key="honours" style={{ gap: 10 }}>
+        {item.honours.map((line, index) => {
+          const faceUri = line.tie ? line.leagueAvatar ?? null : line.userAvatar ?? null;
+          return (
+            <View key={`${line.text}-${index}`} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Face uri={faceUri} label={line.faceLabel || line.text} size={28} />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <MixedText style={{ color: onDark ? 'rgba(255,255,255,0.92)' : t.color.text, fontSize: 15, lineHeight: 20, fontWeight: '700' }}>
+                  {line.trophy ? `${line.text} 🏆` : line.text}
+                </MixedText>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+  if (item.standings?.length) content.push(<StandingRows key="standings" rows={item.standings} onDark={onDark} />);
+  if (item.boards?.length) content.push(<BoardStrip key="boards" boards={item.boards} avatar={item.boardAvatar} onDark={onDark} />);
+  if (item.personal) {
+    content.push(
+      <MixedText
+        key="personal"
+        style={{
+          marginTop: 8,
+          fontWeight: '800',
+          color: youWin ? '#FDE68A' : item.personal.includes('way') || item.personal.includes('close') ? '#64748B' : t.color.brand,
+        }}
+      >
+        {item.personal}
+      </MixedText>
+    );
+  }
+  if (canOpen && item.link) {
+    content.push(
+      <Pressable key="link" accessibilityRole="button" onPress={() => onOpen(item)} style={{ marginTop: 12 }}>
+        <TotlText style={{ fontWeight: '800', color: onDark ? '#FDE68A' : t.color.brand }}>{item.link.label}</TotlText>
+      </Pressable>
+    );
+  }
+  if (item.kind === 'waiting') {
+    content.push(
+      <View key="waiting">
+        <TotlText style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: t.color.muted, marginBottom: 2 }}>
+          FIRST TEAMS IN
         </TotlText>
-      ) : bigGoal ? (
-        <View style={{ alignSelf: 'flex-start', marginBottom: 2 }}>
-          <MixedText style={{ fontSize: 22, lineHeight: 26, fontWeight: '800', letterSpacing: 0.6, color: '#DC2626' }}>GOAL</MixedText>
-        </View>
-      ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <TotlText
-            style={{
-              color: onDark ? '#FDE68A' : item.kind === 'ruled-out' ? '#DC2626' : t.color.brand,
-              fontSize: 12,
-              fontWeight: '800',
-              letterSpacing: 0.6,
-            }}
-          >
-            {item.eyebrow.toUpperCase()}
-          </TotlText>
-        </View>
-      )}
-      {bigGoal && item.body ? (
-        <MixedText style={{ fontSize: 18, lineHeight: 24, fontWeight: '800', marginBottom: 18, color: t.color.text }}>{item.body}</MixedText>
-      ) : null}
-      {item.kind === 'lineup' ? null : <Scoreboard item={item} />}
-      {item.kind !== 'lineup' && item.match ? <PickSplit match={item.match} /> : null}
-      {bigGoal || item.kind === 'lineup' || item.kind === 'xi' ? null : (
-        <MixedText
-          style={{
-            marginTop: item.match ? 18 : 0,
-            marginLeft: 8,
-            fontSize: voice ? 26 : 20,
-            lineHeight: voice ? 32 : 26,
-            fontWeight: '800',
-            color: onDark ? '#FFFFFF' : t.color.text,
-          }}
-        >
-          {item.title}
-        </MixedText>
-      )}
-      {item.honours?.length ? (
-        <View style={{ marginTop: 12, gap: 10 }}>
-          {item.honours.map((line, index) => {
-            const faceUri = line.tie ? line.leagueAvatar ?? null : line.userAvatar ?? null;
-            return (
-              <View key={`${line.text}-${index}`} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Face uri={faceUri} label={line.faceLabel || line.text} size={28} />
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <MixedText style={{ color: onDark ? 'rgba(255,255,255,0.92)' : t.color.text, fontSize: 15, lineHeight: 20, fontWeight: '700' }}>
-                    {line.trophy ? `${line.text} 🏆` : line.text}
-                  </MixedText>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      ) : !bigGoal && item.kind !== 'lineup' && item.kind !== 'xi' && item.body ? (
-        <MixedText style={{ marginTop: 4, marginLeft: 8, color: onDark ? 'rgba(255,255,255,0.88)' : t.color.text }}>{item.body}</MixedText>
-      ) : null}
-      {item.kind === 'xi' ? <LineupBoard item={item} /> : null}
-      {item.standings?.length ? <StandingRows rows={item.standings} onDark={onDark} /> : null}
-      <BoardStrip boards={item.boards} avatar={item.boardAvatar} onDark={onDark} />
-      {item.personal ? (
-        <MixedText
-          style={{
-            marginTop: 8,
-            marginLeft: 8,
-            fontWeight: '800',
-            color: youWin ? '#FDE68A' : item.personal.includes('way') || item.personal.includes('close') ? '#64748B' : t.color.brand,
-          }}
-        >
-          {item.personal}
-        </MixedText>
-      ) : null}
-      {canOpen && item.link ? (
-        <Pressable accessibilityRole="button" onPress={() => onOpen(item)} style={{ marginTop: 12 }}>
-          <TotlText style={{ fontWeight: '800', color: onDark ? '#FDE68A' : t.color.brand }}>{item.link.label}</TotlText>
-        </Pressable>
-      ) : null}
-      {item.kind === 'lineup' && item.match ? (
-        <View style={{ marginTop: 14 }}>
-          <PickSplit match={item.match} />
-        </View>
-      ) : null}
-      {item.kind === 'waiting' ? (
-        <View style={{ marginTop: 16, marginLeft: 8 }}>
-          <TotlText style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: t.color.muted, marginBottom: 2 }}>
-            FIRST TEAMS IN
-          </TotlText>
-          <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '700', color: t.color.text, fontVariant: ['tabular-nums'] }}>
-            {item.stamp || item.timeLabel}
-          </TotlText>
-        </View>
-      ) : (
-        <View style={{ marginTop: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            {canReact ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {MATCH_CENTER_CARD_REACTS.map((emoji) => {
-                  const reaction = reactions.find((row) => row.emoji === emoji);
-                  const mine = Boolean(reaction?.hasUserReacted);
-                  const count = reaction?.count ?? 0;
-                  return (
-                    <Pressable
-                      key={emoji}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        mine ? `Remove ${emoji} reaction` : count > 0 ? `React ${emoji}, ${count}` : `React ${emoji}`
-                      }
-                      onPress={() => onReact?.(emoji)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        minWidth: 40,
-                        height: 34,
-                        paddingHorizontal: count > 0 ? 10 : 8,
-                        borderRadius: 17,
-                        justifyContent: 'center',
-                        backgroundColor: mine
-                          ? onDark
-                            ? 'rgba(253,230,138,0.28)'
-                            : 'rgba(28,131,118,0.16)'
-                          : onDark
-                            ? 'rgba(255,255,255,0.14)'
-                            : 'rgba(15,23,42,0.06)',
-                        borderWidth: mine ? 1.5 : 0,
-                        borderColor: mine ? (onDark ? '#FDE68A' : '#1C8376') : 'transparent',
-                      }}
-                    >
-                      <ReactGlyph emoji={emoji} size={18} />
-                      {count > 0 ? (
-                        <TotlText
-                          style={{
-                            marginLeft: 5,
-                            fontSize: 12,
-                            fontWeight: '800',
-                            color: mine ? (onDark ? '#FDE68A' : '#1C8376') : reactInk,
-                          }}
-                        >
-                          {count}
-                        </TotlText>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              <View />
-            )}
-            <TotlText style={{ fontSize: 11, fontWeight: '700', color: onDark ? 'rgba(255,255,255,0.65)' : t.color.muted }}>
-              {item.stamp || item.timeLabel}
-            </TotlText>
+        <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '700', color: t.color.text, fontVariant: ['tabular-nums'] }}>
+          {item.stamp || item.timeLabel}
+        </TotlText>
+      </View>
+    );
+  }
+
+  const card = (
+    <GameCentreCard
+      backgroundColor={shell.backgroundColor}
+      header={
+        <GameCentreCardHeader
+          title={header.title}
+          subtitle={header.subtitle}
+          stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
+          onDark={onDark}
+        />
+      }
+      footer={
+        canReact ? (
+          <View style={{ paddingBottom: 20 }}>
+            <GameCentreReactionBar chips={gameCentreReactionChips(reactions)} onReact={(emoji) => onReact?.(emoji)} />
           </View>
-        </View>
-      )}
-    </Card>
+        ) : null
+      }
+    >
+      {content}
+    </GameCentreCard>
   );
 
   const framed = rainbow ? (
@@ -797,7 +672,7 @@ function FeedCard({
       colors={['#FACC15', '#FB7185', '#EC4899', '#A855F7', '#22D3EE', '#34D399']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={{ borderRadius: 20, padding: 6, marginBottom: 12 }}
+      style={{ borderRadius: 20, padding: 6 }}
     >
       {card}
     </LinearGradient>
@@ -806,17 +681,10 @@ function FeedCard({
   );
 
   const tilt = item.kind === 'rank' ? '8deg' : bigGoal ? '-8deg' : '4deg';
-  const tuckOffset = tuck ? (tuckSoft ? -8 : -28) : 0;
   return (
     <Animated.View
       style={{
-        marginTop: tuckOffset,
-        zIndex: tuck ? 2 : 0,
-        shadowColor: tuck ? '#0F172A' : 'transparent',
-        shadowOffset: { width: 0, height: tuck ? -6 : 0 },
-        shadowOpacity: tuck ? 0.12 : 0,
-        shadowRadius: tuck ? 10 : 0,
-        elevation: tuck ? 6 : 0,
+        marginBottom: CARD_GAP,
         opacity: rise.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
         transform: [
           { translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [item.kind === 'rank' ? 36 : 64, 0], extrapolate: 'clamp' }) },
@@ -831,6 +699,8 @@ function FeedCard({
     </Animated.View>
   );
 }
+
+const FeedCard = React.memo(FeedCardView);
 
 function Face({ uri, label, size }: { uri?: string | null; label: string; size: number }) {
   const letter = label.trim().charAt(0).toUpperCase() || '?';
@@ -903,7 +773,7 @@ function toggleReactionList(current: ReactionSummary[] | undefined, emoji: strin
   return list;
 }
 
-function MessageRow({
+function MessageRowView({
   item,
   onOpen,
   celebrate,
@@ -914,11 +784,11 @@ function MessageRow({
   reacting,
   reactions,
   youAvatar,
-  onToggleReply,
+  onToggleReply: toggleReplyFor,
   onChangeReply,
-  onSendReply,
-  onToggleReact,
-  onReact,
+  onSendReply: sendReplyFor,
+  onToggleReact: toggleReactFor,
+  onReact: reactFor,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem) => void;
@@ -930,17 +800,17 @@ function MessageRow({
   reacting: boolean;
   reactions: ReactionSummary[];
   youAvatar?: string | null;
-  onToggleReply: () => void;
+  onToggleReply: (item: FeedItem) => void;
   onChangeReply: (value: string) => void;
-  onSendReply: () => void;
-  onToggleReact: () => void;
-  onReact: (emoji: string) => void;
+  onSendReply: (item: FeedItem) => void;
+  onToggleReact: (item: FeedItem) => void;
+  onReact: (item: FeedItem, emoji: string) => void;
 }) {
-  const { width: screenWidth } = useWindowDimensions();
-  const nameSize = screenWidth < 360 ? 14 : screenWidth < 400 ? 15 : 16;
+  const onToggleReply = () => toggleReplyFor(item);
+  const onSendReply = () => sendReplyFor(item);
+  const onToggleReact = () => toggleReactFor(item);
+  const onReact = (emoji: string) => reactFor(item, emoji);
   const mine = Boolean(item.mine);
-  const bubble = mine ? '#F6C445' : '#FFE08A';
-  const ink = '#1C1408';
   const authorAvatar = item.authorAvatar || (mine ? youAvatar : null);
   const rise = React.useRef(new Animated.Value(celebrate ? 0 : 1)).current;
   const shouldCelebrate = React.useRef(celebrate).current;
@@ -966,7 +836,7 @@ function MessageRow({
     <Animated.View
       style={{
         width: '100%',
-        marginBottom: 14,
+        marginBottom: CARD_GAP,
         opacity: rise.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
         transform: [
           {
@@ -980,174 +850,81 @@ function MessageRow({
         ],
       }}
     >
-      <View
-        style={{
-          width: '100%',
-          backgroundColor: bubble,
-          borderRadius: 32,
-          paddingHorizontal: 16,
-          paddingTop: 14,
-          paddingBottom: 12,
-        }}
-      >
-        <Pressable accessibilityRole="button" onPress={() => onOpen(item)}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            <Face uri={authorAvatar} label={item.title} size={52} />
-            <View style={{ flex: 1, minWidth: 0, marginLeft: 12, minHeight: 52, justifyContent: 'center' }}>
-              <TotlText numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: nameSize, lineHeight: nameSize + 4, fontWeight: '800', color: ink }}>
-                {item.title}
-              </TotlText>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8, maxWidth: '46%' }}>
-              <Face uri={item.leagueAvatar} label={item.eyebrow} size={22} />
-              <TotlText numberOfLines={1} style={{ marginLeft: 6, fontSize: 13, lineHeight: 16, fontWeight: '800', color: ink }}>
-                {item.eyebrow}
-              </TotlText>
-            </View>
-          </View>
-          {item.replyTo ? (
-            <View
-              style={{
-                borderLeftWidth: 3,
-                borderLeftColor: ink,
-                paddingLeft: 10,
-                marginTop: 12,
+      <GameCentreCard
+        header={
+          <GameCentreAuthorHeader
+            name={item.title}
+            league={item.eyebrow}
+            authorAvatar={authorAvatar}
+            leagueAvatar={item.leagueAvatar}
+            stamp={item.stamp || item.timeLabel}
+            onPress={() => onOpen(item)}
+          />
+        }
+        footer={
+          <>
+            <GameCentreReactionBar
+              chips={gameCentreReactionChips(reactions)}
+              onReact={onReact}
+              onMore={onToggleReact}
+              moreOpen={reacting}
+            />
+            {reacting ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 8 }}>
+                {MESSAGE_REACTS.map((emoji) => {
+                  const picked = reactions.some((reaction) => reaction.emoji === emoji && reaction.hasUserReacted);
+                  return (
+                    <Pressable
+                      key={emoji}
+                      accessibilityRole="button"
+                      accessibilityLabel={`React with ${emoji}`}
+                      onPress={() => onReact(emoji)}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: picked ? 'rgba(28,131,118,0.16)' : '#F2F2F7',
+                        borderWidth: picked ? 1.5 : 0,
+                        borderColor: picked ? '#1C8376' : 'transparent',
+                      }}
+                    >
+                      <ReactGlyph emoji={emoji} size={22} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+            <GameCentreReplyInput
+              placeholder={mine ? `Reply in ${item.eyebrow}` : `Reply to ${item.title}`}
+              value={replyDraft}
+              onChangeText={onChangeReply}
+              onFocus={() => {
+                if (!replying) onToggleReply();
               }}
-            >
-              <TotlText numberOfLines={2} style={{ fontSize: 14, lineHeight: 18, fontWeight: '700', color: ink }}>
+              onSend={onSendReply}
+              sending={sendingReply}
+            />
+          </>
+        }
+      >
+        <Pressable accessibilityRole="button" accessibilityHint="Opens the league chat" onPress={() => onOpen(item)} style={{ paddingHorizontal: 4 }}>
+          {item.replyTo ? (
+            <View style={{ borderLeftWidth: 3, borderLeftColor: '#DFEBE9', paddingLeft: 10, marginBottom: 12 }}>
+              <TotlText numberOfLines={2} style={{ fontSize: 14, lineHeight: 18, color: 'rgba(60,60,67,0.6)' }}>
                 {item.replyTo}
               </TotlText>
             </View>
           ) : null}
-          <TotlText style={{ marginTop: 12, fontSize: 17, lineHeight: 23, fontWeight: '700', color: ink }}>{item.body}</TotlText>
+          <MixedText style={{ fontSize: 18, lineHeight: 22, letterSpacing: 0.18, color: '#000000' }}>{item.body}</MixedText>
         </Pressable>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Reply to ${item.title}`}
-                onPress={onToggleReply}
-                hitSlop={8}
-                style={{ flexDirection: 'row', alignItems: 'center' }}
-              >
-                <Ionicons name="arrow-undo" size={15} color={ink} />
-                <TotlText style={{ marginLeft: 6, fontSize: 15, fontWeight: '800', color: ink }}>Reply</TotlText>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`React to ${item.title}`}
-                onPress={onToggleReact}
-                hitSlop={8}
-                style={{ flexDirection: 'row', alignItems: 'center' }}
-              >
-                <Ionicons name="happy-outline" size={16} color={ink} />
-                <TotlText style={{ marginLeft: 6, fontSize: 15, fontWeight: '800', color: ink }}>React</TotlText>
-              </Pressable>
-            </View>
-            <TotlText style={{ fontSize: 12, fontWeight: '800', color: '#6B5420' }}>{item.stamp || item.timeLabel}</TotlText>
-          </View>
-          {reactions.length > 0 ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-              {reactions.map((reaction) => {
-                const mine = Boolean(reaction.hasUserReacted);
-                return (
-                  <Pressable
-                    key={reaction.emoji}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${mine ? 'Remove' : 'Add'} ${reaction.emoji}`}
-                    onPress={() => onReact(reaction.emoji)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      minWidth: 40,
-                      height: 34,
-                      paddingHorizontal: 10,
-                      borderRadius: 17,
-                      justifyContent: 'center',
-                      // Match post/card react outline (teal on yellow bubbles).
-                      backgroundColor: mine ? 'rgba(28,131,118,0.16)' : 'rgba(28,20,8,0.06)',
-                      borderWidth: mine ? 1.5 : 0,
-                      borderColor: mine ? '#1C8376' : 'transparent',
-                    }}
-                  >
-                    <ReactGlyph emoji={reaction.emoji} size={18} />
-                    <TotlText
-                      style={{
-                        marginLeft: 5,
-                        fontSize: 12,
-                        fontWeight: '800',
-                        color: mine ? '#1C8376' : ink,
-                      }}
-                    >
-                      {reaction.count}
-                    </TotlText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-          {reacting ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-              {MESSAGE_REACTS.map((emoji) => {
-                const mine = reactions.some((reaction) => reaction.emoji === emoji && reaction.hasUserReacted);
-                return (
-                  <Pressable
-                    key={emoji}
-                    accessibilityRole="button"
-                    accessibilityLabel={`React with ${emoji}`}
-                    onPress={() => onReact(emoji)}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: mine ? 'rgba(28,131,118,0.16)' : 'rgba(255,255,255,0.72)',
-                      borderWidth: mine ? 1.5 : 0,
-                      borderColor: mine ? '#1C8376' : 'transparent',
-                    }}
-                  >
-                    <ReactGlyph emoji={emoji} size={22} />
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-          {replying ? (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginTop: 10,
-                backgroundColor: 'rgba(255,255,255,0.72)',
-                borderRadius: 22,
-                paddingLeft: 14,
-                paddingRight: 8,
-                paddingVertical: 6,
-              }}
-            >
-              <TextInput
-                value={replyDraft}
-                onChangeText={onChangeReply}
-                placeholder={`Reply to ${item.title}`}
-                placeholderTextColor="#6B5420"
-                style={{ flex: 1, fontFamily: 'Gramatika-Regular', fontSize: 15, color: ink, paddingVertical: 6 }}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Send reply"
-                onPress={onSendReply}
-                disabled={!replyDraft.trim() || sendingReply}
-                hitSlop={8}
-              >
-                <TotlText style={{ fontWeight: '800', color: replyDraft.trim() ? ink : '#6B5420' }}>Send</TotlText>
-              </Pressable>
-            </View>
-          ) : null}
-      </View>
+      </GameCentreCard>
     </Animated.View>
   );
 }
+
+const MessageRow = React.memo(MessageRowView);
 
 type TickerMove = 'up' | 'down' | 'same' | null;
 
@@ -1313,7 +1090,7 @@ function TickerMoveMark({ move }: { move: TickerMove }) {
 }
 
 /** Eases in, then breathes twice. */
-function NewUpdatesButton({ onPress }: { onPress: () => void }) {
+function NewUpdatesButton({ onPress, atTop = false }: { onPress: () => void; atTop?: boolean }) {
   const t = useTokens();
   const scale = React.useRef(new Animated.Value(0.96)).current;
 
@@ -1335,7 +1112,7 @@ function NewUpdatesButton({ onPress }: { onPress: () => void }) {
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 84,
+        ...(atTop ? { top: 72 } : { bottom: 84 }),
         alignItems: 'center',
         zIndex: 4,
         transform: [{ scale }],
@@ -1571,6 +1348,10 @@ export default function MatchCenterScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<HomeStackParamList, 'MatchCenter'>>();
   const entry = route.params?.entry ?? 'current';
+  // Set when this is the app's home (the Game Centre), with the side menu behind it.
+  const menu = useGameCentreMenu();
+  // The Game Centre reads like X or Threads: newest card on top, older ones further down.
+  const newestFirst = !!menu;
   const { useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
   const { openManualResultsScoreSheetShare } = usePopupCards();
   const [mode, setMode] = React.useState<Mode>(() => (entry === 'example' ? 'play' : 'live'));
@@ -1586,7 +1367,7 @@ export default function MatchCenterScreen() {
   const [localReplies, setLocalReplies] = React.useState<FeedItem[]>([]);
   const queryClient = useQueryClient();
   const prevLeagueRanks = React.useRef<Map<string, number> | null>(null);
-  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollRef = React.useRef<FlatList<FeedItem>>(null);
 
   // Admin can open Last GW / Example; normal entry is always the live current GW.
   React.useEffect(() => {
@@ -1636,7 +1417,18 @@ export default function MatchCenterScreen() {
     queryFn: () => api.getHomeSnapshot({ gw: lastGw as number }),
     staleTime: 60_000,
   });
-  const viewingLast = mode === 'live' && week === 'last' && typeof lastGw === 'number';
+  // As home, keep last gameweek's feed up until the next one starts (its line-ups land),
+  // so there is always something to scroll back through.
+  const [minuteMs, setMinuteMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!menu) return;
+    const timer = setInterval(() => setMinuteMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, [menu]);
+  const nextKickoffMs = firstKickoffMs(home?.fixtures ?? []);
+  const betweenGameweeks =
+    !!menu && nextKickoffMs != null && minuteMs < nextKickoffMs - 75 * 60_000;
+  const viewingLast = mode === 'live' && (week === 'last' || betweenGameweeks) && typeof lastGw === 'number';
   const board = viewingLast ? lastHome : home;
   const boardLoading = viewingLast ? lastLoading && !lastHome : homeLoading && !home;
   const boardError = viewingLast ? lastError : homeError;
@@ -2054,14 +1846,27 @@ export default function MatchCenterScreen() {
 
   // Tick until the *last* kickoff so late XIs unlock without leaving Match Center.
   // (Previously stopped at the first KO, which froze later Saturday 15:00 line-ups.)
+  // Every second only while the countdown card is showing; otherwise every 30s, which is
+  // plenty for XIs to unlock. Each tick rebuilds the whole feed.
   const [clockMs, setClockMs] = React.useState(() => Date.now());
+  const countdownShowing = React.useRef(false);
   React.useEffect(() => {
     if (mode !== 'live') return;
     const last = lastKickoffMs(board?.fixtures ?? []);
     setClockMs(Date.now());
     if (last == null || Date.now() >= last) return;
-    const id = setInterval(() => setClockMs(Date.now()), 1000);
-    return () => clearInterval(id);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      timer = setTimeout(
+        () => {
+          setClockMs(Date.now());
+          tick();
+        },
+        countdownShowing.current ? 1000 : 30_000
+      );
+    };
+    tick();
+    return () => clearTimeout(timer);
   }, [board?.fixtures, mode]);
   React.useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -2086,7 +1891,7 @@ export default function MatchCenterScreen() {
     seenIds.current = null;
   }
 
-  const feed = React.useMemo(() => {
+  const freshFeed = React.useMemo(() => {
     if (mode === 'sample' || mode === 'play') {
       const script = sampleFeed();
       const shown = mode === 'play' ? script.slice(0, played) : script;
@@ -2153,6 +1958,27 @@ export default function MatchCenterScreen() {
     );
   }, [allFinished, board, chatItems, clockMs, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
 
+  // The feed is rebuilt whenever scores, chat or tables refresh, which makes every card a
+  // new object. Keep the previous object for any card whose content is the same, so the
+  // memoised cards only redraw when they actually change.
+  const previousCards = React.useRef(new Map<string, { item: FeedItem; json: string }>());
+  const previousFeed = React.useRef<FeedItem[]>([]);
+  const feed = React.useMemo(() => {
+    const next = new Map<string, { item: FeedItem; json: string }>();
+    const items = freshFeed.map((item) => {
+      const json = JSON.stringify(item);
+      const before = previousCards.current.get(item.id);
+      const kept = before && before.json === json ? before.item : item;
+      next.set(item.id, { item: kept, json });
+      return kept;
+    });
+    previousCards.current = next;
+    const last = previousFeed.current;
+    if (last.length === items.length && items.every((item, index) => item === last[index])) return last;
+    previousFeed.current = items;
+    return items;
+  }, [freshFeed]);
+
   const [scoresReady, setScoresReady] = React.useState(false);
   React.useEffect(() => {
     setScoresReady(false);
@@ -2189,6 +2015,11 @@ export default function MatchCenterScreen() {
   // Before the first teams are out, the feed is only the coming-soon card —
   // don't hold the spinner for leagues, chat, tables, and the rest.
   const preMatchHold = feed.length === 1 && feed[0]?.kind === 'waiting';
+  if (countdownShowing.current !== preMatchHold) {
+    countdownShowing.current = preMatchHold;
+    // Switch to the one-second tick straight away when the countdown appears.
+    if (preMatchHold) setTimeout(() => setClockMs(Date.now()), 0);
+  }
   // Niceties (overall replay, ML tables, chat…) can hang on a flaky network and
   // used to trap "Preparing the Match Center" forever. Essentials = board + scores.
   const extrasPending =
@@ -2310,7 +2141,7 @@ export default function MatchCenterScreen() {
   const cardReactionIds = React.useMemo(() => {
     if (typeof gw !== 'number') return [] as string[];
     return feed
-      .filter((item) => isMatchCenterReactable(item.kind))
+      .filter((item) => gameCentreCardType(item.kind) === 'public')
       .map((item) => matchCenterReactionCardId(gw, item.id));
   }, [feed, gw]);
 
@@ -2351,7 +2182,7 @@ export default function MatchCenterScreen() {
 
   const reactToCard = React.useCallback(
     (item: FeedItem, emoji: string) => {
-      if (!isMatchCenterReactable(item.kind)) return;
+      if (gameCentreCardType(item.kind) !== 'public') return;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       if (mode === 'live' && userId && typeof gw === 'number') {
         void toggleCardReaction(matchCenterReactionCardId(gw, item.id), emoji);
@@ -2402,6 +2233,20 @@ export default function MatchCenterScreen() {
     [mode, profileSummary?.avatar_url, queryClient, replyDraft, sendingReply, userId]
   );
 
+  // The same functions for every card on every render; each calls the latest version.
+  const latestHandlers = React.useRef({ toggleReply, toggleReact, reactToMessage, reactToCard, sendReply });
+  latestHandlers.current = { toggleReply, toggleReact, reactToMessage, reactToCard, sendReply };
+  const cardHandlers = React.useMemo(
+    () => ({
+      toggleReply: (item: FeedItem) => latestHandlers.current.toggleReply(item),
+      toggleReact: (item: FeedItem) => latestHandlers.current.toggleReact(item),
+      reactToMessage: (item: FeedItem, emoji: string) => latestHandlers.current.reactToMessage(item, emoji),
+      reactToCard: (item: FeedItem, emoji: string) => latestHandlers.current.reactToCard(item, emoji),
+      sendReply: (item: FeedItem) => void latestHandlers.current.sendReply(item),
+    }),
+    []
+  );
+
   const revealedLiveGw = React.useRef<number | null>(null);
   const pinToEnd = React.useRef(false);
   const pinRelease = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2412,14 +2257,21 @@ export default function MatchCenterScreen() {
     pinToEnd.current = true;
     atBottom.current = true;
   }
+  const showLatest = React.useCallback(
+    (animated: boolean) => {
+      if (newestFirst) scrollRef.current?.scrollToOffset({ offset: 0, animated });
+      else scrollRef.current?.scrollToEnd({ animated });
+    },
+    [newestFirst]
+  );
   const holdLastCard = React.useCallback(() => {
     if (!pinToEnd.current) return;
-    scrollRef.current?.scrollToEnd({ animated: false });
+    showLatest(false);
     if (pinRelease.current) clearTimeout(pinRelease.current);
     pinRelease.current = setTimeout(() => {
       pinToEnd.current = false;
     }, 700);
-  }, []);
+  }, [showLatest]);
   React.useEffect(() => {
     if (mode !== 'live') {
       revealedLiveGw.current = null;
@@ -2431,8 +2283,19 @@ export default function MatchCenterScreen() {
     setNewUpdates(false);
     holdLastCard();
   }, [gw, holdLastCard, mode, prepping]);
+  // Newest first: a new card lands above the one being read, which stays put
+  // (maintainVisibleContentPosition), and the New Updates pill offers a way up.
+  const seenNewestId = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (prepping) return;
+    if (!newestFirst || prepping) return;
+    const newest = feed[feed.length - 1]?.id ?? null;
+    const previous = seenNewestId.current;
+    seenNewestId.current = newest;
+    if (pinToEnd.current || previous == null || newest == null || newest === previous) return;
+    if (!atBottom.current) setNewUpdates(true);
+  }, [feed, newestFirst, prepping]);
+  React.useEffect(() => {
+    if (newestFirst || prepping) return;
     if (feed.length === seenFeedLength.current) return;
     const grew = feed.length > seenFeedLength.current;
     seenFeedLength.current = feed.length;
@@ -2442,28 +2305,49 @@ export default function MatchCenterScreen() {
       return;
     }
     setNewUpdates(true);
-  }, [feed.length, mode, prepping]);
+  }, [feed.length, mode, newestFirst, prepping]);
 
   const onFeedScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distance = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    const nearBottom = distance < 120;
-    atBottom.current = nearBottom;
-    if (nearBottom) setNewUpdates(false);
-  }, []);
+    // "At the latest" is the top of the feed when newest is first, the bottom otherwise.
+    const nearLatest = newestFirst
+      ? contentOffset.y < 8
+      : contentSize.height - layoutMeasurement.height - contentOffset.y < 120;
+    atBottom.current = nearLatest;
+    if (nearLatest) setNewUpdates(false);
+  }, [newestFirst]);
 
   const jumpToLatest = React.useCallback(() => {
     atBottom.current = true;
     setNewUpdates(false);
-    scrollRef.current?.scrollToEnd({ animated: true });
-  }, []);
+    showLatest(true);
+  }, [showLatest]);
+
+  const [pullRefreshing, setPullRefreshing] = React.useState(false);
+  const onPullRefresh = React.useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await Promise.race([
+        queryClient.refetchQueries({
+          type: 'active',
+          predicate: (query) => {
+            const head = String(query.queryKey[0] ?? '');
+            return head.startsWith('match-center') || head === 'homeSnapshot' || head === 'gwResults' || head === 'leagues';
+          },
+        }),
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [queryClient]);
 
   const openItem = React.useCallback(
     (item: FeedItem) => {
       const link = item.link;
       if (!link) return;
       if (link.to === 'home') {
-        navigation.navigate('HomeMain');
+        navigation.navigate('Tabs', { screen: 'Predictions', params: { screen: 'HomeMain' } });
         return;
       }
       if (link.to === 'overall') {
@@ -2707,32 +2591,121 @@ export default function MatchCenterScreen() {
     return status === 'IN_PLAY' || status === 'PAUSED';
   });
 
+  // Only the cards near the screen are drawn; a gameweek's feed runs past 100 cards, and
+  // drawing them all at once held up every tap for seconds.
+  const shownFeed = React.useMemo(() => (newestFirst ? [...feed].reverse() : feed), [feed, newestFirst]);
+  const renderFeedItem = ({ item, index: shownIndex }: { item: FeedItem; index: number }) => {
+    // Pairing with the card before it in time, whichever way the feed reads.
+    const index = newestFirst ? feed.length - 1 - shownIndex : shownIndex;
+    const previous = feed[index - 1];
+    const celebratedWithPrevious =
+      previous != null && celebrateIds.has(item.id) && celebrateIds.has(previous.id);
+    const arriveDelay =
+      celebratedWithPrevious &&
+      ((item.kind === 'rank' && previous.kind === 'goal') ||
+        (item.kind === 'message' && (previous.kind === 'goal' || previous.kind === 'rank')) ||
+        (item.kind === 'xi' && previous.kind === 'lineup'))
+        ? 700
+        : 0;
+    if (item.kind === 'message') {
+      return (
+        <MessageRow
+          item={item}
+          onOpen={openItem}
+          celebrate={celebrateIds.has(item.id)}
+          arriveDelay={arriveDelay}
+          replying={replyId === item.id}
+          replyDraft={replyId === item.id ? replyDraft : ''}
+          sendingReply={sendingReply}
+          reacting={reactId === item.id}
+          reactions={
+            (chatRecordId(item.id) ? reactions[chatRecordId(item.id) as string] : null) ??
+            localReactions[item.id] ??
+            NO_REACTIONS
+          }
+          youAvatar={profileSummary?.avatar_url ?? null}
+          onToggleReply={cardHandlers.toggleReply}
+          onChangeReply={setReplyDraft}
+          onSendReply={cardHandlers.sendReply}
+          onToggleReact={cardHandlers.toggleReact}
+          onReact={cardHandlers.reactToMessage}
+        />
+      );
+    }
+    const cardKey =
+      typeof gw === 'number' && mode === 'live' ? matchCenterReactionCardId(gw, item.id) : item.id;
+    const cardReactable = gameCentreCardType(item.kind) === 'public';
+    return (
+      <FeedCard
+        item={item}
+        onOpen={openItem}
+        celebrate={celebrateIds.has(item.id)}
+        arriveDelay={arriveDelay}
+        reactions={
+          cardReactable
+            ? mode === 'live'
+              ? cardReactions[cardKey] ?? NO_REACTIONS
+              : localReactions[item.id] ?? NO_REACTIONS
+            : NO_REACTIONS
+        }
+        onReact={cardReactable ? cardHandlers.reactToCard : undefined}
+      />
+    );
+  };
+
   return (
     <Screen fullBleed>
-      <AppTopHeader
-        onPressChat={() => navigation.navigate('ChatHub')}
-        onPressProfile={() => {
-          navigation.navigate('HomeMain');
-          navigation.navigate('Profile');
-        }}
-        avatarUrl={profileSummary?.avatar_url}
-        hasLiveGames={hasLiveGames}
-        title="Match Center"
-        centerContent={headerPill}
-        hideMatchCenterEntry
-      />
-      <ScrollView
+      {menu ? (
+        // New header (Figma 272:33554): menu on the left, chat on the right.
+        <AppTopHeader
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => navigation.navigate('Profile')}
+          hasLiveGames={hasLiveGames}
+          centerContent={headerPill ?? <View />}
+          hideMatchCenterEntry
+          hideProfile
+          leftAction={<GameCentreMenuButton />}
+        />
+      ) : (
+        <AppTopHeader
+          onPressChat={() => navigation.navigate('ChatHub')}
+          onPressProfile={() => {
+            navigation.navigate('HomeMain');
+            navigation.navigate('Profile');
+          }}
+          avatarUrl={profileSummary?.avatar_url}
+          hasLiveGames={hasLiveGames}
+          title="Match Center"
+          centerContent={headerPill}
+          hideMatchCenterEntry
+        />
+      )}
+      <FlatList
         ref={scrollRef}
+        data={prepping ? [] : shownFeed}
+        keyExtractor={(item) => (mode === 'play' ? `${playRun}-${item.id}` : item.id)}
+        renderItem={renderFeedItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={4}
+        windowSize={9}
         onScroll={onFeedScroll}
         scrollEventThrottle={16}
         onContentSizeChange={holdLastCard}
+        maintainVisibleContentPosition={newestFirst ? { minIndexForVisible: 0 } : undefined}
+        refreshControl={
+          newestFirst && mode === 'live' ? (
+            <RefreshControl refreshing={pullRefreshing} onRefresh={() => void onPullRefresh()} tintColor={t.color.brand} colors={[t.color.brand]} />
+          ) : undefined
+        }
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
           paddingTop: 8,
           paddingBottom: 88,
         }}
-      >
-
+        ListHeaderComponent={
+          <>
         {prepping ? (
           <View style={{ alignItems: 'center', paddingTop: 88, paddingHorizontal: 24 }}>
             <ActivityIndicator size="large" color={t.color.brand} />
@@ -2771,76 +2744,12 @@ export default function MatchCenterScreen() {
             </TotlText>
           </Card>
         ) : null}
-
-        {feed.map((item, index) => {
-          const previous = feed[index - 1];
-          const celebratedWithPrevious =
-            previous != null && celebrateIds.has(item.id) && celebrateIds.has(previous.id);
-          const arriveDelay =
-            celebratedWithPrevious &&
-            ((item.kind === 'rank' && previous.kind === 'goal') ||
-              (item.kind === 'message' && (previous.kind === 'goal' || previous.kind === 'rank')) ||
-              (item.kind === 'xi' && previous.kind === 'lineup'))
-              ? 700
-              : 0;
-          const key = mode === 'play' ? `${playRun}-${item.id}` : item.id;
-          if (item.kind === 'message') {
-            return (
-              <MessageRow
-                key={key}
-                item={item}
-                onOpen={openItem}
-                celebrate={celebrateIds.has(item.id)}
-                arriveDelay={arriveDelay}
-                replying={replyId === item.id}
-                replyDraft={replyId === item.id ? replyDraft : ''}
-                sendingReply={sendingReply}
-                reacting={reactId === item.id}
-                reactions={
-                  (chatRecordId(item.id) ? reactions[chatRecordId(item.id) as string] : null) ??
-                  localReactions[item.id] ??
-                  []
-                }
-                youAvatar={profileSummary?.avatar_url ?? null}
-                onToggleReply={() => toggleReply(item)}
-                onChangeReply={setReplyDraft}
-                onSendReply={() => void sendReply(item)}
-                onToggleReact={() => toggleReact(item)}
-                onReact={(emoji) => reactToMessage(item, emoji)}
-              />
-            );
-          }
-          const tuck =
-            index > 0 &&
-            (item.kind === 'rank' || (item.kind === 'xi' && previous?.kind === 'lineup'));
-          const tuckSoft = tuck && previous != null && isMatchCenterReactable(previous.kind);
-          const cardKey =
-            typeof gw === 'number' && mode === 'live' ? matchCenterReactionCardId(gw, item.id) : item.id;
-          const cardReactable = isMatchCenterReactable(item.kind);
-          return (
-            <FeedCard
-              key={key}
-              item={item}
-              onOpen={openItem}
-              celebrate={celebrateIds.has(item.id)}
-              arriveDelay={arriveDelay}
-              tuck={tuck}
-              tuckSoft={tuckSoft}
-              reactions={
-                cardReactable
-                  ? mode === 'live'
-                    ? cardReactions[cardKey] ?? []
-                    : localReactions[item.id] ?? []
-                  : []
-              }
-              onReact={cardReactable ? (emoji) => reactToCard(item, emoji) : undefined}
-            />
-          );
-        })}
           </>
         )}
-      </ScrollView>
-      {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} /> : null}
+          </>
+        }
+      />
+      {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} /> : null}
       {tickerFixtures.length ||
       (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))) ? (
         <FixtureTicker

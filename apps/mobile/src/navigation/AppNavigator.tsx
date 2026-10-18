@@ -4,6 +4,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react
 import { useTokens } from '@totl/ui';
 
 import TabsNavigator from './TabsNavigator';
+import GameCentreScreen from '../screens/GameCentreScreen';
 import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
 import LeagueDetailScreen from '../screens/LeagueDetailScreen';
 import LeagueChatScreen from '../screens/LeagueChatScreen';
@@ -26,6 +27,7 @@ import { resolveDeepLinkTarget } from '../lib/deepLinks';
 import { api } from '../lib/api';
 import { navigationRef } from './navigationRef';
 export type RootStackParamList = {
+  GameCentre: undefined;
   Tabs: undefined;
   LeagueDetail: { leagueId: string; name: string; returnTo?: 'chat' | 'chat2'; chatMlHopCount?: number; initialTab?: 'gwTable' | 'predictions' | 'season' };
   LeagueChat: { leagueId: string; name: string };
@@ -83,10 +85,7 @@ export default function AppNavigator() {
       return true;
     }
     if (target.type === 'matchCenter') {
-      navigationRef.navigate('Tabs' as any, {
-        screen: 'Predictions',
-        params: { screen: 'MatchCenter', params: { entry: 'current' } },
-      } as any);
+      navigationRef.navigate('GameCentre');
       return true;
     }
     if (target.type === 'brandedLeaderboard') {
@@ -177,11 +176,14 @@ export default function AppNavigator() {
       }}
     >
       <Stack.Navigator
+        initialRouteName="GameCentre"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: t.color.background },
         }}
       >
+        {/* The Game Centre is home; the old bottom-tab screens open over it with a back button. */}
+        <Stack.Screen name="GameCentre" component={GameCentreScreen} />
         <Stack.Screen name="Tabs" component={TabsNavigator} />
         <Stack.Screen name="LeagueDetail" component={LeagueDetailScreen} />
         <Stack.Screen
