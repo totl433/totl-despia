@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '../supabase';
-import { playersMonthKey } from './day';
+import { playersMonthKey, playersWeekStart } from './day';
 
 /**
  * Each account keeps its own copy of its scores on the phone, keyed by user id,
@@ -151,6 +151,14 @@ async function publishPlayersScores(userId: string, store: PlayersScoreStore): P
 export function scoreForDay(store: PlayersScoreStore, dayKey: string): number | null {
   const row = store[dayKey];
   return row ? row.correct : null;
+}
+
+/** Monday (GMT) up to and including the given day, matching the weekly result card. */
+export function scoreForWeek(store: PlayersScoreStore, dayKey: string): number | null {
+  const monday = playersWeekStart(dayKey);
+  const keys = Object.keys(store).filter((key) => key >= monday && key <= dayKey);
+  if (!keys.length) return null;
+  return keys.reduce((sum, key) => sum + (store[key]?.correct ?? 0), 0);
 }
 
 export function scoreForMonth(store: PlayersScoreStore, dayKey: string): number | null {

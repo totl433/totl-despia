@@ -11,10 +11,17 @@ import { TotlText, useTokens } from '@totl/ui';
 import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { playersDayKey, playersMonthName } from '../../lib/retroPlayers/day';
-import { readSharedPlayersScores, scoreForDay, scoreForMonth, scoreOverall, type PlayersScoreStore } from '../../lib/retroPlayers/scores';
+import {
+  readSharedPlayersScores,
+  scoreForDay,
+  scoreForMonth,
+  scoreForWeek,
+  scoreOverall,
+  type PlayersScoreStore,
+} from '../../lib/retroPlayers/scores';
 import { supabase } from '../../lib/supabase';
 
-type BoardTab = 'today' | 'month' | 'overall';
+type BoardTab = 'today' | 'week' | 'month' | 'overall';
 
 const WORDMARK = Asset.fromModule(require('../../../assets/players/players-scoreboard-wordmark.svg')).uri;
 
@@ -77,7 +84,13 @@ export default function RetroPlayersScoreboardScreen() {
     for (const id of playerIds) {
       const store: PlayersScoreStore = scoresByUser[id] ?? {};
       const value =
-        tab === 'today' ? scoreForDay(store, dayKey) : tab === 'month' ? scoreForMonth(store, dayKey) : scoreOverall(store);
+        tab === 'today'
+          ? scoreForDay(store, dayKey)
+          : tab === 'week'
+            ? scoreForWeek(store, dayKey)
+            : tab === 'month'
+              ? scoreForMonth(store, dayKey)
+              : scoreOverall(store);
       if (value == null) continue;
       const player = nameById.get(id);
       built.push({
@@ -96,9 +109,13 @@ export default function RetroPlayersScoreboardScreen() {
     return rows.filter((row) => row.value === top).map((row) => row.user_id);
   }, [rows]);
 
-  const subtitle =
-    tab === 'today' ? 'All players · today' : tab === 'month' ? `All players · ${monthLabel}` : 'All players · overall';
-  const valueLabel = tab === 'today' ? 'Today' : tab === 'month' ? monthLabel.slice(0, 3) : 'Total';
+  const subtitle = {
+    today: 'All players · today',
+    week: 'All players · this week',
+    month: `All players · ${monthLabel}`,
+    overall: 'All players · overall',
+  }[tab];
+  const valueLabel = { today: 'Today', week: 'Week', month: monthLabel.slice(0, 3), overall: 'Total' }[tab];
 
   return (
     // A plain view with the inset applied here, as the game does: Screen's native SafeAreaView
@@ -128,6 +145,7 @@ export default function RetroPlayersScoreboardScreen() {
             <UnderlineTabs
               items={[
                 { key: 'today', label: 'Today' },
+                { key: 'week', label: 'Week' },
                 { key: 'month', label: monthLabel },
                 { key: 'overall', label: 'Overall' },
               ]}
