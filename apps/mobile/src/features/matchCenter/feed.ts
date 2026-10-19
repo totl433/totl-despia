@@ -5,7 +5,7 @@ import { formatLocalTimeHHmm } from '../../lib/dateTime';
 import { fixtureKickoffTimeLabel } from '../../lib/homeFixtureUi';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { normalizeTeamCode } from '../../lib/teamColors';
-import { getMediumName } from '../../../../../src/lib/teamNames';
+import { areTeamNamesSimilar, getMediumName } from '../../../../../src/lib/teamNames';
 
 const SAMPLE_EASY_AVATAR = resolveLeagueAvatarUri('ML-avatar-1.png');
 const SAMPLE_FC_AVATAR = resolveLeagueAvatarUri('ML-avatar-3.png');
@@ -351,27 +351,46 @@ function ruledOutGoal(goal: { type?: string | null }): boolean {
 }
 
 /** Score from goals on or before a minute. Later goals stay off older cards. */
-function scoreThroughMinute(fixture: Fixture, goals: Array<{ team?: string | null; minute?: number | null; type?: string | null }>, upTo: number): { home: number; away: number } {
+function scoreThroughMinute(
+  fixture: Fixture,
+  goals: Array<{ team?: string | null; minute?: number | null; type?: string | null }>,
+  upTo: number,
+  live?: LiveScore | null
+): { home: number; away: number } {
   let home = 0;
   let away = 0;
   goals.forEach((goal) => {
     if (typeof goal.minute !== 'number' || goal.minute > upTo || ruledOutGoal(goal)) return;
-    const side = sideForGoal(fixture, goal.team);
+    const side = sideForGoal(fixture, goal.team, live);
     if (side === 'H') home += 1;
     else if (side === 'A') away += 1;
   });
   return { home, away };
 }
 
-function sideForGoal(fixture: Fixture, team: string | null | undefined): Side | null {
+/**
+ * Which side a goal belongs to. The provider names goals with its own short names
+ * ("Spurs"), so check the live row's team names (same source) first, then our fixture
+ * names, then known aliases — the same matcher the scorer lines use.
+ */
+export function sideForGoal(fixture: Fixture, team: string | null | undefined, live?: LiveScore | null): Side | null {
   const value = normalize(team);
   if (!value) return null;
+  if (live) {
+    if (value === normalize(live.home_team)) return 'H';
+    if (value === normalize(live.away_team)) return 'A';
+  }
   const home = [fixture.home_name, fixture.home_team, fixture.home_code].map(normalize).filter(Boolean);
   const away = [fixture.away_name, fixture.away_team, fixture.away_code].map(normalize).filter(Boolean);
   const hit = (candidates: string[]) =>
     candidates.some((candidate) => value === candidate || value.includes(candidate) || candidate.includes(value));
   if (hit(home)) return 'H';
   if (hit(away)) return 'A';
+  const similar = (candidates: Array<string | null | undefined>) =>
+    candidates.some((candidate) => !!candidate && areTeamNamesSimilar(String(team), String(candidate)));
+  const homeAlias = similar([fixture.home_name, fixture.home_team, live?.home_team]);
+  const awayAlias = similar([fixture.away_name, fixture.away_team, live?.away_team]);
+  if (homeAlias !== awayAlias) return homeAlias ? 'H' : 'A';
   return null;
 }
 
@@ -914,7 +933,7 @@ export function buildMatchFeed(input: {
     let away = 0;
     const lastGoalIndex = goals.length - 1;
     goals.forEach((goal, index) => {
-      const side = sideForGoal(fixture, goal.team);
+      const side = sideForGoal(fixture, goal.team, live);
       const ruledOut = ruledOutGoal(goal);
       if (!ruledOut) {
         if (side === 'H') home += 1;
@@ -959,7 +978,7 @@ export function buildMatchFeed(input: {
     const boardHome = live.home_score ?? home;
     const boardAway = live.away_score ?? away;
     if (pastHalf) {
-      const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45);
+      const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45, live);
       const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
       const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
       const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());

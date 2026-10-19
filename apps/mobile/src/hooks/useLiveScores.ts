@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LiveScore } from '@totl/domain';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { isStaleLiveRow } from '../lib/liveScoreRows';
 
 type Options = {
   /**
@@ -117,6 +118,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
           rows.forEach((ls) => {
             if (!isNumber(ls.api_match_id)) return;
             const prevLs = prev.get(ls.api_match_id);
+            if (isStaleLiveRow(prevLs, ls)) return;
             if (scoreChanged(prevLs, ls)) {
               next.set(ls.api_match_id, ls);
               changed = true;
@@ -205,6 +207,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
               const incoming = payload.new as LiveScore;
               if (!isNumber(incoming.api_match_id)) return prev;
               const prevRow = prev.get(incoming.api_match_id);
+              if (isStaleLiveRow(prevRow, incoming)) return prev;
               // Merge so a slim realtime payload can't wipe lineups we already have.
               const newRow: LiveScore = {
                 ...(prevRow ?? ({} as LiveScore)),
