@@ -19,6 +19,7 @@ import {
 import { sendGameweekCompleteNotification } from './lib/notifications/scoreHelpers';
 import { countNotificationEventSends } from './lib/notifications/idempotency';
 import { buildGameweekCompleteEventId } from './lib/notifications/scoreTransitionGuards';
+import { gameCentrePostsEnabled, syncGameCentrePosts } from './lib/gameCentrePostsWriter';
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -621,6 +622,8 @@ async function pollAllLiveScores() {
         console.error('[pollLiveScores] Error upserting live scores:', upsertError);
       } else {
         console.log(`[pollLiveScores] Successfully updated ${updates.length} live scores`);
+        // Game Centre posts follow the rows just written (off until GAME_CENTRE_POSTS_WRITE=on).
+        if (gameCentrePostsEnabled()) await syncGameCentrePosts(supabase, updates);
         // Note: Webhooks are now handled by Supabase Dashboard webhook (see SUPABASE_WEBHOOK_SETUP.md)
         // Supabase will automatically call sendScoreNotificationsWebhook when live_scores is updated
       }

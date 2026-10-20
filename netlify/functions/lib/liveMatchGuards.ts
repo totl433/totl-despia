@@ -70,24 +70,20 @@ function normalizeTeamKey(name: string | null | undefined): string {
 }
 
 /**
- * FD can briefly include a scorer in `goals` before `score` catches up
- * (or leave a disallowed goal in the list after the score drops).
- * Cap goal events to the current score so the UI never shows "Williams 66'"
- * under a 0-0.
+ * Each goal's side, capped to the score: clearly attributed goals stay on their team,
+ * and only unattributed ones fill a side's remaining slots. Shared by
+ * `alignGoalsToMatchScore` and Game Centre posts so both agree on who scored.
  */
-export function alignGoalsToMatchScore<T extends LiveGoalEvent>(
+export function splitGoalsBySide<T extends LiveGoalEvent>(
   goals: T[] | null | undefined,
   homeScore: number,
   awayScore: number,
   homeTeamName?: string | null,
   awayTeamName?: string | null
-): T[] | null {
-  if (!goals || goals.length === 0) return null;
-
+): { home: T[]; away: T[] } {
   const homeNeed = Math.max(0, Number(homeScore) || 0);
   const awayNeed = Math.max(0, Number(awayScore) || 0);
-  const totalNeed = homeNeed + awayNeed;
-  if (totalNeed === 0) return null;
+  if (!goals || goals.length === 0 || homeNeed + awayNeed === 0) return { home: [], away: [] };
 
   const homeKey = normalizeTeamKey(homeTeamName);
   const awayKey = normalizeTeamKey(awayTeamName);
@@ -138,7 +134,24 @@ export function alignGoalsToMatchScore<T extends LiveGoalEvent>(
     }
   }
 
-  const kept = [...keptHome, ...keptAway].sort(byMinute);
+  return { home: keptHome.sort(byMinute), away: keptAway.sort(byMinute) };
+}
+
+/**
+ * FD can briefly include a scorer in `goals` before `score` catches up
+ * (or leave a disallowed goal in the list after the score drops).
+ * Cap goal events to the current score so the UI never shows "Williams 66'"
+ * under a 0-0.
+ */
+export function alignGoalsToMatchScore<T extends LiveGoalEvent>(
+  goals: T[] | null | undefined,
+  homeScore: number,
+  awayScore: number,
+  homeTeamName?: string | null,
+  awayTeamName?: string | null
+): T[] | null {
+  const { home, away } = splitGoalsBySide(goals, homeScore, awayScore, homeTeamName, awayTeamName);
+  const kept = [...home, ...away].sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
   return kept.length > 0 ? kept : null;
 }
 
