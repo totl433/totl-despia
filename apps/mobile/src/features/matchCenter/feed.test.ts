@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/leagueAvatars', () => ({ resolveLeagueAvatarUri: () => null }));
 
 import { buildMatchFeed, sideForGoal } from './feed';
+import { mergeGameCentrePosts, type GameCentrePost } from './posts';
 
 const KO = Date.parse('2026-10-19T19:00:00Z');
 
@@ -74,5 +75,81 @@ describe('Spurs v Coventry at half-time (screenshot regression)', () => {
   it('builds the same card ids on every rebuild', () => {
     const ids = (nowMs: number) => feedFor(atHalfTime, nowMs).map((item) => item.id);
     expect(ids(KO + 50 * 60_000)).toEqual(ids(KO + 60 * 60_000));
+  });
+});
+
+describe('feed from stored posts', () => {
+  const post = (id: string, kind: GameCentrePost['kind'], published: string, details: Record<string, unknown> = {}, extra: Partial<GameCentrePost> = {}): GameCentrePost => ({
+    id: `mc:gw7:${id}`,
+    gw: 7,
+    api_match_id: kind === 'opener' ? null : 560606,
+    fixture_index: kind === 'opener' ? null : 9,
+    kind,
+    status: 'active',
+    details,
+    occurred_minute: null,
+    published_at: published,
+    updated_at: published,
+    revision: 1,
+    ...extra,
+  });
+  const goal = post('goal:9:H1', 'goal', '2026-10-19T19:14:30Z', { side: 'H', n: 1, scorer: 'James Maddison', minute: 14, own_goal: false, score_after: { home: 1, away: 0 } });
+  const posts = [
+    post('ko:9', 'kickoff', '2026-10-19T19:00:40Z'),
+    goal,
+    post('ht:9', 'half-time', '2026-10-19T19:47:10Z', { score: { home: 1, away: 0 } }),
+  ];
+  const fromPosts = (list: GameCentrePost[], nowMs = KO + 52 * 60_000) =>
+    buildMatchFeed({
+      gw: 7,
+      fixtures: [spursCoventry],
+      liveByFixtureIndex: new Map([[9, atHalfTime]]),
+      picks: { '9': 'H' },
+      nowMs,
+      posts: list,
+    });
+
+  it('uses each post as one card, keyed by its id', () => {
+    const feed = fromPosts(posts);
+    expect(feed.map((item) => item.id)).toEqual(['ko:9', 'goal:9:H1', 'ht:9']);
+    expect(feed.find((item) => item.id === 'ht:9')?.match).toMatchObject({ homeScore: 1, awayScore: 0 });
+  });
+
+  it('orders by first publish time, whatever the clock says', () => {
+    const early = fromPosts(posts, KO + 50 * 60_000).map((item) => [item.id, item.sortAt]);
+    const later = fromPosts(posts, KO + 90 * 60_000).map((item) => [item.id, item.sortAt]);
+    expect(early).toEqual(later);
+    expect(early[1]).toEqual(['goal:9:H1', Date.parse('2026-10-19T19:14:30Z')]);
+  });
+
+  it('shows a correction on the same card in the same place', () => {
+    const corrected = { ...goal, revision: 2, details: { ...goal.details, scorer: 'Dominic Solanke' } };
+    const feed = fromPosts([posts[0] as GameCentrePost, corrected, posts[2] as GameCentrePost]);
+    const card = feed.find((item) => item.id === 'goal:9:H1');
+    expect(card).toMatchObject({ kind: 'goal', sortAt: Date.parse('2026-10-19T19:14:30Z'), body: 'Dominic Solanke Scores!!! ⚽' });
+  });
+
+  it('turns a ruled-out goal into a VAR card without a new id', () => {
+    const feed = fromPosts([{ ...goal, status: 'ruled_out', revision: 2 }]);
+    expect(feed.map((item) => [item.id, item.kind])).toEqual([['goal:9:H1', 'ruled-out']]);
+  });
+
+  it('skips voided posts', () => {
+    expect(fromPosts([{ ...goal, status: 'void' }])).toEqual([]);
+  });
+});
+
+describe('merging posts', () => {
+  const base = { gw: 7, api_match_id: 1, fixture_index: 9, kind: 'goal' as const, status: 'active' as const, details: {}, occurred_minute: 14, published_at: 'x', updated_at: 'x' };
+  it('keeps one copy per id and the newer revision', () => {
+    const v1 = { ...base, id: 'a', revision: 1 };
+    const v2 = { ...base, id: 'a', revision: 2, status: 'ruled_out' as const };
+    const merged = mergeGameCentrePosts([v1], [v2, v1, v1]);
+    expect(merged).toEqual([v2]);
+  });
+
+  it('returns the same array when nothing changed, so cards do not redraw', () => {
+    const current = [{ ...base, id: 'a', revision: 1 }];
+    expect(mergeGameCentrePosts(current, [{ ...base, id: 'a', revision: 1 }])).toBe(current);
   });
 });

@@ -23,6 +23,8 @@ import HeaderLiveScore from '../components/HeaderLiveScore';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
+import { env } from '../env';
+import { useGameCentrePosts } from '../hooks/useGameCentrePosts';
 import { useLeagueChatReactions, type ReactionSummary } from '../hooks/useLeagueChatReactions';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import {
@@ -1458,6 +1460,11 @@ export default function MatchCenterScreen() {
     [fallbackPositions, predictedPositions]
   );
   const { liveByFixtureIndex, liveByApiMatchId, loading: liveScoresLoading, error: liveScoresError } = useLiveScores(gw, { initial: board?.liveScores ?? [] });
+  // Stored posts (behind EXPO_PUBLIC_GAME_CENTRE_POSTS). Until a gameweek has any, the
+  // feed keeps building match cards from live scores as before.
+  const postsOn = env.EXPO_PUBLIC_GAME_CENTRE_POSTS === 'on' && mode === 'live';
+  const { posts: storedPosts } = useGameCentrePosts(typeof gw === 'number' ? gw : null, postsOn);
+  const feedPosts = postsOn && storedPosts && storedPosts.length > 0 ? storedPosts : null;
 
   const { data: leaguesData, isFetched: leaguesFetched } = useQuery({
     queryKey: ['leagues'],
@@ -1913,6 +1920,7 @@ export default function MatchCenterScreen() {
       leagues: replayOn ? leaguePicks : [],
       overall: overallReplay ? { ...overallReplay, userAvatar: profileSummary?.avatar_url ?? null } : null,
       lineupArrivalMs: lineupArrivalMs.current,
+      posts: feedPosts,
       // After the first painted live feed, new XIs sort by wall clock at the live end.
       sessionLive: seenIds.current !== null,
     });
@@ -1956,7 +1964,7 @@ export default function MatchCenterScreen() {
     return [...match, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(
       (a, b) => a.sortAt - b.sortAt || kindRank(a.kind) - kindRank(b.kind) || a.id.localeCompare(b.id)
     );
-  }, [allFinished, board, chatItems, clockMs, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
+  }, [allFinished, board, chatItems, clockMs, feedPosts, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
 
   // The feed is rebuilt whenever scores, chat or tables refresh, which makes every card a
   // new object. Keep the previous object for any card whose content is the same, so the
