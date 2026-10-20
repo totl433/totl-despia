@@ -1,6 +1,7 @@
 import type { Fixture, LiveScore, Pick } from '@totl/domain';
 
 import { buildGoalScorerLines, parseGoalEvents } from '../../lib/goalEvents';
+import type { GameCentrePost } from './posts';
 import { formatLocalTimeHHmm } from '../../lib/dateTime';
 import { fixtureKickoffTimeLabel } from '../../lib/homeFixtureUi';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
@@ -717,6 +718,11 @@ export function buildMatchFeed(input: {
   lineupArrivalMs?: Map<number, number>;
   /** True once the live feed has already painted once (not the initial catch-up). */
   sessionLive?: boolean;
+  /**
+   * Stored match events (game_centre_posts). When given, match cards come from these: each
+   * post is one card with a permanent id, ordered by when it was first published.
+   */
+  posts?: GameCentrePost[] | null;
 }): FeedItem[] {
   const { gw, fixtures, liveByFixtureIndex, picks, nowMs } = input;
   const resolve = (fixture: Fixture) => resolveLive(fixture, liveByFixtureIndex, input.liveByApiMatchId);
@@ -797,256 +803,404 @@ export function buildMatchFeed(input: {
       scorer,
     });
   };
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    const xi = parseStoredLineup(live?.lineups);
-    const ko = kickoffMs(fixture);
-    if (!xi || ko === null || nowMs < ko - lineupLeadMs) continue;
-    const announced = ko - lineupLeadMs;
-    const idx = fixture.fixture_index;
-    if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
-      // Catch-up open: keep story order at the official XI window.
-      // Mid-session arrival: wall-clock so the cards appear at the live end, but only
-      // before kickoff. A team sheet that loads once the game is on isn't news, so it
-      // keeps its announced time rather than jumping to the top of the feed.
-      input.lineupArrivalMs.set(idx, input.sessionLive && nowMs < ko ? nowMs : announced);
-    }
-    const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
-    const top = lineupTopFor(fixture);
-    const match = board(
-      fixture,
-      picks[String(fixture.fixture_index)] ?? null,
-      live && started(live.status) ? (live.home_score ?? null) : null,
-      live && started(live.status) ? (live.away_score ?? null) : null,
-      live?.status
-    );
-    const stamp = clockStamp(arrived, 'XI');
-    const pairAt = arrived + fixture.fixture_index * 2;
-    items.push({
-      id: `xi:${fixture.fixture_index}`,
-      sortAt: pairAt,
-      timeLabel: stamp,
-      stamp,
-      kind: 'lineup',
-      eyebrow: 'Line-up',
-      title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, fixture.fixture_index),
-      body: '',
-      lineupTop: top,
-      match,
-    });
-    items.push({
-      id: `xi-sheet:${fixture.fixture_index}`,
-      sortAt: pairAt + 1,
-      timeLabel: stamp,
-      stamp,
-      kind: 'xi',
-      eyebrow: 'The teams',
-      title: '',
-      body: '',
-      xi: {
-        ...xi,
-        homeCode: match.homeCode,
-        awayCode: match.awayCode,
-        homeName: top.homeName,
-        awayName: top.awayName,
-      },
-    });
-  }
 
-  const firstTeams = items
-    .filter((item) => item.kind === 'lineup')
-    .sort((a, b) => a.sortAt - b.sortAt)[0];
-  if (firstTeams) {
-    items.push({
-      id: `gw-open:${gw}`,
-      sortAt: firstTeams.sortAt - 0.5,
-      timeLabel: firstTeams.timeLabel,
-      stamp: firstTeams.stamp,
-      kind: 'opener',
-      eyebrow: 'Match Center',
-      title: `Gameweek ${gw}, Here We Go!`,
-      body: 'First teams are out.',
+  /** Match cards from stored posts: the post id is the card id, published_at its time. */
+  function matchItemsFromPosts(posts: GameCentrePost[]): FeedItem[] {
+    const out: FeedItem[] = [];
+    const prefix = `mc:gw${gw}:`;
+    const byIndex = new Map(fixtures.map((fixture) => [fixture.fixture_index, fixture]));
+    const ordered = posts
+      .filter((post) => post.status !== 'void' && post.id.startsWith(prefix))
+      .map((post) => ({ post, at: Date.parse(post.published_at) }))
+      .filter(({ at }) => Number.isFinite(at))
+      .sort((a, b) => a.at - b.at || a.post.id.localeCompare(b.post.id));
+    const finishedAt = new Map<number, number>();
+    ordered.forEach(({ post, at }) => {
+      if (post.kind === 'full-time' && post.fixture_index != null) finishedAt.set(post.fixture_index, at);
     });
-  }
+    const scoreOf = (value: unknown): { home: number; away: number } | null => {
+      const score = value as { home?: unknown; away?: unknown } | null | undefined;
+      return score && typeof score.home === 'number' && typeof score.away === 'number' ? { home: score.home, away: score.away } : null;
+    };
 
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    const ko = kickoffMs(fixture);
-    const hasStarted = started(live?.status) || (ko !== null && nowMs >= ko && live != null);
-    if (!hasStarted || ko === null) continue;
-    const slot = Math.floor(ko / 60000) * 60000;
-    items.push({
-      id: `ko:${fixture.fixture_index}`,
-      sortAt: slot,
-      timeLabel: formatLocalTimeHHmm(new Date(slot).toISOString()),
-      kind: 'kickoff',
-      eyebrow: 'Kickoff',
-      title: "We're off",
-      body: matchLabel(fixture),
-      match: board(fixture, picks[String(fixture.fixture_index)] ?? null, null, null, live?.status),
-    });
-  }
-
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    if (!live || !started(live.status)) continue;
-    const ko = kickoffMs(fixture) ?? 0;
-    const pick = picks[String(fixture.fixture_index)] ?? null;
-    const goals = parseGoalEvents(live.goals).slice().sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
-    const homeScore = live.home_score ?? 0;
-    const awayScore = live.away_score ?? 0;
-    if (goals.length === 0) {
-      if (live.status !== 'FINISHED') {
-        const minute = typeof live.minute === 'number' ? live.minute : 0;
-        const wallMs = goalWallMs({ ko, goalMinute: minute || 1, live, nowMs, isLatestGoal: true });
-        noteOutcome(
-          fixture.fixture_index,
-          homeScore,
-          awayScore,
-          wallMs,
-          formatLocalTimeHHmm(new Date(wallMs).toISOString()),
-          homeScore + awayScore > 0,
-          null
-        );
+    for (const { post, at } of ordered) {
+      const id = post.id.slice(prefix.length);
+      const stamp = clockStamp(at, '');
+      if (post.kind === 'opener') {
+        out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'opener', eyebrow: 'Match Center', title: `Gameweek ${gw}, Here We Go!`, body: 'First teams are out.' });
+        continue;
       }
-    } else {
-      noteOutcome(fixture.fixture_index, 0, 0, ko, formatLocalTimeHHmm(new Date(ko).toISOString()), false, null);
-    }
-    if (goals.length === 0 && (homeScore > 0 || awayScore > 0)) {
-      const minute = typeof live.minute === 'number' ? live.minute : 1;
-      const wallMs = goalWallMs({ ko, goalMinute: minute, live, nowMs, isLatestGoal: true });
-      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
-      items.push({
-        id: `score:${fixture.fixture_index}:${homeScore}-${awayScore}`,
-        sortAt: wallMs,
-        timeLabel: typeof live.minute === 'number' ? `${live.minute}'` : 'Live',
-        stamp,
-        kind: 'goal',
-        eyebrow: 'Goal',
-        title: 'GOAL',
-        body: scoresLine(''),
-        personal: personalLine(pick, homeScore, awayScore, false, minute),
-        match: board(fixture, pick, homeScore, awayScore, live.status),
-      });
-    }
-    let home = 0;
-    let away = 0;
-    const lastGoalIndex = goals.length - 1;
-    goals.forEach((goal, index) => {
-      const side = sideForGoal(fixture, goal.team, live);
-      const ruledOut = ruledOutGoal(goal);
-      if (!ruledOut) {
-        if (side === 'H') home += 1;
-        else if (side === 'A') away += 1;
-        else if ((live.home_score ?? 0) + (live.away_score ?? 0) === index + 1) {
-          home = live.home_score ?? home;
-          away = live.away_score ?? away;
+      const fixture = post.fixture_index != null ? byIndex.get(post.fixture_index) : undefined;
+      if (!fixture) continue;
+      const idx = fixture.fixture_index;
+      const live = resolve(fixture);
+      const pick = picks[String(idx)] ?? null;
+      switch (post.kind) {
+        case 'lineup': {
+          const top = lineupTopFor(fixture);
+          const match = board(
+            fixture,
+            pick,
+            live && started(live.status) ? (live.home_score ?? null) : null,
+            live && started(live.status) ? (live.away_score ?? null) : null,
+            live?.status
+          );
+          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'lineup', eyebrow: 'Line-up', title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, idx), body: '', lineupTop: top, match });
+          break;
+        }
+        case 'xi': {
+          const xi = parseStoredLineup(live?.lineups);
+          if (!xi) break;
+          const top = lineupTopFor(fixture);
+          const homeCode = String(fixture.home_code ?? '').toUpperCase();
+          const awayCode = String(fixture.away_code ?? '').toUpperCase();
+          out.push({ id, sortAt: at + 1, timeLabel: stamp, stamp, kind: 'xi', eyebrow: 'The teams', title: '', body: '', xi: { ...xi, homeCode, awayCode, homeName: top.homeName, awayName: top.awayName } });
+          break;
+        }
+        case 'kickoff': {
+          noteOutcome(idx, 0, 0, at, stamp, false, null);
+          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'kickoff', eyebrow: 'Kickoff', title: "We're off", body: matchLabel(fixture), match: board(fixture, pick, null, null, live?.status) });
+          break;
+        }
+        case 'goal': {
+          const score = scoreOf(post.details.score_after);
+          const minute = typeof post.details.minute === 'number' ? post.details.minute : null;
+          if (!score) break;
+          const ruledOut = post.status === 'ruled_out';
+          const scorer = (typeof post.details.scorer === 'string' && post.details.scorer.trim()) || 'Someone';
+          const own = post.details.own_goal === true ? ' (og)' : '';
+          if (!ruledOut) noteOutcome(idx, score.home, score.away, at, stamp, true, scorer);
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: minute != null ? `${minute}'` : stamp,
+            stamp,
+            kind: ruledOut ? 'ruled-out' : 'goal',
+            eyebrow: ruledOut ? 'VAR' : 'Goal',
+            title: ruledOut ? 'Goal ruled out' : 'GOAL',
+            body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}`),
+            personal: ruledOut ? null : personalLine(pick, score.home, score.away, false, minute ?? 0),
+            match: board(fixture, pick, score.home, score.away, live?.status, live?.goals, minute ?? undefined),
+          });
+          break;
+        }
+        case 'half-time': {
+          const score = scoreOf(post.details.score);
+          if (!score) break;
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: 'HT',
+            stamp,
+            kind: 'half-time',
+            eyebrow: 'Half-time',
+            title: halfTimeTitle(),
+            body: '',
+            personal: personalLine(pick, score.home, score.away, false, 45),
+            match: board(fixture, pick, score.home, score.away, live?.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live?.goals, 45),
+          });
+          break;
+        }
+        case 'second-half': {
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: "46'",
+            stamp,
+            kind: 'second-half',
+            eyebrow: 'Second half',
+            title: "They're back",
+            body: 'Second half.',
+            match: board(fixture, pick, live?.home_score ?? null, live?.away_score ?? null, live?.status === 'FINISHED' ? 'FINISHED' : 'IN_PLAY', live?.goals, typeof live?.minute === 'number' ? live.minute : undefined),
+          });
+          break;
+        }
+        case 'full-time': {
+          const score = scoreOf(post.details.score);
+          if (!score) break;
+          const next = outcome(score.home, score.away);
+          outcomeNow.set(idx, next);
+          outcomeEvents.push({ sortAt: at, stamp, fixtureIndex: idx, outcome: next, announce: true, scorer: null, finalWhistle: true });
+          const done = fixtures.filter((other) => (finishedAt.get(other.fixture_index) ?? Infinity) <= at);
+          const correct = done.filter((other) => {
+            const otherPick = picks[String(other.fixture_index)] ?? null;
+            const otherLive = resolve(other);
+            return !!otherPick && !!otherLive && otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
+          }).length;
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: 'FT',
+            stamp,
+            kind: 'full-time',
+            eyebrow: 'Full-time',
+            title: pick && pick === next ? 'Full-time!!' : 'Full-time',
+            body: gwScoreLine(correct, done.length, fixtures.length - done.length),
+            personal: personalLine(pick, score.home, score.away, true, idx),
+            match: board(fixture, pick, score.home, score.away, 'FINISHED', live?.goals),
+          });
+          break;
         }
       }
-      const minute = typeof goal.minute === 'number' ? goal.minute : index + 1;
-      const shownHome = side ? home : (live.home_score ?? 0);
-      const shownAway = side ? away : (live.away_score ?? 0);
-      const scorer = goal.scorer?.trim() || 'Someone';
-      const own = goal.isOwnGoal ? ' (og)' : '';
-      const pen = goal.isPenalty ? ' (pen)' : '';
-      // Wall clock for stamp/sort — match minute is only the label (46'), not KO+46'.
-      const wallMs = goalWallMs({
-        ko,
-        goalMinute: minute,
-        live,
-        nowMs,
-        isLatestGoal: index === lastGoalIndex,
-      });
-      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
-      if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, wallMs, stamp, true, scorer);
-      items.push({
-        id: `goal:${fixture.fixture_index}:${minute}:${index}`,
-        sortAt: wallMs,
-        timeLabel: `${minute}'`,
-        stamp,
-        kind: ruledOut ? 'ruled-out' : 'goal',
-        eyebrow: ruledOut ? 'VAR' : 'Goal',
-        title: ruledOut ? 'Goal ruled out' : 'GOAL',
-        body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
-        personal: ruledOut ? null : personalLine(pick, shownHome, shownAway, false, minute),
-        match: board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute),
-      });
-    });
+    }
+    return out;
+  }
 
-    const minute = typeof live.minute === 'number' ? live.minute : null;
-    const pastHalf = live.status === 'PAUSED' || live.status === 'FINISHED' || (minute !== null && minute >= 46);
-    const boardHome = live.home_score ?? home;
-    const boardAway = live.away_score ?? away;
-    if (pastHalf) {
-      const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45, live);
-      const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
-      const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
-      const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());
+  if (input.posts) {
+    items.push(...matchItemsFromPosts(input.posts));
+  } else {
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      const xi = parseStoredLineup(live?.lineups);
+      const ko = kickoffMs(fixture);
+      if (!xi || ko === null || nowMs < ko - lineupLeadMs) continue;
+      const announced = ko - lineupLeadMs;
+      const idx = fixture.fixture_index;
+      if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
+        // Catch-up open: keep story order at the official XI window.
+        // Mid-session arrival: wall-clock so the cards appear at the live end, but only
+        // before kickoff. A team sheet that loads once the game is on isn't news, so it
+        // keeps its announced time rather than jumping to the top of the feed.
+        input.lineupArrivalMs.set(idx, input.sessionLive && nowMs < ko ? nowMs : announced);
+      }
+      const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
+      const top = lineupTopFor(fixture);
+      const match = board(
+        fixture,
+        picks[String(fixture.fixture_index)] ?? null,
+        live && started(live.status) ? (live.home_score ?? null) : null,
+        live && started(live.status) ? (live.away_score ?? null) : null,
+        live?.status
+      );
+      const stamp = clockStamp(arrived, 'XI');
+      const pairAt = arrived + fixture.fixture_index * 2;
       items.push({
-        id: `ht:${fixture.fixture_index}`,
-        sortAt: htWall,
-        timeLabel: 'HT',
-        stamp: htStamp,
-        kind: 'half-time',
-        eyebrow: 'Half-time',
-        title: halfTimeTitle(),
+        id: `xi:${fixture.fixture_index}`,
+        sortAt: pairAt,
+        timeLabel: stamp,
+        stamp,
+        kind: 'lineup',
+        eyebrow: 'Line-up',
+        title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, fixture.fixture_index),
         body: '',
-        personal: personalLine(pick, atBreak.home, atBreak.away, false, 45),
-        match: htMatch,
+        lineupTop: top,
+        match,
       });
-    }
-    if (live.status === 'IN_PLAY' && minute !== null && minute >= 46) {
-      const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
-      const shStamp = formatLocalTimeHHmm(new Date(shWall).toISOString());
       items.push({
-        id: `sh:${fixture.fixture_index}`,
-        sortAt: shWall,
-        timeLabel: "46'",
-        stamp: shStamp,
-        kind: 'second-half',
-        eyebrow: 'Second half',
-        title: "They're back",
-        body: 'Second half.',
-        match: board(fixture, pick, boardHome, boardAway, 'IN_PLAY', live.goals, minute ?? undefined),
+        id: `xi-sheet:${fixture.fixture_index}`,
+        sortAt: pairAt + 1,
+        timeLabel: stamp,
+        stamp,
+        kind: 'xi',
+        eyebrow: 'The teams',
+        title: '',
+        body: '',
+        xi: {
+          ...xi,
+          homeCode: match.homeCode,
+          awayCode: match.awayCode,
+          homeName: top.homeName,
+          awayName: top.awayName,
+        },
       });
     }
-    if (live.status === 'FINISHED') {
-      const sortAt = ko + 100 * 60_000 + fixture.fixture_index;
-      const next = outcome(boardHome, boardAway);
-      outcomeNow.set(fixture.fixture_index, next);
-      outcomeEvents.push({
-        sortAt,
-        stamp: clockStamp(sortAt, 'FT'),
-        fixtureIndex: fixture.fixture_index,
-        outcome: next,
-        announce: true,
-        scorer: null,
-        finalWhistle: true,
-      });
-      const done = fixtures.filter((other) => {
-        const otherLive = resolve(other);
-        if (!otherLive || otherLive.status !== 'FINISHED') return false;
-        const at = kickoffMs(other);
-        return at !== null && at + 100 * 60_000 <= sortAt;
-      });
-      const correct = done.filter((other) => {
-        const otherLive = resolve(other);
-        const otherPick = picks[String(other.fixture_index)] ?? null;
-        if (!otherPick || !otherLive) return false;
-        return otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
-      }).length;
+
+    const firstTeams = items
+      .filter((item) => item.kind === 'lineup')
+      .sort((a, b) => a.sortAt - b.sortAt)[0];
+    if (firstTeams) {
       items.push({
-        id: `ft:${fixture.fixture_index}`,
-        sortAt,
-        timeLabel: 'FT',
-        kind: 'full-time',
-        eyebrow: 'Full-time',
-        title: pick && pick === outcome(boardHome, boardAway) ? 'Full-time!!' : 'Full-time',
-        body: gwScoreLine(correct, done.length, fixtures.length - done.length),
-        personal: personalLine(pick, boardHome, boardAway, true, fixture.fixture_index),
-        match: board(fixture, pick, boardHome, boardAway, 'FINISHED', live.goals),
+        id: `gw-open:${gw}`,
+        sortAt: firstTeams.sortAt - 0.5,
+        timeLabel: firstTeams.timeLabel,
+        stamp: firstTeams.stamp,
+        kind: 'opener',
+        eyebrow: 'Match Center',
+        title: `Gameweek ${gw}, Here We Go!`,
+        body: 'First teams are out.',
       });
     }
+
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      const ko = kickoffMs(fixture);
+      const hasStarted = started(live?.status) || (ko !== null && nowMs >= ko && live != null);
+      if (!hasStarted || ko === null) continue;
+      const slot = Math.floor(ko / 60000) * 60000;
+      items.push({
+        id: `ko:${fixture.fixture_index}`,
+        sortAt: slot,
+        timeLabel: formatLocalTimeHHmm(new Date(slot).toISOString()),
+        kind: 'kickoff',
+        eyebrow: 'Kickoff',
+        title: "We're off",
+        body: matchLabel(fixture),
+        match: board(fixture, picks[String(fixture.fixture_index)] ?? null, null, null, live?.status),
+      });
+    }
+
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      if (!live || !started(live.status)) continue;
+      const ko = kickoffMs(fixture) ?? 0;
+      const pick = picks[String(fixture.fixture_index)] ?? null;
+      const goals = parseGoalEvents(live.goals).slice().sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
+      const homeScore = live.home_score ?? 0;
+      const awayScore = live.away_score ?? 0;
+      if (goals.length === 0) {
+        if (live.status !== 'FINISHED') {
+          const minute = typeof live.minute === 'number' ? live.minute : 0;
+          const wallMs = goalWallMs({ ko, goalMinute: minute || 1, live, nowMs, isLatestGoal: true });
+          noteOutcome(
+            fixture.fixture_index,
+            homeScore,
+            awayScore,
+            wallMs,
+            formatLocalTimeHHmm(new Date(wallMs).toISOString()),
+            homeScore + awayScore > 0,
+            null
+          );
+        }
+      } else {
+        noteOutcome(fixture.fixture_index, 0, 0, ko, formatLocalTimeHHmm(new Date(ko).toISOString()), false, null);
+      }
+      if (goals.length === 0 && (homeScore > 0 || awayScore > 0)) {
+        const minute = typeof live.minute === 'number' ? live.minute : 1;
+        const wallMs = goalWallMs({ ko, goalMinute: minute, live, nowMs, isLatestGoal: true });
+        const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
+        items.push({
+          id: `score:${fixture.fixture_index}:${homeScore}-${awayScore}`,
+          sortAt: wallMs,
+          timeLabel: typeof live.minute === 'number' ? `${live.minute}'` : 'Live',
+          stamp,
+          kind: 'goal',
+          eyebrow: 'Goal',
+          title: 'GOAL',
+          body: scoresLine(''),
+          personal: personalLine(pick, homeScore, awayScore, false, minute),
+          match: board(fixture, pick, homeScore, awayScore, live.status),
+        });
+      }
+      let home = 0;
+      let away = 0;
+      const lastGoalIndex = goals.length - 1;
+      goals.forEach((goal, index) => {
+        const side = sideForGoal(fixture, goal.team, live);
+        const ruledOut = ruledOutGoal(goal);
+        if (!ruledOut) {
+          if (side === 'H') home += 1;
+          else if (side === 'A') away += 1;
+          else if ((live.home_score ?? 0) + (live.away_score ?? 0) === index + 1) {
+            home = live.home_score ?? home;
+            away = live.away_score ?? away;
+          }
+        }
+        const minute = typeof goal.minute === 'number' ? goal.minute : index + 1;
+        const shownHome = side ? home : (live.home_score ?? 0);
+        const shownAway = side ? away : (live.away_score ?? 0);
+        const scorer = goal.scorer?.trim() || 'Someone';
+        const own = goal.isOwnGoal ? ' (og)' : '';
+        const pen = goal.isPenalty ? ' (pen)' : '';
+        // Wall clock for stamp/sort — match minute is only the label (46'), not KO+46'.
+        const wallMs = goalWallMs({
+          ko,
+          goalMinute: minute,
+          live,
+          nowMs,
+          isLatestGoal: index === lastGoalIndex,
+        });
+        const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
+        if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, wallMs, stamp, true, scorer);
+        items.push({
+          id: `goal:${fixture.fixture_index}:${minute}:${index}`,
+          sortAt: wallMs,
+          timeLabel: `${minute}'`,
+          stamp,
+          kind: ruledOut ? 'ruled-out' : 'goal',
+          eyebrow: ruledOut ? 'VAR' : 'Goal',
+          title: ruledOut ? 'Goal ruled out' : 'GOAL',
+          body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
+          personal: ruledOut ? null : personalLine(pick, shownHome, shownAway, false, minute),
+          match: board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute),
+        });
+      });
+
+      const minute = typeof live.minute === 'number' ? live.minute : null;
+      const pastHalf = live.status === 'PAUSED' || live.status === 'FINISHED' || (minute !== null && minute >= 46);
+      const boardHome = live.home_score ?? home;
+      const boardAway = live.away_score ?? away;
+      if (pastHalf) {
+        const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45, live);
+        const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
+        const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
+        const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());
+        items.push({
+          id: `ht:${fixture.fixture_index}`,
+          sortAt: htWall,
+          timeLabel: 'HT',
+          stamp: htStamp,
+          kind: 'half-time',
+          eyebrow: 'Half-time',
+          title: halfTimeTitle(),
+          body: '',
+          personal: personalLine(pick, atBreak.home, atBreak.away, false, 45),
+          match: htMatch,
+        });
+      }
+      if (live.status === 'IN_PLAY' && minute !== null && minute >= 46) {
+        const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
+        const shStamp = formatLocalTimeHHmm(new Date(shWall).toISOString());
+        items.push({
+          id: `sh:${fixture.fixture_index}`,
+          sortAt: shWall,
+          timeLabel: "46'",
+          stamp: shStamp,
+          kind: 'second-half',
+          eyebrow: 'Second half',
+          title: "They're back",
+          body: 'Second half.',
+          match: board(fixture, pick, boardHome, boardAway, 'IN_PLAY', live.goals, minute ?? undefined),
+        });
+      }
+      if (live.status === 'FINISHED') {
+        const sortAt = ko + 100 * 60_000 + fixture.fixture_index;
+        const next = outcome(boardHome, boardAway);
+        outcomeNow.set(fixture.fixture_index, next);
+        outcomeEvents.push({
+          sortAt,
+          stamp: clockStamp(sortAt, 'FT'),
+          fixtureIndex: fixture.fixture_index,
+          outcome: next,
+          announce: true,
+          scorer: null,
+          finalWhistle: true,
+        });
+        const done = fixtures.filter((other) => {
+          const otherLive = resolve(other);
+          if (!otherLive || otherLive.status !== 'FINISHED') return false;
+          const at = kickoffMs(other);
+          return at !== null && at + 100 * 60_000 <= sortAt;
+        });
+        const correct = done.filter((other) => {
+          const otherLive = resolve(other);
+          const otherPick = picks[String(other.fixture_index)] ?? null;
+          if (!otherPick || !otherLive) return false;
+          return otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
+        }).length;
+        items.push({
+          id: `ft:${fixture.fixture_index}`,
+          sortAt,
+          timeLabel: 'FT',
+          kind: 'full-time',
+          eyebrow: 'Full-time',
+          title: pick && pick === outcome(boardHome, boardAway) ? 'Full-time!!' : 'Full-time',
+          body: gwScoreLine(correct, done.length, fixtures.length - done.length),
+          personal: personalLine(pick, boardHome, boardAway, true, fixture.fixture_index),
+          match: board(fixture, pick, boardHome, boardAway, 'FINISHED', live.goals),
+        });
+      }
+    }
+
   }
 
   if (input.userId && input.leagues?.length) {
