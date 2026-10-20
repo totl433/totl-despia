@@ -70,11 +70,14 @@ export function GameCentreCardHeader({
   title,
   subtitle,
   stamp,
+  accessory,
   onDark = false,
 }: {
   title: string;
   subtitle?: string | null;
   stamp?: string | null;
+  /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
+  accessory?: React.ReactNode;
   onDark?: boolean;
 }) {
   const ink = onDark ? ON_DARK : INK;
@@ -85,9 +88,65 @@ export function GameCentreCardHeader({
           {title}
         </TotlText>
         {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
+        {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
       </View>
       {subtitle ? (
         <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A footer call to action (Figma 293:34460): brand fill, white label, 8pt corners. An optional
+ * quiet second button (Figma 300:32561, e.g. Dismiss) sits 16pt to its right.
+ */
+export function GameCentreCardButton({
+  label,
+  onPress,
+  disabled = false,
+  secondary,
+}: {
+  /** Leave out for a footer with only the quiet button. */
+  label?: string | null;
+  onPress?: () => void;
+  disabled?: boolean;
+  secondary?: { label: string; onPress: () => void } | null;
+}) {
+  const t = useTokens();
+  return (
+    <View style={{ paddingHorizontal: 16, paddingBottom: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+      {label ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={onPress}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            backgroundColor: disabled ? '#94A3B8' : t.color.brand,
+            borderRadius: t.radius.sm,
+            padding: t.space[2],
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: '#FFFFFF' }}>{label}</TotlText>
+        </Pressable>
+      ) : null}
+      {secondary ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={secondary.onPress}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            backgroundColor: INK.chip,
+            borderRadius: t.radius.sm,
+            padding: t.space[2],
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: INK.secondary }}>{secondary.label}</TotlText>
+        </Pressable>
       ) : null}
     </View>
   );

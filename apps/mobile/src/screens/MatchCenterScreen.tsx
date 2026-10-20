@@ -3,12 +3,16 @@ import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, 
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Reanimated, {
   cancelAnimation,
   Easing as ReEasing,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -40,7 +44,11 @@ import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
 import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFixtureUi';
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
-import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
+import { gameweekPin, getGameweekStateFromSnapshot, type GameweekPin } from '../lib/gameweekState';
+import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
+import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
+import { pinDismissKey, pinDismissible, type PinnedCardAction } from '../features/gameCentre/cards';
 import {
   buildHeaderExpandedStats,
   buildHeaderScoreSummary,
@@ -1149,7 +1157,7 @@ function TickerMoveMark({ move }: { move: TickerMove }) {
 }
 
 /** Eases in, then breathes twice. */
-function NewUpdatesButton({ onPress, atTop = false }: { onPress: () => void; atTop?: boolean }) {
+function NewUpdatesButton({ onPress, atTop = false, topOffset = 0 }: { onPress: () => void; atTop?: boolean; topOffset?: number }) {
   const t = useTokens();
   const scale = React.useRef(new Animated.Value(0.96)).current;
 
@@ -1171,7 +1179,7 @@ function NewUpdatesButton({ onPress, atTop = false }: { onPress: () => void; atT
         position: 'absolute',
         left: 0,
         right: 0,
-        ...(atTop ? { top: 72 } : { bottom: 84 }),
+        ...(atTop ? { top: 72 + topOffset } : { bottom: 84 }),
         alignItems: 'center',
         zIndex: 4,
         transform: [{ scale }],
@@ -1412,7 +1420,7 @@ export default function MatchCenterScreen() {
   // The Game Centre reads like X or Threads: newest card on top, older ones further down.
   const newestFirst = !!menu;
   const { useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
-  const { openManualResultsScoreSheetShare } = usePopupCards();
+  const { openManualResultsScoreSheetShare, openManualRoundUpStack } = usePopupCards();
   const [mode, setMode] = React.useState<Mode>(() => (entry === 'example' ? 'play' : 'live'));
   const [week, setWeek] = React.useState<'current' | 'last'>(() => (entry === 'last' ? 'last' : 'current'));
   const [played, setPlayed] = React.useState(1);
@@ -1938,6 +1946,70 @@ export default function MatchCenterScreen() {
     });
     return () => sub.remove();
   }, []);
+
+  // Pinned card on the Game Centre home: where you are in the gameweek, from `home` (your
+  // gameweek, not the board). It follows submitting and moving on through the snapshot.
+  const pin = menu && mode === 'live' ? gameweekPin(home, clockMs) : null;
+  const [pinnedHeight, setPinnedHeight] = React.useState(0);
+  // Moving on plays the Predictions page's full-screen GAMEWEEK transition.
+  const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
+  const startAdvance = advanceTransition.start;
+  // Dismissed states stay hidden on this device for that gameweek and state.
+  const pinKey = pin && userId ? pinDismissKey(userId, pin) : null;
+  const [pinDismissal, setPinDismissal] = React.useState<{ key: string; dismissed: boolean } | null>(null);
+  React.useEffect(() => {
+    if (!pinKey) return;
+    let alive = true;
+    AsyncStorage.getItem(pinKey)
+      .then((value) => alive && setPinDismissal({ key: pinKey, dismissed: value === '1' }))
+      .catch(() => alive && setPinDismissal({ key: pinKey, dismissed: false }));
+    return () => {
+      alive = false;
+    };
+  }, [pinKey]);
+  // A dismissible card waits until we know it wasn't dismissed, so it never flashes up.
+  const showPin = !!pin && (!pinDismissible(pin) || (pinDismissal?.key === pinKey && !pinDismissal.dismissed));
+  const onPinDismiss = React.useCallback(
+    (current: GameweekPin) => {
+      if (!userId) return;
+      const key = pinDismissKey(userId, current);
+      setPinDismissal({ key, dismissed: true });
+      void AsyncStorage.setItem(key, '1').catch(() => {});
+    },
+    [userId]
+  );
+  const onPinAction = React.useCallback(
+    (action: PinnedCardAction, current: GameweekPin) => {
+      if (action === 'predict') {
+        navigation.navigate('PredictionsFlow');
+        return;
+      }
+      if (action === 'roundUp') {
+        openManualRoundUpStack(current.gw, { includeResults: !!home?.hasSubmittedViewingGw });
+        return;
+      }
+      if (current.kind !== 'ready') return;
+      // Same as "Ready to move on?" on the Predictions page: the GAMEWEEK transition plays while
+      // the new gameweek is saved and the snapshot refreshes.
+      startAdvance({
+        nextGameweekLabel: `GAMEWEEK ${current.nextGw}`,
+        onAdvance: async () => {
+          try {
+            await api.updateNotificationPrefs({ current_viewing_gw: current.nextGw });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['homeSnapshot'] }),
+              queryClient.invalidateQueries({ queryKey: ['homeRanks'] }),
+              queryClient.invalidateQueries({ queryKey: ['leagues'] }),
+            ]);
+          } catch (error) {
+            console.error('[MatchCenter] move on failed:', error);
+            Alert.alert('Could not move on', 'Please try again.');
+          }
+        },
+      });
+    },
+    [home?.hasSubmittedViewingGw, navigation, openManualRoundUpStack, queryClient, startAdvance]
+  );
 
   const lineupArrivalMs = React.useRef(new Map<number, number>());
   const lineupArrivalGw = React.useRef<number | null>(null);
@@ -2505,7 +2577,10 @@ export default function MatchCenterScreen() {
     staleTime: 30_000,
   });
   const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
-  const showStaticResultsHeaderScore = gwState === 'RESULTS_PRE_GW' && !!scoreSummary;
+  // On the Game Centre home the score and ticker are for live games only; once the gameweek
+  // is over, the pinned card carries last week's score.
+  const showStaticResultsHeaderScore = !menu && gwState === 'RESULTS_PRE_GW' && !!scoreSummary;
+  const showTicker = !menu || gwState === 'LIVE';
   const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
   const liveGwRank = userId ? rankOf(liveTable?.rows ?? [], userId) : null;
   const headerExpandedStats = React.useMemo(
@@ -2778,6 +2853,7 @@ export default function MatchCenterScreen() {
   };
 
   return (
+    <GameweekAdvanceTransition controller={advanceTransition}>
     <Screen fullBleed>
       {menu ? (
         // New header (Figma 272:33554): menu on the left, chat on the right.
@@ -2804,6 +2880,24 @@ export default function MatchCenterScreen() {
           hideMatchCenterEntry
         />
       )}
+      {pin && showPin ? (
+        <Reanimated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(180)}
+          onLayout={(event) => setPinnedHeight(event.nativeEvent.layout.height)}
+          style={{ paddingHorizontal: t.space[4], paddingTop: 8, paddingBottom: 12, zIndex: 2 }}
+        >
+          <GameCentrePinnedCard
+            pin={pin}
+            // Last gameweek's score, when the board is that gameweek.
+            scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
+            busy={advanceTransition.isAnimating}
+            onAction={onPinAction}
+            onDismiss={onPinDismiss}
+          />
+        </Reanimated.View>
+      ) : null}
+      <Reanimated.View style={{ flex: 1 }} layout={LinearTransition.duration(220)}>
       <FlatList
         ref={scrollRef}
         data={prepping ? [] : shownFeed}
@@ -2873,7 +2967,10 @@ export default function MatchCenterScreen() {
           </>
         }
       />
-      {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} /> : null}
+      </Reanimated.View>
+      {newUpdates && !prepping ? (
+        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showPin ? pinnedHeight : 0} />
+      ) : null}
       {social ? (
         <EmojiPicker
           open={!!pickerFor}
@@ -2885,8 +2982,9 @@ export default function MatchCenterScreen() {
           enableRecentlyUsed
         />
       ) : null}
-      {tickerFixtures.length ||
-      (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))) ? (
+      {showTicker &&
+      (tickerFixtures.length ||
+        (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null)))) ? (
         <FixtureTicker
           games={tickerFixtures}
           leagues={rankingsOnTicker ? tickerLeagues ?? [] : []}
@@ -2894,5 +2992,6 @@ export default function MatchCenterScreen() {
         />
       ) : null}
     </Screen>
+    </GameweekAdvanceTransition>
   );
 }
