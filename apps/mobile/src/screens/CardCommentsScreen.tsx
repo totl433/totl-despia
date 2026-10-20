@@ -75,7 +75,8 @@ export default function CardCommentsScreen() {
       reportMessage: report,
       blockUser: meId ? (blockedId) => block(meId, blockedId) : undefined,
       header: (
-        <View style={{ paddingHorizontal: t.space[4], paddingTop: 12, paddingBottom: 8 }}>
+        // 32pt from the match details to the first date badge (the badge adds its own margin).
+        <View style={{ paddingHorizontal: t.space[4], paddingTop: 12, paddingBottom: match ? 21 : 8 }}>
           {match ? (
             <GameCentreMatchChatHeader
               home={match.home}
