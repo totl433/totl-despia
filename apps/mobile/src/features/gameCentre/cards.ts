@@ -119,3 +119,19 @@ export function fitReactionChips(
   }
   return chips.length;
 }
+
+/**
+ * Subtitle on the pinned predictions card: "Gameweek 7: Closes in 2h 30m".
+ * Days and hours over a day, hours and minutes over an hour, then minutes.
+ */
+export function predictionsClosesLine(gw: number, deadlineMs: number | null, nowMs: number): string {
+  if (deadlineMs == null) return `Gameweek ${gw}: Predictions open`;
+  const left = deadlineMs - nowMs;
+  if (left <= 0) return `Gameweek ${gw}: Deadline passed`;
+  const minutes = Math.floor(left / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  const span = days > 0 ? `${days}d ${hours}h` : hours > 0 ? `${hours}h ${mins}m` : `${Math.max(1, mins)}m`;
+  return `Gameweek ${gw}: Closes in ${span}`;
+}

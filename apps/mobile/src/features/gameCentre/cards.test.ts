@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips } from './cards';
+import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, predictionsClosesLine } from './cards';
 
 describe('card types', () => {
   it('splits match events, league chat and personal cards', () => {
@@ -72,5 +72,22 @@ describe('reaction chips', () => {
     ]);
     expect(chips.map((chip) => `${chip.emoji}${chip.count}`)).toEqual(['😎0', '🫠0', '🔥99', '👍2', '😂1']);
     expect(chips[2]?.hasUserReacted).toBe(true);
+  });
+});
+
+describe('predictions closes line', () => {
+  const deadline = Date.parse('2026-10-24T10:15:00Z');
+  const at = (msBefore: number) => predictionsClosesLine(7, deadline, deadline - msBefore);
+
+  it('counts down in days, hours and minutes', () => {
+    expect(at((2 * 24 + 3) * 3_600_000 + 20 * 60_000)).toBe('Gameweek 7: Closes in 2d 3h');
+    expect(at(2.5 * 3_600_000)).toBe('Gameweek 7: Closes in 2h 30m');
+    expect(at(9 * 60_000 + 30_000)).toBe('Gameweek 7: Closes in 9m');
+    expect(at(20_000)).toBe('Gameweek 7: Closes in 1m');
+  });
+
+  it('says when the deadline has passed or is unknown', () => {
+    expect(at(0)).toBe('Gameweek 7: Deadline passed');
+    expect(predictionsClosesLine(7, null, deadline)).toBe('Gameweek 7: Predictions open');
   });
 });

@@ -192,3 +192,45 @@ export function getLeaderboardDisplayGwFromSnapshot(input: {
   return sourceGw > 1 ? sourceGw - 1 : sourceGw;
 }
 
+
+/** Predictions close 75 minutes before the gameweek's first kickoff. */
+export function predictionsDeadlineMs(fixtures: FixtureKickoff[]): number | null {
+  const first = (fixtures ?? [])
+    .map((f) => parseDateSafe(f.kickoff_time)?.getTime() ?? NaN)
+    .filter((ms) => Number.isFinite(ms))
+    .sort((a, b) => a - b)[0];
+  return typeof first === 'number' ? first - DEADLINE_BUFFER_MINUTES * 60 * 1000 : null;
+}
+
+/**
+ * The gameweek still waiting on your predictions, or null. Same rule as the home deadline
+ * box: you're on the current gameweek, it hasn't kicked off, and your picks aren't in.
+ * Submitting sets `hasSubmittedViewingGw` in the home snapshot, which hides it.
+ */
+export function predictionsPrompt(
+  home:
+    | {
+        currentGw?: number | null;
+        viewingGw?: number | null;
+        fixtures?: FixtureKickoff[] | null;
+        liveScores?: LiveScoreLike[] | null;
+        hasSubmittedViewingGw?: boolean | null;
+      }
+    | null
+    | undefined,
+  nowMs: number
+): { gw: number; deadlineMs: number | null } | null {
+  if (!home || home.hasSubmittedViewingGw !== false) return null;
+  const { currentGw, viewingGw } = home;
+  if (typeof viewingGw !== 'number') return null;
+  if (typeof currentGw === 'number' && viewingGw < currentGw) return null;
+  const fixtures = home.fixtures ?? [];
+  const state = getGameweekStateFromSnapshot({
+    fixtures,
+    liveScores: home.liveScores ?? [],
+    hasSubmittedViewingGw: false,
+    now: new Date(nowMs),
+  });
+  if (state !== 'GW_OPEN' && state !== 'DEADLINE_PASSED') return null;
+  return { gw: viewingGw, deadlineMs: predictionsDeadlineMs(fixtures) };
+}

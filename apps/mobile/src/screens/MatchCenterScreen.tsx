@@ -9,6 +9,9 @@ import * as Haptics from 'expo-haptics';
 import Reanimated, {
   cancelAnimation,
   Easing as ReEasing,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -40,7 +43,8 @@ import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
 import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFixtureUi';
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
-import { getGameweekStateFromSnapshot } from '../lib/gameweekState';
+import { getGameweekStateFromSnapshot, predictionsPrompt } from '../lib/gameweekState';
+import PinnedPredictionsCard from '../components/gameCentre/PinnedPredictionsCard';
 import {
   buildHeaderExpandedStats,
   buildHeaderScoreSummary,
@@ -1149,7 +1153,7 @@ function TickerMoveMark({ move }: { move: TickerMove }) {
 }
 
 /** Eases in, then breathes twice. */
-function NewUpdatesButton({ onPress, atTop = false }: { onPress: () => void; atTop?: boolean }) {
+function NewUpdatesButton({ onPress, atTop = false, topOffset = 0 }: { onPress: () => void; atTop?: boolean; topOffset?: number }) {
   const t = useTokens();
   const scale = React.useRef(new Animated.Value(0.96)).current;
 
@@ -1171,7 +1175,7 @@ function NewUpdatesButton({ onPress, atTop = false }: { onPress: () => void; atT
         position: 'absolute',
         left: 0,
         right: 0,
-        ...(atTop ? { top: 72 } : { bottom: 84 }),
+        ...(atTop ? { top: 72 + topOffset } : { bottom: 84 }),
         alignItems: 'center',
         zIndex: 4,
         transform: [{ scale }],
@@ -1938,6 +1942,12 @@ export default function MatchCenterScreen() {
     });
     return () => sub.remove();
   }, []);
+
+  // Pinned "Don't miss the deadline!" card on the Game Centre home. Always the current
+  // gameweek (`home`, not the board), and gone as soon as a submit marks it predicted.
+  const predictionsDue = menu && mode === 'live' ? predictionsPrompt(home, clockMs) : null;
+  const openPredictions = React.useCallback(() => navigation.navigate('PredictionsFlow'), [navigation]);
+  const [pinnedHeight, setPinnedHeight] = React.useState(0);
 
   const lineupArrivalMs = React.useRef(new Map<number, number>());
   const lineupArrivalGw = React.useRef<number | null>(null);
@@ -2804,6 +2814,17 @@ export default function MatchCenterScreen() {
           hideMatchCenterEntry
         />
       )}
+      {predictionsDue ? (
+        <Reanimated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(180)}
+          onLayout={(event) => setPinnedHeight(event.nativeEvent.layout.height)}
+          style={{ paddingHorizontal: t.space[4], paddingTop: 8, paddingBottom: 12, zIndex: 2 }}
+        >
+          <PinnedPredictionsCard gw={predictionsDue.gw} deadlineMs={predictionsDue.deadlineMs} onPress={openPredictions} />
+        </Reanimated.View>
+      ) : null}
+      <Reanimated.View style={{ flex: 1 }} layout={LinearTransition.duration(220)}>
       <FlatList
         ref={scrollRef}
         data={prepping ? [] : shownFeed}
@@ -2873,7 +2894,10 @@ export default function MatchCenterScreen() {
           </>
         }
       />
-      {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} /> : null}
+      </Reanimated.View>
+      {newUpdates && !prepping ? (
+        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={predictionsDue ? pinnedHeight : 0} />
+      ) : null}
       {social ? (
         <EmojiPicker
           open={!!pickerFor}
