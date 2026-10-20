@@ -742,7 +742,7 @@ function FeedCardView({
       colors={['#FACC15', '#FB7185', '#EC4899', '#A855F7', '#22D3EE', '#34D399']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={{ borderRadius: 18, padding: 2 }}
+      style={{ borderRadius: 20, padding: 4 }}
     >
       {tappable}
     </LinearGradient>
