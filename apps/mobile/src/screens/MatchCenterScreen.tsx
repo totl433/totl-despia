@@ -76,6 +76,9 @@ import {
   buildRoundUp,
   chatMessageItem,
   firstKickoffMs,
+  fixtureEngagementId,
+  fixtureIndexOfCard,
+  fixtureSides,
   lastKickoffMs,
   matchCenterClosesAtMs,
   matchCenterReactionCardId,
@@ -2294,7 +2297,14 @@ export default function MatchCenterScreen() {
     userId,
     enabled: social,
   });
-  const commentCounts = useCardCommentCounts(cardReactionIds, social);
+  // Comments live on one thread per match, so every card for it shows the same count.
+  const cardCommentIds = React.useMemo(() => {
+    if (typeof gw !== 'number') return [] as string[];
+    return feed
+      .filter((item) => gameCentreCardType(item.kind) === 'public')
+      .map((item) => fixtureEngagementId(gw, item.id));
+  }, [feed, gw]);
+  const commentCounts = useCardCommentCounts(cardCommentIds, social);
   const [pickerFor, setPickerFor] = React.useState<FeedItem | null>(null);
 
   const toggleReply = React.useCallback((item: FeedItem) => {
@@ -2350,9 +2360,10 @@ export default function MatchCenterScreen() {
     async (item: FeedItem, text: string) => {
       if (!social || !userId || typeof gw !== 'number') return false;
       try {
-        await postCardComment({ cardId: matchCenterReactionCardId(gw, item.id), userId, content: text });
+        const threadId = fixtureEngagementId(gw, item.id);
+        await postCardComment({ cardId: threadId, userId, content: text });
         void queryClient.invalidateQueries({ queryKey: ['game-centre-comment-counts'] });
-        void queryClient.invalidateQueries({ queryKey: ['game-centre-comments', matchCenterReactionCardId(gw, item.id)] });
+        void queryClient.invalidateQueries({ queryKey: ['game-centre-comments', threadId] });
         return true;
       } catch (error) {
         console.error('[MatchCenter] comment failed:', error);
@@ -2366,14 +2377,31 @@ export default function MatchCenterScreen() {
   const openCardComments = React.useCallback(
     (item: FeedItem) => {
       if (!social || typeof gw !== 'number') return;
+      const idx = fixtureIndexOfCard(item.id);
+      const fixture = idx == null ? undefined : board?.fixtures?.find((entry) => entry.fixture_index === idx);
+      if (fixture) {
+        const sides = fixtureSides(fixture);
+        navigation.navigate('CardComments', {
+          cardId: fixtureEngagementId(gw, item.id),
+          title: `${sides.home.name} vs ${sides.away.name}`,
+          match: {
+            gw,
+            fixtureIndex: fixture.fixture_index,
+            apiMatchId: fixture.api_match_id ?? null,
+            kickoffTime: fixture.kickoff_time ?? null,
+            ...sides,
+          },
+        });
+        return;
+      }
       const header = gameCentreCardHeader(item);
       navigation.navigate('CardComments', {
-        cardId: matchCenterReactionCardId(gw, item.id),
+        cardId: fixtureEngagementId(gw, item.id),
         title: header.title,
         subtitle: header.subtitle,
       });
     },
-    [gw, navigation, social]
+    [board?.fixtures, gw, navigation, social]
   );
 
   const sendReply = React.useCallback(
@@ -2841,7 +2869,7 @@ export default function MatchCenterScreen() {
         social={
           cardReactable && social
             ? {
-                commentCount: commentCounts[cardKey] ?? 0,
+                commentCount: typeof gw === 'number' ? commentCounts[fixtureEngagementId(gw, item.id)] ?? 0 : 0,
                 onMore: cardHandlers.openPicker,
                 onComment: cardHandlers.commentOnCard,
                 onOpenComments: cardHandlers.openCardComments,

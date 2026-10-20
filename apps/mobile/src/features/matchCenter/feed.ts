@@ -54,6 +54,21 @@ export function matchCenterReactionCardId(gw: number, itemId: string): string {
   return `mc:gw${gw}:${itemId}`;
 }
 
+/** The fixture a match card belongs to, from its id (goal:9:H1 → 9). Null for gameweek cards. */
+export function fixtureIndexOfCard(itemId: string): number | null {
+  const match = /^(?:xi|xi-sheet|ko|goal|score|ht|sh|ft):(\d+)(?::|$)/.exec(itemId);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Where a card's comments live: one thread per fixture (mc:gw7:fixture:9), shared by all
+ * of that match's cards. Cards outside a match keep their own thread. Reactions stay per card.
+ */
+export function fixtureEngagementId(gw: number, itemId: string): string {
+  const idx = fixtureIndexOfCard(itemId);
+  return idx == null ? matchCenterReactionCardId(gw, itemId) : `mc:gw${gw}:fixture:${idx}`;
+}
+
 export type FeedMatch = {
   homeCode: string;
   awayCode: string;
@@ -273,6 +288,16 @@ type Side = 'H' | 'A';
 function teamLabel(fixture: Fixture, side: 'home' | 'away'): string {
   if (side === 'home') return fixture.home_name || fixture.home_team || fixture.home_code || 'Home';
   return fixture.away_name || fixture.away_team || fixture.away_code || 'Away';
+}
+
+/** Both clubs as a match thread shows them: short names, codes and crests. */
+export function fixtureSides(fixture: Fixture) {
+  const side = (which: 'home' | 'away') => ({
+    name: getMediumName(teamLabel(fixture, which)),
+    code: normalizeTeamCode(fixture[`${which}_code`]) ?? (String(fixture[`${which}_code`] ?? '').toUpperCase() || null),
+    crest: fixture[`${which}_crest`] ?? null,
+  });
+  return { home: side('home'), away: side('away') };
 }
 
 function matchLabel(fixture: Fixture): string {
