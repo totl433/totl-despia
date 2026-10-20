@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +25,9 @@ import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { env } from '../env';
 import { useGameCentrePosts } from '../hooks/useGameCentrePosts';
+import { useGameCentreReactions } from '../hooks/useGameCentreReactions';
+import { postCardComment, useCardCommentCounts } from '../hooks/useCardComments';
+import EmojiPicker from 'rn-emoji-keyboard';
 import { useLeagueChatReactions, type ReactionSummary } from '../hooks/useLeagueChatReactions';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import {
@@ -498,6 +501,7 @@ function FeedCardView({
   arriveDelay = 0,
   reactions = NO_REACTIONS,
   onReact: reactFor,
+  social,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem) => void;
@@ -505,8 +509,17 @@ function FeedCardView({
   arriveDelay?: number;
   reactions?: ReactionSummary[];
   onReact?: (item: FeedItem, emoji: string) => void;
+  /** Public cards on stored posts: any emoji, a comment box, and a comments screen. */
+  social?: {
+    commentCount: number;
+    onMore: (item: FeedItem) => void;
+    onComment: (item: FeedItem, text: string) => Promise<boolean>;
+    onOpenComments: (item: FeedItem) => void;
+  } | null;
 }) {
   const onReact = reactFor ? (emoji: string) => reactFor(item, emoji) : undefined;
+  const [commentDraft, setCommentDraft] = React.useState('');
+  const [sendingComment, setSendingComment] = React.useState(false);
   const t = useTokens();
   const confetti = useConfetti();
   const confettiFired = React.useRef(false);
@@ -658,7 +671,42 @@ function FeedCardView({
         />
       }
       footer={
-        canReact ? (
+        canReact && social ? (
+          <View>
+            <GameCentreReactionBar
+              chips={gameCentreReactionChips(reactions)}
+              onReact={(emoji) => onReact?.(emoji)}
+              onMore={() => social.onMore(item)}
+            />
+            {social.commentCount > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => social.onOpenComments(item)}
+                hitSlop={6}
+                style={{ paddingHorizontal: 16, paddingTop: 12 }}
+              >
+                <TotlText style={{ fontSize: 14, lineHeight: 18, color: 'rgba(60,60,67,0.6)' }}>
+                  {social.commentCount === 1 ? 'View 1 comment' : `View all ${social.commentCount} comments`}
+                </TotlText>
+              </Pressable>
+            ) : null}
+            <GameCentreReplyInput
+              placeholder="Add your comment"
+              value={commentDraft}
+              onChangeText={setCommentDraft}
+              sending={sendingComment}
+              onSend={() => {
+                const text = commentDraft.trim();
+                if (!text || sendingComment) return;
+                setSendingComment(true);
+                void social.onComment(item, text).then((sent) => {
+                  if (sent) setCommentDraft('');
+                  setSendingComment(false);
+                });
+              }}
+            />
+          </View>
+        ) : canReact ? (
           <View style={{ paddingBottom: 20 }}>
             <GameCentreReactionBar chips={gameCentreReactionChips(reactions)} onReact={(emoji) => onReact?.(emoji)} />
           </View>
@@ -668,6 +716,15 @@ function FeedCardView({
       {content}
     </GameCentreCard>
   );
+  // Tapping a public card opens its comments (its buttons and comment box keep their own taps).
+  const tappable =
+    canReact && social ? (
+      <Pressable accessibilityRole="button" accessibilityHint="Opens the comments" onPress={() => social.onOpenComments(item)}>
+        {card}
+      </Pressable>
+    ) : (
+      card
+    );
 
   const framed = rainbow ? (
     <LinearGradient
@@ -676,10 +733,10 @@ function FeedCardView({
       end={{ x: 1, y: 1 }}
       style={{ borderRadius: 20, padding: 6 }}
     >
-      {card}
+      {tappable}
     </LinearGradient>
   ) : (
-    card
+    tappable
   );
 
   const tilt = item.kind === 'rank' ? '8deg' : bigGoal ? '-8deg' : '4deg';
@@ -2153,11 +2210,20 @@ export default function MatchCenterScreen() {
       .map((item) => matchCenterReactionCardId(gw, item.id));
   }, [feed, gw]);
 
+  // Cards built from stored posts have permanent ids, so they can carry comments and any emoji.
+  const social = !!feedPosts && mode === 'live' && typeof gw === 'number';
   const { reactions: cardReactions, toggleReaction: toggleCardReaction } = useMatchCenterCardReactions({
     cardIds: cardReactionIds,
     userId,
-    enabled: mode === 'live' && !!userId && typeof gw === 'number',
+    enabled: mode === 'live' && !!userId && typeof gw === 'number' && !social,
   });
+  const { reactions: socialReactions, toggleReaction: toggleSocialReaction } = useGameCentreReactions({
+    cardIds: cardReactionIds,
+    userId,
+    enabled: social,
+  });
+  const commentCounts = useCardCommentCounts(cardReactionIds, social);
+  const [pickerFor, setPickerFor] = React.useState<FeedItem | null>(null);
 
   const toggleReply = React.useCallback((item: FeedItem) => {
     setReplyId((current) => (current === item.id ? null : item.id));
@@ -2192,6 +2258,10 @@ export default function MatchCenterScreen() {
     (item: FeedItem, emoji: string) => {
       if (gameCentreCardType(item.kind) !== 'public') return;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (social && userId && typeof gw === 'number') {
+        void toggleSocialReaction(matchCenterReactionCardId(gw, item.id), emoji);
+        return;
+      }
       if (mode === 'live' && userId && typeof gw === 'number') {
         void toggleCardReaction(matchCenterReactionCardId(gw, item.id), emoji);
         return;
@@ -2201,7 +2271,37 @@ export default function MatchCenterScreen() {
         [item.id]: applySingleCardReaction(current[item.id], emoji),
       }));
     },
-    [gw, mode, toggleCardReaction, userId]
+    [gw, mode, social, toggleCardReaction, toggleSocialReaction, userId]
+  );
+
+  const commentOnCard = React.useCallback(
+    async (item: FeedItem, text: string) => {
+      if (!social || !userId || typeof gw !== 'number') return false;
+      try {
+        await postCardComment({ cardId: matchCenterReactionCardId(gw, item.id), userId, content: text });
+        void queryClient.invalidateQueries({ queryKey: ['game-centre-comment-counts'] });
+        void queryClient.invalidateQueries({ queryKey: ['game-centre-comments', matchCenterReactionCardId(gw, item.id)] });
+        return true;
+      } catch (error) {
+        console.error('[MatchCenter] comment failed:', error);
+        Alert.alert('Comment not sent', 'Please try again.');
+        return false;
+      }
+    },
+    [gw, queryClient, social, userId]
+  );
+
+  const openCardComments = React.useCallback(
+    (item: FeedItem) => {
+      if (!social || typeof gw !== 'number') return;
+      const header = gameCentreCardHeader(item);
+      navigation.navigate('CardComments', {
+        cardId: matchCenterReactionCardId(gw, item.id),
+        title: header.title,
+        subtitle: header.subtitle,
+      });
+    },
+    [gw, navigation, social]
   );
 
   const sendReply = React.useCallback(
@@ -2242,8 +2342,8 @@ export default function MatchCenterScreen() {
   );
 
   // The same functions for every card on every render; each calls the latest version.
-  const latestHandlers = React.useRef({ toggleReply, toggleReact, reactToMessage, reactToCard, sendReply });
-  latestHandlers.current = { toggleReply, toggleReact, reactToMessage, reactToCard, sendReply };
+  const latestHandlers = React.useRef({ toggleReply, toggleReact, reactToMessage, reactToCard, sendReply, commentOnCard, openCardComments });
+  latestHandlers.current = { toggleReply, toggleReact, reactToMessage, reactToCard, sendReply, commentOnCard, openCardComments };
   const cardHandlers = React.useMemo(
     () => ({
       toggleReply: (item: FeedItem) => latestHandlers.current.toggleReply(item),
@@ -2251,6 +2351,9 @@ export default function MatchCenterScreen() {
       reactToMessage: (item: FeedItem, emoji: string) => latestHandlers.current.reactToMessage(item, emoji),
       reactToCard: (item: FeedItem, emoji: string) => latestHandlers.current.reactToCard(item, emoji),
       sendReply: (item: FeedItem) => void latestHandlers.current.sendReply(item),
+      openPicker: (item: FeedItem) => setPickerFor(item),
+      commentOnCard: (item: FeedItem, text: string) => latestHandlers.current.commentOnCard(item, text),
+      openCardComments: (item: FeedItem) => latestHandlers.current.openCardComments(item),
     }),
     []
   );
@@ -2363,7 +2466,8 @@ export default function MatchCenterScreen() {
         return;
       }
       if (link.to === 'chat' && link.leagueId && link.leagueName) {
-        navigation.navigate('LeagueChat', { leagueId: link.leagueId, name: link.leagueName });
+        // The Mini League's own chat, as the chat hub and push notifications open it.
+        navigation.navigate('Chat2Thread', { leagueId: link.leagueId, name: link.leagueName });
         return;
       }
       if (link.leagueId && link.leagueName) {
@@ -2651,12 +2755,24 @@ export default function MatchCenterScreen() {
         arriveDelay={arriveDelay}
         reactions={
           cardReactable
-            ? mode === 'live'
-              ? cardReactions[cardKey] ?? NO_REACTIONS
-              : localReactions[item.id] ?? NO_REACTIONS
+            ? social
+              ? socialReactions[cardKey] ?? NO_REACTIONS
+              : mode === 'live'
+                ? cardReactions[cardKey] ?? NO_REACTIONS
+                : localReactions[item.id] ?? NO_REACTIONS
             : NO_REACTIONS
         }
         onReact={cardReactable ? cardHandlers.reactToCard : undefined}
+        social={
+          cardReactable && social
+            ? {
+                commentCount: commentCounts[cardKey] ?? 0,
+                onMore: cardHandlers.openPicker,
+                onComment: cardHandlers.commentOnCard,
+                onOpenComments: cardHandlers.openCardComments,
+              }
+            : null
+        }
       />
     );
   };
@@ -2758,6 +2874,17 @@ export default function MatchCenterScreen() {
         }
       />
       {newUpdates && !prepping ? <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} /> : null}
+      {social ? (
+        <EmojiPicker
+          open={!!pickerFor}
+          onClose={() => setPickerFor(null)}
+          onEmojiSelected={(choice: { emoji: string }) => {
+            if (pickerFor) reactToCard(pickerFor, choice.emoji);
+          }}
+          enableSearchBar
+          enableRecentlyUsed
+        />
+      ) : null}
       {tickerFixtures.length ||
       (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))) ? (
         <FixtureTicker

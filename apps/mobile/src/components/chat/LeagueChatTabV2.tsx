@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, PixelRatio, Platform, Pressable, TextInput, View } from 'react-native';
+import { Alert, Keyboard, PixelRatio, Platform, Pressable, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useQuery } from '@tanstack/react-query';
@@ -22,6 +22,29 @@ import { useLeagueChatReactions } from '../../hooks/useLeagueChatReactions';
 import type { LeagueChatMessage } from '../../hooks/useLeagueChat';
 
 type ChatActionsTarget = { id: string; content: string; authorName?: string; userId?: string | null };
+
+/**
+ * Another thread in place of a Mini League's chat: the public comments on a Game Centre card.
+ * Comments read left-aligned for everyone, have no reactions, and can be reported or their
+ * author blocked. Without a source, the component is the Mini League chat exactly as before.
+ */
+export type ChatThreadSource = {
+  messages: LeagueChatMessage[];
+  isLoading: boolean;
+  error: unknown;
+  sendMessage: (input: {
+    userId: string;
+    senderName: string;
+    content: string;
+    replyToMessageId: string | null;
+    replyTo: { id: string; content: string; user_id: string | null } | null;
+  }) => Promise<unknown>;
+  reportMessage: (messageId: string, reason: string) => Promise<void>;
+  blockUser?: (userId: string) => Promise<void>;
+  placeholder?: string;
+  /** Shown above the first comment, e.g. the card being discussed. */
+  header?: React.ReactNode;
+};
 type ReportState = 'idle' | 'submitting' | 'error' | 'success';
 
 function toGiftedMessage(
@@ -70,6 +93,7 @@ function InputToolbarWithAnimatedInset({
   insetsBottom,
   replyTarget,
   onClearReply,
+  placeholder = 'Message...',
   ...props
 }: any & {
   insetsBottom: number;
@@ -139,7 +163,7 @@ function InputToolbarWithAnimatedInset({
             value={text}
             onChangeText={props.textInputProps?.onChangeText}
             ref={props.textInputProps?.ref}
-            placeholder="Message..."
+            placeholder={placeholder}
             placeholderTextColor={t.color.muted}
             selectionColor={t.color.brand}
             multiline
@@ -226,11 +250,14 @@ export default function LeagueChatTabV2({
   leagueId,
   members,
   keyboardHeaderOffset,
+  source,
 }: {
   leagueId: string;
   members: Array<{ id: string; name: string; avatar_url?: string | null }>;
   keyboardHeaderOffset?: number;
+  source?: ChatThreadSource;
 }) {
+  const leagueChat = !source;
   const t = useTokens();
   const isDark = t.color.background.toLowerCase() !== '#f8fafc';
   const chatBg = t.color.background;
@@ -264,21 +291,16 @@ export default function LeagueChatTabV2({
   const meId: string | null = me?.id ?? null;
   const meName = meId ? nameById.get(meId) ?? 'You' : 'You';
 
-  const {
-    messages: messagesRaw,
-    fetchOlder,
-    hasOlder,
-    isFetchingOlder,
-    isLoading,
-    error,
-    sendMessage,
-  } = useLeagueChat({
+  const league = useLeagueChat({
     leagueId,
-    enabled: true,
+    enabled: leagueChat,
   });
+  const messagesRaw = source ? source.messages : league.messages;
+  const error = source ? source.error : league.error;
+  const sendMessage = source ? source.sendMessage : league.sendMessage;
 
-  useLeagueChatPresence({ leagueId, userId: meId, enabled: true });
-  const { markAsRead } = useLeagueChatReadReceipts({ leagueId, userId: meId, enabled: true });
+  useLeagueChatPresence({ leagueId, userId: meId, enabled: leagueChat });
+  const { markAsRead } = useLeagueChatReadReceipts({ leagueId, userId: meId, enabled: leagueChat });
 
   const messages: IMessage[] = React.useMemo(() => {
     const src = Array.isArray(messagesRaw) ? messagesRaw : [];
@@ -306,7 +328,7 @@ export default function LeagueChatTabV2({
   const { reactions, toggleReaction } = useLeagueChatReactions({
     leagueId,
     userId: meId,
-    enabled: true,
+    enabled: leagueChat,
     messageIds,
   });
 
@@ -403,14 +425,33 @@ export default function LeagueChatTabV2({
     setReportError(null);
     setReportState('submitting');
     try {
-      await api.submitChatMessageReport({ messageId: actionsFor.id, reason });
+      if (source) await source.reportMessage(actionsFor.id, reason);
+      else await api.submitChatMessageReport({ messageId: actionsFor.id, reason });
       setReportState('success');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to submit your report right now. Please try again.';
       setReportError(message);
       setReportState('error');
     }
-  }, [actionsFor, reportReason]);
+  }, [actionsFor, reportReason, source]);
+
+  const blockTarget = source?.blockUser && actionsFor?.userId && actionsFor.userId !== meId ? actionsFor : null;
+  const handleBlock = React.useCallback(() => {
+    if (!blockTarget?.userId || !source?.blockUser) return;
+    const userId = blockTarget.userId;
+    const name = blockTarget.authorName ?? 'this person';
+    Alert.alert(`Block ${name}?`, "You won't see their comments any more. They won't be told.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () => {
+          closeActions();
+          void source.blockUser?.(userId).catch(() => Alert.alert('Could not block', 'Please try again.'));
+        },
+      },
+    ]);
+  }, [blockTarget, closeActions, source]);
 
   return (
     <View style={{ flex: 1, backgroundColor: chatBg }}>
@@ -427,7 +468,8 @@ export default function LeagueChatTabV2({
         <GiftedChat
           messages={messages}
           onSend={handleSend}
-          user={{ _id: meId ?? 'anon', name: meName }}
+          // Comments read left-aligned for everyone, so no message counts as "mine" here.
+          user={{ _id: leagueChat ? meId ?? 'anon' : '__comment-reader__', name: meName }}
           onLongPressMessage={handleLongPress}
           textInputProps={{
             placeholder: 'Message…',
@@ -716,6 +758,8 @@ export default function LeagueChatTabV2({
           listProps={{
             style: { backgroundColor: chatBg },
             contentContainerStyle: { paddingBottom: 0 },
+            // The list is inverted, so its footer sits above the oldest message.
+            ...(source?.header ? { ListFooterComponent: <View>{source.header as any}</View> } : {}),
           }}
           renderInputToolbar={(props: any) => (
             <InputToolbarWithAnimatedInset
@@ -723,6 +767,7 @@ export default function LeagueChatTabV2({
               insetsBottom={insets.bottom}
               replyTarget={replyTo}
               onClearReply={() => setReplyTo(null)}
+              placeholder={source?.placeholder}
             />
           )}
           // Try to keep behavior consistent with older implementation.
@@ -738,11 +783,16 @@ export default function LeagueChatTabV2({
           setReplyTo(actionsFor);
           closeActions();
         }}
-        onReact={(emoji) => {
-          if (!actionsFor) return;
-          void toggleReaction(actionsFor.id, emoji);
-          closeActions();
-        }}
+        onReact={
+          leagueChat
+            ? (emoji) => {
+                if (!actionsFor) return;
+                void toggleReaction(actionsFor.id, emoji);
+                closeActions();
+              }
+            : undefined
+        }
+        onBlock={blockTarget ? handleBlock : undefined}
         reportReason={reportReason}
         reportState={reportState}
         reportError={reportError}

@@ -310,6 +310,14 @@ export function createApiClient(opts: ApiClientOptions) {
       });
     },
 
+    async submitGameCentreCommentReport(input: { commentId: string; reason: string }): Promise<{ ok: true }> {
+      return requestJson<{ ok: true }>(opts, `/v1/game-centre/comment-reports`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
+      });
+    },
+
     // ---- Branded Leaderboards (Public) ----
 
     async getBrandedLeaderboard(idOrSlug: string): Promise<BrandedLeaderboardDetail> {

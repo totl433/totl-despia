@@ -11,6 +11,7 @@ import LeagueChatScreen from '../screens/LeagueChatScreen';
 import CreateLeagueScreen from '../screens/CreateLeagueScreen';
 import ChatThreadScreen from '../screens/ChatThreadScreen';
 import Chat2ThreadScreen from '../screens/Chat2ThreadScreen';
+import CardCommentsScreen, { type CardCommentsParams } from '../screens/CardCommentsScreen';
 import ProfileNavigator from './ProfileNavigator';
 import PredictionsScreen from '../screens/PredictionsScreen';
 import RetroTotlDailyNavigator from './RetroTotlDailyNavigator';
@@ -34,6 +35,7 @@ export type RootStackParamList = {
   CreateLeague: undefined;
   ChatThread: { leagueId: string; name: string };
   Chat2Thread: { leagueId: string; name: string; chatMlHopCount?: number };
+  CardComments: CardCommentsParams;
   ChatHub: undefined;
   Profile: undefined;
   PredictionsFlow: undefined;
@@ -238,6 +240,18 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Chat2Thread"
           component={Chat2ThreadScreen}
+          options={{
+            headerShown: true,
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: t.color.background },
+            headerTintColor: t.color.text,
+            headerTitle: '',
+            headerTitleAlign: 'left',
+          }}
+        />
+        <Stack.Screen
+          name="CardComments"
+          component={CardCommentsScreen}
           options={{
             headerShown: true,
             headerShadowVisible: false,

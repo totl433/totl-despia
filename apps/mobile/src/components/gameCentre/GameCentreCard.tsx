@@ -5,6 +5,7 @@ import { TotlText, useTokens } from '@totl/ui';
 
 import EmojiGlyph, { hasEmojiBitmap } from '../../features/matchCenter/EmojiGlyph';
 import type { ReactionSummary } from '../../hooks/useLeagueChatReactions';
+import { fitReactionChips } from '../../features/gameCentre/cards';
 
 /** Figma 250:43065 (header), 250:43162 (footer), 278:35272 (author header). */
 const INK = {
@@ -183,8 +184,15 @@ export function GameCentreReactionBar({
   moreOpen?: boolean;
 }) {
   const t = useTokens();
+  const [width, setWidth] = React.useState(0);
+  // Fill two rows, then the + (so it never wraps out of sight).
+  const shown = onMore ? chips.slice(0, fitReactionChips(chips, width)) : chips;
   return (
     <View
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width - 32);
+        if (next !== width) setWidth(next);
+      }}
       style={{
         paddingHorizontal: 16,
         flexDirection: 'row',
@@ -195,7 +203,7 @@ export function GameCentreReactionBar({
         overflow: 'hidden',
       }}
     >
-      {chips.map((chip) => {
+      {shown.map((chip) => {
         const mine = chip.hasUserReacted;
         return (
           <Pressable

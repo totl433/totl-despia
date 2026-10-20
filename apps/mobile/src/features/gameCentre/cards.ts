@@ -82,3 +82,40 @@ export function gameCentreReactionChips(
   }
   return chips;
 }
+
+/** Rough rendered width of a reaction chip (Figma 250:41941): padding, the emoji, its count. */
+export function reactionChipWidth(count: number): number {
+  return 6 + 16 + (count > 0 ? 4 + 7 * String(count).length : 0) + 6;
+}
+
+/**
+ * How many chips fit in two rows of `width`, leaving room for the + chip in the last row.
+ * Chips past that are left off the card (they still count, and show in the picker).
+ */
+export function fitReactionChips(
+  chips: ReactionSummary[],
+  width: number,
+  options: { gap?: number; rows?: number; moreWidth?: number } = {}
+): number {
+  const gap = options.gap ?? 12;
+  const rows = options.rows ?? 2;
+  const more = options.moreWidth ?? 28;
+  if (width <= 0) return chips.length;
+  let row = 1;
+  let used = 0;
+  for (let i = 0; i < chips.length; i++) {
+    const chip = reactionChipWidth((chips[i] as ReactionSummary).count);
+    const next = used === 0 ? chip : used + gap + chip;
+    // On the last row, the + must still fit after this chip.
+    const limit = row === rows ? width - gap - more : width;
+    if (next <= limit) {
+      used = next;
+      continue;
+    }
+    if (row === rows) return i;
+    row += 1;
+    used = chip;
+    if (row === rows && used > width - gap - more) return i;
+  }
+  return chips.length;
+}
