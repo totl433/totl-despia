@@ -672,7 +672,7 @@ function FeedCardView({
       }
       footer={
         canReact && social ? (
-          <View>
+          <>
             <GameCentreReactionBar
               chips={gameCentreReactionChips(reactions)}
               onReact={(emoji) => onReact?.(emoji)}
@@ -683,7 +683,7 @@ function FeedCardView({
                 accessibilityRole="button"
                 onPress={() => social.onOpenComments(item)}
                 hitSlop={6}
-                style={{ paddingHorizontal: 16, paddingTop: 12 }}
+                style={{ paddingHorizontal: 16 }}
               >
                 <TotlText style={{ fontSize: 14, lineHeight: 18, color: 'rgba(60,60,67,0.6)' }}>
                   {social.commentCount === 1 ? 'View 1 comment' : `View all ${social.commentCount} comments`}
@@ -705,7 +705,7 @@ function FeedCardView({
                 });
               }}
             />
-          </View>
+          </>
         ) : canReact ? (
           <View style={{ paddingBottom: 20 }}>
             <GameCentreReactionBar chips={gameCentreReactionChips(reactions)} onReact={(emoji) => onReact?.(emoji)} />
@@ -929,7 +929,7 @@ function MessageRowView({
               moreOpen={reacting}
             />
             {reacting ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 8 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 }}>
                 {MESSAGE_REACTS.map((emoji) => {
                   const picked = reactions.some((reaction) => reaction.emoji === emoji && reaction.hasUserReacted);
                   return (

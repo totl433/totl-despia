@@ -21,6 +21,8 @@ const ON_DARK = { primary: '#FFFFFF', secondary: 'rgba(255,255,255,0.65)' };
 const SECTION_GAP = 28;
 const CHIP_HEIGHT = 24;
 const CHIP_ROW_GAP = 8;
+/** Between the footer's parts: reactions, comment link, text box (Figma 250:43162). */
+const FOOTER_GAP = 12;
 
 /**
  * The shared Game Centre card: header, the card's own content, then an optional footer,
@@ -56,7 +58,7 @@ export default function GameCentreCard({
     >
       {header as any}
       {hasContent ? <View style={{ paddingHorizontal: 16 }}>{children as any}</View> : null}
-      {footer ? <View style={{ gap: 4 }}>{footer as any}</View> : null}
+      {footer ? <View style={{ gap: FOOTER_GAP }}>{footer as any}</View> : null}
     </View>
   );
 }
@@ -280,7 +282,7 @@ export function GameCentreReplyInput({
   const t = useTokens();
   const ready = value.trim().length > 0 && !sending;
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 }}>
+    <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
       <View
         style={{
           minHeight: 40,
