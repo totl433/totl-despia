@@ -46,6 +46,8 @@ import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFi
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
 import { gameweekPin, getGameweekStateFromSnapshot, type GameweekPin } from '../lib/gameweekState';
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
+import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
 import { pinDismissKey, pinDismissible, type PinnedCardAction } from '../features/gameCentre/cards';
 import {
   buildHeaderExpandedStats,
@@ -1949,7 +1951,9 @@ export default function MatchCenterScreen() {
   // gameweek, not the board). It follows submitting and moving on through the snapshot.
   const pin = menu && mode === 'live' ? gameweekPin(home, clockMs) : null;
   const [pinnedHeight, setPinnedHeight] = React.useState(0);
-  const [movingOn, setMovingOn] = React.useState(false);
+  // Moving on plays the Predictions page's full-screen GAMEWEEK transition.
+  const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
+  const startAdvance = advanceTransition.start;
   // Dismissed states stay hidden on this device for that gameweek and state.
   const pinKey = pin && userId ? pinDismissKey(userId, pin) : null;
   const [pinDismissal, setPinDismissal] = React.useState<{ key: string; dismissed: boolean } | null>(null);
@@ -1985,25 +1989,26 @@ export default function MatchCenterScreen() {
         return;
       }
       if (current.kind !== 'ready') return;
-      // Same as "Ready to move on?" on the Predictions page: save the new gameweek, then refresh.
-      setMovingOn(true);
-      void (async () => {
-        try {
-          await api.updateNotificationPrefs({ current_viewing_gw: current.nextGw });
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['homeSnapshot'] }),
-            queryClient.invalidateQueries({ queryKey: ['homeRanks'] }),
-            queryClient.invalidateQueries({ queryKey: ['leagues'] }),
-          ]);
-        } catch (error) {
-          console.error('[MatchCenter] move on failed:', error);
-          Alert.alert('Could not move on', 'Please try again.');
-        } finally {
-          setMovingOn(false);
-        }
-      })();
+      // Same as "Ready to move on?" on the Predictions page: the GAMEWEEK transition plays while
+      // the new gameweek is saved and the snapshot refreshes.
+      startAdvance({
+        nextGameweekLabel: `GAMEWEEK ${current.nextGw}`,
+        onAdvance: async () => {
+          try {
+            await api.updateNotificationPrefs({ current_viewing_gw: current.nextGw });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['homeSnapshot'] }),
+              queryClient.invalidateQueries({ queryKey: ['homeRanks'] }),
+              queryClient.invalidateQueries({ queryKey: ['leagues'] }),
+            ]);
+          } catch (error) {
+            console.error('[MatchCenter] move on failed:', error);
+            Alert.alert('Could not move on', 'Please try again.');
+          }
+        },
+      });
     },
-    [home?.hasSubmittedViewingGw, navigation, openManualRoundUpStack, queryClient]
+    [home?.hasSubmittedViewingGw, navigation, openManualRoundUpStack, queryClient, startAdvance]
   );
 
   const lineupArrivalMs = React.useRef(new Map<number, number>());
@@ -2848,6 +2853,7 @@ export default function MatchCenterScreen() {
   };
 
   return (
+    <GameweekAdvanceTransition controller={advanceTransition}>
     <Screen fullBleed>
       {menu ? (
         // New header (Figma 272:33554): menu on the left, chat on the right.
@@ -2885,7 +2891,7 @@ export default function MatchCenterScreen() {
             pin={pin}
             // Last gameweek's score, when the board is that gameweek.
             scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
-            busy={movingOn}
+            busy={advanceTransition.isAnimating}
             onAction={onPinAction}
             onDismiss={onPinDismiss}
           />
@@ -2986,5 +2992,6 @@ export default function MatchCenterScreen() {
         />
       ) : null}
     </Screen>
+    </GameweekAdvanceTransition>
   );
 }
