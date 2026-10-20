@@ -47,9 +47,11 @@ export default function GameCentreMatchChatHeader({
   dateVenue: string | null;
 }) {
   const t = useTokens();
-  const meta = { fontFamily: 'Gramatika-Regular', fontSize: 10, lineHeight: 12, letterSpacing: 0.1, color: INK.meta, textAlign: 'center' as const };
+  // Figma trims these lines to the letters (8pt between, 12pt below the card); a 10pt line
+  // box needs 5pt and 10pt to land the same.
+  const meta = { fontFamily: 'Gramatika-Regular', fontSize: 10, lineHeight: 10, letterSpacing: 0.1, color: INK.meta, textAlign: 'center' as const, includeFontPadding: false };
   return (
-    <View style={{ gap: 12, alignItems: 'center' }}>
+    <View style={{ gap: 10, alignItems: 'center' }}>
       <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', borderRadius: 16, backgroundColor: t.color.surface }}>
         <Side side={home} />
         <View style={{ padding: 4 }}>
@@ -60,7 +62,7 @@ export default function GameCentreMatchChatHeader({
         <Side side={away} />
       </View>
       {competition || dateVenue ? (
-        <View style={{ gap: 8, alignItems: 'center', maxWidth: 280 }}>
+        <View style={{ gap: 5, alignItems: 'center', maxWidth: 280 }}>
           {competition ? <TotlText style={meta}>{competition}</TotlText> : null}
           {dateVenue ? <TotlText style={meta}>{dateVenue}</TotlText> : null}
         </View>
