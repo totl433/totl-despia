@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -79,12 +79,14 @@ export default function AppTopHeader({
     <View
       style={{
         marginTop: embedded ? 0 : -insets.top,
-        paddingTop: embedded ? 4 : insets.top + 4,
+        // iOS: no extra gap under the status bar, so the icons sit nearer a native nav bar.
+        paddingTop: embedded ? 4 : insets.top + (Platform.OS === 'ios' ? 0 : 4),
         paddingHorizontal: t.space[4],
         backgroundColor: t.color.background,
       }}
     >
-      <View style={{ height: 60, justifyContent: 'center', alignItems: 'center' }}>
+      {/* 60pt on Android (Material top bar); 52pt on iOS still fits the 46pt live score pill. */}
+      <View style={{ height: Platform.OS === 'ios' ? 52 : 60, justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ position: 'absolute', left: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {showBack ? (
             <Pressable
