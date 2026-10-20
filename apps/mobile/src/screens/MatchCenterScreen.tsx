@@ -203,7 +203,8 @@ function PickSplit({ match }: { match: FeedMatch }) {
   const t = useTokens();
   if (!match.pick && !match.percents) return null;
   const outcome = pickOutcome(match.homeScore, match.awayScore);
-  const shinySide = match.finished && match.pick && outcome && match.pick === outcome ? outcome : null;
+  // Rainbow whenever the score on the card matches your pick, as the card's rainbow border.
+  const shinySide = match.pick && outcome && match.pick === outcome ? outcome : null;
   return (
     <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
       {(['H', 'D', 'A'] as const).map((side) => {
