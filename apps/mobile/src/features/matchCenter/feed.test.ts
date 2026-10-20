@@ -163,6 +163,8 @@ describe('feed from stored posts', () => {
     const secondHalf = feed.find((item) => item.id === 'sh:9');
     expect(secondHalf?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
     expect(secondHalf?.match?.awayScorers ?? []).toEqual([]);
+    // A goal card is a moment in play too: its chip isn't a final result.
+    expect(feed.find((item) => item.id === 'goal:9:H1')?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
   });
 });
 

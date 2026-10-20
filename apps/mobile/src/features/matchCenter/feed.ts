@@ -363,6 +363,14 @@ function fixtureMatch(
   };
 }
 
+/**
+ * A card for a moment during a match (a goal, the second half starting) shows the score
+ * then, never as a final result; the live dot still follows the match as it is now.
+ */
+function inPlayMoment(match: FeedMatch, statusNow: string | null | undefined): FeedMatch {
+  return { ...match, finished: false, live: statusNow === 'IN_PLAY' || statusNow === 'PAUSED' };
+}
+
 function normalize(value: string | null | undefined): string {
   return String(value ?? '')
     .toLowerCase()
@@ -905,7 +913,7 @@ export function buildMatchFeed(input: {
             title: ruledOut ? 'Goal ruled out' : 'GOAL',
             body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}`),
             personal: ruledOut ? null : personalLine(pick, score.home, score.away, false, minute ?? 0),
-            match: board(fixture, pick, score.home, score.away, live?.status, live?.goals, minute ?? undefined),
+            match: inPlayMoment(board(fixture, pick, score.home, score.away, live?.status, live?.goals, minute ?? undefined), live?.status),
           });
           break;
         }
@@ -940,7 +948,7 @@ export function buildMatchFeed(input: {
             eyebrow: 'Second half',
             title: "They're back",
             body: 'Second half.',
-            match: board(fixture, pick, halfTime.home, halfTime.away, 'IN_PLAY', live?.goals, 45),
+            match: inPlayMoment(board(fixture, pick, halfTime.home, halfTime.away, live?.status, live?.goals, 45), live?.status),
           });
           break;
         }
@@ -1107,7 +1115,7 @@ export function buildMatchFeed(input: {
           title: 'GOAL',
           body: scoresLine(''),
           personal: personalLine(pick, homeScore, awayScore, false, minute),
-          match: board(fixture, pick, homeScore, awayScore, live.status),
+          match: inPlayMoment(board(fixture, pick, homeScore, awayScore, live.status), live.status),
         });
       }
       let home = 0;
@@ -1150,7 +1158,7 @@ export function buildMatchFeed(input: {
           title: ruledOut ? 'Goal ruled out' : 'GOAL',
           body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
           personal: ruledOut ? null : personalLine(pick, shownHome, shownAway, false, minute),
-          match: board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute),
+          match: inPlayMoment(board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute), live.status),
         });
       });
 
@@ -1188,7 +1196,7 @@ export function buildMatchFeed(input: {
           eyebrow: 'Second half',
           title: "They're back",
           body: 'Second half.',
-          match: board(fixture, pick, boardHome, boardAway, 'IN_PLAY', live.goals, minute ?? undefined),
+          match: inPlayMoment(board(fixture, pick, boardHome, boardAway, live.status, live.goals, minute ?? undefined), live.status),
         });
       }
       if (live.status === 'FINISHED') {
