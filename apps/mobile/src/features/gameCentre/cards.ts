@@ -148,6 +148,19 @@ export function dayAndTime(ms: number): string {
 export type PinnedCardAction = 'predict' | 'roundUp' | 'moveOn';
 
 /**
+ * States people may dismiss: the ones that only tell you something. Picks due and moving on
+ * stay, since they are what moves the week along (and moving on is the review step).
+ */
+export function pinDismissible(pin: GameweekPin): boolean {
+  return pin.kind === 'picked' || pin.kind === 'missed' || pin.kind === 'locked' || pin.kind === 'comingSoon';
+}
+
+/** A dismissal lasts for that gameweek and state, so the next state still shows. */
+export function pinDismissKey(userId: string, pin: GameweekPin): string {
+  return `game-centre-pin-dismissed:${userId}:gw${pin.gw}:${pin.kind}`;
+}
+
+/**
  * Title, subtitle and button for the Game Centre's pinned card in each gameweek state
  * (Figma 295:35045; the same layout throughout, only the words and the button change).
  */

@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, 
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -45,7 +46,7 @@ import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFi
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
 import { gameweekPin, getGameweekStateFromSnapshot, type GameweekPin } from '../lib/gameweekState';
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
-import type { PinnedCardAction } from '../features/gameCentre/cards';
+import { pinDismissKey, pinDismissible, type PinnedCardAction } from '../features/gameCentre/cards';
 import {
   buildHeaderExpandedStats,
   buildHeaderScoreSummary,
@@ -1949,6 +1950,30 @@ export default function MatchCenterScreen() {
   const pin = menu && mode === 'live' ? gameweekPin(home, clockMs) : null;
   const [pinnedHeight, setPinnedHeight] = React.useState(0);
   const [movingOn, setMovingOn] = React.useState(false);
+  // Dismissed states stay hidden on this device for that gameweek and state.
+  const pinKey = pin && userId ? pinDismissKey(userId, pin) : null;
+  const [pinDismissal, setPinDismissal] = React.useState<{ key: string; dismissed: boolean } | null>(null);
+  React.useEffect(() => {
+    if (!pinKey) return;
+    let alive = true;
+    AsyncStorage.getItem(pinKey)
+      .then((value) => alive && setPinDismissal({ key: pinKey, dismissed: value === '1' }))
+      .catch(() => alive && setPinDismissal({ key: pinKey, dismissed: false }));
+    return () => {
+      alive = false;
+    };
+  }, [pinKey]);
+  // A dismissible card waits until we know it wasn't dismissed, so it never flashes up.
+  const showPin = !!pin && (!pinDismissible(pin) || (pinDismissal?.key === pinKey && !pinDismissal.dismissed));
+  const onPinDismiss = React.useCallback(
+    (current: GameweekPin) => {
+      if (!userId) return;
+      const key = pinDismissKey(userId, current);
+      setPinDismissal({ key, dismissed: true });
+      void AsyncStorage.setItem(key, '1').catch(() => {});
+    },
+    [userId]
+  );
   const onPinAction = React.useCallback(
     (action: PinnedCardAction, current: GameweekPin) => {
       if (action === 'predict') {
@@ -2547,7 +2572,10 @@ export default function MatchCenterScreen() {
     staleTime: 30_000,
   });
   const showLiveHeaderScore = gwState === 'LIVE' && !!scoreSummary;
-  const showStaticResultsHeaderScore = gwState === 'RESULTS_PRE_GW' && !!scoreSummary;
+  // On the Game Centre home the score and ticker are for live games only; once the gameweek
+  // is over, the pinned card carries last week's score.
+  const showStaticResultsHeaderScore = !menu && gwState === 'RESULTS_PRE_GW' && !!scoreSummary;
+  const showTicker = !menu || gwState === 'LIVE';
   const headerScoreLabel = scoreSummary ? formatHeaderScoreLabel(scoreSummary, showLiveHeaderScore) : null;
   const liveGwRank = userId ? rankOf(liveTable?.rows ?? [], userId) : null;
   const headerExpandedStats = React.useMemo(
@@ -2846,7 +2874,7 @@ export default function MatchCenterScreen() {
           hideMatchCenterEntry
         />
       )}
-      {pin ? (
+      {pin && showPin ? (
         <Reanimated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(180)}
@@ -2859,6 +2887,7 @@ export default function MatchCenterScreen() {
             scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
             busy={movingOn}
             onAction={onPinAction}
+            onDismiss={onPinDismiss}
           />
         </Reanimated.View>
       ) : null}
@@ -2934,7 +2963,7 @@ export default function MatchCenterScreen() {
       />
       </Reanimated.View>
       {newUpdates && !prepping ? (
-        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={pin ? pinnedHeight : 0} />
+        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showPin ? pinnedHeight : 0} />
       ) : null}
       {social ? (
         <EmojiPicker
@@ -2947,8 +2976,9 @@ export default function MatchCenterScreen() {
           enableRecentlyUsed
         />
       ) : null}
-      {tickerFixtures.length ||
-      (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))) ? (
+      {showTicker &&
+      (tickerFixtures.length ||
+        (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null)))) ? (
         <FixtureTicker
           games={tickerFixtures}
           leagues={rankingsOnTicker ? tickerLeagues ?? [] : []}

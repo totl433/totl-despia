@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
 
-import { pinnedCardCopy, type PinnedCardAction } from '../../features/gameCentre/cards';
+import { pinDismissible, pinnedCardCopy, type PinnedCardAction } from '../../features/gameCentre/cards';
 import type { GameweekPin } from '../../lib/gameweekState';
 import GameCentreCard, { GameCentreCardButton, GameCentreCardHeader } from './GameCentreCard';
 
@@ -20,6 +20,7 @@ function GameCentrePinnedCard({
   scoreLabel,
   busy = false,
   onAction,
+  onDismiss,
 }: {
   pin: GameweekPin;
   /** Last gameweek's score ("6/10") for the coming-soon and ready cards. */
@@ -27,6 +28,8 @@ function GameCentrePinnedCard({
   /** True while moving on, so the button can't be tapped twice. */
   busy?: boolean;
   onAction: (action: PinnedCardAction, pin: GameweekPin) => void;
+  /** Shown as Dismiss (Figma 300:32561) on the states people may hide. */
+  onDismiss?: (pin: GameweekPin) => void;
 }) {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -48,6 +51,7 @@ function GameCentrePinnedCard({
 
   const copy = pinnedCardCopy(pin, nowMs, scoreLabel);
   const expired = pin.kind === 'predict' && pin.deadlineMs != null && nowMs >= pin.deadlineMs;
+  const dismiss = !!onDismiss && pinDismissible(pin);
   return (
     <GameCentreCard
       header={
@@ -58,11 +62,12 @@ function GameCentrePinnedCard({
         />
       }
       footer={
-        copy.action && copy.actionLabel ? (
+        (copy.action && copy.actionLabel) || dismiss ? (
           <GameCentreCardButton
-            label={busy ? 'Moving on…' : copy.actionLabel}
+            label={copy.action && copy.actionLabel ? (busy ? 'Moving on…' : copy.actionLabel) : null}
             disabled={busy || expired}
             onPress={() => onAction(copy.action as PinnedCardAction, pin)}
+            secondary={dismiss ? { label: 'Dismiss', onPress: () => onDismiss?.(pin) } : null}
           />
         ) : null
       }
@@ -72,5 +77,10 @@ function GameCentrePinnedCard({
 
 export default React.memo(
   GameCentrePinnedCard,
-  (a, b) => a.busy === b.busy && a.scoreLabel === b.scoreLabel && a.onAction === b.onAction && JSON.stringify(a.pin) === JSON.stringify(b.pin)
+  (a, b) =>
+    a.busy === b.busy &&
+    a.scoreLabel === b.scoreLabel &&
+    a.onAction === b.onAction &&
+    a.onDismiss === b.onDismiss &&
+    JSON.stringify(a.pin) === JSON.stringify(b.pin)
 );

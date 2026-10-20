@@ -103,3 +103,23 @@ describe('pinned card copy', () => {
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8 kicks off at \w{3} \d{2}:\d{2}$/);
   });
 });
+
+describe('dismissing the pinned card', () => {
+  it('only hides the states that just tell you something', async () => {
+    const { pinDismissible } = await import('../features/gameCentre/cards');
+    expect(pinDismissible({ kind: 'predict', gw: 8, deadlineMs: DEADLINE })).toBe(false);
+    expect(pinDismissible({ kind: 'ready', gw: 7, nextGw: 8 })).toBe(false);
+    expect(pinDismissible({ kind: 'picked', gw: 8, deadlineMs: DEADLINE })).toBe(true);
+    expect(pinDismissible({ kind: 'missed', gw: 8, kickoffMs: KO })).toBe(true);
+    expect(pinDismissible({ kind: 'locked', gw: 8, kickoffMs: KO })).toBe(true);
+    expect(pinDismissible({ kind: 'comingSoon', gw: 7, nextGw: 8 })).toBe(true);
+  });
+
+  it('keeps a dismissal to its gameweek and state, so the next state still shows', async () => {
+    const { pinDismissKey } = await import('../features/gameCentre/cards');
+    const soon = pinDismissKey('u1', { kind: 'comingSoon', gw: 7, nextGw: 8 });
+    expect(soon).not.toBe(pinDismissKey('u1', { kind: 'ready', gw: 7, nextGw: 8 }));
+    expect(soon).not.toBe(pinDismissKey('u1', { kind: 'comingSoon', gw: 8, nextGw: 9 }));
+    expect(soon).not.toBe(pinDismissKey('u2', { kind: 'comingSoon', gw: 7, nextGw: 8 }));
+  });
+});
