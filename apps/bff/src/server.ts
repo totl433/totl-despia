@@ -596,6 +596,92 @@ app.post('/v1/chat/reports', async (req) => {
   return { ok: true };
 });
 
+const GameCentreCommentReportBodySchema = z.object({
+  commentId: z.string().uuid(),
+  reason: z.string().trim().min(1).max(2000),
+});
+
+// Public comments on Game Centre cards: same flow as chat reports. The report is stored,
+// then emailed to the team, who take the comment down by setting removed_at.
+app.post('/v1/game-centre/comment-reports', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const reporterEmail = ((req as any).userEmail as string | null | undefined) ?? null;
+  const body = GameCentreCommentReportBodySchema.parse((req as any).body);
+
+  const { data: comment, error: commentError } = await (supa as any)
+    .from('game_centre_comments')
+    .select('id, card_id, user_id, content, created_at')
+    .eq('id', body.commentId)
+    .maybeSingle();
+  if (commentError) throw commentError;
+  if (!comment) {
+    throw Object.assign(new Error('Reported comment not found'), { statusCode: 404 });
+  }
+
+  const authorId = String(comment.user_id);
+  const [usersRes, reportRes] = await Promise.all([
+    (supa as any).from('users').select('id, name').in('id', [userId, authorId]),
+    (supa as any)
+      .from('game_centre_comment_reports')
+      .insert({
+        reporter_user_id: userId,
+        reporter_email: reporterEmail,
+        comment_id: String(comment.id),
+        card_id: String(comment.card_id),
+        reason: body.reason,
+        reported_comment_content: String(comment.content ?? ''),
+        reported_comment_user_id: authorId,
+        status: 'submitted',
+      })
+      .select('id, created_at')
+      .single(),
+  ]);
+  if (usersRes.error) throw usersRes.error;
+  if (reportRes.error) throw reportRes.error;
+
+  const nameOf = new Map<string, string>(
+    ((usersRes.data ?? []) as Array<{ id: string; name: string | null }>).map((row) => [String(row.id), String(row.name ?? '')])
+  );
+  const reportId = String(reportRes.data.id);
+  try {
+    await sendChatMessageReportEmail({
+      env,
+      subject: `[TOTL] Game Centre comment report ${reportId}`,
+      text: [
+        'A public Game Centre comment has been reported in TOTL.',
+        '',
+        `Report ID: ${reportId}`,
+        `Reported at: ${String(reportRes.data.created_at)}`,
+        '',
+        'Reporter',
+        `- User ID: ${userId}`,
+        `- Name: ${nameOf.get(userId) || 'Unknown'}`,
+        `- Email: ${reporterEmail ?? 'Unknown'}`,
+        '',
+        'Reported comment',
+        `- Comment ID: ${String(comment.id)}`,
+        `- Card: ${String(comment.card_id)}`,
+        `- Created at: ${String(comment.created_at)}`,
+        `- Author user ID: ${authorId}`,
+        `- Author name: ${nameOf.get(authorId) || 'Unknown'}`,
+        `- Content: ${String(comment.content ?? '') || '(empty comment)'}`,
+        '',
+        'Reason',
+        body.reason,
+        '',
+        'To take it down for everyone, in Supabase:',
+        `update game_centre_comments set removed_at = now(), removed_reason = 'reported' where id = '${String(comment.id)}';`,
+      ].join('\n'),
+    });
+  } catch (error) {
+    req.log.error({ err: error, reportId }, 'game centre comment report email failed after report was stored');
+    captureException(error);
+  }
+
+  return { ok: true };
+});
+
 const NotifyHostReviewBodySchema = z.object({
   hostUserId: z.string().uuid(),
 });
