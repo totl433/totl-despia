@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { useViewerSeason } from '../lib/useViewerSeason';
 import { SEASON_PILE_TABLES, LEGACY_PILE_TABLES } from '../lib/leagueSeasonPile';
 import { useLiveScores } from './useLiveScores';
+import { predictionsDeadlineMs } from '../lib/gameweekState';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 
@@ -24,14 +25,8 @@ function deadlineCountdown(
   fixtures: Fixture[],
   nowMs: number
 ): { text: string; expired: boolean; atMs: number } | null {
-  const firstKickoff = fixtures
-    .map((f) => (f.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN))
-    .filter((t) => Number.isFinite(t))
-    .sort((a, b) => a - b)[0];
-  if (typeof firstKickoff !== 'number') return null;
-
-  const DEADLINE_BUFFER_MINUTES = 75;
-  const deadline = firstKickoff - DEADLINE_BUFFER_MINUTES * 60 * 1000;
+  const deadline = predictionsDeadlineMs(fixtures);
+  if (deadline === null) return null;
   const diffMs = deadline - nowMs;
   if (diffMs <= 0) return { text: '0d 0h 0m', expired: true, atMs: deadline };
 

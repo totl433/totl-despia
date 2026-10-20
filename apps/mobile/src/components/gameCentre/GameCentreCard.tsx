@@ -5,6 +5,7 @@ import { TotlText, useTokens } from '@totl/ui';
 
 import EmojiGlyph, { hasEmojiBitmap } from '../../features/matchCenter/EmojiGlyph';
 import type { ReactionSummary } from '../../hooks/useLeagueChatReactions';
+import { fitReactionChips } from '../../features/gameCentre/cards';
 
 /** Figma 250:43065 (header), 250:43162 (footer), 278:35272 (author header). */
 const INK = {
@@ -20,6 +21,8 @@ const ON_DARK = { primary: '#FFFFFF', secondary: 'rgba(255,255,255,0.65)' };
 const SECTION_GAP = 28;
 const CHIP_HEIGHT = 24;
 const CHIP_ROW_GAP = 8;
+/** Between the footer's parts: reactions, comment link, text box (Figma 250:43162). */
+const FOOTER_GAP = 12;
 
 /**
  * The shared Game Centre card: header, the card's own content, then an optional footer,
@@ -55,7 +58,7 @@ export default function GameCentreCard({
     >
       {header as any}
       {hasContent ? <View style={{ paddingHorizontal: 16 }}>{children as any}</View> : null}
-      {footer ? <View style={{ gap: 4 }}>{footer as any}</View> : null}
+      {footer ? <View style={{ gap: FOOTER_GAP }}>{footer as any}</View> : null}
     </View>
   );
 }
@@ -67,11 +70,14 @@ export function GameCentreCardHeader({
   title,
   subtitle,
   stamp,
+  accessory,
   onDark = false,
 }: {
   title: string;
   subtitle?: string | null;
   stamp?: string | null;
+  /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
+  accessory?: React.ReactNode;
   onDark?: boolean;
 }) {
   const ink = onDark ? ON_DARK : INK;
@@ -82,9 +88,65 @@ export function GameCentreCardHeader({
           {title}
         </TotlText>
         {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
+        {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
       </View>
       {subtitle ? (
         <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A footer call to action (Figma 293:34460): brand fill, white label, 8pt corners. An optional
+ * quiet second button (Figma 300:32561, e.g. Dismiss) sits 16pt to its right.
+ */
+export function GameCentreCardButton({
+  label,
+  onPress,
+  disabled = false,
+  secondary,
+}: {
+  /** Leave out for a footer with only the quiet button. */
+  label?: string | null;
+  onPress?: () => void;
+  disabled?: boolean;
+  secondary?: { label: string; onPress: () => void } | null;
+}) {
+  const t = useTokens();
+  return (
+    <View style={{ paddingHorizontal: 16, paddingBottom: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+      {label ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled }}
+          disabled={disabled}
+          onPress={onPress}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            backgroundColor: disabled ? '#94A3B8' : t.color.brand,
+            borderRadius: t.radius.sm,
+            padding: t.space[2],
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: '#FFFFFF' }}>{label}</TotlText>
+        </Pressable>
+      ) : null}
+      {secondary ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={secondary.onPress}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            backgroundColor: INK.chip,
+            borderRadius: t.radius.sm,
+            padding: t.space[2],
+            opacity: pressed ? 0.7 : 1,
+          })}
+        >
+          <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: INK.secondary }}>{secondary.label}</TotlText>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -183,8 +245,15 @@ export function GameCentreReactionBar({
   moreOpen?: boolean;
 }) {
   const t = useTokens();
+  const [width, setWidth] = React.useState(0);
+  // Fill two rows, then the + (so it never wraps out of sight).
+  const shown = onMore ? chips.slice(0, fitReactionChips(chips, width)) : chips;
   return (
     <View
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width - 32);
+        if (next !== width) setWidth(next);
+      }}
       style={{
         paddingHorizontal: 16,
         flexDirection: 'row',
@@ -195,7 +264,7 @@ export function GameCentreReactionBar({
         overflow: 'hidden',
       }}
     >
-      {chips.map((chip) => {
+      {shown.map((chip) => {
         const mine = chip.hasUserReacted;
         return (
           <Pressable
@@ -272,7 +341,7 @@ export function GameCentreReplyInput({
   const t = useTokens();
   const ready = value.trim().length > 0 && !sending;
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 }}>
+    <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
       <View
         style={{
           minHeight: 40,
