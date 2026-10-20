@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 // League avatars load images through react-native, which vitest can't parse.
 vi.mock('../../lib/leagueAvatars', () => ({ resolveLeagueAvatarUri: () => null }));
 
-import { buildMatchFeed, sideForGoal } from './feed';
+import { buildMatchFeed, fixtureEngagementId, fixtureIndexOfCard, fixtureSides, sideForGoal } from './feed';
 import { mergeGameCentrePosts, type GameCentrePost } from './posts';
 
 const KO = Date.parse('2026-10-19T19:00:00Z');
@@ -137,6 +137,35 @@ describe('feed from stored posts', () => {
   it('skips voided posts', () => {
     expect(fromPosts([{ ...goal, status: 'void' }])).toEqual([]);
   });
+
+  it('shows the second-half card as the half began, even after full-time', () => {
+    const finished: LiveScore = {
+      ...atHalfTime,
+      home_score: 3,
+      away_score: 1,
+      status: 'FINISHED',
+      minute: 90,
+      goals: [
+        ...(atHalfTime.goals as unknown[]),
+        { team: 'Coventry City', minute: 49, scorer: 'Haji Wright' },
+        { team: 'Spurs', minute: 58, scorer: 'Omar Marmoush' },
+        { team: 'Spurs', minute: 90, scorer: 'Micky van de Ven' },
+      ],
+    };
+    const feed = buildMatchFeed({
+      gw: 7,
+      fixtures: [spursCoventry],
+      liveByFixtureIndex: new Map([[9, finished]]),
+      picks: { '9': 'H' },
+      nowMs: KO + 3 * 3_600_000,
+      posts: [...posts, post('sh:9', 'second-half', '2026-10-19T20:02:00Z')],
+    });
+    const secondHalf = feed.find((item) => item.id === 'sh:9');
+    expect(secondHalf?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
+    expect(secondHalf?.match?.awayScorers ?? []).toEqual([]);
+    // A goal card is a moment in play too: its chip isn't a final result.
+    expect(feed.find((item) => item.id === 'goal:9:H1')?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
+  });
 });
 
 describe('merging posts', () => {
@@ -151,5 +180,37 @@ describe('merging posts', () => {
   it('returns the same array when nothing changed, so cards do not redraw', () => {
     const current = [{ ...base, id: 'a', revision: 1 }];
     expect(mergeGameCentrePosts(current, [{ ...base, id: 'a', revision: 1 }])).toBe(current);
+  });
+});
+
+describe('fixture threads', () => {
+  it('finds the fixture in every match card id, old and new', () => {
+    expect(['xi:9', 'xi-sheet:9', 'ko:9', 'goal:9:H1', 'goal:9:14:0', 'score:9:1-0', 'ht:9', 'sh:9', 'ft:9'].map(fixtureIndexOfCard)).toEqual(
+      Array(9).fill(9)
+    );
+    expect(fixtureIndexOfCard('gw-open:7')).toBeNull();
+    expect(fixtureIndexOfCard('ft:12')).toBe(12);
+  });
+
+  it('puts all of a match’s cards on one thread and keeps other cards on their own', () => {
+    expect(fixtureEngagementId(7, 'goal:9:H1')).toBe('mc:gw7:fixture:9');
+    expect(fixtureEngagementId(7, 'ft:9')).toBe('mc:gw7:fixture:9');
+    expect(fixtureEngagementId(7, 'ft:10')).toBe('mc:gw7:fixture:10');
+    expect(fixtureEngagementId(7, 'gw-open:7')).toBe('mc:gw7:gw-open:7');
+  });
+
+  it('names both clubs for the thread header', () => {
+    const sides = fixtureSides({
+      id: 'f',
+      gw: 8,
+      fixture_index: 0,
+      home_name: 'Manchester United FC',
+      away_name: 'Chelsea FC',
+      home_code: 'MUN',
+      away_code: 'CHE',
+    } as Fixture);
+    expect(sides.home.code).toBe('MUN');
+    expect(sides.away.code).toBe('CHE');
+    expect(sides.home.name).not.toMatch(/FC$/);
   });
 });
