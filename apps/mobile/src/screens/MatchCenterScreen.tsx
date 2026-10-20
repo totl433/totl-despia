@@ -43,8 +43,9 @@ import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
 import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFixtureUi';
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
-import { getGameweekStateFromSnapshot, predictionsPrompt } from '../lib/gameweekState';
-import PinnedPredictionsCard from '../components/gameCentre/PinnedPredictionsCard';
+import { gameweekPin, getGameweekStateFromSnapshot, type GameweekPin } from '../lib/gameweekState';
+import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import type { PinnedCardAction } from '../features/gameCentre/cards';
 import {
   buildHeaderExpandedStats,
   buildHeaderScoreSummary,
@@ -1416,7 +1417,7 @@ export default function MatchCenterScreen() {
   // The Game Centre reads like X or Threads: newest card on top, older ones further down.
   const newestFirst = !!menu;
   const { useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
-  const { openManualResultsScoreSheetShare } = usePopupCards();
+  const { openManualResultsScoreSheetShare, openManualRoundUpStack } = usePopupCards();
   const [mode, setMode] = React.useState<Mode>(() => (entry === 'example' ? 'play' : 'live'));
   const [week, setWeek] = React.useState<'current' | 'last'>(() => (entry === 'last' ? 'last' : 'current'));
   const [played, setPlayed] = React.useState(1);
@@ -1943,11 +1944,42 @@ export default function MatchCenterScreen() {
     return () => sub.remove();
   }, []);
 
-  // Pinned "Don't miss the deadline!" card on the Game Centre home. Always the current
-  // gameweek (`home`, not the board), and gone as soon as a submit marks it predicted.
-  const predictionsDue = menu && mode === 'live' ? predictionsPrompt(home, clockMs) : null;
-  const openPredictions = React.useCallback(() => navigation.navigate('PredictionsFlow'), [navigation]);
+  // Pinned card on the Game Centre home: where you are in the gameweek, from `home` (your
+  // gameweek, not the board). It follows submitting and moving on through the snapshot.
+  const pin = menu && mode === 'live' ? gameweekPin(home, clockMs) : null;
   const [pinnedHeight, setPinnedHeight] = React.useState(0);
+  const [movingOn, setMovingOn] = React.useState(false);
+  const onPinAction = React.useCallback(
+    (action: PinnedCardAction, current: GameweekPin) => {
+      if (action === 'predict') {
+        navigation.navigate('PredictionsFlow');
+        return;
+      }
+      if (action === 'roundUp') {
+        openManualRoundUpStack(current.gw, { includeResults: !!home?.hasSubmittedViewingGw });
+        return;
+      }
+      if (current.kind !== 'ready') return;
+      // Same as "Ready to move on?" on the Predictions page: save the new gameweek, then refresh.
+      setMovingOn(true);
+      void (async () => {
+        try {
+          await api.updateNotificationPrefs({ current_viewing_gw: current.nextGw });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['homeSnapshot'] }),
+            queryClient.invalidateQueries({ queryKey: ['homeRanks'] }),
+            queryClient.invalidateQueries({ queryKey: ['leagues'] }),
+          ]);
+        } catch (error) {
+          console.error('[MatchCenter] move on failed:', error);
+          Alert.alert('Could not move on', 'Please try again.');
+        } finally {
+          setMovingOn(false);
+        }
+      })();
+    },
+    [home?.hasSubmittedViewingGw, navigation, openManualRoundUpStack, queryClient]
+  );
 
   const lineupArrivalMs = React.useRef(new Map<number, number>());
   const lineupArrivalGw = React.useRef<number | null>(null);
@@ -2814,14 +2846,20 @@ export default function MatchCenterScreen() {
           hideMatchCenterEntry
         />
       )}
-      {predictionsDue ? (
+      {pin ? (
         <Reanimated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(180)}
           onLayout={(event) => setPinnedHeight(event.nativeEvent.layout.height)}
           style={{ paddingHorizontal: t.space[4], paddingTop: 8, paddingBottom: 12, zIndex: 2 }}
         >
-          <PinnedPredictionsCard gw={predictionsDue.gw} deadlineMs={predictionsDue.deadlineMs} onPress={openPredictions} />
+          <GameCentrePinnedCard
+            pin={pin}
+            // Last gameweek's score, when the board is that gameweek.
+            scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
+            busy={movingOn}
+            onAction={onPinAction}
+          />
         </Reanimated.View>
       ) : null}
       <Reanimated.View style={{ flex: 1 }} layout={LinearTransition.duration(220)}>
@@ -2896,7 +2934,7 @@ export default function MatchCenterScreen() {
       />
       </Reanimated.View>
       {newUpdates && !prepping ? (
-        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={predictionsDue ? pinnedHeight : 0} />
+        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={pin ? pinnedHeight : 0} />
       ) : null}
       {social ? (
         <EmojiPicker

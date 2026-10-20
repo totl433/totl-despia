@@ -202,12 +202,27 @@ export function predictionsDeadlineMs(fixtures: FixtureKickoff[]): number | null
   return typeof first === 'number' ? first - DEADLINE_BUFFER_MINUTES * 60 * 1000 : null;
 }
 
+/** What the Game Centre's pinned card says, by gameweek state (see the gameweek states doc). */
+export type GameweekPin =
+  /** 1: picks due before the deadline. */
+  | { kind: 'predict'; gw: number; deadlineMs: number | null }
+  /** 2: picks in, still editable until the deadline. */
+  | { kind: 'picked'; gw: number; deadlineMs: number | null }
+  /** 3: deadline passed without picks; waiting for kickoff. */
+  | { kind: 'missed'; gw: number; kickoffMs: number | null }
+  /** 4: picks locked in; waiting for kickoff. */
+  | { kind: 'locked'; gw: number; kickoffMs: number | null }
+  /** 6: gameweek finished, the next one isn't published yet. */
+  | { kind: 'comingSoon'; gw: number; nextGw: number }
+  /** 7: the next gameweek is published and you haven't moved on (a chance to review results first). */
+  | { kind: 'ready'; gw: number; nextGw: number };
+
 /**
- * The gameweek still waiting on your predictions, or null. Same rule as the home deadline
- * box: you're on the current gameweek, it hasn't kicked off, and your picks aren't in.
- * Submitting sets `hasSubmittedViewingGw` in the home snapshot, which hides it.
+ * The pinned card for the gameweek you're on, or null while games are live (5) or while the
+ * snapshot hasn't said whether your picks are in. Submitting sets `hasSubmittedViewingGw`,
+ * and moving on sets `viewingGw`, so the card follows both without any extra state.
  */
-export function predictionsPrompt(
+export function gameweekPin(
   home:
     | {
         currentGw?: number | null;
@@ -219,18 +234,32 @@ export function predictionsPrompt(
     | null
     | undefined,
   nowMs: number
-): { gw: number; deadlineMs: number | null } | null {
-  if (!home || home.hasSubmittedViewingGw !== false) return null;
-  const { currentGw, viewingGw } = home;
-  if (typeof viewingGw !== 'number') return null;
-  if (typeof currentGw === 'number' && viewingGw < currentGw) return null;
+): GameweekPin | null {
+  if (!home || typeof home.viewingGw !== 'number' || typeof home.hasSubmittedViewingGw !== 'boolean') return null;
+  const gw = home.viewingGw;
+  const currentGw = typeof home.currentGw === 'number' ? home.currentGw : gw;
+  if (gw < currentGw) return { kind: 'ready', gw, nextGw: currentGw };
+
   const fixtures = home.fixtures ?? [];
+  const submitted = home.hasSubmittedViewingGw;
   const state = getGameweekStateFromSnapshot({
     fixtures,
     liveScores: home.liveScores ?? [],
-    hasSubmittedViewingGw: false,
+    hasSubmittedViewingGw: submitted,
     now: new Date(nowMs),
   });
-  if (state !== 'GW_OPEN' && state !== 'DEADLINE_PASSED') return null;
-  return { gw: viewingGw, deadlineMs: predictionsDeadlineMs(fixtures) };
+  const deadlineMs = predictionsDeadlineMs(fixtures);
+  const kickoffMs = deadlineMs == null ? null : deadlineMs + DEADLINE_BUFFER_MINUTES * 60 * 1000;
+  switch (state) {
+    case 'GW_OPEN':
+      return { kind: 'predict', gw, deadlineMs };
+    case 'GW_PREDICTED':
+      return { kind: 'picked', gw, deadlineMs };
+    case 'DEADLINE_PASSED':
+      return submitted ? { kind: 'locked', gw, kickoffMs } : { kind: 'missed', gw, kickoffMs };
+    case 'RESULTS_PRE_GW':
+      return { kind: 'comingSoon', gw, nextGw: gw + 1 };
+    default:
+      return null;
+  }
 }
