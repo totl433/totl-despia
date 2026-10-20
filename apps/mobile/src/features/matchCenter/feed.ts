@@ -927,6 +927,10 @@ export function buildMatchFeed(input: {
           break;
         }
         case 'second-half': {
+          // The match as the second half starts: the half-time score, still in play.
+          const halfTime =
+            scoreOf(ordered.find(({ post: other }) => other.kind === 'half-time' && other.fixture_index === idx)?.post.details.score) ??
+            scoreThroughMinute(fixture, parseGoalEvents(live?.goals), 45, live);
           out.push({
             id,
             sortAt: at,
@@ -936,7 +940,7 @@ export function buildMatchFeed(input: {
             eyebrow: 'Second half',
             title: "They're back",
             body: 'Second half.',
-            match: board(fixture, pick, live?.home_score ?? null, live?.away_score ?? null, live?.status === 'FINISHED' ? 'FINISHED' : 'IN_PLAY', live?.goals, typeof live?.minute === 'number' ? live.minute : undefined),
+            match: board(fixture, pick, halfTime.home, halfTime.away, 'IN_PLAY', live?.goals, 45),
           });
           break;
         }

@@ -137,6 +137,33 @@ describe('feed from stored posts', () => {
   it('skips voided posts', () => {
     expect(fromPosts([{ ...goal, status: 'void' }])).toEqual([]);
   });
+
+  it('shows the second-half card as the half began, even after full-time', () => {
+    const finished: LiveScore = {
+      ...atHalfTime,
+      home_score: 3,
+      away_score: 1,
+      status: 'FINISHED',
+      minute: 90,
+      goals: [
+        ...(atHalfTime.goals as unknown[]),
+        { team: 'Coventry City', minute: 49, scorer: 'Haji Wright' },
+        { team: 'Spurs', minute: 58, scorer: 'Omar Marmoush' },
+        { team: 'Spurs', minute: 90, scorer: 'Micky van de Ven' },
+      ],
+    };
+    const feed = buildMatchFeed({
+      gw: 7,
+      fixtures: [spursCoventry],
+      liveByFixtureIndex: new Map([[9, finished]]),
+      picks: { '9': 'H' },
+      nowMs: KO + 3 * 3_600_000,
+      posts: [...posts, post('sh:9', 'second-half', '2026-10-19T20:02:00Z')],
+    });
+    const secondHalf = feed.find((item) => item.id === 'sh:9');
+    expect(secondHalf?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
+    expect(secondHalf?.match?.awayScorers ?? []).toEqual([]);
+  });
 });
 
 describe('merging posts', () => {
