@@ -1243,6 +1243,13 @@ export function buildMatchFeed(input: {
   if (input.userId && input.leagues?.length) {
     items.push(...leagueMomentsFromEvents(outcomeEvents, input.leagues, input.userId, input.overall));
   }
+  // A day's wrap-up follows that day's real final whistles, where the full-time cards are in.
+  const fullTimeAt = new Map<number, number>();
+  items.forEach((item) => {
+    if (item.kind !== 'full-time') return;
+    const idx = fixtureIndexOfCard(item.id);
+    if (idx != null) fullTimeAt.set(idx, Math.max(fullTimeAt.get(idx) ?? item.sortAt, item.sortAt));
+  });
   items.push(
     ...dayRoundUps({
       fixtures,
@@ -1250,6 +1257,7 @@ export function buildMatchFeed(input: {
       resolve,
       leagues: input.leagues,
       userId: input.userId,
+      fullTimeAt,
     })
   );
 
@@ -1523,6 +1531,8 @@ function dayRoundUps(input: {
   resolve: (fixture: Fixture) => LiveScore | undefined;
   leagues?: LeaguePickSnap[];
   userId?: string | null;
+  /** When each match's full-time card landed, by fixture index. */
+  fullTimeAt?: Map<number, number>;
 }): FeedItem[] {
   const groups = new Map<string, { at: number; fixtures: Fixture[] }>();
   input.fixtures.forEach((fixture) => {
@@ -1538,7 +1548,12 @@ function dayRoundUps(input: {
   const cards: FeedItem[] = [];
   groups.forEach((group, key) => {
     if (!group.fixtures.every((fixture) => input.resolve(fixture)?.status === 'FINISHED')) return;
-    const lastWhistle = Math.max(...group.fixtures.map((fixture) => (kickoffMs(fixture) ?? group.at) + 100 * 60_000));
+    // The real final whistle when its full-time card is in; otherwise kickoff + 100 minutes.
+    const lastWhistle = Math.max(
+      ...group.fixtures.map(
+        (fixture) => input.fullTimeAt?.get(fixture.fixture_index) ?? (kickoffMs(fixture) ?? group.at) + 100 * 60_000
+      )
+    );
     const sortAt = lastWhistle + 60_000;
     const dayName = weekdayName(group.at);
     if (group.fixtures.length === 1) {

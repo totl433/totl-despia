@@ -166,6 +166,26 @@ describe('feed from stored posts', () => {
     // A goal card is a moment in play too: its chip isn't a final result.
     expect(feed.find((item) => item.id === 'goal:9:H1')?.match).toMatchObject({ homeScore: 1, awayScore: 0, finished: false });
   });
+
+  it('puts the day wrap-up after the real final whistle, not a guessed one', () => {
+    const finished: LiveScore = { ...atHalfTime, home_score: 3, away_score: 1, status: 'FINISHED', minute: 90 };
+    const build = (list: GameCentrePost[]) =>
+      buildMatchFeed({
+        gw: 7,
+        fixtures: [spursCoventry],
+        liveByFixtureIndex: new Map([[9, finished]]),
+        picks: { '9': 'H' },
+        nowMs: KO + 3 * 3_600_000,
+        posts: list,
+      });
+    const withWhistle = build([...posts, post('ft:9', 'full-time', '2026-10-19T20:52:00Z', { score: { home: 3, away: 1 } })]);
+    const ftAt = withWhistle.find((item) => item.id === 'ft:9')?.sortAt ?? 0;
+    const day = withWhistle.find((item) => item.id.startsWith('day:'));
+    expect(day?.sortAt).toBe(ftAt + 60_000);
+    expect(withWhistle.indexOf(day as never)).toBeGreaterThan(withWhistle.findIndex((item) => item.id === 'ft:9'));
+    // No full-time card yet: kickoff + 100 minutes, as before.
+    expect(build(posts).find((item) => item.id.startsWith('day:'))?.sortAt).toBe(KO + 101 * 60_000);
+  });
 });
 
 describe('merging posts', () => {
