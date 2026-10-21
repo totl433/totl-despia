@@ -80,7 +80,6 @@ import {
   fixtureIndexOfCard,
   fixtureSides,
   lastKickoffMs,
-  matchCenterClosesAtMs,
   matchCenterReactionCardId,
   rankChangeItem,
   rankOf,
@@ -1806,37 +1805,22 @@ export default function MatchCenterScreen() {
     };
   }, [mode, playRun]);
 
-  // Chat joins the feed when Match Center opens (line-up window), not at kickoff —
-  // otherwise pre-KO banter never appears while the XI cards are already live.
-  // Inline 75m (same as MATCH_CENTER_LINEUP_LEAD_MS) to avoid a Hermes TDZ on the named export.
-  const chatSince = React.useMemo(() => {
-    const ko = firstKickoffMs(board?.fixtures ?? []);
-    if (ko === null) return null;
-    return new Date(ko - 75 * 60_000).toISOString();
-  }, [board?.fixtures]);
-
-  // MC chat window ends at midnight on the day after the last kickoff.
-  const chatUntil = React.useMemo(() => {
-    const closes = matchCenterClosesAtMs(board?.fixtures ?? []);
-    return closes === null ? null : new Date(closes).toISOString();
-  }, [board?.fixtures]);
-
+  // Mini-league messages land in the feed whenever they're sent, with no gameweek window:
+  // the latest 150, placed by send time among the match cards.
   const { data: chatItems, isFetched: chatFetched } = useQuery({
-    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince && !!chatUntil,
-    queryKey: ['match-center-chat', leagueIds, chatSince, chatUntil, userId],
+    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0,
+    queryKey: ['match-center-chat', leagueIds, userId],
     staleTime: 15_000,
     refetchInterval: MC_CHAT_POLL_MS,
     queryFn: async (): Promise<FeedItem[]> => {
       const leagues = leaguesData?.leagues ?? [];
       const ids = leagues.map((league) => league.id);
-      if (!chatSince || !chatUntil || !ids.length) return [];
+      if (!ids.length) return [];
       const { data, error } = await supabase
         .from('league_messages')
         .select('id, league_id, user_id, content, created_at, reply_to:league_messages!reply_to_message_id(content)')
         .in('league_id', ids)
         .neq('user_id', VOLLEY_USER_ID)
-        .gte('created_at', chatSince)
-        .lt('created_at', chatUntil)
         .order('created_at', { ascending: false })
         .limit(150);
       if (error) throw error;
@@ -1874,7 +1858,6 @@ export default function MatchCenterScreen() {
           // Volley system messages belong in league chat, not Match Center.
           if (String(row.user_id) === VOLLEY_USER_ID) return [];
           const at = String(row.created_at);
-          if (at < chatSince || at >= chatUntil) return [];
           const body = String(row.content ?? '').trim();
           if (!body) return [];
           const replyRaw = row.reply_to;
@@ -1900,7 +1883,7 @@ export default function MatchCenterScreen() {
 
   // Push chat into the feed when messages land — avoid 15s hammering of league_messages.
   React.useEffect(() => {
-    if (mode !== 'live' || !leagueIds || !chatSince || !chatUntil) return;
+    if (mode !== 'live' || !leagueIds) return;
     const ids = leagueIds.split(',').filter(Boolean);
     if (!ids.length) return;
     const channel = supabase
@@ -1918,7 +1901,7 @@ export default function MatchCenterScreen() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [chatSince, chatUntil, leagueIds, mode, queryClient]);
+  }, [leagueIds, mode, queryClient]);
 
   // Tick until the *last* kickoff so late XIs unlock without leaving Match Center.
   // (Previously stopped at the first KO, which froze later Saturday 15:00 line-ups.)
@@ -2151,7 +2134,7 @@ export default function MatchCenterScreen() {
   const percentsEnabled = mode === 'live' && typeof gw === 'number' && (!useSeasonStack || !!seasonId);
   const overallEnabled = mode === 'live' && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId);
   const resultsEnabled = mode === 'live' && allFinished && typeof gw === 'number';
-  const chatEnabled = mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince;
+  const chatEnabled = mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0;
   const stillFetching = (enabled: boolean, fetched: boolean) => enabled && !fetched;
   // Before the first teams are out, the feed is only the coming-soon card —
   // don't hold the spinner for leagues, chat, tables, and the rest.
