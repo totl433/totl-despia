@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -69,7 +69,6 @@ import { getMonthForGw, SEASON_2026_27_LABEL, type LeaderboardSeasonKey } from '
 import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../lib/leagueSeasonPile';
 import { fetchAllSupabaseRows } from '../lib/profileStreakRows';
 import { useViewerSeason } from '../lib/useViewerSeason';
-import { VOLLEY_USER_ID } from '../lib/volley';
 import {
   alignChatSortAtMs,
   buildMatchFeed,
@@ -89,9 +88,19 @@ import {
   type FeedXiPlayer,
   type LeaguePickSnap,
   type LeagueStandingLine,
-  type LeagueTableSnap,
-  type OverallReplay,
 } from '../features/matchCenter/feed';
+import {
+  fetchLeagueChat,
+  fetchLeagueTables,
+  fetchMemberPicks,
+  fetchOverallReplay,
+  fetchPickPercentRows,
+  leaguePicksFrom,
+  memberIdsOf,
+  pickPercentsFrom,
+} from '../features/matchCenter/feedData';
+import { loadPastGameweek, type PastGameweek } from '../features/matchCenter/pastGameweek';
+import { compareFeedItems, gameweekOpensAtMs, isoOrNull, placeRoundUp, timelineRows, type TimelineRow } from '../features/matchCenter/timeline';
 
 type Mode = 'live' | 'sample' | 'play';
 
@@ -1413,6 +1422,28 @@ function FixtureTicker({
   );
 }
 
+/** Where one gameweek ends and the one before it begins, styled like a chat date badge. */
+function GameweekDivider({ gw }: { gw: number }) {
+  const t = useTokens();
+  const isDark = t.color.background.toLowerCase() !== '#f8fafc';
+  return (
+    <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 20 }}>
+      <View
+        style={{
+          backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.12)',
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 999,
+        }}
+      >
+        <TotlText style={{ fontSize: 12, lineHeight: 14, fontFamily: 'Gramatika-Medium', color: isDark ? '#F8FAFC' : 'rgba(15,23,42,0.70)' }}>
+          Gameweek {gw}
+        </TotlText>
+      </View>
+    </View>
+  );
+}
+
 export default function MatchCenterScreen() {
   const t = useTokens();
   const navigation = useNavigation<any>();
@@ -1437,7 +1468,7 @@ export default function MatchCenterScreen() {
   const [localReplies, setLocalReplies] = React.useState<FeedItem[]>([]);
   const queryClient = useQueryClient();
   const prevLeagueRanks = React.useRef<Map<string, number> | null>(null);
-  const scrollRef = React.useRef<FlatList<FeedItem>>(null);
+  const scrollRef = React.useRef<FlatList<TimelineRow>>(null);
 
   // Admin can open Last GW / Example; normal entry is always the live current GW.
   React.useEffect(() => {
@@ -1546,99 +1577,26 @@ export default function MatchCenterScreen() {
     queryKey: ['match-center-tables', gw, leagueIds],
     staleTime: MC_TABLE_MS,
     refetchInterval: MC_TABLE_MS,
-    queryFn: async (): Promise<LeagueTableSnap[]> => {
-      const leagues = leaguesData?.leagues ?? [];
-      const snaps = await Promise.all(
-        leagues.map(async (league) => {
-          const table = await api.getLeagueGwTable(league.id, gw as number);
-          return {
-            id: league.id,
-            name: league.name,
-            avatarUrl: resolveLeagueAvatarUri(league.avatar || getDefaultMlAvatarFilename(league.id)),
-            rows: table.rows.map((row) => ({
-              user_id: row.user_id,
-              name: row.name,
-              score: row.score,
-              avatarUrl: null as string | null,
-            })),
-          };
-        })
-      );
-      const ids = [...new Set(snaps.flatMap((league) => league.rows.map((row) => row.user_id)))];
-      const avatarById = new Map<string, string>();
-      if (ids.length) {
-        const { data: people } = await supabase.from('users').select('id, avatar_url').in('id', ids);
-        (people ?? []).forEach((person) => {
-          const avatar = typeof person.avatar_url === 'string' ? person.avatar_url.trim() : '';
-          if (avatar) avatarById.set(String(person.id), avatar);
-        });
-      }
-      return snaps.map((league) => ({
-        ...league,
-        rows: league.rows.map((row) => ({ ...row, avatarUrl: avatarById.get(row.user_id) ?? null })),
-      }));
-    },
+    queryFn: () => fetchLeagueTables(gw as number, leaguesData?.leagues ?? []),
   });
 
-  const memberIds = React.useMemo(() => {
-    const ids = new Set<string>();
-    (leagueTables ?? []).forEach((league) => league.rows.forEach((row) => ids.add(row.user_id)));
-    return [...ids].sort();
-  }, [leagueTables]);
+  const memberIds = React.useMemo(() => memberIdsOf(leagueTables), [leagueTables]);
 
   const { data: pickRows, isSuccess: picksReady, isFetched: picksFetched } = useQuery({
     enabled: mode === 'live' && typeof gw === 'number' && memberIds.length > 0 && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-picks', gw, useSeasonStack ? seasonId : 'legacy', memberIds.join(',')],
     staleTime: 60_000,
-    queryFn: async () => {
-      const pileB = useSeasonStack && !!seasonId;
-      let query = (supabase as any)
-        .from(pileB ? 'app_season_picks' : 'app_picks')
-        .select('user_id, fixture_index, pick')
-        .eq('gw', gw)
-        .in('user_id', memberIds);
-      if (pileB) query = query.eq('season_id', seasonId);
-      const { data, error } = await query.limit(2000);
-      if (error) throw error;
-      return (data ?? []) as Array<{ user_id: string; fixture_index: number; pick: string | null }>;
-    },
+    queryFn: () => fetchMemberPicks(gw as number, memberIds, { useSeasonStack, seasonId }),
   });
 
   const { data: pickPercentageRows, isFetched: percentsFetched } = useQuery({
     enabled: mode === 'live' && typeof gw === 'number' && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-pick-pct', gw, useSeasonStack ? seasonId : 'legacy'],
     staleTime: MC_HEAVY_STALE_MS,
-    queryFn: async () => {
-      const tables = useSeasonStack && seasonId ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
-      return fetchAllSupabaseRows<{ fixture_index: number; pick: string | null }>((from, to) => {
-        let query = (supabase as any).from(tables.picks).select('fixture_index, pick').eq('gw', gw);
-        if (useSeasonStack && seasonId) query = query.eq('season_id', seasonId);
-        return query.range(from, to);
-      });
-    },
+    queryFn: () => fetchPickPercentRows(gw as number, { useSeasonStack, seasonId }),
   });
 
-  const pickPercents = React.useMemo(() => {
-    const counts = new Map<number, { H: number; D: number; A: number; total: number }>();
-    (pickPercentageRows ?? []).forEach((row) => {
-      if (row.pick !== 'H' && row.pick !== 'D' && row.pick !== 'A') return;
-      if (typeof row.fixture_index !== 'number') return;
-      const current = counts.get(row.fixture_index) ?? { H: 0, D: 0, A: 0, total: 0 };
-      current[row.pick] += 1;
-      current.total += 1;
-      counts.set(row.fixture_index, current);
-    });
-    const out = new Map<number, { H: number; D: number; A: number }>();
-    counts.forEach((count, fixtureIndex) => {
-      if (count.total <= 0) return;
-      out.set(fixtureIndex, {
-        H: Math.round((count.H / count.total) * 100),
-        D: Math.round((count.D / count.total) * 100),
-        A: Math.round((count.A / count.total) * 100),
-      });
-    });
-    return out;
-  }, [pickPercentageRows]);
+  const pickPercents = React.useMemo(() => pickPercentsFrom(pickPercentageRows), [pickPercentageRows]);
 
   const seasonKey: LeaderboardSeasonKey = seasonLabel === SEASON_2026_27_LABEL ? '2026/27' : '2025/26';
   const month = typeof gw === 'number' ? getMonthForGw(gw, seasonKey) : null;
@@ -1648,78 +1606,13 @@ export default function MatchCenterScreen() {
     enabled: mode === 'live' && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId),
     queryKey: ['match-center-overall-replay', gw, useSeasonStack ? seasonId : 'legacy', monthLabel],
     staleTime: MC_HEAVY_STALE_MS,
-    queryFn: async (): Promise<OverallReplay> => {
-      const currentGw = gw as number;
-      const pileB = useSeasonStack && !!seasonId;
-      const tables = pileB ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
-      const [points, everyone] = await Promise.all([
-        fetchAllSupabaseRows<{ user_id: string; gw: number; points: number }>((from, to) => {
-          let query = (supabase as any)
-            .from(tables.gwPoints)
-            .select('user_id, gw, points')
-            .order('gw', { ascending: true })
-            .order('user_id', { ascending: true })
-            .range(from, to);
-          if (pileB) query = query.eq('season_id', seasonId);
-          return query;
-        }),
-        fetchAllSupabaseRows<{ user_id: string; fixture_index: number; pick: string | null }>((from, to) => {
-          let query = (supabase as any).from(tables.picks).select('user_id, fixture_index, pick').eq('gw', currentGw);
-          if (pileB) query = query.eq('season_id', seasonId);
-          return query.range(from, to);
-        }),
-      ]);
-      const beforeGw: Record<string, number> = {};
-      const monthBefore: Record<string, number> = {};
-      const monthStart = month?.startGw ?? currentGw;
-      points.forEach((row) => {
-        const id = String(row.user_id ?? '');
-        const week = Number(row.gw);
-        if (!id || !Number.isFinite(week) || week >= currentGw) return;
-        const pts = Number(row.points ?? 0);
-        beforeGw[id] = (beforeGw[id] ?? 0) + pts;
-        if (week >= monthStart) monthBefore[id] = (monthBefore[id] ?? 0) + pts;
-      });
-      const picks: Record<string, Record<number, Pick>> = {};
-      everyone.forEach((row) => {
-        if (row.pick !== 'H' && row.pick !== 'D' && row.pick !== 'A') return;
-        if (typeof row.fixture_index !== 'number') return;
-        const id = String(row.user_id ?? '');
-        if (!id) return;
-        const bag = picks[id] ?? {};
-        bag[row.fixture_index] = row.pick;
-        picks[id] = bag;
-      });
-      return { beforeGw, monthBefore, monthLabel, picks };
-    },
+    queryFn: () => fetchOverallReplay(gw as number, { useSeasonStack, seasonId }, month),
   });
 
-  const leaguePicks = React.useMemo((): LeaguePickSnap[] => {
-    if (!picksReady || !leagueTables) return [];
-    const byUser = new Map<string, Record<number, Pick>>();
-    (pickRows ?? []).forEach((row) => {
-      if (row.pick !== 'H' && row.pick !== 'D' && row.pick !== 'A') return;
-      const bag = byUser.get(row.user_id) ?? {};
-      bag[row.fixture_index] = row.pick;
-      byUser.set(row.user_id, bag);
-    });
-    const avatarByLeague = new Map(
-      (leaguesData?.leagues ?? []).map((league) => [
-        league.id,
-        resolveLeagueAvatarUri(league.avatar || getDefaultMlAvatarFilename(league.id)),
-      ])
-    );
-    return leagueTables.map((league) => ({
-      id: league.id,
-      name: league.name,
-      avatarUrl: avatarByLeague.get(league.id) ?? resolveLeagueAvatarUri(getDefaultMlAvatarFilename(league.id)),
-      members: league.rows.map((row) => ({
-        userId: row.user_id,
-        name: row.name,
-        picks: byUser.get(row.user_id) ?? {},
-      })),
-    }));
-  }, [leagueTables, leaguesData?.leagues, pickRows, picksReady]);
+  const leaguePicks = React.useMemo(
+    (): LeaguePickSnap[] => (picksReady && leagueTables ? leaguePicksFrom(leagueTables, pickRows, leaguesData?.leagues ?? []) : []),
+    [leagueTables, leaguesData?.leagues, pickRows, picksReady]
+  );
 
   const replayOn = leaguePicks.some((league) => league.members.some((member) => Object.keys(member.picks).length > 0));
 
@@ -1805,85 +1698,21 @@ export default function MatchCenterScreen() {
     };
   }, [mode, playRun]);
 
-  // Mini-league messages land in the feed whenever they're sent, with no gameweek window:
-  // the latest 150, placed by send time among the match cards.
+  // The gameweek on top holds every message from when its feed opened (its line-ups can
+  // land 75 minutes before kickoff) to now; earlier ones sit with the older gameweeks below.
+  const chatSince = React.useMemo(() => isoOrNull(gameweekOpensAtMs(board?.fixtures ?? [])), [board?.fixtures]);
+
   const { data: chatItems, isFetched: chatFetched } = useQuery({
-    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0,
-    queryKey: ['match-center-chat', leagueIds, userId],
+    enabled: mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince,
+    queryKey: ['match-center-chat', leagueIds, chatSince, userId],
     staleTime: 15_000,
     refetchInterval: MC_CHAT_POLL_MS,
-    queryFn: async (): Promise<FeedItem[]> => {
-      const leagues = leaguesData?.leagues ?? [];
-      const ids = leagues.map((league) => league.id);
-      if (!ids.length) return [];
-      const { data, error } = await supabase
-        .from('league_messages')
-        .select('id, league_id, user_id, content, created_at, reply_to:league_messages!reply_to_message_id(content)')
-        .in('league_id', ids)
-        .neq('user_id', VOLLEY_USER_ID)
-        .order('created_at', { ascending: false })
-        .limit(150);
-      if (error) throw error;
-      const rows = (data ?? []) as Array<{
-        id: string;
-        league_id: string;
-        user_id: string;
-        content: string | null;
-        created_at: string;
-        reply_to?: { content?: string | null } | Array<{ content?: string | null }> | null;
-      }>;
-      const nameById = new Map<string, string>();
-      const avatarById = new Map<string, string>();
-      const speakerIds = [...new Set(rows.map((row) => String(row.user_id)).filter(Boolean))];
-      if (speakerIds.length) {
-        const { data: people } = await supabase.from('users').select('id, name, avatar_url').in('id', speakerIds);
-        (people ?? []).forEach((person) => {
-          const name = typeof person.name === 'string' ? person.name.trim() : '';
-          if (name) nameById.set(String(person.id), name);
-          const avatar = typeof person.avatar_url === 'string' ? person.avatar_url.trim() : '';
-          if (avatar) avatarById.set(String(person.id), avatar);
-        });
-      }
-      const leagueName = new Map(leagues.map((league) => [league.id, league.name]));
-      const leagueAvatar = new Map(
-        leagues.map((league) => [
-          league.id,
-          resolveLeagueAvatarUri(league.avatar || getDefaultMlAvatarFilename(league.id)),
-        ])
-      );
-      return rows
-        .slice()
-        .reverse()
-        .flatMap((row) => {
-          // Volley system messages belong in league chat, not Match Center.
-          if (String(row.user_id) === VOLLEY_USER_ID) return [];
-          const at = String(row.created_at);
-          const body = String(row.content ?? '').trim();
-          if (!body) return [];
-          const replyRaw = row.reply_to;
-          const reply = Array.isArray(replyRaw) ? replyRaw[0] : replyRaw;
-          const replyTo = typeof reply?.content === 'string' ? reply.content.trim() : '';
-          return [
-            chatMessageItem({
-              id: String(row.id),
-              at,
-              leagueId: String(row.league_id),
-              leagueName: leagueName.get(String(row.league_id)) ?? 'Mini-league',
-              author: nameById.get(String(row.user_id)) ?? 'Someone',
-              body,
-              mine: userId != null && String(row.user_id) === userId,
-              replyTo: replyTo || null,
-              authorAvatar: avatarById.get(String(row.user_id)) ?? null,
-              leagueAvatar: leagueAvatar.get(String(row.league_id)) ?? null,
-            }),
-          ];
-        });
-    },
+    queryFn: () => fetchLeagueChat({ leagues: leaguesData?.leagues ?? [], since: chatSince, until: null, userId }),
   });
 
   // Push chat into the feed when messages land — avoid 15s hammering of league_messages.
   React.useEffect(() => {
-    if (mode !== 'live' || !leagueIds) return;
+    if (mode !== 'live' || !leagueIds || !chatSince) return;
     const ids = leagueIds.split(',').filter(Boolean);
     if (!ids.length) return;
     const channel = supabase
@@ -1901,7 +1730,7 @@ export default function MatchCenterScreen() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [leagueIds, mode, queryClient]);
+  }, [chatSince, leagueIds, mode, queryClient]);
 
   // Tick until the *last* kickoff so late XIs unlock without leaving Match Center.
   // (Previously stopped at the first KO, which froze later Saturday 15:00 line-ups.)
@@ -2042,13 +1871,13 @@ export default function MatchCenterScreen() {
     });
     const roundUp =
       allFinished && userId
-        ? buildRoundUp({
+        ? placeRoundUp(buildRoundUp({
             leagues: leagueTables ?? [],
             userId,
             userAvatar: profileSummary?.avatar_url ?? null,
             overallBefore: gwResults?.leaderboardChanges.overall.before ?? null,
             overallAfter: gwResults?.leaderboardChanges.overall.after ?? null,
-          })
+          }), match)
         : [];
     // Mini-league move cards only — no "this gameweek / overall" flash cards.
     const extra = replayOn ? [] : rankCards.filter((card) => card.kind === 'rank');
@@ -2069,17 +1898,7 @@ export default function MatchCenterScreen() {
         return body.length > 0 && !serverChat.some((row) => row.mine && row.body.trim() === body);
       })
       .map(placeChat);
-    const kindRank = (kind: FeedItem['kind']): number => {
-      if (kind === 'half-time') return 10;
-      if (kind === 'second-half') return 20;
-      if (kind === 'goal' || kind === 'ruled-out') return 30;
-      if (kind === 'rank') return 40;
-      if (kind === 'message') return 50;
-      return 35;
-    };
-    return [...match, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(
-      (a, b) => a.sortAt - b.sortAt || kindRank(a.kind) - kindRank(b.kind) || a.id.localeCompare(b.id)
-    );
+    return [...match, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(compareFeedItems);
   }, [allFinished, board, chatItems, clockMs, feedPosts, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
 
   // The feed is rebuilt whenever scores, chat or tables refresh, which makes every card a
@@ -2134,7 +1953,7 @@ export default function MatchCenterScreen() {
   const percentsEnabled = mode === 'live' && typeof gw === 'number' && (!useSeasonStack || !!seasonId);
   const overallEnabled = mode === 'live' && typeof gw === 'number' && !!userId && (!useSeasonStack || !!seasonId);
   const resultsEnabled = mode === 'live' && allFinished && typeof gw === 'number';
-  const chatEnabled = mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0;
+  const chatEnabled = mode === 'live' && (leaguesData?.leagues.length ?? 0) > 0 && !!chatSince;
   const stillFetching = (enabled: boolean, fetched: boolean) => enabled && !fetched;
   // Before the first teams are out, the feed is only the coming-soon card —
   // don't hold the spinner for leagues, chat, tables, and the rest.
@@ -2251,9 +2070,54 @@ export default function MatchCenterScreen() {
     };
   }, [chatItems, mode, optimisticallyClear, userId]);
 
+  // Older gameweeks join the bottom of the Game Centre one at a time as it scrolls down,
+  // back to gameweek 1, so the feed reads as one timeline through the season.
+  const topOpensAtMs = gameweekOpensAtMs(board?.fixtures ?? []);
+  const timelineOn =
+    newestFirst && mode === 'live' && typeof gw === 'number' && gw > 1 && topOpensAtMs != null && !prepping && leaguesFetched;
+  const pastQuery = useInfiniteQuery({
+    enabled: timelineOn,
+    queryKey: ['game-centre-timeline', gw, topOpensAtMs, leagueIds, useSeasonStack ? seasonId : 'legacy', userId, postsOn],
+    initialPageParam: { gw: (gw ?? 1) - 1, untilMs: topOpensAtMs } as { gw: number; untilMs: number | null },
+    queryFn: ({ pageParam }) =>
+      loadPastGameweek({
+        queryClient,
+        gw: pageParam.gw,
+        untilMs: pageParam.untilMs,
+        leagues: leaguesData?.leagues ?? [],
+        season: { useSeasonStack, seasonId },
+        seasonKey,
+        userId,
+        userAvatar: profileSummary?.avatar_url ?? null,
+        postsOn,
+      }),
+    getNextPageParam: (last, _pages, lastParam) =>
+      last.gw > 1 ? { gw: last.gw - 1, untilMs: last.opensAtMs ?? lastParam.untilMs } : undefined,
+    // Weeks gone by hardly change; reactions and comment counts on them stay live anyway.
+    staleTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const pastPages = React.useMemo(
+    () => (newestFirst && mode === 'live' ? pastQuery.data?.pages ?? [] : []),
+    [mode, newestFirst, pastQuery.data?.pages]
+  );
+  const pastWeekOf = React.useMemo(() => {
+    const byItem = new WeakMap<FeedItem, PastGameweek>();
+    pastPages.forEach((page) => page.items.forEach((item) => byItem.set(item, page)));
+    return byItem;
+  }, [pastPages]);
+  const pastItems = React.useMemo(() => pastPages.flatMap((page) => page.items), [pastPages]);
+  const loadOlderWeek = React.useCallback(() => {
+    if (!timelineOn || !pastQuery.hasNextPage || pastQuery.isFetching) return;
+    void pastQuery.fetchNextPage();
+  }, [pastQuery, timelineOn]);
+
   const chatRecordIds = React.useMemo(
-    () => (chatItems ?? []).map((item) => chatRecordId(item.id)).filter((id): id is string => id != null),
-    [chatItems]
+    () =>
+      [...(chatItems ?? []), ...pastItems.filter((item) => item.kind === 'message')]
+        .map((item) => chatRecordId(item.id))
+        .filter((id): id is string => id != null),
+    [chatItems, pastItems]
   );
   const { reactions, toggleReaction } = useLeagueChatReactions({
     leagueId: mode === 'live' && chatRecordIds.length > 0 ? 'match-center' : null,
@@ -2262,33 +2126,48 @@ export default function MatchCenterScreen() {
     enabled: mode === 'live' && !!userId,
   });
 
-  const cardReactionIds = React.useMemo(() => {
-    if (typeof gw !== 'number') return [] as string[];
-    return feed
-      .filter((item) => gameCentreCardType(item.kind) === 'public')
-      .map((item) => matchCenterReactionCardId(gw, item.id));
-  }, [feed, gw]);
-
   // Cards built from stored posts have permanent ids, so they can carry comments and any emoji.
   const social = !!feedPosts && mode === 'live' && typeof gw === 'number';
+  /** The gameweek a card belongs to: the one on top, or the older week it was loaded with. */
+  const weekOf = React.useCallback(
+    (item: FeedItem): { gw: number | null; social: boolean; fixtures: Fixture[] } => {
+      const past = pastWeekOf.get(item);
+      if (past) return { gw: past.gw, social: past.social, fixtures: past.fixtures };
+      return { gw: typeof gw === 'number' ? gw : null, social, fixtures: board?.fixtures ?? [] };
+    },
+    [board?.fixtures, gw, pastWeekOf, social]
+  );
+  // Reactions stay on each card; comments live on one thread per match, so every card for
+  // a match shows the same count.
+  const { socialCardIds, plainCardIds, cardCommentIds } = React.useMemo(() => {
+    const socialIds: string[] = [];
+    const plainIds: string[] = [];
+    const commentIds = new Set<string>();
+    [...feed, ...pastItems].forEach((item) => {
+      if (gameCentreCardType(item.kind) !== 'public') return;
+      const week = weekOf(item);
+      if (week.gw == null) return;
+      const id = matchCenterReactionCardId(week.gw, item.id);
+      if (week.social) {
+        socialIds.push(id);
+        commentIds.add(fixtureEngagementId(week.gw, item.id));
+      } else {
+        plainIds.push(id);
+      }
+    });
+    return { socialCardIds: socialIds, plainCardIds: plainIds, cardCommentIds: [...commentIds] };
+  }, [feed, pastItems, weekOf]);
   const { reactions: cardReactions, toggleReaction: toggleCardReaction } = useMatchCenterCardReactions({
-    cardIds: cardReactionIds,
+    cardIds: plainCardIds,
     userId,
-    enabled: mode === 'live' && !!userId && typeof gw === 'number' && !social,
+    enabled: mode === 'live' && !!userId && plainCardIds.length > 0,
   });
   const { reactions: socialReactions, toggleReaction: toggleSocialReaction } = useGameCentreReactions({
-    cardIds: cardReactionIds,
+    cardIds: socialCardIds,
     userId,
-    enabled: social,
+    enabled: mode === 'live' && socialCardIds.length > 0,
   });
-  // Comments live on one thread per match, so every card for it shows the same count.
-  const cardCommentIds = React.useMemo(() => {
-    if (typeof gw !== 'number') return [] as string[];
-    return feed
-      .filter((item) => gameCentreCardType(item.kind) === 'public')
-      .map((item) => fixtureEngagementId(gw, item.id));
-  }, [feed, gw]);
-  const commentCounts = useCardCommentCounts(cardCommentIds, social);
+  const commentCounts = useCardCommentCounts(cardCommentIds, mode === 'live' && cardCommentIds.length > 0);
   const [pickerFor, setPickerFor] = React.useState<FeedItem | null>(null);
 
   const toggleReply = React.useCallback((item: FeedItem) => {
@@ -2324,12 +2203,13 @@ export default function MatchCenterScreen() {
     (item: FeedItem, emoji: string) => {
       if (gameCentreCardType(item.kind) !== 'public') return;
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      if (social && userId && typeof gw === 'number') {
-        void toggleSocialReaction(matchCenterReactionCardId(gw, item.id), emoji);
+      const week = weekOf(item);
+      if (week.social && userId && week.gw != null) {
+        void toggleSocialReaction(matchCenterReactionCardId(week.gw, item.id), emoji);
         return;
       }
-      if (mode === 'live' && userId && typeof gw === 'number') {
-        void toggleCardReaction(matchCenterReactionCardId(gw, item.id), emoji);
+      if (mode === 'live' && userId && week.gw != null) {
+        void toggleCardReaction(matchCenterReactionCardId(week.gw, item.id), emoji);
         return;
       }
       setLocalReactions((current) => ({
@@ -2337,14 +2217,15 @@ export default function MatchCenterScreen() {
         [item.id]: applySingleCardReaction(current[item.id], emoji),
       }));
     },
-    [gw, mode, social, toggleCardReaction, toggleSocialReaction, userId]
+    [mode, toggleCardReaction, toggleSocialReaction, userId, weekOf]
   );
 
   const commentOnCard = React.useCallback(
     async (item: FeedItem, text: string) => {
-      if (!social || !userId || typeof gw !== 'number') return false;
+      const week = weekOf(item);
+      if (!week.social || !userId || week.gw == null) return false;
       try {
-        const threadId = fixtureEngagementId(gw, item.id);
+        const threadId = fixtureEngagementId(week.gw, item.id);
         await postCardComment({ cardId: threadId, userId, content: text });
         void queryClient.invalidateQueries({ queryKey: ['game-centre-comment-counts'] });
         void queryClient.invalidateQueries({ queryKey: ['game-centre-comments', threadId] });
@@ -2355,21 +2236,22 @@ export default function MatchCenterScreen() {
         return false;
       }
     },
-    [gw, queryClient, social, userId]
+    [queryClient, userId, weekOf]
   );
 
   const openCardComments = React.useCallback(
     (item: FeedItem) => {
-      if (!social || typeof gw !== 'number') return;
+      const { gw: cardGw, social: cardSocial, fixtures: cardFixtures } = weekOf(item);
+      if (!cardSocial || cardGw == null) return;
       const idx = fixtureIndexOfCard(item.id);
-      const fixture = idx == null ? undefined : board?.fixtures?.find((entry) => entry.fixture_index === idx);
+      const fixture = idx == null ? undefined : cardFixtures.find((entry) => entry.fixture_index === idx);
       if (fixture) {
         const sides = fixtureSides(fixture);
         navigation.navigate('CardComments', {
-          cardId: fixtureEngagementId(gw, item.id),
+          cardId: fixtureEngagementId(cardGw, item.id),
           title: `${sides.home.name} vs ${sides.away.name}`,
           match: {
-            gw,
+            gw: cardGw,
             fixtureIndex: fixture.fixture_index,
             apiMatchId: fixture.api_match_id ?? null,
             kickoffTime: fixture.kickoff_time ?? null,
@@ -2380,12 +2262,12 @@ export default function MatchCenterScreen() {
       }
       const header = gameCentreCardHeader(item);
       navigation.navigate('CardComments', {
-        cardId: fixtureEngagementId(gw, item.id),
+        cardId: fixtureEngagementId(cardGw, item.id),
         title: header.title,
         subtitle: header.subtitle,
       });
     },
-    [board?.fixtures, gw, navigation, social]
+    [navigation, weekOf]
   );
 
   const sendReply = React.useCallback(
@@ -2793,12 +2675,18 @@ export default function MatchCenterScreen() {
   // Only the cards near the screen are drawn; a gameweek's feed runs past 100 cards, and
   // drawing them all at once held up every tap for seconds.
   const shownFeed = React.useMemo(() => (newestFirst ? [...feed].reverse() : feed), [feed, newestFirst]);
-  const renderFeedItem = ({ item, index: shownIndex }: { item: FeedItem; index: number }) => {
+  const rows = React.useMemo(() => timelineRows(shownFeed, pastPages), [pastPages, shownFeed]);
+  const renderFeedItem = ({ item: row, index: shownIndex }: { item: TimelineRow; index: number }) => {
+    if (row.type === 'divider') return <GameweekDivider gw={row.gw} />;
+    const item = row.item;
+    // Older gameweeks are history: nothing arrives or celebrates there.
+    const latest = row.gw == null;
     // Pairing with the card before it in time, whichever way the feed reads.
     const index = newestFirst ? feed.length - 1 - shownIndex : shownIndex;
-    const previous = feed[index - 1];
+    const previous = latest ? feed[index - 1] : undefined;
+    const celebrate = latest && celebrateIds.has(item.id);
     const celebratedWithPrevious =
-      previous != null && celebrateIds.has(item.id) && celebrateIds.has(previous.id);
+      previous != null && celebrate && celebrateIds.has(previous.id);
     const arriveDelay =
       celebratedWithPrevious &&
       ((item.kind === 'rank' && previous.kind === 'goal') ||
@@ -2811,7 +2699,7 @@ export default function MatchCenterScreen() {
         <MessageRow
           item={item}
           onOpen={openItem}
-          celebrate={celebrateIds.has(item.id)}
+          celebrate={celebrate}
           arriveDelay={arriveDelay}
           replying={replyId === item.id}
           replyDraft={replyId === item.id ? replyDraft : ''}
@@ -2831,18 +2719,18 @@ export default function MatchCenterScreen() {
         />
       );
     }
-    const cardKey =
-      typeof gw === 'number' && mode === 'live' ? matchCenterReactionCardId(gw, item.id) : item.id;
+    const week = weekOf(item);
+    const cardKey = week.gw != null && mode === 'live' ? matchCenterReactionCardId(week.gw, item.id) : item.id;
     const cardReactable = gameCentreCardType(item.kind) === 'public';
     return (
       <FeedCard
         item={item}
         onOpen={openItem}
-        celebrate={celebrateIds.has(item.id)}
+        celebrate={celebrate}
         arriveDelay={arriveDelay}
         reactions={
           cardReactable
-            ? social
+            ? week.social
               ? socialReactions[cardKey] ?? NO_REACTIONS
               : mode === 'live'
                 ? cardReactions[cardKey] ?? NO_REACTIONS
@@ -2851,9 +2739,9 @@ export default function MatchCenterScreen() {
         }
         onReact={cardReactable ? cardHandlers.reactToCard : undefined}
         social={
-          cardReactable && social
+          cardReactable && week.social
             ? {
-                commentCount: typeof gw === 'number' ? commentCounts[fixtureEngagementId(gw, item.id)] ?? 0 : 0,
+                commentCount: week.gw != null ? commentCounts[fixtureEngagementId(week.gw, item.id)] ?? 0 : 0,
                 onMore: cardHandlers.openPicker,
                 onComment: cardHandlers.commentOnCard,
                 onOpenComments: cardHandlers.openCardComments,
@@ -2912,8 +2800,8 @@ export default function MatchCenterScreen() {
       <Reanimated.View style={{ flex: 1 }} layout={LinearTransition.duration(220)}>
       <FlatList
         ref={scrollRef}
-        data={prepping ? [] : shownFeed}
-        keyExtractor={(item) => (mode === 'play' ? `${playRun}-${item.id}` : item.id)}
+        data={prepping ? [] : rows}
+        keyExtractor={(row) => (mode === 'play' ? `${playRun}-${row.key}` : row.key)}
         renderItem={renderFeedItem}
         initialNumToRender={6}
         maxToRenderPerBatch={4}
@@ -2922,6 +2810,19 @@ export default function MatchCenterScreen() {
         scrollEventThrottle={16}
         onContentSizeChange={holdLastCard}
         maintainVisibleContentPosition={newestFirst ? { minIndexForVisible: 0 } : undefined}
+        onEndReached={loadOlderWeek}
+        onEndReachedThreshold={1.5}
+        ListFooterComponent={
+          timelineOn && !prepping ? (
+            pastQuery.isFetching ? (
+              <ActivityIndicator style={{ paddingVertical: 24 }} color={t.color.brand} />
+            ) : pastQuery.isError ? (
+              <Pressable accessibilityRole="button" onPress={() => void pastQuery.fetchNextPage()} style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <TotlText variant="muted">Couldn’t load the gameweek before. Tap to try again.</TotlText>
+              </Pressable>
+            ) : null
+          ) : null
+        }
         refreshControl={
           newestFirst && mode === 'live' ? (
             <RefreshControl refreshing={pullRefreshing} onRefresh={() => void onPullRefresh()} tintColor={t.color.brand} colors={[t.color.brand]} />

@@ -6,6 +6,17 @@ import { supabase } from '../lib/supabase';
 
 const POST_COLUMNS = 'id, gw, api_match_id, fixture_index, kind, status, details, occurred_minute, published_at, updated_at, revision';
 
+export async function fetchGameCentrePosts(gw: number): Promise<GameCentrePost[]> {
+  const { data, error } = await (supabase as any)
+    .from('game_centre_posts')
+    .select(POST_COLUMNS)
+    .eq('gw', gw)
+    .order('published_at', { ascending: true })
+    .limit(1000);
+  if (error) throw error;
+  return (data ?? []) as GameCentrePost[];
+}
+
 /**
  * The gameweek's stored Game Centre posts (one row per match event), loaded once and
  * then kept live through Realtime. A correction updates its post in place.
@@ -21,16 +32,7 @@ export function useGameCentrePosts(gw: number | null, enabled: boolean) {
     staleTime: 60_000,
     // Realtime carries changes; this is the fallback if a channel drops.
     refetchInterval: 60_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('game_centre_posts')
-        .select(POST_COLUMNS)
-        .eq('gw', gw)
-        .order('published_at', { ascending: true })
-        .limit(1000);
-      if (error) throw error;
-      return (data ?? []) as GameCentrePost[];
-    },
+    queryFn: () => fetchGameCentrePosts(gw as number),
     structuralSharing: (previous, next) =>
       Array.isArray(previous) ? mergeGameCentrePosts(previous as GameCentrePost[], next as GameCentrePost[]) : next,
   });
