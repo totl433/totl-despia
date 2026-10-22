@@ -26,19 +26,22 @@ const FOOTER_GAP = 12;
 
 /**
  * The shared Game Centre card: header, the card's own content, then an optional footer,
- * 28pt apart. The content is whatever the card already showed.
+ * 28pt apart (`gap` changes it). The content is whatever the card already showed.
  */
 export default function GameCentreCard({
   header,
   children,
   footer,
   backgroundColor,
+  gap = SECTION_GAP,
   style,
 }: {
   header: React.ReactNode;
   children?: React.ReactNode;
   footer?: React.ReactNode;
   backgroundColor?: string;
+  /** Space between header, content and footer. */
+  gap?: number;
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTokens();
@@ -51,7 +54,7 @@ export default function GameCentreCard({
           backgroundColor: backgroundColor ?? t.color.surface,
           paddingTop: 20,
           paddingBottom: footer ? 0 : 20,
-          gap: SECTION_GAP,
+          gap,
         },
         style,
       ]}

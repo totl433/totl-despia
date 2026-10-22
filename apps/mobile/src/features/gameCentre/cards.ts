@@ -137,12 +137,12 @@ export function predictionsClosesLine(gw: number, deadlineMs: number | null, now
   return `Gameweek ${gw}: Closes in ${span}`;
 }
 
-/** "Sat 12:30" in the viewer's time zone, as the Predictions page shows deadlines. */
+/** "Friday, 21:00" in the viewer's time zone: the full day, as the pinned cards name it. */
 export function dayAndTime(ms: number): string {
   const d = new Date(ms);
-  const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
+  const day = d.toLocaleDateString('en-GB', { weekday: 'long' });
   const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${day} ${time}`;
+  return `${day}, ${time}`;
 }
 
 export type PinnedCardAction = 'predict' | 'roundUp' | 'moveOn';
@@ -183,7 +183,7 @@ export function pinnedCardCopy(
     case 'locked':
       return {
         title: "You're in",
-        subtitle: pin.kickoffMs != null ? `Gameweek ${pin.gw}: Kicks off ${dayAndTime(pin.kickoffMs).replace(' ', ', ')}` : `Gameweek ${pin.gw}: Kicks off soon`,
+        subtitle: pin.kickoffMs != null ? `Gameweek ${pin.gw}: Kicks off ${dayAndTime(pin.kickoffMs)}` : `Gameweek ${pin.gw}: Kicks off soon`,
         action: null,
         actionLabel: null,
       };

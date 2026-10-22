@@ -9,6 +9,8 @@ import GameCentreCard, { GameCentreCardButton, GameCentreCardHeader } from './Ga
 
 /** Figma 297:32555; Labels/Tertiary #3C3C43 at 30% is baked into the file. */
 const PIN = Asset.fromModule(require('../../../assets/icons/pin.svg')).uri;
+/** The pinned card sits tighter than feed cards: 20pt between header and buttons (Figma 320:33327). */
+const PINNED_GAP = 20;
 
 /**
  * Pinned above the Game Centre feed: where you are in the gameweek (Figma 295:35045), from
@@ -54,6 +56,7 @@ function GameCentrePinnedCard({
   const dismiss = !!onDismiss && pinDismissible(pin);
   return (
     <GameCentreCard
+      gap={PINNED_GAP}
       header={
         <GameCentreCardHeader
           title={copy.title}
