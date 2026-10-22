@@ -22,6 +22,11 @@
 [functions."sendPredictionReminder"]
   schedule = "*/15 * * * *"  # Every 15 minutes
 
+# The Players daily reminder at 9:30am London time. Cron runs in UTC, so this fires at
+# 08:30 and 09:30 UTC and the function sends only on the run that is 9:30 in London.
+[functions."sendPlayersDailyReminder"]
+  schedule = "30 8,9 * * *"
+
 # REMOVED: sendScoreNotifications scheduled function
 # Notifications are now handled by sendScoreNotificationsWebhook (triggered by database webhook)
 # The scheduled version was removed because it was redundant and less reliable than webhook-triggered notifications
