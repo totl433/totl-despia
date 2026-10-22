@@ -171,6 +171,22 @@ const catalogData = {
     "deep_links": { "url_format": null },
     "rollout": { "enabled": true, "percentage": 100 }
   },
+  "players-daily": {
+    "notification_key": "players-daily",
+    "owner": "scheduled",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "all_subscribed_users",
+    "source": "scheduled_function",
+    "trigger": { "name": "players_daily_0930_london", "event_id_format": "players_daily:{day}" },
+    "dedupe": { "scope": "global", "ttl_seconds": 86400 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": "daily-game-reminders", "default": true },
+    "onesignal": { "collapse_id_format": "players_daily:{day}", "thread_id_format": "totl_players", "android_group_format": "totl_players" },
+    "deep_links": { "url_format": "/players" },
+    "rollout": { "enabled": true, "percentage": 100 }
+  },
   "prediction-reminder": {
     "notification_key": "prediction-reminder",
     "owner": "scheduled",
