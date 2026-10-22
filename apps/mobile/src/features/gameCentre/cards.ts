@@ -183,7 +183,7 @@ export function pinnedCardCopy(
     case 'locked':
       return {
         title: "You're in",
-        subtitle: pin.kickoffMs != null ? `Gameweek ${pin.gw}: Kicks off at ${dayAndTime(pin.kickoffMs)}` : `Gameweek ${pin.gw}: Kicks off soon`,
+        subtitle: pin.kickoffMs != null ? `Gameweek ${pin.gw}: Kicks off ${dayAndTime(pin.kickoffMs).replace(' ', ', ')}` : `Gameweek ${pin.gw}: Kicks off soon`,
         action: null,
         actionLabel: null,
       };

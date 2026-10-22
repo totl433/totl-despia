@@ -94,7 +94,7 @@ describe('pinned card copy', () => {
   });
 
   it('names the deadline and kickoff as a day and time', () => {
-    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8: Kicks off at \w{3} \d{2}:\d{2}$/);
+    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8: Kicks off \w{3}, \d{2}:\d{2}$/);
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8 kicks off at \w{3} \d{2}:\d{2}$/);
   });
 });
