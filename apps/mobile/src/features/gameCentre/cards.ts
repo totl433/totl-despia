@@ -172,7 +172,7 @@ export function pinnedCardCopy(
   const lastWeek = (gw: number) => (scoreLabel ? `Gameweek ${gw}: ${scoreLabel}` : `Gameweek ${gw} is complete`);
   switch (pin.kind) {
     case 'predict':
-      return { title: "Don't miss the deadline!", subtitle: predictionsClosesLine(pin.gw, pin.deadlineMs, nowMs), action: 'predict', actionLabel: 'Submit your predictions' };
+      return { title: "Don't miss the deadline!", subtitle: predictionsClosesLine(pin.gw, pin.deadlineMs, nowMs), action: 'predict', actionLabel: 'Submit your picks' };
     case 'missed':
       return {
         title: 'Deadline passed',

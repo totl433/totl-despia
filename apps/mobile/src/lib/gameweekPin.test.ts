@@ -75,7 +75,7 @@ describe('pinned card state', () => {
 describe('pinned card copy', () => {
   it('uses the Figma wording and a button only where there is something to do', () => {
     const predict = pinnedCardCopy({ kind: 'predict', gw: 8, deadlineMs: DEADLINE }, DEADLINE - 2.5 * 3_600_000, null);
-    expect(predict).toEqual({ title: "Don't miss the deadline!", subtitle: 'Gameweek 8: Closes in 2h 30m', action: 'predict', actionLabel: 'Submit your predictions' });
+    expect(predict).toEqual({ title: "Don't miss the deadline!", subtitle: 'Gameweek 8: Closes in 2h 30m', action: 'predict', actionLabel: 'Submit your picks' });
 
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: 'Deadline passed', action: null });
     expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: "You're in", action: null });
