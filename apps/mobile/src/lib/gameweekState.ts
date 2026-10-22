@@ -207,7 +207,6 @@ export type GameweekPin =
   /** 1: picks due before the deadline. */
   | { kind: 'predict'; gw: number; deadlineMs: number | null }
   /** 2: picks in, still editable until the deadline. */
-  | { kind: 'picked'; gw: number; deadlineMs: number | null }
   /** 3: deadline passed without picks; waiting for kickoff. */
   | { kind: 'missed'; gw: number; kickoffMs: number | null }
   /** 4: picks locked in; waiting for kickoff. */
@@ -253,8 +252,9 @@ export function gameweekPin(
   switch (state) {
     case 'GW_OPEN':
       return { kind: 'predict', gw, deadlineMs };
+    // Submitted picks are final: from submitting until kickoff the card says you're locked in.
     case 'GW_PREDICTED':
-      return { kind: 'picked', gw, deadlineMs };
+      return { kind: 'locked', gw, kickoffMs };
     case 'DEADLINE_PASSED':
       return submitted ? { kind: 'locked', gw, kickoffMs } : { kind: 'missed', gw, kickoffMs };
     case 'RESULTS_PRE_GW':

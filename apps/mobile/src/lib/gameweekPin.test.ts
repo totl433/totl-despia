@@ -33,8 +33,8 @@ describe('pinned card state', () => {
     expect(gameweekPin(home(), before)).toEqual({ kind: 'predict', gw: 8, deadlineMs: DEADLINE });
   });
 
-  it('2: picks in before the deadline', () => {
-    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), before)).toEqual({ kind: 'picked', gw: 8, deadlineMs: DEADLINE });
+  it('2: picks in before the deadline are locked in, with nothing to edit', () => {
+    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), before)).toEqual({ kind: 'locked', gw: 8, kickoffMs: KO });
   });
 
   it('3 and 4: between the deadline and kickoff', () => {
@@ -77,11 +77,6 @@ describe('pinned card copy', () => {
     const predict = pinnedCardCopy({ kind: 'predict', gw: 8, deadlineMs: DEADLINE }, DEADLINE - 2.5 * 3_600_000, null);
     expect(predict).toEqual({ title: "Don't miss the deadline!", subtitle: 'Gameweek 8: Closes in 2h 30m', action: 'predict', actionLabel: 'Submit your predictions' });
 
-    expect(pinnedCardCopy({ kind: 'picked', gw: 8, deadlineMs: DEADLINE }, before, null)).toMatchObject({
-      title: "You're in",
-      action: 'predict',
-      actionLabel: 'Edit predictions',
-    });
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: 'Deadline passed', action: null });
     expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: "You're in", action: null });
     expect(pinnedCardCopy({ kind: 'comingSoon', gw: 7, nextGw: 8 }, before, '6/10')).toEqual({
@@ -99,7 +94,7 @@ describe('pinned card copy', () => {
   });
 
   it('names the deadline and kickoff as a day and time', () => {
-    expect(pinnedCardCopy({ kind: 'picked', gw: 8, deadlineMs: DEADLINE }, before, null).subtitle).toMatch(/^Gameweek 8: Edit until \w{3} \d{2}:\d{2}$/);
+    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8: Kicks off at \w{3} \d{2}:\d{2}$/);
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8 kicks off at \w{3} \d{2}:\d{2}$/);
   });
 });
@@ -109,7 +104,6 @@ describe('dismissing the pinned card', () => {
     const { pinDismissible } = await import('../features/gameCentre/cards');
     expect(pinDismissible({ kind: 'predict', gw: 8, deadlineMs: DEADLINE })).toBe(false);
     expect(pinDismissible({ kind: 'ready', gw: 7, nextGw: 8 })).toBe(false);
-    expect(pinDismissible({ kind: 'picked', gw: 8, deadlineMs: DEADLINE })).toBe(true);
     expect(pinDismissible({ kind: 'missed', gw: 8, kickoffMs: KO })).toBe(true);
     expect(pinDismissible({ kind: 'locked', gw: 8, kickoffMs: KO })).toBe(true);
     expect(pinDismissible({ kind: 'comingSoon', gw: 7, nextGw: 8 })).toBe(true);

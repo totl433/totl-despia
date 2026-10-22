@@ -152,7 +152,7 @@ export type PinnedCardAction = 'predict' | 'roundUp' | 'moveOn';
  * stay, since they are what moves the week along (and moving on is the review step).
  */
 export function pinDismissible(pin: GameweekPin): boolean {
-  return pin.kind === 'picked' || pin.kind === 'missed' || pin.kind === 'locked' || pin.kind === 'comingSoon';
+  return pin.kind === 'missed' || pin.kind === 'locked' || pin.kind === 'comingSoon';
 }
 
 /** A dismissal lasts for that gameweek and state, so the next state still shows. */
@@ -173,13 +173,6 @@ export function pinnedCardCopy(
   switch (pin.kind) {
     case 'predict':
       return { title: "Don't miss the deadline!", subtitle: predictionsClosesLine(pin.gw, pin.deadlineMs, nowMs), action: 'predict', actionLabel: 'Submit your predictions' };
-    case 'picked':
-      return {
-        title: "You're in",
-        subtitle: pin.deadlineMs != null ? `Gameweek ${pin.gw}: Edit until ${dayAndTime(pin.deadlineMs)}` : `Gameweek ${pin.gw}: Predictions in`,
-        action: 'predict',
-        actionLabel: 'Edit predictions',
-      };
     case 'missed':
       return {
         title: 'Deadline passed',
