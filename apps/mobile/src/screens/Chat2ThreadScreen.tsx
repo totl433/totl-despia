@@ -8,7 +8,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Ionicons } from '@expo/vector-icons';
 
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -18,6 +17,7 @@ import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { resolveLeagueAvatarUri } from '../lib/leagueAvatars';
 import ChatLeagueInfoSheet from '../components/chat/ChatLeagueInfoSheet';
+import ChatHeaderBackButton from '../components/chat/ChatHeaderBackButton';
 import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 
 function MiniLeaguesNavIcon({ color }: { color: string }) {
@@ -140,17 +140,7 @@ export default function Chat2ThreadScreen() {
 
     navigation.setOptions({
       headerBackVisible: false,
-      headerLeft: () => (
-        <Pressable
-          onPress={handleBackPress}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={10}
-          style={iconButtonStyle}
-        >
-          <Ionicons name="chevron-back" size={24} color={t.color.text} />
-        </Pressable>
-      ),
+      headerLeft: () => <ChatHeaderBackButton onPress={handleBackPress} />,
       headerTitle: () => (
         <ChatStackHeaderTitle
           title={leagueName || 'Chat'}

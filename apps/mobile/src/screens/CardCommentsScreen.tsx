@@ -1,10 +1,11 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { useTokens } from '@totl/ui';
 
 import LeagueChatTabV2, { type ChatThreadSource } from '../components/chat/LeagueChatTabV2';
+import ChatHeaderBackButton from '../components/chat/ChatHeaderBackButton';
 import ChatStackHeaderTitle from '../components/chat/ChatStackHeaderTitle';
 import { GameCentreCardHeader } from '../components/gameCentre/GameCentreCard';
 import GameCentreMatchChatHeader, { type MatchChatSide } from '../components/gameCentre/GameCentreMatchChatHeader';
@@ -62,7 +63,19 @@ export default function CardCommentsScreen() {
   });
 
   React.useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: () => <ChatStackHeaderTitle title={title} subtitle="Comments" avatarUri={null} /> });
+    // Our own chevron, as in league chat: the system one can come up empty on iOS 26+.
+    navigation.setOptions({
+      headerBackVisible: false,
+      headerLeft: () => (
+        <ChatHeaderBackButton
+          onPress={() => {
+            Keyboard.dismiss();
+            navigation.goBack();
+          }}
+        />
+      ),
+      headerTitle: () => <ChatStackHeaderTitle title={title} subtitle="Comments" avatarUri={null} />,
+    });
   }, [navigation, title]);
 
   const source = React.useMemo<ChatThreadSource>(
