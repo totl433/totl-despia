@@ -9,7 +9,7 @@ import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
-import { Card, TotlText, useTokens } from '@totl/ui';
+import { Button, Card, TotlText, useTokens } from '@totl/ui';
 import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { VOLLEY_AVATAR_SOURCE, VOLLEY_NAME, VOLLEY_USER_ID } from '../../lib/volley';
@@ -32,6 +32,8 @@ export type ChatThreadSource = {
   messages: LeagueChatMessage[];
   isLoading: boolean;
   error: unknown;
+  /** Offered as "Try again" when loading fails. */
+  retry?: () => unknown;
   sendMessage: (input: {
     userId: string;
     senderName: string;
@@ -297,6 +299,7 @@ export default function LeagueChatTabV2({
   });
   const messagesRaw = source ? source.messages : league.messages;
   const error = source ? source.error : league.error;
+  const retry = source ? source.retry : league.retry;
   const sendMessage = source ? source.sendMessage : league.sendMessage;
 
   useLeagueChatPresence({ leagueId, userId: meId, enabled: leagueChat });
@@ -461,6 +464,15 @@ export default function LeagueChatTabV2({
             Couldn’t load chat
           </TotlText>
           <TotlText variant="muted">{String(error)}</TotlText>
+          {retry ? (
+            <Button
+              title="Try again"
+              size="sm"
+              loading={!source && league.isRetrying}
+              onPress={() => void retry()}
+              style={{ marginTop: t.space[3], alignSelf: 'flex-start' }}
+            />
+          ) : null}
         </Card>
       ) : null}
 
