@@ -28,6 +28,8 @@ type ActivePopupStack = {
   persistSeen: boolean;
   initialShareCardId?: string;
   closeStackOnShareClose?: boolean;
+  /** Cabinet browse — skip celebration so the cards paint immediately. */
+  skipConfetti?: boolean;
 };
 
 type GwPointsRow = { user_id: string; gw: number; points: number };
@@ -54,7 +56,7 @@ type PopupCardsContextValue = {
   openTrophyCabinetPersonalWinners: (
     kind: 'gameweek' | 'monthly',
     gwsDescending: number[],
-    options?: { seasonScope?: string }
+    options?: { seasonScope?: string; payloadsByGw?: Record<number, PopupCardPayload> }
   ) => void;
   /** Opens stacked season champion cards (mini-leagues then overall), same stack as end-of-season popups. */
   openTrophyCabinetChampionCards: () => void | Promise<void>;
@@ -330,7 +332,13 @@ export default function PopupCardsProvider({ children }: { children: React.React
   }, []);
 
   const openStack = React.useCallback(
-    (cards: PopupCardDescriptor[], persistSeen: boolean, initialShareCardId?: string, closeStackOnShareClose = false) => {
+    (
+      cards: PopupCardDescriptor[],
+      persistSeen: boolean,
+      initialShareCardId?: string,
+      closeStackOnShareClose = false,
+      skipConfetti = false
+    ) => {
       if (!cards.length) return;
       setActiveStack((current) => {
         if (current) return current;
@@ -340,6 +348,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
           persistSeen,
           initialShareCardId,
           closeStackOnShareClose,
+          skipConfetti,
         };
       });
     },
@@ -528,7 +537,11 @@ export default function PopupCardsProvider({ children }: { children: React.React
   );
 
   const openTrophyCabinetPersonalWinners = React.useCallback(
-    (kind: 'gameweek' | 'monthly', gwsDescending: number[], options?: { seasonScope?: string }) => {
+    (
+      kind: 'gameweek' | 'monthly',
+      gwsDescending: number[],
+      options?: { seasonScope?: string; payloadsByGw?: Record<number, PopupCardPayload> }
+    ) => {
       const uniq = [...new Set(gwsDescending)].filter((gw) => typeof gw === 'number' && gw > 0);
       if (!uniq.length) return;
       uniq.sort((a, b) => b - a);
@@ -538,9 +551,10 @@ export default function PopupCardsProvider({ children }: { children: React.React
         createPopupCard('personalWinner', {
           id: `trophy-cabinet-${variant}-gw${gw}-${scope.replace(/\//g, '-')}`,
           eventKey: roundUpEventKey(`personalWinner:${variant}`, gw, scope),
+          payload: options?.payloadsByGw?.[gw],
         })
       );
-      openStack(cards, false);
+      openStack(cards, false, undefined, false, true);
     },
     [openStack, roundUpScope]
   );
@@ -557,7 +571,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
       });
       const cards = buildSeasonChampionPopupDescriptorsFromBundle(bundle);
       if (!cards.length) return;
-      openStack(cards, false);
+      openStack(cards, false, undefined, false, true);
     } catch (error) {
       console.error('[PopupCardsProvider] Failed to open champion trophy cards:', error);
     }
@@ -854,6 +868,7 @@ export default function PopupCardsProvider({ children }: { children: React.React
           visible={!!activeStack}
           initialShareCardId={activeStack?.initialShareCardId}
           closeStackOnShareClose={!!activeStack?.closeStackOnShareClose}
+          skipConfetti={!!activeStack?.skipConfetti}
           onDismissTop={dismissTop}
           onCloseAll={closeAll}
         />

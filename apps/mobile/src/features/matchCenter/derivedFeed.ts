@@ -42,6 +42,20 @@ import {
 
 export type FeedPerson = { id: string; name: string; avatarUrl: string | null };
 
+/** React Query persist turns Maps into plain objects — always coerce before `.get`. */
+export function toPeopleMap(
+  people: Map<string, FeedPerson> | Record<string, FeedPerson> | null | undefined
+): Map<string, FeedPerson> {
+  if (people instanceof Map) return people;
+  const out = new Map<string, FeedPerson>();
+  if (people && typeof people === 'object') {
+    for (const [id, person] of Object.entries(people)) {
+      if (person && typeof person === 'object') out.set(id, person);
+    }
+  }
+  return out;
+}
+
 export type LeagueJoin = {
   leagueId: string;
   leagueName: string;
@@ -72,7 +86,7 @@ export type DerivedFeedInput = {
   liveTable: Array<{ user_id: string; name: string; score: number }>;
   monthBefore: Record<string, number>;
   seasonBefore: Record<string, number>;
-  people: Map<string, FeedPerson>;
+  people: Map<string, FeedPerson> | Record<string, FeedPerson>;
   playersScores: Record<string, PlayersScoreStore>;
   nextHereWeGoMs: number | null;
   percents?: Map<number, { H: number; D: number; A: number }>;
@@ -408,14 +422,15 @@ export function playersStackItems(input: {
   nowMs: number;
   userId: string | null;
   scores: Record<string, PlayersScoreStore>;
-  people: Map<string, FeedPerson>;
+  people: Map<string, FeedPerson> | Record<string, FeedPerson>;
 }): FeedItem[] {
+  const people = toPeopleMap(input.people);
   const today = playersDayKey(new Date(input.nowMs));
   const yesterday = shiftPlayersDay(today, -1);
   const eightAm = localHourOnDay(input.nowMs, 8);
-  if (input.nowMs < eightAm) return playersEveningAndPerfect(input, today);
+  if (input.nowMs < eightAm) return playersEveningAndPerfect({ ...input, people }, today);
   const items: FeedItem[] = [];
-  const daily = topPlayers(input.scores, input.people, (store) => scoreForDay(store, yesterday));
+  const daily = topPlayers(input.scores, people, (store) => scoreForDay(store, yesterday));
   if (daily.length) {
     items.push(
       shoutCard({
@@ -423,13 +438,13 @@ export function playersStackItems(input: {
         sortAt: eightAm,
         title: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name))), `players:daily:${yesterday}`).title,
         body: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name))), `players:daily:${yesterday}`).line,
-        faces: facesFor(daily, input.people),
+        faces: facesFor(daily, people),
       })
     );
   }
   const weekClosed = yesterday === shiftPlayersDay(playersWeekStart(today), 6);
   if (weekClosed) {
-    const weekly = topPlayers(input.scores, input.people, (store) => scoreForWeek(store, yesterday));
+    const weekly = topPlayers(input.scores, people, (store) => scoreForWeek(store, yesterday));
     if (weekly.length) {
       items.push(
         shoutCard({
@@ -437,14 +452,14 @@ export function playersStackItems(input: {
           sortAt: eightAm + 30_000,
           title: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name))), `players:weekly:${yesterday}`).title,
           body: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name))), `players:weekly:${yesterday}`).line,
-          faces: facesFor(weekly, input.people),
+          faces: facesFor(weekly, people),
         })
       );
     }
   }
   const monthClosed = yesterday === `${playersMonthKey(yesterday)}-${String(playersDaysInMonth(yesterday)).padStart(2, '0')}`;
   if (monthClosed) {
-    const monthly = topPlayers(input.scores, input.people, (store) => scoreForMonth(store, yesterday));
+    const monthly = topPlayers(input.scores, people, (store) => scoreForMonth(store, yesterday));
     if (monthly.length) {
       items.push(
         shoutCard({
@@ -452,7 +467,7 @@ export function playersStackItems(input: {
           sortAt: eightAm + 60_000,
           title: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name))), `players:monthly:${yesterday}`).title,
           body: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name))), `players:monthly:${yesterday}`).line,
-          faces: facesFor(monthly, input.people),
+          faces: facesFor(monthly, people),
         })
       );
     }
@@ -471,12 +486,17 @@ export function playersStackItems(input: {
       })
     );
   }
-  items.push(...playersEveningAndPerfect(input, today));
+  items.push(...playersEveningAndPerfect({ ...input, people }, today));
   return items;
 }
 
 function playersEveningAndPerfect(
-  input: { nowMs: number; userId: string | null; scores: Record<string, PlayersScoreStore>; people: Map<string, FeedPerson> },
+  input: {
+    nowMs: number;
+    userId: string | null;
+    scores: Record<string, PlayersScoreStore>;
+    people: Map<string, FeedPerson> | Record<string, FeedPerson>;
+  },
   today: string
 ): FeedItem[] {
   const items: FeedItem[] = [];
@@ -496,9 +516,10 @@ function playersEveningAndPerfect(
       })
     );
   }
+  const people = toPeopleMap(input.people);
   const perfect = Object.entries(input.scores)
     .filter(([, store]) => store[today]?.correct === 10)
-    .map(([id]) => personRow(id, input.people, 'Someone'));
+    .map(([id]) => personRow(id, people, 'Someone'));
   for (const row of perfect) {
     items.push(
       shoutCard({
@@ -506,7 +527,7 @@ function playersEveningAndPerfect(
         sortAt: localHourOnDay(input.nowMs, 12),
         title: pickCopy(playersPerfectCopy(row.name), `players:perfect:${today}:${row.user_id}`).title,
         body: pickCopy(playersPerfectCopy(row.name), `players:perfect:${today}:${row.user_id}`).line,
-        faces: facesFor([row], input.people),
+        faces: facesFor([row], people),
       })
     );
   }
@@ -654,6 +675,7 @@ export function adminFeedItems(posts: AdminFeedPost[], nowMs: number): FeedItem[
 }
 
 export function buildDerivedFeed(input: DerivedFeedInput): FeedItem[] {
+  const people = toPeopleMap(input.people);
   const items: FeedItem[] = [];
   const first = firstKickoffMs(input.fixtures);
   const published = input.publishedFixtures?.length ? input.publishedFixtures : input.fixtures;
@@ -716,11 +738,11 @@ export function buildDerivedFeed(input: DerivedFeedInput): FeedItem[] {
         liveTable: input.liveTable,
         monthBefore: input.monthBefore,
         seasonBefore: input.seasonBefore,
-        people: input.people,
+        people,
       })
     );
   } else {
-    const luck = goodLuckItem(input);
+    const luck = goodLuckItem({ ...input, people });
     if (luck) items.push(luck);
   }
 
@@ -729,7 +751,7 @@ export function buildDerivedFeed(input: DerivedFeedInput): FeedItem[] {
       nowMs: input.nowMs,
       userId: input.userId,
       scores: input.playersScores,
-      people: input.people,
+      people,
     }),
     ...statMomentItems({
       seasonStats: input.seasonStats,

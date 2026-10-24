@@ -2208,7 +2208,7 @@ export default function MatchCenterScreen() {
       liveTable: liveTable?.rows ?? [],
       monthBefore: overallReplay?.monthBefore ?? {},
       seasonBefore: overallReplay?.beforeGw ?? {},
-      people: derivedExtras?.people ?? new Map(),
+      people: derivedExtras?.people ?? {},
       playersScores: derivedExtras?.playersScores ?? {},
       nextHereWeGoMs: hereWeGoMs(firstKickoffMs(home?.fixtures ?? [])),
       percents: pickPercents,

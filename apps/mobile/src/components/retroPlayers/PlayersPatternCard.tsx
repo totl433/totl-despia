@@ -23,14 +23,18 @@ export default function PlayersPatternCard({
   variant,
   children,
   style,
+  layout = 'fill',
 }: {
   variant: PlayersPatternVariant;
   children?: React.ReactNode;
   style?: ViewStyle;
+  /** `fill` sits in a sized parent (quiz card). `hug` sizes to children (stats cards). */
+  layout?: 'fill' | 'hug';
 }) {
+  const hug = layout === 'hug';
   return (
-    <View style={[styles.shadow, style]}>
-      <View style={[styles.clip, { backgroundColor: TILE_BASE[variant] }]}>
+    <View style={[hug ? styles.shadowHug : styles.shadow, style]}>
+      <View style={[styles.clip, hug ? styles.clipHug : null, { backgroundColor: TILE_BASE[variant] }]}>
         <Image
           source={variant === 'green' ? TILE_GREEN : TILE_LIGHT}
           resizeMode="repeat"
@@ -60,9 +64,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
+  shadowHug: {
+    borderRadius: 16,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.07,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
   clip: {
     flex: 1,
     borderRadius: PLAYERS_CARD.radius,
     overflow: 'hidden',
+  },
+  clipHug: {
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    borderRadius: 16,
   },
 });

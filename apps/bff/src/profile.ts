@@ -1,7 +1,8 @@
-import { computeLiveGwScoresForGw, computeLiveGwScoresForGwsBatch, rankUserInGwLiveScores } from './liveGwScores.js';
+import { computeLiveGwScoresForGw, rankUserInGwLiveScores } from './liveGwScores.js';
 import { resolveLeagueStartGw } from './leagueStart.js';
 import { upsertSubscriber, unsubscribeSubscriber } from './mailerlite.js';
-import { resolveSeasonCtx } from './seasonStack.js';
+import { isLeftoverPriorSeasonLastCompleted, resolveStatsHeadlineGws } from './profileStatsHeadline.js';
+import { applySeasonFilter, getSeasonTables, resolveSeasonCtx } from './seasonStack.js';
 
 const ADMIN_IDS = new Set<string>([
   // Founders
@@ -420,7 +421,7 @@ export type UserStatsData = {
   mostCorrectTeam: { code: string | null; name: string; percentage: number } | null;
   mostIncorrectTeam: { code: string | null; name: string; percentage: number } | null;
   weeklyParData: Array<{ gw: number; userPoints: number; averagePoints: number }> | null;
-  gameweekStreak: Array<{ gw: number; points: number | null }> | null;
+  gameweekStreak: Array<{ gw: number; points: number | null; seasonLabel?: string }> | null;
   trophyCabinet: { gameweekPodiums: number; monthlyPodiums: number; seasonPodiums: number } | null;
   lastSeasonChampions: { seasonLabel: string; names: string[] } | null;
 };
@@ -440,6 +441,21 @@ const LEADERBOARD_MONTH_BUCKETS: ReadonlyArray<{ startGw: number; endGw: number 
 ];
 
 const CURRENT_CAMPAIGN_END_GW = 38;
+const SEASON_2025_26_LABEL = '2025/26';
+const SEASON_2026_27_LABEL = '2026/27';
+
+const LEADERBOARD_MONTH_BUCKETS_2026_27: ReadonlyArray<{ startGw: number; endGw: number }> = [
+  { startGw: 1, endGw: 2 },
+  { startGw: 3, endGw: 5 },
+  { startGw: 6, endGw: 9 },
+  { startGw: 10, endGw: 12 },
+  { startGw: 13, endGw: 18 },
+  { startGw: 19, endGw: 23 },
+  { startGw: 24, endGw: 27 },
+  { startGw: 28, endGw: 30 },
+  { startGw: 31, endGw: 33 },
+  { startGw: 34, endGw: 38 },
+];
 
 function parsePreviousSeasonChampionsFromEnv(): { seasonLabel: string; names: string[] } | null {
   const raw =
@@ -607,24 +623,33 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     lastSeasonChampions: parsePreviousSeasonChampionsFromEnv(),
   };
 
-  const [{ data: lastGwData, error: lastGwErr }, { data: metaRow, error: metaErr }, overallStandings] = await Promise.all([
-    (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: false }).limit(1).maybeSingle(),
-    (supa as any).from('app_meta').select('current_gw').eq('id', 1).maybeSingle(),
-    fetchAllRowsPaged<{ user_id: string; name: string | null; ocp: number | null }>((from, to) =>
-      (supa as any).from('app_v_ocp_overall').select('user_id, name, ocp').order('user_id', { ascending: true }).range(from, to)
-    ),
-  ]);
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+  const pileB = !!(seasonCtx.useSeasonStack && seasonCtx.seasonId);
+  const tables = getSeasonTables({ useSeasonStack: pileB });
+  const seasonFilter = pileB
+    ? seasonCtx
+    : { useSeasonStack: false as const, seasonId: null as string | null };
+  const activeSeasonLabel =
+    (typeof seasonCtx.seasonLabel === 'string' && seasonCtx.seasonLabel.trim()) ||
+    (pileB ? SEASON_2026_27_LABEL : SEASON_2025_26_LABEL);
+
+  const lastGwQ = applySeasonFilter(
+    (supa as any).from(tables.results).select('gw').order('gw', { ascending: false }).limit(1),
+    seasonFilter
+  );
+  const { data: lastGwData, error: lastGwErr } = await lastGwQ.maybeSingle();
   if (lastGwErr) throw lastGwErr;
-  if (metaErr) throw metaErr;
 
-  const lastCompletedGw = (lastGwData?.gw as number | null) ?? null;
-  const metaGwRaw = Number(metaRow?.current_gw);
-  const metaGw = Number.isFinite(metaGwRaw) && metaGwRaw > 0 ? metaGwRaw : null;
-
-  const highlightGw =
-    lastCompletedGw != null && metaGw != null
-      ? Math.max(lastCompletedGw, metaGw)
-      : lastCompletedGw ?? metaGw ?? null;
+  const rawLastCompletedGw = (lastGwData?.gw as number | null) ?? null;
+  const metaGw = seasonCtx.currentGw > 0 ? seasonCtx.currentGw : null;
+  const leftoverPriorSeason = !pileB && isLeftoverPriorSeasonLastCompleted(rawLastCompletedGw, metaGw);
+  const headline = resolveStatsHeadlineGws({
+    lastCompletedGw: leftoverPriorSeason ? null : rawLastCompletedGw,
+    metaGw,
+  });
+  const lastCompletedGw = headline.lastCompletedGw;
+  const highlightGw = headline.highlightGw;
+  const historyLastCompletedGw = leftoverPriorSeason ? rawLastCompletedGw : lastCompletedGw;
 
   stats.lastCompletedGw = lastCompletedGw;
   stats.highlightGw = highlightGw;
@@ -635,46 +660,44 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
 
   if (!lastCompletedGw && !metaGw) return stats;
 
-  /** Never load unscoped `app_picks` — it grows with every user × GW and was widening live/fixture fetches to the whole season for everyone. */
-  const [myAppPicksPaged, legacyTableProbe] = await Promise.all([
-    fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
-      (supa as any)
-        .from('app_picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId)
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true })
-        .range(from, to)
-    ),
-    (supa as any).from('picks').select('gw').limit(1),
-  ]);
+  /** User picks from the active pile only — do not scan every historical GW’s live_scores/fixtures. */
+  const myAppPicksPaged = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
+    (from, to) =>
+      applySeasonFilter(
+        (supa as any)
+          .from(tables.picks)
+          .select('gw, fixture_index, pick')
+          .eq('user_id', userId)
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to),
+        seasonFilter
+      )
+  );
 
   let legacyPicksPaged: Array<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }> = [];
-  if (!legacyTableProbe.error) {
-    legacyPicksPaged = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>((from, to) =>
-      (supa as any)
-        .from('picks')
-        .select('gw, fixture_index, pick')
-        .eq('user_id', userId)
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true })
-        .range(from, to)
-    );
-  } else if (legacyTableProbe.error?.code !== '42P01') {
-    throw legacyTableProbe.error;
+  if (!pileB) {
+    const legacyTableProbe = await (supa as any).from('picks').select('gw').limit(1);
+    if (!legacyTableProbe.error) {
+      legacyPicksPaged = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
+        (from, to) =>
+          (supa as any)
+            .from('picks')
+            .select('gw, fixture_index, pick')
+            .eq('user_id', userId)
+            .order('gw', { ascending: true })
+            .order('fixture_index', { ascending: true })
+            .range(from, to)
+      );
+    } else if (legacyTableProbe.error?.code !== '42P01') {
+      throw legacyTableProbe.error;
+    }
   }
 
+  /** Live + fixtures only for the active meta / last-completed week — not every old GW. */
   const gwForFxLiveFetch = new Set<number>();
-  myAppPicksPaged.forEach((p) => {
-    const g = Number(p.gw);
-    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
-  });
-  legacyPicksPaged.forEach((p) => {
-    const g = Number(p.gw);
-    if (Number.isFinite(g)) gwForFxLiveFetch.add(g);
-  });
-  /** Always load fixtures/live for the meta line GW so `finalizedStatsGwCap` can detect last-kickoff FINISHED even if pick rows are missing or only legacy. */
   if (typeof metaGw === 'number' && metaGw > 0) gwForFxLiveFetch.add(metaGw);
+  if (typeof lastCompletedGw === 'number' && lastCompletedGw > 0) gwForFxLiveFetch.add(lastCompletedGw);
   const pickGwsSortedForFetch = [...gwForFxLiveFetch].sort((a, b) => a - b);
 
   let livePickRows: Array<{
@@ -696,12 +719,15 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
       home_score?: number | null;
       away_score?: number | null;
     }>((from, to) =>
-      (supa as any)
-        .from('app_gw_results')
-        .select('gw, fixture_index, result, api_match_id, home_score, away_score')
-        .order('gw', { ascending: true })
-        .order('fixture_index', { ascending: true })
-        .range(from, to)
+      applySeasonFilter(
+        (supa as any)
+          .from(tables.results)
+          .select('gw, fixture_index, result, api_match_id, home_score, away_score')
+          .order('gw', { ascending: true })
+          .order('fixture_index', { ascending: true })
+          .range(from, to),
+        seasonFilter
+      )
     ),
     (async (): Promise<{
       live: Array<{
@@ -734,16 +760,19 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
             .range(from, to)
         ),
         fetchAllRowsPaged<any>((from, to) =>
-          (supa as any)
-            .from('app_fixtures')
-            .select(
-              'gw, fixture_index, api_match_id, kickoff_time, home_code, away_code, home_name, away_name, home_team, away_team'
-            )
-            .in('gw', pickGwsSortedForFetch)
-            .order('gw', { ascending: true })
-            .order('fixture_index', { ascending: true })
-            .order('api_match_id', { ascending: true })
-            .range(from, to)
+          applySeasonFilter(
+            (supa as any)
+              .from(tables.fixtures)
+              .select(
+                'gw, fixture_index, api_match_id, kickoff_time, home_code, away_code, home_name, away_name, home_team, away_team'
+              )
+              .in('gw', pickGwsSortedForFetch)
+              .order('gw', { ascending: true })
+              .order('fixture_index', { ascending: true })
+              .order('api_match_id', { ascending: true })
+              .range(from, to),
+            seasonFilter
+          )
         ),
       ]);
       return { live: livePickPaged, fx: fxPickPaged };
@@ -768,7 +797,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   const appFxByGwForRemap = groupFixtureRowsByGw(fxPickRows);
 
   let webFxRows: any[] = [];
-  if (legacyPicksPaged.length > 0) {
+  if (!pileB && legacyPicksPaged.length > 0) {
     const legacyGws = [...new Set(legacyPicksPaged.map((p) => Number(p.gw)).filter((n) => Number.isFinite(n)))].sort(
       (a, b) => a - b
     );
@@ -860,61 +889,30 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   });
   if (total > 0) stats.correctPredictionRate = (correct / total) * 100;
 
-  const fieldAveragePromise = (async (): Promise<number | null> => {
-    let fieldCorrect = 0;
-    let fieldTotal = 0;
-    if (finalizedStatsGwCap != null && finalizedStatsGwCap >= 1) {
-      const allAppPicksRowsForField = await fetchAllRowsPaged<{ gw: number; fixture_index: number; pick: 'H' | 'D' | 'A' }>(
-        (from, to) =>
-          (supa as any)
-            .from('app_picks')
-            .select('gw, fixture_index, pick')
-            .lte('gw', finalizedStatsGwCap)
-            .order('gw', { ascending: true })
-            .order('fixture_index', { ascending: true })
-            .range(from, to)
-      );
-      for (const p of allAppPicksRowsForField) {
-        const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
-        if (!res) continue;
-        fieldTotal++;
-        if (p.pick === res) fieldCorrect++;
-      }
-    }
-    return fieldTotal > 0 ? (fieldCorrect / fieldTotal) * 100 : null;
-  })();
-
-  const seasonCtxForLive = await resolveSeasonCtx(supa, userId);
-
   const liveScoresForMetaGwPromise =
     metaGw != null
-      ? computeLiveGwScoresForGw(supa, metaGw, seasonCtxForLive)
+      ? computeLiveGwScoresForGw(supa, metaGw, seasonCtx)
       : Promise.resolve([] as Array<{ user_id: string; score: number }>);
 
-  const [{ data: submissionRows, error: subErr }, allGwPoints, fieldAveragePct, liveScoresForMetaGw] = await Promise.all([
-    (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
-    fetchAllRowsPaged<{ user_id: string; gw: number; points: number }>((from, to) =>
-      (supa as any)
-        .from('app_v_gw_points')
-        .select('user_id, gw, points')
-        .order('gw', { ascending: true })
-        .order('user_id', { ascending: true })
-        .range(from, to)
+  const [{ data: submissionRows, error: subErr }, allGwPoints, liveScoresForMetaGw] = await Promise.all([
+    applySeasonFilter(
+      (supa as any).from(tables.submissions).select('gw').eq('user_id', userId),
+      seasonFilter
     ),
-    fieldAveragePromise,
+    fetchAllRowsPaged<{ user_id: string; gw: number; points: number }>((from, to) =>
+      applySeasonFilter(
+        (supa as any)
+          .from(tables.gwPoints)
+          .select('user_id, gw, points')
+          .order('gw', { ascending: true })
+          .order('user_id', { ascending: true })
+          .range(from, to),
+        seasonFilter
+      )
+    ),
     liveScoresForMetaGwPromise,
   ]);
   if (subErr) throw subErr;
-
-  if (typeof fieldAveragePct === 'number') {
-    stats.correctPredictionFieldAvgPct = fieldAveragePct;
-    const mine = stats.correctPredictionRate;
-    if (typeof mine === 'number') {
-      const delta = mine - fieldAveragePct;
-      const band = 2;
-      stats.correctPredictionVsField = delta > band ? 'above' : delta < -band ? 'below' : 'about';
-    }
-  }
 
   let allGwPointsTyped = (allGwPoints ?? []).map((p: any) => ({
     user_id: String(p.user_id),
@@ -948,7 +946,7 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     byGw.set(p.gw, arr);
   });
 
-  if (highlightGw != null) {
+  if (highlightGw != null && !leftoverPriorSeason) {
     const ptsHi = byGw.get(highlightGw) ?? [];
     if (ptsHi.length) {
       const allPoints = ptsHi.map((x) => x.points);
@@ -1073,7 +1071,9 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   let maxGw: number;
   if (touchedGw.size > 0) {
     minGw = Math.min(...touchedGw);
-    maxGw = Math.max(lastCompletedGw ?? 0, metaGw ?? 0, highlightGw ?? 0, Math.max(...touchedGw));
+    maxGw = leftoverPriorSeason
+      ? Math.max(historyLastCompletedGw ?? 0, Math.max(...touchedGw))
+      : Math.max(lastCompletedGw ?? 0, metaGw ?? 0, highlightGw ?? 0, Math.max(...touchedGw));
   } else if (rankedLastCompletedGw && lastCompletedGw && lastCompletedGw > 0) {
     // User appears in last-GW points distribution but picks/submissions didn’t load — still show season ladder.
     minGw = 1;
@@ -1089,10 +1089,11 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   }
 
   /** Participation streak chips only — never extend into current/live GW (`highlightGw` / app_meta). */
+  const streakCapGw = leftoverPriorSeason ? historyLastCompletedGw : lastCompletedGw;
   const streakLadderMaxGw =
-    typeof lastCompletedGw === 'number' && lastCompletedGw > 0 ? Math.min(maxGw, lastCompletedGw) : maxGw;
+    typeof streakCapGw === 'number' && streakCapGw > 0 ? Math.min(maxGw, streakCapGw) : maxGw;
 
-  const gameweekStreakSlice: Array<{ gw: number; points: number | null }> = [];
+  const gameweekStreakSlice: Array<{ gw: number; points: number | null; seasonLabel: string }> = [];
   if (
     Number.isFinite(minGw) &&
     Number.isFinite(maxGw) &&
@@ -1102,25 +1103,27 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     for (let gw = minGw; gw <= streakLadderMaxGw; gw++) {
       const played = submissionGwSet.has(gw) || pickGwSet.has(gw);
       if (!played) {
-        gameweekStreakSlice.push({ gw, points: null });
+        gameweekStreakSlice.push({ gw, points: null, seasonLabel: activeSeasonLabel });
         continue;
       }
       gameweekStreakSlice.push({
         gw,
         points: resolveUserGwPoints(gw),
+        seasonLabel: activeSeasonLabel,
       });
     }
   }
 
-  stats.gameweekStreak = gameweekStreakSlice.length ? gameweekStreakSlice : null;
+  if (pileB) {
+    const legacyStreak = await loadLegacyCareerStreak(supa, userId);
+    const merged = [...legacyStreak, ...gameweekStreakSlice];
+    stats.gameweekStreak = merged.length ? merged : null;
+  } else {
+    stats.gameweekStreak = gameweekStreakSlice.length ? gameweekStreakSlice : null;
+  }
 
-  // Trophy cabinet: GW winners, monthly buckets (leaderboard months), season winner after GW38.
+  // Trophy cabinet from already-fetched GW points (no per-GW live recompute of the whole season).
   const trophyCabinet = { gameweekPodiums: 0, monthlyPodiums: 0, seasonPodiums: 0 };
-  const overallForRanks = (overallStandings ?? []).map((o: any) => ({
-    user_id: String(o.user_id),
-    name: (o.name as string | null) ?? 'User',
-    ocp: Number(o.ocp ?? 0),
-  }));
 
   const trophyGwUniverse = new Set<number>(completedGwsBase);
   playedGwsSorted.forEach((gw) => trophyGwUniverse.add(gw));
@@ -1128,16 +1131,16 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   if (typeof metaGw === 'number' && metaGw > 0) trophyGwUniverse.add(metaGw);
   const trophyGameweeks = [...trophyGwUniverse].sort((a, b) => a - b);
 
-  const gwScoresForTrophies = await computeLiveGwScoresForGwsBatch(supa, trophyGameweeks, seasonCtxForLive);
   trophyGameweeks.forEach((gw) => {
-    const rows = gwScoresForTrophies.get(gw)?.scores ?? [];
+    const rows =
+      metaGw != null && gw === metaGw && liveScoresForMetaGw.length > 0
+        ? liveScoresForMetaGw
+        : (byGw.get(gw) ?? []).map((x) => ({ user_id: x.user_id, score: x.points }));
     if (!rows.length) return;
-    // Same visibility rule as Global GW tab: rank whenever live scores exist — do not gate on “all fixtures resulted”.
     if (rankUserInGwLiveScores(userId, rows) === 1) trophyCabinet.gameweekPodiums++;
   });
 
   const leaderboardUniverse = new Set<string>();
-  overallForRanks.forEach((o) => leaderboardUniverse.add(o.user_id));
   allGwPointsTyped.forEach((p) => leaderboardUniverse.add(p.user_id));
 
   const sumPointsRange = (uid: string, startGw: number, endGw: number) => {
@@ -1149,9 +1152,10 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     return s;
   };
 
-  const lc = lastCompletedGw ?? 0;
+  const lc = leftoverPriorSeason ? (historyLastCompletedGw ?? 0) : (lastCompletedGw ?? 0);
+  const monthBuckets = pileB ? LEADERBOARD_MONTH_BUCKETS_2026_27 : LEADERBOARD_MONTH_BUCKETS;
 
-  for (const m of LEADERBOARD_MONTH_BUCKETS) {
+  for (const m of monthBuckets) {
     if (lc < m.endGw) continue;
     const playedMonth = allGwPointsTyped.some(
       (p) => p.user_id === userId && p.gw >= m.startGw && p.gw <= m.endGw
@@ -1191,18 +1195,21 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const allUsersAppRowsPromise =
       gws.length > 0
         ? fetchAllRowsPaged<any>((from, to) =>
-            (supa as any)
-              .from('app_picks')
-              .select('gw, fixture_index, pick')
-              .in('gw', gws)
-              .order('gw', { ascending: true })
-              .order('fixture_index', { ascending: true })
-              .range(from, to)
+            applySeasonFilter(
+              (supa as any)
+                .from(tables.picks)
+                .select('gw, fixture_index, pick')
+                .in('gw', gws)
+                .order('gw', { ascending: true })
+                .order('fixture_index', { ascending: true })
+                .range(from, to),
+              seasonFilter
+            )
           )
         : Promise.resolve([] as any[]);
 
     const allUsersLegacyRowsPromise =
-      gws.length > 0
+      !pileB && gws.length > 0
         ? fetchAllRowsPaged<any>((from, to) =>
             (supa as any)
               .from('picks')
@@ -1220,13 +1227,16 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     const fxTeamRowsPromise =
       gws.length > 0
         ? fetchAllRowsPaged<any>((from, to) =>
-            (supa as any)
-              .from('app_fixtures')
-              .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team')
-              .in('gw', gws)
-              .order('gw', { ascending: true })
-              .order('fixture_index', { ascending: true })
-              .range(from, to)
+            applySeasonFilter(
+              (supa as any)
+                .from(tables.fixtures)
+                .select('gw, fixture_index, home_code, away_code, home_name, away_name, home_team, away_team')
+                .in('gw', gws)
+                .order('gw', { ascending: true })
+                .order('fixture_index', { ascending: true })
+                .range(from, to),
+              seasonFilter
+            )
           )
         : Promise.resolve([] as any[]);
 
@@ -1248,6 +1258,27 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
     };
     addCounts(allUsersLegacyRows);
     addCounts(allUsersAppRows);
+
+    let fieldCorrect = 0;
+    let fieldTotal = 0;
+    for (const p of allUsersAppRows) {
+      const gw = Number(p.gw);
+      if (finalizedStatsGwCap != null && Number.isFinite(gw) && gw > finalizedStatsGwCap) continue;
+      const res = augmentedOutcomeByPickKey.get(`${Number(p.gw)}:${Number(p.fixture_index)}`);
+      if (!res) continue;
+      fieldTotal++;
+      if (p.pick === res) fieldCorrect++;
+    }
+    if (fieldTotal > 0) {
+      const fieldAveragePct = (fieldCorrect / fieldTotal) * 100;
+      stats.correctPredictionFieldAvgPct = fieldAveragePct;
+      const mine = stats.correctPredictionRate;
+      if (typeof mine === 'number') {
+        const delta = mine - fieldAveragePct;
+        const band = 2;
+        stats.correctPredictionVsField = delta > band ? 'above' : delta < -band ? 'below' : 'about';
+      }
+    }
 
     let chaosPicks = 0;
     let chaosCorrect = 0;
@@ -1353,6 +1384,52 @@ export async function getProfileStats(opts: { userId: string; supa: any }): Prom
   }
 
   return stats;
+}
+
+async function loadLegacyCareerStreak(
+  supa: any,
+  userId: string
+): Promise<Array<{ gw: number; points: number | null; seasonLabel: string }>> {
+  const [points, submissionsRes] = await Promise.all([
+    fetchAllRowsPaged<{ gw: number; points: number }>((from, to) =>
+      (supa as any)
+        .from('app_v_gw_points')
+        .select('gw, points')
+        .eq('user_id', userId)
+        .order('gw', { ascending: true })
+        .range(from, to)
+    ),
+    (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
+  ]);
+  if (submissionsRes.error) throw submissionsRes.error;
+
+  const byGw = new Map<number, number>();
+  for (const p of points) {
+    const gw = Number(p.gw);
+    if (Number.isFinite(gw)) byGw.set(gw, Number(p.points ?? 0));
+  }
+  const played = new Set<number>(byGw.keys());
+  for (const row of submissionsRes.data ?? []) {
+    const gw = Number(row.gw);
+    if (Number.isFinite(gw)) played.add(gw);
+  }
+  if (!played.size) return [];
+
+  const minGw = Math.min(...played);
+  const maxGw = Math.min(CURRENT_CAMPAIGN_END_GW, Math.max(...played));
+  const rows: Array<{ gw: number; points: number | null; seasonLabel: string }> = [];
+  for (let gw = minGw; gw <= maxGw; gw++) {
+    if (!played.has(gw)) {
+      rows.push({ gw, points: null, seasonLabel: SEASON_2025_26_LABEL });
+      continue;
+    }
+    rows.push({
+      gw,
+      points: byGw.has(gw) ? byGw.get(gw)! : 0,
+      seasonLabel: SEASON_2025_26_LABEL,
+    });
+  }
+  return rows;
 }
 
 export type UnicornCard = {

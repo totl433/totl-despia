@@ -320,7 +320,7 @@ export async function fetchLeagueJoins(leagues: FeedLeague[]): Promise<LeagueJoi
 export type DerivedFeedExtras = {
   joins: LeagueJoin[];
   playersScores: Record<string, PlayersScoreStore>;
-  people: Map<string, FeedPerson>;
+  people: Record<string, FeedPerson>;
   adminPosts: AdminFeedPost[];
 };
 
@@ -414,7 +414,7 @@ export async function fetchDerivedFeedExtras(input: {
     if (store[today]?.correct === 10) ids.add(id);
   });
   const people = await fetchPeople([...ids]);
-  return { joins, playersScores, people, adminPosts };
+  return { joins, playersScores, people: Object.fromEntries(people.entries()), adminPosts };
 }
 
 export async function fetchSeasonStatFacts(season: FeedSeason): Promise<SeasonStatFacts> {

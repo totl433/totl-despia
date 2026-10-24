@@ -16,8 +16,10 @@ import {
   joinNames,
   lastFinishedMs,
   playerJoinedItems,
+  playersStackItems,
   scoreSheetItem,
   statMomentItems,
+  toPeopleMap,
   topByScore,
 } from './derivedFeed';
 import { firstWinnerSlot, leftoverQuietSlots, nextWinnerSlot, scheduleStatMoments, scheduleWinnerShouts } from './shoutOutSlots';
@@ -95,6 +97,24 @@ describe('good luck', () => {
     expect(card?.title).toBe('Good luck');
     expect(card?.body).toContain('Carl and Joff');
     expect(card?.body).toMatch(/nine|ten/);
+  });
+});
+
+describe('people lookup', () => {
+  it('rebuilds a Map after React Query persist turns it into a plain object', () => {
+    const map = toPeopleMap({ carl: { id: 'carl', name: 'Carl', avatarUrl: null } });
+    expect(map.get('carl')?.name).toBe('Carl');
+  });
+
+  it('does not crash Players cards when people is a plain object', () => {
+    expect(() =>
+      playersStackItems({
+        nowMs: Date.parse('2026-10-24T18:00:00Z'),
+        userId: 'me',
+        scores: { carl: { '2026-10-23': { correct: 8 } } } as any,
+        people: { carl: { id: 'carl', name: 'Carl', avatarUrl: null } },
+      })
+    ).not.toThrow();
   });
 });
 

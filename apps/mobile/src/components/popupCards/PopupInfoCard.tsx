@@ -42,6 +42,7 @@ import { TEAM_BADGES } from '../../lib/teamBadges';
 import { navigationRef } from '../../navigation/AppNavigator';
 import WinnerShimmer from '../WinnerShimmer';
 import type { PopupCardKind, PopupCardPayload } from './types';
+import { isPersonalWinnerPopupPayload } from './types';
 import { getMediumName } from '../../../../../src/lib/teamNames';
 import { getGameweekStateFromSnapshot } from '../../lib/gameweekState';
 import {
@@ -2761,7 +2762,8 @@ function PersonalWinnerHeader({ profile, data }: { profile?: ProfileSummary | nu
   );
 }
 
-function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
+function PersonalWinnerCardBody({ eventKey, payload }: { eventKey?: string; payload?: PopupCardPayload }) {
+  const seed = isPersonalWinnerPopupPayload(payload) ? payload : null;
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
     queryFn: async () => {
@@ -2776,7 +2778,7 @@ function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
   const fromKey = parseSeasonLabelFromEventKey(eventKey);
   const legacyPile = eventKeyWantsLegacyPile(eventKey) || (!fromKey && !useSeasonStack);
 
-  const { data, isLoading } = useQuery({
+  const { data: fetched, isLoading } = useQuery({
     queryKey: [
       'popup-card',
       'personalWinner',
@@ -2786,7 +2788,7 @@ function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
       seasonId ?? 'none',
       fromKey ?? seasonLabel,
     ],
-    enabled: !seasonLoading,
+    enabled: !seed && !seasonLoading,
     staleTime: 60_000,
     queryFn: async (): Promise<PersonalWinnerCardPayload | null> => {
       if (eventKey === 'simulator:personalWinner:gw') return buildSimulatorPersonalWinnerPayload('gameweek');
@@ -2798,13 +2800,14 @@ function PersonalWinnerCardBody({ eventKey }: { eventKey?: string }) {
       });
     },
   });
+  const data = seed ?? fetched ?? null;
   const { data: profileSummary } = useQuery<ProfileSummary>({
     queryKey: ['profile-summary'],
     queryFn: () => api.getProfileSummary(),
     staleTime: 60_000,
   });
 
-  if (isLoading || seasonLoading) {
+  if (!seed && (isLoading || seasonLoading)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
         <TotlText style={{ color: '#0F172A', fontFamily: 'Gramatika-Bold', textAlign: 'center', fontWeight: '900', fontSize: 18, lineHeight: 22 }}>
@@ -4195,6 +4198,7 @@ export default function PopupInfoCard({
   payload,
   isTopCard,
   isShareAsset = false,
+  skipDecorativeAnimations = false,
   onClose,
   secondaryActionLabel,
   onSecondaryAction,
@@ -4205,6 +4209,7 @@ export default function PopupInfoCard({
   payload?: PopupCardPayload;
   isTopCard: boolean;
   isShareAsset?: boolean;
+  skipDecorativeAnimations?: boolean;
   onClose?: () => void;
   secondaryActionLabel?: string;
   onSecondaryAction?: () => void;
@@ -4219,7 +4224,7 @@ export default function PopupInfoCard({
   const showNewSeasonCard = kind === 'newSeason';
   const showInsetFrame = showWinnersFrame || showPersonalWinnerFrame || showResultsFrame || showChampionWinner;
   const showEmeraldCard = kind === 'newGameweek' || showWelcomeCard || showNewSeasonCard;
-  const runDecorativeAnimations = isTopCard && !isShareAsset;
+  const runDecorativeAnimations = isTopCard && !isShareAsset && !skipDecorativeAnimations;
   const personalWinnerVariant = showPersonalWinnerFrame ? parsePersonalWinnerTypeFromEventKey(eventKey) : 'gameweek';
   const lightCloseButton = showEmeraldCard || showPersonalWinnerFrame || showChampionWinner;
   const content = (
@@ -4275,7 +4280,7 @@ export default function PopupInfoCard({
         ) : kind === 'results' ? (
           <ResultsCardBody eventKey={eventKey} onClose={onClose} isShareAsset={isShareAsset} />
         ) : kind === 'personalWinner' ? (
-          <PersonalWinnerCardBody eventKey={eventKey} />
+          <PersonalWinnerCardBody eventKey={eventKey} payload={payload} />
         ) : kind === 'winners' ? (
           <WinnersCardBody eventKey={eventKey} />
         ) : kind === 'newGameweek' ? (

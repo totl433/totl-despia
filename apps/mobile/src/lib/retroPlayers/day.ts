@@ -33,15 +33,18 @@ export function msUntilNextPlayersDay(now = new Date()): number {
 }
 
 /** Same seed for every player on a given Players day. */
-export function playersDaySeed(now = new Date()): number {
-  const key = playersDayKey(now);
-  const material = RESHUFFLED_DAYS[key] ? `${key}:${RESHUFFLED_DAYS[key]}` : key;
+export function playersDaySeedFromKey(dayKey: string): number {
+  const material = RESHUFFLED_DAYS[dayKey] ? `${dayKey}:${RESHUFFLED_DAYS[dayKey]}` : dayKey;
   let hash = 2166136261;
   for (let i = 0; i < material.length; i++) {
     hash ^= material.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+export function playersDaySeed(now = new Date()): number {
+  return playersDaySeedFromKey(playersDayKey(now));
 }
 
 /** "Next game in 5h 12m" — counts down to midnight GMT. */

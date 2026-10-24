@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+
+import { isLeftoverPriorSeasonLastCompleted, resolveStatsHeadlineGws } from './profileStatsHeadline';
+
+describe('resolveStatsHeadlineGws', () => {
+  it('uses the current season last completed week during results', () => {
+    expect(resolveStatsHeadlineGws({ lastCompletedGw: 8, metaGw: 8 })).toEqual({
+      lastCompletedGw: 8,
+      highlightGw: 8,
+    });
+  });
+
+  it('highlights the live / published meta week when it is ahead', () => {
+    expect(resolveStatsHeadlineGws({ lastCompletedGw: 8, metaGw: 9 })).toEqual({
+      lastCompletedGw: 8,
+      highlightGw: 9,
+    });
+  });
+
+  it('does not keep GW38 as latest after a new-season current_gw reset', () => {
+    expect(resolveStatsHeadlineGws({ lastCompletedGw: 38, metaGw: 1 })).toEqual({
+      lastCompletedGw: null,
+      highlightGw: 1,
+    });
+  });
+
+  it('shows the published week when the new season has no results yet', () => {
+    expect(resolveStatsHeadlineGws({ lastCompletedGw: null, metaGw: 8 })).toEqual({
+      lastCompletedGw: null,
+      highlightGw: 8,
+    });
+  });
+});
+
+describe('isLeftoverPriorSeasonLastCompleted', () => {
+  it('detects 2025/26 GW38 left in app_gw_results after current_gw reset', () => {
+    expect(isLeftoverPriorSeasonLastCompleted(38, 1)).toBe(true);
+  });
+
+  it('is false mid-season when results and meta line up', () => {
+    expect(isLeftoverPriorSeasonLastCompleted(8, 9)).toBe(false);
+    expect(isLeftoverPriorSeasonLastCompleted(8, 8)).toBe(false);
+  });
+});

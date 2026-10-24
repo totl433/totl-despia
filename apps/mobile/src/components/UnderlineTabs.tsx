@@ -8,12 +8,14 @@ const AnimatedText = Animated.createAnimatedComponent(Text);
 export type UnderlineTabItem<K extends string> = {
   key: K;
   label: string;
+  fontFamily?: string;
   showLiveDot?: boolean;
   unreadCount?: number;
 };
 
 function TabButton({
   label,
+  fontFamily,
   index,
   activeIndexSV,
   activeColor,
@@ -24,6 +26,7 @@ function TabButton({
   unreadCount = 0,
 }: {
   label: string;
+  fontFamily?: string;
   index: number;
   activeIndexSV: { value: number };
   activeColor: string;
@@ -89,11 +92,14 @@ function TabButton({
           />
         ) : null}
         <AnimatedText
+          numberOfLines={1}
+          adjustsFontSizeToFit
           style={[
             {
-              fontSize: 14,
-              lineHeight: 20,
-              fontFamily: t.font.body,
+              fontSize: fontFamily ? 20 : 14,
+              lineHeight: fontFamily ? 24 : 20,
+              letterSpacing: fontFamily ? -0.6 : 0,
+              fontFamily: fontFamily ?? t.font.body,
             },
             labelStyle,
           ]}
@@ -188,6 +194,7 @@ export default function UnderlineTabs<K extends string>({
           <TabButton
             key={item.key}
             label={item.label}
+            fontFamily={item.fontFamily}
             showLiveDot={item.showLiveDot}
             unreadCount={item.unreadCount}
             index={index}
