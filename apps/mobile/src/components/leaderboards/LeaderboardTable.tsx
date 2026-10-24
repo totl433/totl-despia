@@ -1,11 +1,12 @@
 import React from 'react';
-import { FlatList, Image, Pressable, type ViewStyle, View } from 'react-native';
+import { FlatList, Image, Pressable, useWindowDimensions, type ViewStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TotlText, useTokens } from '@totl/ui';
 import WinnerShimmer from '../WinnerShimmer';
 import HostBadge from '../brandedLeaderboards/HostBadge';
 import MedalIcon from '../icons/MedalIcon';
 import { FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING } from '../../lib/layout';
+import { leaderboardNameCharacterCap } from './leaderboardNameCap';
 
 export type LeaderboardRow = {
   user_id: string;
@@ -33,7 +34,7 @@ function formatScore(value: number | null | undefined): string {
   return typeof value === 'number' ? String(value) : '—';
 }
 
-function LiveColumnDot() {
+function LiveColumnDot({ below = false }: { below?: boolean }) {
   return (
     <View
       style={{
@@ -41,7 +42,8 @@ function LiveColumnDot() {
         height: 5,
         borderRadius: 999,
         backgroundColor: '#EF4444',
-        marginRight: 4,
+        marginRight: below ? 0 : 4,
+        marginTop: below ? 2 : 0,
       }}
     />
   );
@@ -53,6 +55,7 @@ function truncateName(value: string, maxChars: number | null): string {
   return `${trimmed.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
 }
 
+
 export default function LeaderboardTable({
   rows,
   valueLabel,
@@ -61,9 +64,11 @@ export default function LeaderboardTable({
   secondaryValueIsLive = false,
   compactValueLabels,
   compactLiveValueLabel,
+  compactLiveColumnIndex,
   highlightUserId,
   winnerUserIds,
   tightWinners = false,
+  tightRank = false,
   style,
   listRef,
   onPressRow,
@@ -75,30 +80,44 @@ export default function LeaderboardTable({
   secondaryValueIsLive?: boolean;
   compactValueLabels?: string[];
   compactLiveValueLabel?: string;
+  /** When labels repeat (MTWTFSS), mark today's column by index. */
+  compactLiveColumnIndex?: number;
   highlightUserId?: string | null;
   /** When provided, rows with these user_ids get the winner shiny pill background (monthly tab). */
   winnerUserIds?: string[];
   /** No gap or divider under the pinned winners, so 2nd place follows straight on (The Players). */
   tightWinners?: boolean;
+  /** Closer rank-to-avatar gap, used on The Players so every tab lines up. */
+  tightRank?: boolean;
   style?: ViewStyle;
   listRef?: React.RefObject<FlatList<any> | null>;
   onPressRow?: (row: LeaderboardRow) => void;
 }) {
   const t = useTokens();
+  const { width: windowWidth } = useWindowDimensions();
+  const [tableWidth, setTableWidth] = React.useState(0);
   const compactColumnWidth = React.useMemo(() => {
     const count = compactValueLabels?.length ?? 0;
+    if (count >= 7) return 18;
     if (count >= 5) return 28;
     if (count === 4) return 30;
     return 34;
   }, [compactValueLabels?.length]);
   const hasCompactColumns = (compactValueLabels?.length ?? 0) > 0;
-  const valueColumnWidth = hasCompactColumns ? 56 : 70;
-  const nameCharacterCap = React.useMemo(() => {
-    const count = compactValueLabels?.length ?? 0;
-    if (count >= 5) return 11;
-    if (count >= 3) return 14;
-    return null;
-  }, [compactValueLabels?.length]);
+  const rankColumnWidth = tightRank || hasCompactColumns ? 24 : 36;
+  const valueColumnWidth = hasCompactColumns ? (compactValueLabels!.length >= 7 ? 44 : 56) : 70;
+  const nameCharacterCap = React.useMemo(
+    () =>
+      leaderboardNameCharacterCap({
+        tableWidth: tableWidth || windowWidth,
+        rankWidth: rankColumnWidth,
+        compactCount: compactValueLabels?.length ?? 0,
+        compactColumnWidth,
+        valueColumnWidth,
+        secondaryWidth: secondaryValueLabel ? 62 : 0,
+      }),
+    [compactColumnWidth, compactValueLabels?.length, rankColumnWidth, secondaryValueLabel, tableWidth, valueColumnWidth, windowWidth]
+  );
 
   const ranked = React.useMemo(() => {
     // Submitters first (sorted by caller); non-submitters (value null) have no rank.
@@ -214,7 +233,7 @@ export default function LeaderboardTable({
       const displayName = truncateName(item.row.name, hasCompactColumns ? nameCharacterCap : null);
       const rowInner = (
         <>
-          <TotlText style={{ width: 36, fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{formatRank(item.rank, item.tied)}</TotlText>
+          <TotlText style={{ width: rankColumnWidth, fontFamily: t.font.medium, fontSize: 13, lineHeight: 18, color: isWinner ? '#fff' : t.color.text }}>{formatRank(item.rank, item.tied)}</TotlText>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <View
               style={{
@@ -263,7 +282,7 @@ export default function LeaderboardTable({
           {hasCompactColumns
             ? compactValueLabels!.map((label, index) => (
                 <TotlText
-                  key={`${item.row.user_id}-${label}`}
+                  key={`${item.row.user_id}-${index}-${label}`}
                   style={{
                     width: compactColumnWidth,
                     textAlign: 'center',
@@ -315,7 +334,7 @@ export default function LeaderboardTable({
         </Pressable>
       );
     },
-    [compactColumnWidth, compactValueLabels, hasCompactColumns, highlightUserId, nameCharacterCap, onPressRow, secondaryValueLabel, t, valueColumnWidth, winnerUserIds]
+    [compactColumnWidth, compactLiveColumnIndex, compactValueLabels, hasCompactColumns, highlightUserId, nameCharacterCap, onPressRow, rankColumnWidth, secondaryValueLabel, t, valueColumnWidth, winnerUserIds]
   );
 
   const Separator = () => (
@@ -325,9 +344,18 @@ export default function LeaderboardTable({
   );
 
   return (
-    <View style={[{ flex: 1, minHeight: 0, position: 'relative' }, style]}>
+    <View
+      style={[{ flex: 1, minHeight: 0, position: 'relative' }, style]}
+      onLayout={(e) => {
+        const next = Math.round(e.nativeEvent.layout.width);
+        if (next > 0 && next !== tableWidth) setTableWidth(next);
+      }}
+    >
       <View
-        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        onLayout={(e) => {
+          const next = Math.round(e.nativeEvent.layout.height);
+          if (next > 0 && next !== headerHeight) setHeaderHeight(next);
+        }}
         style={{
           flexDirection: 'row',
           alignItems: 'center',
@@ -338,19 +366,18 @@ export default function LeaderboardTable({
           borderBottomColor: t.color.border,
         }}
       >
-        <TotlText variant="caption" style={{ color: t.color.muted, width: 36, fontFamily: t.font.medium }}>
+        <TotlText variant="caption" style={{ color: t.color.muted, width: rankColumnWidth, fontFamily: t.font.medium }}>
           #
         </TotlText>
         <TotlText variant="caption" style={{ color: t.color.muted, flex: 1, fontFamily: t.font.medium }}>
           Player
         </TotlText>
         {hasCompactColumns
-          ? compactValueLabels!.map((label) => (
+          ? compactValueLabels!.map((label, index) => (
               <View
-                key={label}
-                style={{ width: compactColumnWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+                key={`${index}-${label}`}
+                style={{ width: compactColumnWidth, alignItems: 'center', justifyContent: 'center' }}
               >
-                {compactLiveValueLabel === label ? <LiveColumnDot /> : null}
                 <TotlText
                   variant="caption"
                   style={{
@@ -362,6 +389,11 @@ export default function LeaderboardTable({
                 >
                   {label}
                 </TotlText>
+                {compactLiveColumnIndex === index || compactLiveValueLabel === label ? (
+                  <View style={{ position: 'absolute', left: 0, right: 0, bottom: -6, alignItems: 'center' }}>
+                    <LiveColumnDot below />
+                  </View>
+                ) : null}
               </View>
             ))
           : null}
@@ -375,7 +407,15 @@ export default function LeaderboardTable({
         ) : null}
         <View style={{ width: valueColumnWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
           {valueIsLive ? <LiveColumnDot /> : null}
-          <TotlText variant="caption" style={{ color: t.color.muted, textAlign: 'center', fontFamily: t.font.medium }}>
+          <TotlText
+            variant="caption"
+            style={{
+              color: t.color.muted,
+              textAlign: 'center',
+              fontFamily: t.font.medium,
+              fontSize: hasCompactColumns ? 11 : undefined,
+            }}
+          >
             {valueLabel}
           </TotlText>
         </View>
@@ -459,7 +499,10 @@ export default function LeaderboardTable({
               zIndex: 10,
               backgroundColor: t.color.surface,
             }}
-            onLayout={(e) => setWinnerSectionHeight(e.nativeEvent.layout.height)}
+            onLayout={(e) => {
+              const next = Math.round(e.nativeEvent.layout.height);
+              if (next > 0 && next !== winnerSectionHeight) setWinnerSectionHeight(next);
+            }}
           >
             {winnerRows.map((item, i) => (
               <React.Fragment key={item.row.user_id}>

@@ -5,9 +5,13 @@ import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { normalizeTeamForms } from '../../lib/homeFixtureUi';
 import { getMonthForGw, type LeaderboardSeasonKey } from '../../lib/leaderboardMonths';
+import { predictionsDeadlineMs } from '../../lib/gameweekState';
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../../lib/teamPositions';
 import { fetchGameCentrePosts } from '../../hooks/useGameCentrePosts';
-import { alignChatSortAtMs, buildMatchFeed, buildRoundUp, type FeedItem } from './feed';
+import { indexLiveScoresByFixture, resolveLiveScore } from '../../lib/liveScoreRows';
+import { buildDerivedFeed } from './derivedFeed';
+import { alignChatSortAtMs, buildMatchFeed, buildRoundUp, firstKickoffMs, type FeedItem } from './feed';
+import { hereWeGoMs } from './shoutOutSlots';
 import {
   fetchLeagueChat,
   fetchLeagueTables,
@@ -159,14 +163,13 @@ export async function loadPastGameweek(input: {
 
   const live = liveRows ?? ((board?.liveScores ?? []) as LiveScore[]);
   const liveByApiMatchId = new Map<number, LiveScore>();
-  const liveByFixtureIndex = new Map<number, LiveScore>();
   live.forEach((row) => {
     if (typeof row.api_match_id === 'number') liveByApiMatchId.set(row.api_match_id, row);
-    const idx = Number((row as { fixture_index?: unknown }).fixture_index);
-    if (Number.isInteger(idx) && idx >= 0) liveByFixtureIndex.set(idx, row);
   });
+  const liveByFixtureIndex = indexLiveScoresByFixture(fixtures, live);
   const allFinished =
-    fixtures.length > 0 && fixtures.every((fixture) => liveByFixtureIndex.get(fixture.fixture_index)?.status === 'FINISHED');
+    fixtures.length > 0 &&
+    fixtures.every((fixture) => resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId)?.status === 'FINISHED');
   const gwResults =
     allFinished && userId
       ? await optional(() =>
@@ -229,6 +232,33 @@ export async function loadPastGameweek(input: {
     opensAtMs,
     fixtures,
     social: !!feedPosts,
-    items: [...match, ...roundUp, ...messages].sort(compareFeedItems),
+    items: [
+      ...match,
+      ...buildDerivedFeed({
+        gw,
+        fixtures,
+        liveByFixtureIndex,
+        liveByApiMatchId,
+        picks: (board?.userPicks ?? {}) as Record<string, Pick>,
+        userId,
+        nowMs,
+        deadlineMs: predictionsDeadlineMs(fixtures),
+        allFinished,
+        monthEndGw: month?.endGw ?? null,
+        leagues: leaguePicks,
+        tables: tables ?? [],
+        joins: [],
+        gwOpenMs: opensAtMs,
+        liveTable: [],
+        monthBefore: overall?.monthBefore ?? {},
+        seasonBefore: overall?.beforeGw ?? {},
+        people: new Map(),
+        playersScores: {},
+        nextHereWeGoMs: input.untilMs ?? hereWeGoMs(firstKickoffMs(fixtures)),
+        percents: pickPercentsFrom(percentRows),
+      }),
+      ...roundUp,
+      ...messages,
+    ].sort(compareFeedItems),
   };
 }

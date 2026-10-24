@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../lib/leagueAvatars', () => ({ resolveLeagueAvatarUri: () => null }));
 
 import { gameweekPin, predictionsDeadlineMs } from './gameweekState';
 import { pinnedCardCopy } from '../features/gameCentre/cards';
@@ -19,7 +21,7 @@ const home = (overrides: Record<string, unknown> = {}) => ({
   hasSubmittedViewingGw: false,
   ...overrides,
 });
-const before = DEADLINE - 3 * 3_600_000;
+const before = DEADLINE - 4 * 3_600_000;
 
 describe('predictions deadline', () => {
   it('is 75 minutes before the first kickoff', () => {
@@ -34,12 +36,17 @@ describe('pinned card state', () => {
   });
 
   it('2: picks in before the deadline are locked in, with nothing to edit', () => {
-    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), before)).toEqual({ kind: 'locked', gw: 8, kickoffMs: KO });
+    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), before)).toEqual({
+      kind: 'locked',
+      gw: 8,
+      kickoffMs: KO,
+      deadlineMs: DEADLINE,
+    });
   });
 
   it('3 and 4: between the deadline and kickoff', () => {
     expect(gameweekPin(home(), DEADLINE + 60_000)).toEqual({ kind: 'missed', gw: 8, kickoffMs: KO });
-    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), DEADLINE + 60_000)).toEqual({ kind: 'locked', gw: 8, kickoffMs: KO });
+    expect(gameweekPin(home({ hasSubmittedViewingGw: true }), DEADLINE + 60_000)).toBeNull();
   });
 
   it('5: nothing while games are live', () => {
@@ -75,10 +82,20 @@ describe('pinned card state', () => {
 describe('pinned card copy', () => {
   it('uses the Figma wording and a button only where there is something to do', () => {
     const predict = pinnedCardCopy({ kind: 'predict', gw: 8, deadlineMs: DEADLINE }, DEADLINE - 2.5 * 3_600_000, null);
-    expect(predict).toEqual({ title: "Don't miss the deadline!", subtitle: 'Gameweek 8: Closes in 2h 30m', action: 'predict', actionLabel: 'Submit your picks' });
+    expect(predict).toEqual({ title: "Don't miss the deadline!", subtitle: 'Gameweek 8: Closes in 2h 30m', action: 'predict', actionLabel: 'Submit your Predictions' });
 
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: 'Deadline passed', action: null });
-    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null)).toMatchObject({ title: "You're in", action: null });
+    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE }, before, null)).toMatchObject({
+      title: "You're in",
+      subtitle: 'Make sure everybody in your Mini Leagues has made their predictions',
+      action: 'viewPicks',
+      actionLabel: 'Your Predictions',
+    });
+    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE }, DEADLINE - 2 * 3_600_000, null)).toMatchObject({
+      title: "You're in",
+      subtitle: 'Gameweek 8 starting soon!',
+      countdownLabel: 'FIRST TEAMS IN',
+    });
     expect(pinnedCardCopy({ kind: 'comingSoon', gw: 7, nextGw: 8 }, before, '6/10')).toEqual({
       title: 'Gameweek 8 coming soon',
       subtitle: 'Gameweek 7: 6/10',
@@ -94,7 +111,7 @@ describe('pinned card copy', () => {
   });
 
   it('names the deadline and kickoff as a day and time', () => {
-    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8: Kicks off (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \d{2}:\d{2}$/);
+    expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE }, DEADLINE + 60_000, null).subtitle).toMatch(/^Gameweek 8: Kicks off (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \d{2}:\d{2}$/);
     expect(pinnedCardCopy({ kind: 'missed', gw: 8, kickoffMs: KO }, before, null).subtitle).toMatch(/^Gameweek 8 kicks off at (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day, \d{2}:\d{2}$/);
   });
 });
@@ -105,7 +122,7 @@ describe('dismissing the pinned card', () => {
     expect(pinDismissible({ kind: 'predict', gw: 8, deadlineMs: DEADLINE })).toBe(false);
     expect(pinDismissible({ kind: 'ready', gw: 7, nextGw: 8 })).toBe(false);
     expect(pinDismissible({ kind: 'missed', gw: 8, kickoffMs: KO })).toBe(true);
-    expect(pinDismissible({ kind: 'locked', gw: 8, kickoffMs: KO })).toBe(true);
+    expect(pinDismissible({ kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE })).toBe(true);
     expect(pinDismissible({ kind: 'comingSoon', gw: 7, nextGw: 8 })).toBe(true);
   });
 

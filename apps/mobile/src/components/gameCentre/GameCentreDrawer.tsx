@@ -58,10 +58,13 @@ export function GameCentreMenuButton() {
 const OPEN_MS = 280;
 /** How much of the Game Centre stays in view when the menu is open (Figma 272:33416). */
 const PEEK = 71;
+/** Left-edge strip that starts a swipe-to-open, without stealing feed scrolls. */
+const OPEN_EDGE = 28;
 
 /**
  * Side menu that pushes the Game Centre to the right rather than covering it.
- * Close by tapping the menu button again, tapping the Game Centre, or swiping it left.
+ * Open from the ☰ button or a swipe in from the left edge. Close by tapping the
+ * menu button again, tapping the Game Centre, or swiping it left.
  */
 export default function GameCentreDrawer({
   menu,
@@ -164,6 +167,25 @@ export default function GameCentreDrawer({
       );
     });
 
+  const swipeOpen = Gesture.Pan()
+    .enabled(!open)
+    .activeOffsetX(16)
+    .failOffsetY([-24, 24])
+    .onUpdate((event) => {
+      progress.value = Math.min(1, Math.max(0, event.translationX / menuWidth));
+    })
+    .onEnd((event) => {
+      const openIt = progress.value > 0.25 || event.velocityX > 400;
+      if (openIt) runOnJS(setOpen)(true);
+      progress.value = withTiming(
+        openIt ? 1 : 0,
+        { duration: 200, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (finished) runOnJS(settled)(openIt);
+        },
+      );
+    });
+
   const contentStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: progress.value * menuWidth }],
   }));
@@ -210,6 +232,21 @@ export default function GameCentreDrawer({
               >
                 {children as any}
               </View>
+              {!open ? (
+                <GestureDetector gesture={swipeOpen}>
+                  <View
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: OPEN_EDGE,
+                    }}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  />
+                </GestureDetector>
+              ) : null}
               {open ? (
                 <Pressable
                   accessibilityRole="button"

@@ -16,6 +16,7 @@ import {
   type Pick,
 } from '@totl/domain';
 
+import { liveScoresForFixtures } from './liveScoreMatch.js';
 import { loadEnv } from './env.js';
 import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 import { requireUser } from './auth.js';
@@ -32,6 +33,8 @@ import {
 } from './profile.js';
 import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reporting.js';
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
+import { registerLeagueInviteRoutes } from './leagueInviteRoutes.js';
+import { mergeProtectedPreferences, publicPreferences } from './leagueInvites.js';
 import { notifyFinalSubmissionForLeagues } from './finalSubmissionNotifications.js';
 import {
   applySeasonFilter,
@@ -236,6 +239,7 @@ app.get('/v1/home', async (req) => {
     if (parsed.success) liveScores.push(parsed.data);
     else req.log.warn({ issues: parsed.error.issues }, 'dropping invalid live score row');
   }
+  const liveScoresThisWeek = liveScoresForFixtures(fixtures, liveScores);
 
   const gwResults: HomeSnapshot['gwResults'] = [];
   for (const r of (gwResultsRes.data ?? []) as unknown[]) {
@@ -249,7 +253,7 @@ app.get('/v1/home', async (req) => {
     viewingGw,
     fixtures,
     userPicks,
-    liveScores,
+    liveScores: liveScoresThisWeek,
     gwResults,
     hasSubmittedViewingGw: !!submissionRes.data?.submitted_at,
   };
@@ -1181,15 +1185,15 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
     if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
   });
 
-  (liveScoresRes.data ?? []).forEach((ls: any) => {
+  liveScoresForFixtures(fixtures, liveScoresRes.data ?? []).forEach((ls: any) => {
     const status = ls.status;
     const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
     if (!started) return;
     const fixtureIndex =
-      typeof ls.fixture_index === 'number'
-        ? ls.fixture_index
-        : typeof ls.api_match_id === 'number'
-          ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+      typeof ls.api_match_id === 'number'
+        ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+        : typeof ls.fixture_index === 'number'
+          ? ls.fixture_index
           : undefined;
     if (fixtureIndex === undefined) return;
     const hs = Number(ls.home_score ?? 0);
@@ -1282,7 +1286,7 @@ app.get('/v1/notification-prefs', async (req) => {
   if (error) throw error;
 
   return {
-    preferences: data?.preferences ?? {},
+    preferences: publicPreferences(data?.preferences),
     current_viewing_gw: data?.current_viewing_gw ?? null,
   };
 });
@@ -1303,10 +1307,7 @@ app.put('/v1/notification-prefs', async (req) => {
     .eq('user_id', userId)
     .maybeSingle();
 
-  const mergedPrefs = {
-    ...(existing?.preferences ?? {}),
-    ...(body.preferences ?? {}),
-  };
+  const mergedPrefs = mergeProtectedPreferences(existing?.preferences, body.preferences);
 
   const { error } = await (supa as any)
     .from('user_notification_preferences')
@@ -1323,6 +1324,7 @@ app.put('/v1/notification-prefs', async (req) => {
 });
 
 registerBrandedLeaderboardRoutes(app, env);
+registerLeagueInviteRoutes(app, env);
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 

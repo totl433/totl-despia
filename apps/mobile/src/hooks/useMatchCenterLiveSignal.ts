@@ -9,6 +9,7 @@ import {
   isMatchCenterLiveSignalActive,
   MATCH_CENTER_LINEUP_LEAD_MS,
 } from '../features/matchCenter/feed';
+import { indexLiveScoresByFixture } from '../lib/liveScoreRows';
 
 /** Snapshot cadence for fixtures / GW — not used for second-by-second scores. */
 const BOARD_STALE_MS = 45_000;
@@ -20,28 +21,19 @@ function mergeLiveMaps(
   fromBoard: LiveScore[] | null | undefined,
   fromPoll: LiveScore[] | null | undefined
 ): { liveByFixtureIndex: Map<number, LiveScore>; liveByApiMatchId: Map<number, LiveScore> } {
-  const liveByFixtureIndex = new Map<number, LiveScore>();
   const liveByApiMatchId = new Map<number, LiveScore>();
-  const apiToIdx = new Map<number, number>();
-  fixtures.forEach((f) => {
-    if (typeof f.api_match_id === 'number') apiToIdx.set(f.api_match_id, f.fixture_index);
-  });
   const apply = (rows: LiveScore[] | null | undefined) => {
     (rows ?? []).forEach((ls) => {
       if (typeof ls.api_match_id === 'number') liveByApiMatchId.set(ls.api_match_id, ls);
-      const idx =
-        typeof ls.fixture_index === 'number'
-          ? ls.fixture_index
-          : typeof ls.api_match_id === 'number'
-            ? apiToIdx.get(ls.api_match_id)
-            : undefined;
-      if (typeof idx === 'number') liveByFixtureIndex.set(idx, ls);
     });
   };
   // Poll overlays snapshot so lineups/status stay fresh.
   apply(fromBoard);
   apply(fromPoll);
-  return { liveByFixtureIndex, liveByApiMatchId };
+  return {
+    liveByFixtureIndex: indexLiveScoresByFixture(fixtures, liveByApiMatchId.values()),
+    liveByApiMatchId,
+  };
 }
 
 /**

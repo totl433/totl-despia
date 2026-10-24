@@ -210,7 +210,7 @@ export type GameweekPin =
   /** 3: deadline passed without picks; waiting for kickoff. */
   | { kind: 'missed'; gw: number; kickoffMs: number | null }
   /** 4: picks locked in; waiting for kickoff. */
-  | { kind: 'locked'; gw: number; kickoffMs: number | null }
+  | { kind: 'locked'; gw: number; kickoffMs: number | null; deadlineMs: number | null }
   /** 6: gameweek finished, the next one isn't published yet. */
   | { kind: 'comingSoon'; gw: number; nextGw: number }
   /** 7: the next gameweek is published and you haven't moved on (a chance to review results first). */
@@ -254,9 +254,9 @@ export function gameweekPin(
       return { kind: 'predict', gw, deadlineMs };
     // Submitted picks are final: from submitting until kickoff the card says you're locked in.
     case 'GW_PREDICTED':
-      return { kind: 'locked', gw, kickoffMs };
+      return { kind: 'locked', gw, kickoffMs, deadlineMs };
     case 'DEADLINE_PASSED':
-      return submitted ? { kind: 'locked', gw, kickoffMs } : { kind: 'missed', gw, kickoffMs };
+      return submitted ? null : { kind: 'missed', gw, kickoffMs };
     case 'RESULTS_PRE_GW':
       return { kind: 'comingSoon', gw, nextGw: gw + 1 };
     default:

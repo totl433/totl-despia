@@ -529,6 +529,7 @@ export default function LeaguesScreen() {
   const liveScoresGw = typeof viewingGw === 'number' ? viewingGw : typeof effectiveCurrentGw === 'number' ? effectiveCurrentGw : null;
   const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
     initial: home?.liveScores ?? [],
+    fixtures: home?.fixtures ?? [],
   });
   const gwState = React.useMemo(() => {
     if (!home) return null;

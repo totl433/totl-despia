@@ -75,6 +75,7 @@ export function GameCentreCardHeader({
   stamp,
   accessory,
   onDark = false,
+  onPress,
 }: {
   title: string;
   subtitle?: string | null;
@@ -82,9 +83,10 @@ export function GameCentreCardHeader({
   /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
   accessory?: React.ReactNode;
   onDark?: boolean;
+  onPress?: () => void;
 }) {
   const ink = onDark ? ON_DARK : INK;
-  return (
+  const heading = (
     <View style={{ paddingHorizontal: 16, gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
         <TotlText accessibilityRole="header" style={[titleText, { flex: 1, color: ink.primary }]}>
@@ -98,6 +100,19 @@ export function GameCentreCardHeader({
       ) : null}
     </View>
   );
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
+        onPress={onPress}
+        style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+      >
+        {heading}
+      </Pressable>
+    );
+  }
+  return heading;
 }
 
 /**

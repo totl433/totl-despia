@@ -78,6 +78,12 @@ export function playersWeekStart(dayKey: string): string {
   return shiftPlayersDay(dayKey, -((weekday + 6) % 7));
 }
 
+/** 0 = Monday … 6 = Sunday, on the GMT Players week. */
+export function playersWeekdayIndex(dayKey: string): number {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+}
+
 /** Number of days in the month of the given day key. */
 export function playersDaysInMonth(dayKey: string): number {
   const [y, m] = dayKey.split('-').map(Number);

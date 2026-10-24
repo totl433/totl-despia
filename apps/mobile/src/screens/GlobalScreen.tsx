@@ -274,6 +274,7 @@ export default function GlobalScreen() {
   });
   const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(snapshotLeaderboardGw, {
     initial: homeSnapshot?.liveScores ?? [],
+    fixtures: homeSnapshot?.fixtures ?? [],
   });
 
   const { data: ranks, refetch: refetchRanks, isRefetching: ranksRefetching } = useQuery({

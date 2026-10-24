@@ -12,12 +12,16 @@ describe('card types', () => {
       'public',
     ]);
     expect(gameCentreCardType('message')).toBe('league');
-    expect(['rank', 'overall', 'round-up', 'waiting'].map((kind) => gameCentreCardType(kind as never))).toEqual([
+    expect(['rank', 'overall', 'round-up', 'waiting', 'score-sheet', 'league-event'].map((kind) => gameCentreCardType(kind as never))).toEqual([
+      'personal',
+      'personal',
       'personal',
       'personal',
       'personal',
       'personal',
     ]);
+    expect(gameCentreCardType('fixtures')).toBe('public');
+    expect(gameCentreCardType('shout')).toBe('public');
   });
 });
 
@@ -55,10 +59,17 @@ describe('card header', () => {
   });
 
   it('keeps a third line with the content', () => {
-    expect(gameCentreCardHeader({ kind: 'kickoff', eyebrow: 'Kickoff', title: "We're off", body: 'Arsenal v Coventry' })).toEqual({
+    expect(
+      gameCentreCardHeader({
+        kind: 'kickoff',
+        eyebrow: 'Kickoff',
+        title: "We're off",
+        body: "Arsenal v Coventry. Let's get the conversation started — add a comment below.",
+      })
+    ).toEqual({
       title: 'Kickoff',
       subtitle: "We're off",
-      body: 'Arsenal v Coventry',
+      body: "Arsenal v Coventry. Let's get the conversation started — add a comment below.",
     });
   });
 });

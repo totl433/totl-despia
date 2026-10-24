@@ -3,7 +3,9 @@ import { AppState } from 'react-native';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
 
-import { pinDismissible, pinnedCardCopy, type PinnedCardAction } from '../../features/gameCentre/cards';
+import { TotlText } from '@totl/ui';
+
+import { lockedStartingSoon, pinDismissible, pinnedCardCopy, type PinnedCardAction } from '../../features/gameCentre/cards';
 import type { GameweekPin } from '../../lib/gameweekState';
 import GameCentreCard, { GameCentreCardButton, GameCentreCardHeader } from './GameCentreCard';
 
@@ -34,14 +36,16 @@ function GameCentrePinnedCard({
   onDismiss?: (pin: GameweekPin) => void;
 }) {
   const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const needsSeconds = lockedStartingSoon(pin, nowMs);
   React.useEffect(() => {
-    // Tick on the minute boundary so "Closes in" changes when the clock does.
+    // Seconds while First teams is counting down; otherwise on the minute for "Closes in".
     let timer: ReturnType<typeof setTimeout>;
+    const delay = () => (needsSeconds ? 1000 : 60_000 - (Date.now() % 60_000) + 50);
     const tick = () => {
       setNowMs(Date.now());
-      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+      timer = setTimeout(tick, delay());
     };
-    timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    timer = setTimeout(tick, delay());
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') setNowMs(Date.now());
     });
@@ -49,7 +53,7 @@ function GameCentrePinnedCard({
       clearTimeout(timer);
       sub.remove();
     };
-  }, []);
+  }, [needsSeconds]);
 
   const copy = pinnedCardCopy(pin, nowMs, scoreLabel);
   const expired = pin.kind === 'predict' && pin.deadlineMs != null && nowMs >= pin.deadlineMs;
@@ -74,7 +78,16 @@ function GameCentrePinnedCard({
           />
         ) : null
       }
-    />
+    >
+      {copy.countdown ? (
+        <>
+          <TotlText style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: '#3C3C4399', marginBottom: 2 }}>
+            {copy.countdownLabel ?? 'FIRST TEAMS IN'}
+          </TotlText>
+          <TotlText style={{ fontSize: 16, lineHeight: 20, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{copy.countdown}</TotlText>
+        </>
+      ) : null}
+    </GameCentreCard>
   );
 }
 

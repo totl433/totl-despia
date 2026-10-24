@@ -36,6 +36,22 @@ export const Gw: Story = {
   },
 };
 
+export const PlayersWeek: Story = {
+  args: {
+    valueLabel: 'Week',
+    compactValueLabels: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
+    compactLiveColumnIndex: 5,
+    highlightUserId: 'me',
+    winnerUserIds: ['a'],
+    tightWinners: true,
+    rows: [
+      { user_id: 'a', name: 'Jonathan Dalgaard', value: 28, compactValues: [4, 5, 3, 4, 4, 8, null] },
+      { user_id: 'me', name: 'Jof', value: 24, compactValues: [3, 4, 4, 3, 4, 6, null] },
+      { user_id: 'b', name: 'Matthew Bird', value: 19, compactValues: [2, 3, 3, 4, 3, 4, null] },
+    ],
+  },
+};
+
 export const Monthly: Story = {
   args: {
     valueLabel: 'PTS',

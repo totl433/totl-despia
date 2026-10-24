@@ -10,13 +10,15 @@ import { TotlText, useTokens } from '@totl/ui';
 
 import LeaderboardTable, { type LeaderboardRow } from '../../components/leaderboards/LeaderboardTable';
 import UnderlineTabs from '../../components/UnderlineTabs';
-import { playersDayKey, playersMonthName } from '../../lib/retroPlayers/day';
+import { playersDayKey, playersMonthName, playersWeekdayIndex } from '../../lib/retroPlayers/day';
 import {
+  PLAYERS_WEEKDAY_LETTERS,
   readSharedPlayersScores,
   scoreForDay,
   scoreForMonth,
   scoreForWeek,
   scoreOverall,
+  scoresForWeekDays,
   type PlayersScoreStore,
 } from '../../lib/retroPlayers/scores';
 import { supabase } from '../../lib/supabase';
@@ -98,6 +100,7 @@ export default function RetroPlayersScoreboardScreen() {
         name: player?.name?.trim() || 'Player',
         avatar_url: player?.avatar_url ?? null,
         value,
+        compactValues: tab === 'week' ? scoresForWeekDays(store, dayKey) : undefined,
       });
     }
     return orderRows(built);
@@ -172,9 +175,12 @@ export default function RetroPlayersScoreboardScreen() {
             <LeaderboardTable
               rows={rows}
               valueLabel={valueLabel}
+              compactValueLabels={tab === 'week' ? [...PLAYERS_WEEKDAY_LETTERS] : undefined}
+              compactLiveColumnIndex={tab === 'week' ? playersWeekdayIndex(dayKey) : undefined}
               highlightUserId={userId}
               winnerUserIds={winnerUserIds}
               tightWinners
+              tightRank
               style={{ flex: 1, marginHorizontal: -t.space[4], marginBottom: -24 }}
             />
           ) : null}

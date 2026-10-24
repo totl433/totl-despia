@@ -1063,7 +1063,7 @@ export default function PredictionsScreen() {
 
                 <View style={{ flex: 1, paddingRight: 8 }}>
                   <TotlText style={{ fontFamily: 'Gramatika-Medium', fontWeight: '500', lineHeight: 20 }}>
-                    Want to change anything? Tap a prediction to update it. Your picks lock in when you confirm.
+                    Want to change anything? Tap a prediction to update it. Your Predictions lock in when you confirm.
                   </TotlText>
                 </View>
 

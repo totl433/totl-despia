@@ -1,4 +1,5 @@
 import type { ReactionSummary } from '../../hooks/useLeagueChatReactions';
+import { formatCountdownShort } from '../../lib/dateTime';
 import type { FeedItem, FeedKind } from '../matchCenter/feed';
 import type { GameweekPin } from '../../lib/gameweekState';
 
@@ -20,6 +21,8 @@ const PUBLIC_KINDS: ReadonlySet<FeedKind> = new Set([
   'half-time',
   'second-half',
   'full-time',
+  'fixtures',
+  'shout',
 ]);
 
 export function gameCentreCardType(kind: FeedKind): GameCentreCardType {
@@ -57,7 +60,17 @@ export function gameCentreCardHeader(item: Pick<FeedItem, 'kind' | 'eyebrow' | '
   const body = text(item.body);
 
   if (item.kind === 'goal') return { title: 'Goal!!', subtitle: body, body: null };
-  if (item.kind === 'opener' || item.kind === 'waiting' || item.kind === 'full-time') {
+  if (
+    item.kind === 'opener' ||
+    item.kind === 'waiting' ||
+    item.kind === 'full-time' ||
+    item.kind === 'fixtures' ||
+    item.kind === 'score-sheet' ||
+    item.kind === 'shout' ||
+    item.kind === 'players-ready' ||
+    item.kind === 'players-nudge' ||
+    item.kind === 'league-event'
+  ) {
     return { title: title ?? eyebrow, subtitle: body, body: null };
   }
 
@@ -145,7 +158,14 @@ export function dayAndTime(ms: number): string {
   return `${day}, ${time}`;
 }
 
-export type PinnedCardAction = 'predict' | 'roundUp' | 'moveOn';
+export type PinnedCardAction = 'predict' | 'viewPicks' | 'roundUp' | 'moveOn';
+
+/** First teams land at the deadline; the combined pin starts 3 hours before that. */
+export const FIRST_TEAMS_COUNTDOWN_MS = 3 * 60 * 60 * 1000;
+
+export function lockedStartingSoon(pin: GameweekPin, nowMs: number): boolean {
+  return pin.kind === 'locked' && pin.deadlineMs != null && nowMs < pin.deadlineMs && nowMs >= pin.deadlineMs - FIRST_TEAMS_COUNTDOWN_MS;
+}
 
 /**
  * States people may dismiss: the ones that only tell you something. Picks due and moving on
@@ -168,11 +188,18 @@ export function pinnedCardCopy(
   pin: GameweekPin,
   nowMs: number,
   scoreLabel: string | null
-): { title: string; subtitle: string; action: PinnedCardAction | null; actionLabel: string | null } {
+): {
+  title: string;
+  subtitle: string;
+  action: PinnedCardAction | null;
+  actionLabel: string | null;
+  countdownLabel?: string | null;
+  countdown?: string | null;
+} {
   const lastWeek = (gw: number) => (scoreLabel ? `Gameweek ${gw}: ${scoreLabel}` : `Gameweek ${gw} is complete`);
   switch (pin.kind) {
     case 'predict':
-      return { title: "Don't miss the deadline!", subtitle: predictionsClosesLine(pin.gw, pin.deadlineMs, nowMs), action: 'predict', actionLabel: 'Submit your picks' };
+      return { title: "Don't miss the deadline!", subtitle: predictionsClosesLine(pin.gw, pin.deadlineMs, nowMs), action: 'predict', actionLabel: 'Submit your Predictions' };
     case 'missed':
       return {
         title: 'Deadline passed',
@@ -180,13 +207,29 @@ export function pinnedCardCopy(
         action: null,
         actionLabel: null,
       };
-    case 'locked':
+    case 'locked': {
+      if (lockedStartingSoon(pin, nowMs) && pin.deadlineMs != null) {
+        return {
+          title: "You're in",
+          subtitle: `Gameweek ${pin.gw} starting soon!`,
+          action: 'viewPicks',
+          actionLabel: 'Your Predictions',
+          countdownLabel: 'FIRST TEAMS IN',
+          countdown: formatCountdownShort(pin.deadlineMs - nowMs),
+        };
+      }
+      const picksStillOpen = pin.deadlineMs != null && nowMs < pin.deadlineMs;
       return {
         title: "You're in",
-        subtitle: pin.kickoffMs != null ? `Gameweek ${pin.gw}: Kicks off ${dayAndTime(pin.kickoffMs)}` : `Gameweek ${pin.gw}: Kicks off soon`,
-        action: null,
-        actionLabel: null,
+        subtitle: picksStillOpen
+          ? 'Make sure everybody in your Mini Leagues has made their predictions'
+          : pin.kickoffMs != null
+            ? `Gameweek ${pin.gw}: Kicks off ${dayAndTime(pin.kickoffMs)}`
+            : `Gameweek ${pin.gw}: Kicks off soon`,
+        action: 'viewPicks',
+        actionLabel: 'Your Predictions',
       };
+    }
     case 'comingSoon':
       return { title: `Gameweek ${pin.nextGw} coming soon`, subtitle: lastWeek(pin.gw), action: 'roundUp', actionLabel: 'View the round-up' };
     case 'ready':

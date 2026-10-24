@@ -6,7 +6,11 @@ import { getDefaultMlAvatarFilename, resolveLeagueAvatarUri } from '../../lib/le
 import { LEGACY_PILE_TABLES, SEASON_PILE_TABLES } from '../../lib/leagueSeasonPile';
 import { fetchAllSupabaseRows } from '../../lib/profileStreakRows';
 import { VOLLEY_USER_ID } from '../../lib/volley';
+import { playersDayKey, shiftPlayersDay } from '../../lib/retroPlayers/day';
+import { readSharedPlayersScores, scoreForDay, scoreForMonth, scoreForWeek, type PlayersScoreStore } from '../../lib/retroPlayers/scores';
 import { chatMessageItem, type FeedItem, type LeaguePickSnap, type LeagueTableSnap, type OverallReplay } from './feed';
+import type { AdminFeedPost, FeedPerson, LeagueJoin } from './derivedFeed';
+import { buildSeasonStatFacts, seasonPickKey, type SeasonFixture, type SeasonStatFacts } from './seasonStatFacts';
 
 /**
  * What the Game Centre feed loads for one gameweek. The screen runs these through React
@@ -38,6 +42,7 @@ export async function fetchLeagueTables(gw: number, leagues: FeedLeague[]): Prom
         id: league.id,
         name: league.name,
         avatarUrl: leagueAvatarUri(league),
+        submittedUserIds: table.submittedUserIds ?? [],
         rows: table.rows.map((row) => ({
           user_id: row.user_id,
           name: row.name,
@@ -268,4 +273,172 @@ export async function fetchLeagueChat(input: {
         }),
       ];
     });
+}
+
+export async function fetchPeople(ids: string[]): Promise<Map<string, FeedPerson>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const out = new Map<string, FeedPerson>();
+  if (!unique.length) return out;
+  const { data } = await supabase.from('users').select('id, name, avatar_url').in('id', unique);
+  (data ?? []).forEach((person) => {
+    const id = String(person.id);
+    const name = typeof person.name === 'string' ? person.name.trim() : '';
+    const avatar = typeof person.avatar_url === 'string' ? person.avatar_url.trim() : '';
+    out.set(id, { id, name: name || 'Someone', avatarUrl: avatar || null });
+  });
+  return out;
+}
+
+export async function fetchLeagueJoins(leagues: FeedLeague[]): Promise<LeagueJoin[]> {
+  const ids = leagues.map((league) => league.id);
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from('league_members').select('league_id, user_id, created_at').in('league_id', ids);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{ league_id: string; user_id: string; created_at?: string | null }>;
+  const userIds = [...new Set(rows.map((row) => String(row.user_id)))];
+  const people = await fetchPeople(userIds);
+  const leagueName = new Map(leagues.map((league) => [league.id, league.name]));
+  const leagueAvatar = new Map(leagues.map((league) => [league.id, leagueAvatarUri(league)]));
+  return rows.flatMap((row) => {
+    const joinedAtMs = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+    if (!Number.isFinite(joinedAtMs)) return [];
+    const person = people.get(String(row.user_id));
+    return [
+      {
+        leagueId: String(row.league_id),
+        leagueName: leagueName.get(String(row.league_id)) ?? 'Mini-league',
+        leagueAvatar: leagueAvatar.get(String(row.league_id)) ?? null,
+        userId: String(row.user_id),
+        name: person?.name || 'Someone',
+        avatarUrl: person?.avatarUrl ?? null,
+        joinedAtMs,
+      },
+    ];
+  });
+}
+
+export type DerivedFeedExtras = {
+  joins: LeagueJoin[];
+  playersScores: Record<string, PlayersScoreStore>;
+  people: Map<string, FeedPerson>;
+  adminPosts: AdminFeedPost[];
+};
+
+export async function fetchAdminFeedPosts(): Promise<AdminFeedPost[]> {
+  const { data, error } = await supabase
+    .from('game_centre_admin_posts')
+    .select('id, title, body, published_at')
+    .order('published_at', { ascending: true })
+    .limit(20);
+  if (error || !data) return [];
+  return (data as Array<{ id: string; title?: string | null; body?: string | null; published_at?: string | null }>).flatMap((row) => {
+    const publishedAtMs = row.published_at ? Date.parse(row.published_at) : Number.NaN;
+    const body = String(row.body ?? '').trim();
+    if (!Number.isFinite(publishedAtMs) || !body) return [];
+    return [{ id: String(row.id), title: String(row.title ?? 'Announcement').trim() || 'Announcement', body, publishedAtMs }];
+  });
+}
+
+function topScoreIds(scores: Record<string, PlayersScoreStore>, scoreOf: (store: PlayersScoreStore) => number | null): string[] {
+  const rows = Object.entries(scores)
+    .map(([id, store]) => {
+      const score = scoreOf(store);
+      return score == null ? null : { id, score };
+    })
+    .filter((row): row is { id: string; score: number } => row != null);
+  if (!rows.length) return [];
+  const best = Math.max(...rows.map((row) => row.score));
+  return rows.filter((row) => row.score === best).map((row) => row.id).slice(0, 5);
+}
+
+export async function fetchDerivedFeedExtras(input: {
+  leagues: FeedLeague[];
+  extraIds?: string[];
+}): Promise<DerivedFeedExtras> {
+  const [joins, playersScores, adminPosts] = await Promise.all([
+    fetchLeagueJoins(input.leagues),
+    readSharedPlayersScores(),
+    fetchAdminFeedPosts(),
+  ]);
+  const today = playersDayKey();
+  const yesterday = shiftPlayersDay(today, -1);
+  const ids = new Set(input.extraIds ?? []);
+  joins.forEach((join) => ids.add(join.userId));
+  topScoreIds(playersScores, (store) => scoreForDay(store, yesterday)).forEach((id) => ids.add(id));
+  topScoreIds(playersScores, (store) => scoreForWeek(store, yesterday)).forEach((id) => ids.add(id));
+  topScoreIds(playersScores, (store) => scoreForMonth(store, yesterday)).forEach((id) => ids.add(id));
+  Object.entries(playersScores).forEach(([id, store]) => {
+    if (store[today]?.correct === 10) ids.add(id);
+  });
+  const people = await fetchPeople([...ids]);
+  return { joins, playersScores, people, adminPosts };
+}
+
+export async function fetchSeasonStatFacts(season: FeedSeason): Promise<SeasonStatFacts> {
+  const pileB = season.useSeasonStack && !!season.seasonId;
+  const tables = pileB ? SEASON_PILE_TABLES : LEGACY_PILE_TABLES;
+  const fixtures = await fetchAllSupabaseRows<SeasonFixture & Record<string, unknown>>((from, to) => {
+    let query = (supabase as any)
+      .from(tables.fixtures)
+      .select('gw, fixture_index, api_match_id, home_code, away_code, home_name, away_name, home_team, away_team')
+      .order('gw', { ascending: true })
+      .order('fixture_index', { ascending: true })
+      .range(from, to);
+    if (pileB) query = query.eq('season_id', season.seasonId);
+    return query;
+  });
+  const normalised: SeasonFixture[] = fixtures.map((row) => ({
+    gw: Number(row.gw),
+    fixture_index: Number(row.fixture_index),
+    api_match_id: typeof row.api_match_id === 'number' ? row.api_match_id : null,
+    home_code: String(row.home_code ?? '').toUpperCase(),
+    away_code: String(row.away_code ?? '').toUpperCase(),
+    home_name: String(row.home_name ?? row.home_team ?? ''),
+    away_name: String(row.away_name ?? row.away_team ?? ''),
+  }));
+  const [results, pickRows, live] = await Promise.all([
+    fetchAllSupabaseRows<{ gw: number; fixture_index: number; result: string }>((from, to) => {
+      let query = (supabase as any).from(tables.results).select('gw, fixture_index, result').range(from, to);
+      if (pileB) query = query.eq('season_id', season.seasonId);
+      return query;
+    }),
+    fetchAllSupabaseRows<{ gw: number; fixture_index: number; pick: string | null }>((from, to) => {
+      let query = (supabase as any).from(tables.picks).select('gw, fixture_index, pick').range(from, to);
+      if (pileB) query = query.eq('season_id', season.seasonId);
+      return query;
+    }),
+    fetchAllSupabaseRows<{
+      api_match_id: number;
+      status: string | null;
+      home_score: number | null;
+      away_score: number | null;
+      home_team: string | null;
+      away_team: string | null;
+      goals: unknown;
+    }>((from, to) => {
+      const gws = [...new Set(normalised.map((row) => row.gw).filter((gw) => Number.isFinite(gw)))];
+      if (!gws.length) return Promise.resolve({ data: [], error: null });
+      return (supabase as any)
+        .from('live_scores')
+        .select('api_match_id, status, home_score, away_score, home_team, away_team, goals')
+        .in('gw', gws)
+        .range(from, to);
+    }),
+  ]);
+  const seasonMatchIds = new Set(normalised.map((row) => row.api_match_id).filter((id): id is number => typeof id === 'number'));
+  const pickCounts = new Map<string, { H: number; D: number; A: number; total: number }>();
+  pickRows.forEach((row) => {
+    if (row.pick !== 'H' && row.pick !== 'D' && row.pick !== 'A') return;
+    const key = seasonPickKey(Number(row.gw), Number(row.fixture_index));
+    const current = pickCounts.get(key) ?? { H: 0, D: 0, A: 0, total: 0 };
+    current[row.pick] += 1;
+    current.total += 1;
+    pickCounts.set(key, current);
+  });
+  return buildSeasonStatFacts({
+    fixtures: normalised,
+    results,
+    pickCounts,
+    live: live.filter((row) => seasonMatchIds.has(row.api_match_id)),
+  });
 }

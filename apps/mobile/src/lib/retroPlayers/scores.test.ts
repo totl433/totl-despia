@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../supabase', () => ({ supabase: {} }));
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: {} }));
 
-import { scoreForMonth, scoreForWeek } from './scores';
+import { scoreForMonth, scoreForWeek, scoresForWeekDays } from './scores';
 
 const s = (correct: number) => ({ correct, total: 10 });
 
@@ -24,5 +24,10 @@ describe('Players scoreboard totals', () => {
   it('runs across the end of a month', () => {
     expect(scoreForWeek({ '2026-09-28': s(5), '2026-10-01': s(7) }, '2026-10-01')).toBe(12);
     expect(scoreForMonth({ '2026-09-28': s(5), '2026-10-01': s(7) }, '2026-10-01')).toBe(7);
+  });
+
+  it('lists Mon–Sun scores for the week columns', () => {
+    expect(scoresForWeekDays(store, '2026-10-18')).toEqual([4, null, null, 6, null, null, 3]);
+    expect(scoresForWeekDays(store, '2026-10-15')).toEqual([4, null, null, 6, null, null, null]);
   });
 });

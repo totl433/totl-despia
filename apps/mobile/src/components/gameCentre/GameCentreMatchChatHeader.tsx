@@ -55,7 +55,7 @@ export default function GameCentreMatchChatHeader({
       <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', borderRadius: 16, backgroundColor: t.color.surface }}>
         <Side side={home} />
         <View style={{ padding: 4 }}>
-          <TotlText style={{ fontFamily: 'Gramatika-Bold', fontSize: 14, lineHeight: 17, letterSpacing: 0.14, color: INK.primary, textAlign: 'center' }}>
+          <TotlText style={{ fontFamily: 'Gramatika-Bold', fontSize: 24, lineHeight: 28, letterSpacing: 0.14, color: INK.primary, textAlign: 'center' }}>
             {centre}
           </TotlText>
         </View>

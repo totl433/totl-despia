@@ -115,6 +115,12 @@ describe('feed from stored posts', () => {
     expect(feed.find((item) => item.id === 'ht:9')?.match).toMatchObject({ homeScore: 1, awayScore: 0 });
   });
 
+  it('puts the conversation starter on the kickoff card, pointing at comments', () => {
+    const card = fromPosts(posts).find((item) => item.kind === 'kickoff');
+    expect(["We're off", 'Kick-off']).toContain(card?.title);
+    expect(card?.body).toMatch(/comment/i);
+  });
+
   it('orders by first publish time, whatever the clock says', () => {
     const early = fromPosts(posts, KO + 50 * 60_000).map((item) => [item.id, item.sortAt]);
     const later = fromPosts(posts, KO + 90 * 60_000).map((item) => [item.id, item.sortAt]);
@@ -203,6 +209,97 @@ describe('merging posts', () => {
   });
 });
 
+describe('leftover last-season GW8 live scores', () => {
+  const forest: Fixture = {
+    id: 'gw8-0',
+    gw: 8,
+    fixture_index: 0,
+    kickoff_time: '2026-10-23T19:00:00Z',
+    api_match_id: 560620,
+    home_name: 'Ipswich',
+    away_name: 'Forest',
+    home_code: 'IPS',
+    away_code: 'NFO',
+  };
+  const liverpool: Fixture = {
+    id: 'gw8-5',
+    gw: 8,
+    fixture_index: 5,
+    kickoff_time: '2026-10-25T14:00:00Z',
+    api_match_id: 560630,
+    home_name: 'Liverpool',
+    away_name: 'Brighton',
+    home_code: 'LIV',
+    away_code: 'BHA',
+  };
+  const leftoverXi: LiveScore = {
+    api_match_id: 499000,
+    gw: 8,
+    fixture_index: 0,
+    home_score: 0,
+    away_score: 0,
+    status: 'TIMED',
+    home_team: 'Old Home',
+    away_team: 'Old Away',
+    kickoff_time: '2025-10-18T12:30:00Z',
+    lineups: {
+      home: { players: Array.from({ length: 11 }, (_, i) => ({ name: `Home ${i}` })) },
+      away: { players: Array.from({ length: 11 }, (_, i) => ({ name: `Away ${i}` })) },
+    },
+  };
+  const leftoverFt: LiveScore = {
+    api_match_id: 499001,
+    gw: 8,
+    fixture_index: 5,
+    home_score: 2,
+    away_score: 0,
+    status: 'FINISHED',
+    minute: 90,
+    home_team: 'Old Home',
+    away_team: 'Old Away',
+    kickoff_time: '2025-10-18T15:00:00Z',
+    goals: [{ team: 'Old Home', minute: 12, scorer: 'Someone' }],
+    lineups: {
+      home: { players: Array.from({ length: 11 }, (_, i) => ({ name: `Home ${i}` })) },
+      away: { players: Array.from({ length: 11 }, (_, i) => ({ name: `Away ${i}` })) },
+    },
+  };
+  const leftoverByIndex = new Map([
+    [0, leftoverXi],
+    [5, leftoverFt],
+  ]);
+  const leftoverByApi = new Map([
+    [leftoverXi.api_match_id, leftoverXi],
+    [leftoverFt.api_match_id, leftoverFt],
+  ]);
+
+  it('stays on the waiting card at the 75-minute open if only last season’s XIs are on gw=8', () => {
+    const feed = buildMatchFeed({
+      gw: 8,
+      fixtures: [forest, liverpool],
+      liveByFixtureIndex: leftoverByIndex,
+      liveByApiMatchId: leftoverByApi,
+      picks: { '0': 'A', '5': 'H' },
+      nowMs: Date.parse('2026-10-23T17:50:00Z'),
+    });
+    expect(feed.map((item) => item.kind)).toEqual(['waiting']);
+    expect(feed.some((item) => item.kind === 'full-time' || item.kind === 'goal' || item.kind === 'lineup')).toBe(false);
+  });
+
+  it('does not paint last season’s 2–0 onto this week’s Liverpool card', () => {
+    const feed = buildMatchFeed({
+      gw: 8,
+      fixtures: [forest, liverpool],
+      liveByFixtureIndex: leftoverByIndex,
+      liveByApiMatchId: leftoverByApi,
+      picks: { '0': 'A', '5': 'H' },
+      nowMs: Date.parse('2026-10-25T16:00:00Z'),
+    });
+    expect(feed.filter((item) => item.kind === 'full-time' || item.kind === 'goal')).toEqual([]);
+    expect(feed.some((item) => item.body.includes('Someone'))).toBe(false);
+  });
+});
+
 describe('fixture threads', () => {
   it('finds the fixture in every match card id, old and new', () => {
     expect(['xi:9', 'xi-sheet:9', 'ko:9', 'goal:9:H1', 'goal:9:14:0', 'score:9:1-0', 'ht:9', 'sh:9', 'ft:9'].map(fixtureIndexOfCard)).toEqual(
@@ -232,5 +329,41 @@ describe('fixture threads', () => {
     expect(sides.home.code).toBe('MUN');
     expect(sides.away.code).toBe('CHE');
     expect(sides.home.name).not.toMatch(/FC$/);
+  });
+});
+
+describe('mini-league snapshots', () => {
+  it('puts league ids and board tabs on each row', () => {
+    const me = 'user-me';
+    const them = 'user-them';
+    const finished: LiveScore = { ...atHalfTime, status: 'FINISHED', home_score: 2, away_score: 0, minute: 90 };
+    const feed = buildMatchFeed({
+      gw: 7,
+      fixtures: [spursCoventry],
+      liveByFixtureIndex: new Map([[9, finished]]),
+      picks: { '9': 'H' },
+      nowMs: KO + 110 * 60_000,
+      userId: me,
+      leagues: [
+        {
+          id: 'league-easy',
+          name: 'Easy League',
+          members: [
+            { userId: me, name: 'Me', picks: { 9: 'H' } },
+            { userId: them, name: 'Them', picks: { 9: 'A' } },
+          ],
+        },
+      ],
+      overall: {
+        beforeGw: { [me]: 10, [them]: 10 },
+        monthBefore: { [me]: 3, [them]: 3 },
+        monthLabel: 'Oct',
+        picks: { [me]: { 9: 'H' }, [them]: { 9: 'A' } },
+      },
+    });
+    const rank = feed.filter((item) => item.kind === 'rank');
+    expect(rank.length).toBeGreaterThan(0);
+    expect(rank[0].standings?.[0]).toMatchObject({ name: 'Easy League', leagueId: 'league-easy' });
+    expect(rank[0].boards?.map((board) => board.tab)).toEqual(['gw', 'monthly', 'overall']);
   });
 });

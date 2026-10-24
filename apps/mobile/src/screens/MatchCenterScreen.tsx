@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +25,7 @@ import { TEAM_BADGES } from '../lib/teamBadges';
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
 import { api } from '../lib/api';
+import { inviteErrorMessage, leagueInviteApi } from '../lib/leagueInviteApi';
 import { supabase } from '../lib/supabase';
 import { useLiveScores } from '../hooks/useLiveScores';
 import { env } from '../env';
@@ -42,10 +43,12 @@ import {
 import usePopupCards from '../hooks/usePopupCards';
 import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
+import { resolveLiveScore } from '../lib/liveScoreRows';
 import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFixtureUi';
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
-import { gameweekPin, getGameweekStateFromSnapshot, type GameweekPin } from '../lib/gameweekState';
+import { gameweekPin, getGameweekStateFromSnapshot, predictionsDeadlineMs, type GameweekPin } from '../lib/gameweekState';
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
 import { pinDismissKey, pinDismissible, type PinnedCardAction } from '../features/gameCentre/cards';
@@ -59,6 +62,7 @@ import EmojiGlyph, { hasEmojiBitmap } from '../features/matchCenter/EmojiGlyph';
 import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips } from '../features/gameCentre/cards';
 import GameCentreCard, {
   GameCentreAuthorHeader,
+  GameCentreCardButton,
   GameCentreCardHeader,
   GameCentreReactionBar,
   GameCentreReplyInput,
@@ -84,17 +88,22 @@ import {
   rankOf,
   sampleFeed,
   type FeedItem,
+  type FeedLink,
   type FeedMatch,
   type FeedXiPlayer,
   type LeaguePickSnap,
   type LeagueStandingLine,
 } from '../features/matchCenter/feed';
+import { buildDerivedFeed } from '../features/matchCenter/derivedFeed';
+import { hereWeGoMs } from '../features/matchCenter/shoutOutSlots';
 import {
+  fetchDerivedFeedExtras,
   fetchLeagueChat,
   fetchLeagueTables,
   fetchMemberPicks,
   fetchOverallReplay,
   fetchPickPercentRows,
+  fetchSeasonStatFacts,
   leaguePicksFrom,
   memberIdsOf,
   pickPercentsFrom,
@@ -361,9 +370,44 @@ function tokenizeLine(value: string): Array<{ emoji: boolean; text: string }> {
   return parts;
 }
 
+function isEmojiJoiner(codePoint: number): boolean {
+  return codePoint === 0xfe0f || codePoint === 0x200d;
+}
+
 /**
- * Gramatika has no emoji glyphs, and simulator Text draws them as "?".
- * Known emoji are bitmap images beside the words.
+ * Known feed emoji use our bitmaps (Gramatika has none). Anything else — a
+ * unicorn, a flag, a ZWJ sequence — keeps the system emoji font so the
+ * message does not vanish.
+ */
+function EmojiRun({
+  text,
+  size,
+  lineHeight,
+  color,
+}: {
+  text: string;
+  size: number;
+  lineHeight: number;
+  color?: TextStyle['color'];
+}) {
+  const visible = Array.from(text).filter((char) => !isEmojiJoiner(char.codePointAt(0) ?? 0));
+  const useBitmaps = visible.length > 0 && visible.every((char) => hasEmojiBitmap(char.codePointAt(0) ?? 0));
+  if (useBitmaps) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {visible.map((char, charIndex) => {
+          const codePoint = char.codePointAt(0) ?? 0;
+          return <EmojiGlyph key={`${charIndex}-${codePoint}`} codePoint={codePoint} size={size} />;
+        })}
+      </View>
+    );
+  }
+  return <Text style={{ fontSize: size, lineHeight, color }}>{text}</Text>;
+}
+
+/**
+ * Gramatika has no emoji glyphs. Known ones are bitmaps; the rest use the
+ * system emoji font so a unicorn-only chat line does not go blank.
  */
 function MixedText({ children, style }: { children: string; style?: StyleProp<TextStyle> }) {
   const flat = StyleSheet.flatten(style) ?? {};
@@ -385,19 +429,13 @@ function MixedText({ children, style }: { children: string; style?: StyleProp<Te
             </TotlText>
           );
         }
-        const flat = StyleSheet.flatten(style) ?? {};
-        const glyphSize = typeof flat.fontSize === 'number' ? flat.fontSize : 16;
+        const glyphSize = typeof textStyle.fontSize === 'number' ? textStyle.fontSize : 16;
+        const glyphLineHeight = typeof textStyle.lineHeight === 'number' ? textStyle.lineHeight : glyphSize + 4;
         return (
           <View key={`${lineIndex}-${line}`} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
             {parts.map((part, index) =>
               part.emoji ? (
-                <View key={`${index}-emoji`} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {Array.from(part.text).map((char, charIndex) => {
-                    const codePoint = char.codePointAt(0) ?? 0;
-                    if (!hasEmojiBitmap(codePoint)) return null;
-                    return <EmojiGlyph key={`${charIndex}-${codePoint}`} codePoint={codePoint} size={glyphSize} />;
-                  })}
-                </View>
+                <EmojiRun key={`${index}-emoji`} text={part.text} size={glyphSize} lineHeight={glyphLineHeight} color={textStyle.color} />
               ) : (
                 <TotlText key={`${index}-${part.text}`} style={textStyle}>
                   {part.text}
@@ -417,39 +455,68 @@ function MoveMark({ move }: { move: LeagueStandingLine['move'] }) {
   return null;
 }
 
-function StandingRows({ rows, onDark }: { rows: LeagueStandingLine[]; onDark: boolean }) {
+function StandingRows({
+  rows,
+  onDark,
+  onPressRow,
+}: {
+  rows: LeagueStandingLine[];
+  onDark: boolean;
+  onPressRow?: (row: LeagueStandingLine) => void;
+}) {
   const t = useTokens();
   const marked = rows.some((row) => row.move !== 'same');
   return (
     <View style={{ marginTop: 8, gap: 6 }}>
-      {rows.map((row) => (
-        <View key={row.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {marked ? (
-            <View style={{ width: 18, alignItems: 'center', marginRight: 8 }}>
-              <MoveMark move={row.move} />
+      {rows.map((row) => {
+        const canOpen = Boolean(onPressRow && (row.leagueId || row.overall));
+        const inner = (
+          <>
+            {marked ? (
+              <View style={{ width: 18, alignItems: 'center', marginRight: 8 }}>
+                <MoveMark move={row.move} />
+              </View>
+            ) : null}
+            {row.avatarUrl ? (
+              <Image source={{ uri: row.avatarUrl }} style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8 }} />
+            ) : (
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  marginRight: 8,
+                  backgroundColor: '#1C1408',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <TotlText style={{ color: '#F6C445', fontWeight: '800', fontSize: 12 }}>{row.name.slice(0, 1)}</TotlText>
+              </View>
+            )}
+            <TotlText style={{ flex: 1, fontWeight: '700', color: onDark ? '#FFFFFF' : t.color.text }}>{row.name}</TotlText>
+            <TotlText style={{ fontWeight: '800', color: onDark ? '#FDE68A' : t.color.text }}>{row.place}</TotlText>
+          </>
+        );
+        if (!canOpen) {
+          return (
+            <View key={row.leagueId ?? row.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {inner}
             </View>
-          ) : null}
-          {row.avatarUrl ? (
-            <Image source={{ uri: row.avatarUrl }} style={{ width: 28, height: 28, borderRadius: 14, marginRight: 8 }} />
-          ) : (
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                marginRight: 8,
-                backgroundColor: '#1C1408',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <TotlText style={{ color: '#F6C445', fontWeight: '800', fontSize: 12 }}>{row.name.slice(0, 1)}</TotlText>
-            </View>
-          )}
-          <TotlText style={{ flex: 1, fontWeight: '700', color: onDark ? '#FFFFFF' : t.color.text }}>{row.name}</TotlText>
-          <TotlText style={{ fontWeight: '800', color: onDark ? '#FDE68A' : t.color.text }}>{row.place}</TotlText>
-        </View>
-      ))}
+          );
+        }
+        return (
+          <Pressable
+            key={row.leagueId ?? row.name}
+            accessibilityRole="button"
+            accessibilityLabel={row.overall ? `Open Overall, ${row.place}` : `Open ${row.name} gameweek table`}
+            onPress={() => onPressRow?.(row)}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', opacity: pressed ? 0.7 : 1 })}
+          >
+            {inner}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -458,10 +525,12 @@ function BoardStrip({
   boards,
   avatar,
   onDark,
+  onPressBoard,
 }: {
   boards: FeedItem['boards'];
   avatar?: string | null;
   onDark: boolean;
+  onPressBoard?: (board: NonNullable<FeedItem['boards']>[number]) => void;
 }) {
   if (!boards?.length) return null;
   return (
@@ -476,8 +545,9 @@ function BoardStrip({
     >
       {boards.map((board) => {
         const yours = board.label === 'Overall';
-        return (
-          <View key={board.label} style={{ flex: 1, alignItems: 'center' }}>
+        const canOpen = Boolean(onPressBoard && board.tab);
+        const cell = (
+          <>
             <TotlText style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.3, color: onDark ? '#FDE68A' : '#64748B' }}>
               {board.label}
             </TotlText>
@@ -492,7 +562,25 @@ function BoardStrip({
                 </View>
               ) : null}
             </View>
-          </View>
+          </>
+        );
+        if (!canOpen) {
+          return (
+            <View key={board.label} style={{ flex: 1, alignItems: 'center' }}>
+              {cell}
+            </View>
+          );
+        }
+        return (
+          <Pressable
+            key={board.label}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${board.label} leaderboard, ${board.place}`}
+            onPress={() => onPressBoard?.(board)}
+            style={({ pressed }) => ({ flex: 1, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}
+          >
+            {cell}
+          </Pressable>
         );
       })}
     </View>
@@ -524,7 +612,7 @@ function FeedCardView({
   social,
 }: {
   item: FeedItem;
-  onOpen: (item: FeedItem) => void;
+  onOpen: (item: FeedItem, link?: FeedLink) => void;
   celebrate: boolean;
   arriveDelay?: number;
   reactions?: ReactionSummary[];
@@ -624,6 +712,42 @@ function FeedCardView({
       </View>
     );
   }
+  if (item.faces?.length) {
+    content.push(
+      <View key="faces" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {item.faces.map((face, index) => (
+          <Face key={`${face.name}-${index}`} uri={face.avatarUrl} label={face.name} size={28} />
+        ))}
+      </View>
+    );
+  }
+  if (item.fixtureLines?.length) {
+    content.push(
+      <View key="fixtures" style={{ gap: 6 }}>
+        {item.fixtureLines.map((line) => (
+          <TotlText key={line} style={{ fontSize: 14, lineHeight: 18, color: t.color.text }}>
+            {line}
+          </TotlText>
+        ))}
+      </View>
+    );
+  }
+  if (item.scoreRows?.length) {
+    content.push(
+      <View key="scores" style={{ gap: 8 }}>
+        {item.scoreRows.map((row, index) => (
+          <View key={`${row.home}-${row.away}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TotlText style={{ flex: 1, fontSize: 14, lineHeight: 18, color: t.color.text }}>
+              {row.home} v {row.away}
+            </TotlText>
+            <TotlText style={{ fontSize: 13, lineHeight: 16, fontWeight: '700', color: row.hit ? t.color.brand : t.color.muted }}>
+              {row.pick} · {row.result}
+            </TotlText>
+          </View>
+        ))}
+      </View>
+    );
+  }
   if (item.honours?.length) {
     content.push(
       <View key="honours" style={{ gap: 10 }}>
@@ -643,8 +767,37 @@ function FeedCardView({
       </View>
     );
   }
-  if (item.standings?.length) content.push(<StandingRows key="standings" rows={item.standings} onDark={onDark} />);
-  if (item.boards?.length) content.push(<BoardStrip key="boards" boards={item.boards} avatar={item.boardAvatar} onDark={onDark} />);
+  if (item.standings?.length) {
+    content.push(
+      <StandingRows
+        key="standings"
+        rows={item.standings}
+        onDark={onDark}
+        onPressRow={(row) => {
+          if (row.overall) {
+            onOpen(item, { label: 'Overall', to: 'overall' });
+            return;
+          }
+          if (!row.leagueId) return;
+          onOpen(item, { label: `Open ${row.name}`, to: 'league', leagueId: row.leagueId, leagueName: row.name });
+        }}
+      />
+    );
+  }
+  if (item.boards?.length) {
+    content.push(
+      <BoardStrip
+        key="boards"
+        boards={item.boards}
+        avatar={item.boardAvatar}
+        onDark={onDark}
+        onPressBoard={(board) => {
+          if (!board.tab) return;
+          onOpen(item, { label: board.label, to: board.tab === 'overall' ? 'overall' : board.tab });
+        }}
+      />
+    );
+  }
   if (item.personal) {
     content.push(
       <MixedText
@@ -688,17 +841,26 @@ function FeedCardView({
           subtitle={header.subtitle}
           stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
           onDark={onDark}
+          onPress={
+            item.kind === 'rank'
+              ? () => onOpen(item, item.link ?? { label: 'Mini leagues', to: 'leagues' })
+              : item.kind === 'overall'
+                ? () => onOpen(item, item.link ?? { label: 'Open Overall', to: 'overall' })
+                : undefined
+          }
         />
       }
       footer={
-        canReact && social ? (
+        item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge' || item.kind === 'score-sheet') ? (
+          <GameCentreCardButton label={item.link.label} onPress={() => onOpen(item)} />
+        ) : canReact && social ? (
           <>
             <GameCentreReactionBar
               chips={gameCentreReactionChips(reactions)}
               onReact={(emoji) => onReact?.(emoji)}
               onMore={() => social.onMore(item)}
             />
-            {social.commentCount > 0 ? (
+            {social.commentCount > 0 || item.kind === 'kickoff' ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => social.onOpenComments(item)}
@@ -706,7 +868,11 @@ function FeedCardView({
                 style={{ paddingHorizontal: 16 }}
               >
                 <TotlText style={{ fontSize: 14, lineHeight: 18, color: 'rgba(60,60,67,0.6)' }}>
-                  {social.commentCount === 1 ? 'View 1 comment' : `View all ${social.commentCount} comments`}
+                  {social.commentCount === 0
+                    ? 'Add a comment'
+                    : social.commentCount === 1
+                      ? 'View 1 comment'
+                      : `View all ${social.commentCount} comments`}
                 </TotlText>
               </Pressable>
             ) : null}
@@ -1039,14 +1205,7 @@ function tickerLiveRow(
   liveByFixtureIndex: Map<number, LiveScore>,
   liveByApiMatchId: Map<number, LiveScore>
 ): LiveScore | undefined {
-  const idx = Number(fixture.fixture_index);
-  if (Number.isInteger(idx)) {
-    const row = liveByFixtureIndex.get(idx);
-    if (row) return row;
-  }
-  const apiMatchId = Number(fixture.api_match_id);
-  if (Number.isInteger(apiMatchId)) return liveByApiMatchId.get(apiMatchId);
-  return undefined;
+  return resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId);
 }
 
 function tickerDay(iso: string | null | undefined): string {
@@ -1498,6 +1657,15 @@ export default function MatchCenterScreen() {
     staleTime: 60_000,
   });
   const userId = authUser?.id ? String(authUser.id) : null;
+  const { data: leagueInviteData } = useQuery({
+    enabled: !!userId,
+    queryKey: ['league-invites', userId],
+    queryFn: () => leagueInviteApi.listMine(),
+    staleTime: 5_000,
+    refetchOnMount: 'always',
+    refetchInterval: 15_000,
+  });
+  const leagueInvite = leagueInviteData?.invites?.[0] ?? null;
 
   const { data: profileSummary } = useQuery({
     queryKey: ['profile-summary'],
@@ -1558,7 +1726,10 @@ export default function MatchCenterScreen() {
     () => ({ ...(fallbackPositions ?? {}), ...predictedPositions }),
     [fallbackPositions, predictedPositions]
   );
-  const { liveByFixtureIndex, liveByApiMatchId, loading: liveScoresLoading, error: liveScoresError } = useLiveScores(gw, { initial: board?.liveScores ?? [] });
+  const { liveByFixtureIndex, liveByApiMatchId, loading: liveScoresLoading, error: liveScoresError } = useLiveScores(gw, {
+    initial: board?.liveScores ?? [],
+    fixtures: board?.fixtures ?? [],
+  });
   // Stored posts (behind EXPO_PUBLIC_GAME_CENTRE_POSTS). Until a gameweek has any, the
   // feed keeps building match cards from live scores as before.
   const postsOn = env.EXPO_PUBLIC_GAME_CENTRE_POSTS === 'on' && mode === 'live';
@@ -1624,10 +1795,28 @@ export default function MatchCenterScreen() {
     refetchInterval: MC_LIVE_BOARD_MS,
   });
 
+  const extraPersonIds = (liveTable?.rows ?? []).slice(0, 15).map((row) => row.user_id);
+  const { data: seasonStats } = useQuery({
+    enabled: mode === 'live' && (!useSeasonStack || !!seasonId),
+    queryKey: ['match-center-season-stats', useSeasonStack ? seasonId : 'legacy'],
+    staleTime: 5 * 60_000,
+    queryFn: () => fetchSeasonStatFacts({ useSeasonStack, seasonId }),
+  });
+  const { data: derivedExtras } = useQuery({
+    enabled: mode === 'live',
+    queryKey: ['match-center-derived-extras', leagueIds, extraPersonIds.join(',')],
+    staleTime: 60_000,
+    queryFn: () =>
+      fetchDerivedFeedExtras({
+        leagues: leaguesData?.leagues ?? [],
+        extraIds: extraPersonIds,
+      }),
+  });
+
   const fixtures = board?.fixtures ?? [];
   const allFinished =
     fixtures.length > 0 &&
-    fixtures.every((fixture) => liveByFixtureIndex.get(fixture.fixture_index)?.status === 'FINISHED');
+    fixtures.every((fixture) => resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId)?.status === 'FINISHED');
 
   const { data: gwResults, isFetched: resultsFetched } = useQuery({
     enabled: mode === 'live' && allFinished && typeof gw === 'number',
@@ -1785,6 +1974,41 @@ export default function MatchCenterScreen() {
   }, [pinKey]);
   // A dismissible card waits until we know it wasn't dismissed, so it never flashes up.
   const showPin = !!pin && (!pinDismissible(pin) || (pinDismissal?.key === pinKey && !pinDismissal.dismissed));
+  const [inviteBusy, setInviteBusy] = React.useState(false);
+  const showInvitePin = !!leagueInvite && menu && mode === 'live';
+  const showAnyPin = showPin || showInvitePin;
+  const onInviteJoin = React.useCallback(
+    async (invite: { id: string; leagueName: string }) => {
+      if (inviteBusy) return;
+      setInviteBusy(true);
+      try {
+        const result = await leagueInviteApi.accept(invite.id);
+        await queryClient.invalidateQueries({ queryKey: ['league-invites'] });
+        await queryClient.invalidateQueries({ queryKey: ['leagues'] });
+        navigation.navigate('LeagueDetail', {
+          leagueId: result.league.id,
+          name: result.league.name,
+          initialTab: 'predictions',
+        });
+      } catch (error) {
+        Alert.alert('Could not join', inviteErrorMessage(error, 'Please try again.'));
+      } finally {
+        setInviteBusy(false);
+      }
+    },
+    [inviteBusy, navigation, queryClient]
+  );
+  const onInviteDismiss = React.useCallback(
+    async (invite: { id: string }) => {
+      try {
+        await leagueInviteApi.dismiss(invite.id);
+        await queryClient.invalidateQueries({ queryKey: ['league-invites'] });
+      } catch (error) {
+        Alert.alert('Could not dismiss', inviteErrorMessage(error, 'Please try again.'));
+      }
+    },
+    [queryClient]
+  );
   const onPinDismiss = React.useCallback(
     (current: GameweekPin) => {
       if (!userId) return;
@@ -1796,7 +2020,7 @@ export default function MatchCenterScreen() {
   );
   const onPinAction = React.useCallback(
     (action: PinnedCardAction, current: GameweekPin) => {
-      if (action === 'predict') {
+      if (action === 'predict' || action === 'viewPicks') {
         navigation.navigate('PredictionsFlow');
         return;
       }
@@ -1898,8 +2122,34 @@ export default function MatchCenterScreen() {
         return body.length > 0 && !serverChat.some((row) => row.mine && row.body.trim() === body);
       })
       .map(placeChat);
-    return [...match, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(compareFeedItems);
-  }, [allFinished, board, chatItems, clockMs, feedPosts, gw, gwResults, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, localReplies, mode, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, teamForms, teamPositions, userId]);
+    const derived = buildDerivedFeed({
+      gw,
+      fixtures: board.fixtures,
+      publishedFixtures: viewingLast && home?.fixtures?.length ? home.fixtures : board.fixtures,
+      liveByFixtureIndex,
+      liveByApiMatchId,
+      picks,
+      userId,
+      nowMs: clockMs,
+      deadlineMs: predictionsDeadlineMs(viewingLast ? home?.fixtures ?? [] : board.fixtures),
+      allFinished,
+      monthEndGw: month?.endGw ?? null,
+      leagues: leaguePicks,
+      tables: leagueTables ?? [],
+      joins: derivedExtras?.joins ?? [],
+      gwOpenMs: gameweekOpensAtMs(board.fixtures),
+      liveTable: liveTable?.rows ?? [],
+      monthBefore: overallReplay?.monthBefore ?? {},
+      seasonBefore: overallReplay?.beforeGw ?? {},
+      people: derivedExtras?.people ?? new Map(),
+      playersScores: derivedExtras?.playersScores ?? {},
+      nextHereWeGoMs: hereWeGoMs(firstKickoffMs(home?.fixtures ?? [])),
+      percents: pickPercents,
+      adminPosts: derivedExtras?.adminPosts ?? [],
+      seasonStats,
+    });
+    return [...match, ...derived, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(compareFeedItems);
+  }, [allFinished, board, chatItems, clockMs, derivedExtras, feedPosts, gw, gwResults, home?.fixtures, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, liveTable?.rows, localReplies, mode, month?.endGw, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, seasonStats, teamForms, teamPositions, userId, viewingLast]);
 
   // The feed is rebuilt whenever scores, chat or tables refresh, which makes every card a
   // new object. Keep the previous object for any card whose content is the same, so the
@@ -1957,7 +2207,7 @@ export default function MatchCenterScreen() {
   const stillFetching = (enabled: boolean, fetched: boolean) => enabled && !fetched;
   // Before the first teams are out, the feed is only the coming-soon card —
   // don't hold the spinner for leagues, chat, tables, and the rest.
-  const preMatchHold = feed.length === 1 && feed[0]?.kind === 'waiting';
+  const preMatchHold = feed.some((item) => item.kind === 'waiting');
   if (countdownShowing.current !== preMatchHold) {
     countdownShowing.current = preMatchHold;
     // Switch to the one-second tick straight away when the countdown appears.
@@ -2420,27 +2670,39 @@ export default function MatchCenterScreen() {
   }, [queryClient]);
 
   const openItem = React.useCallback(
-    (item: FeedItem) => {
-      const link = item.link;
-      if (!link) return;
-      if (link.to === 'home') {
+    (item: FeedItem, link?: FeedLink) => {
+      const target = link ?? item.link;
+      if (!target) return;
+      if (target.to === 'players') {
+        navigation.navigate('RetroTotlDailyPlayersFlow');
+        return;
+      }
+      if (target.to === 'score-sheet') {
+        if (typeof gw === 'number') openManualResultsScoreSheetShare(gw);
+        return;
+      }
+      if (target.to === 'home') {
         navigation.navigate('Tabs', { screen: 'Predictions', params: { screen: 'HomeMain' } });
         return;
       }
-      if (link.to === 'overall') {
-        navigation.navigate('Tabs', { screen: 'Global' });
+      if (target.to === 'leagues') {
+        navigation.navigate('Tabs', { screen: 'Leagues', params: { screen: 'LeaguesList' } });
         return;
       }
-      if (link.to === 'chat' && link.leagueId && link.leagueName) {
+      if (target.to === 'gw' || target.to === 'monthly' || target.to === 'overall') {
+        navigation.navigate('Tabs', { screen: 'Global', params: { initialTab: target.to } });
+        return;
+      }
+      if (target.to === 'chat' && target.leagueId && target.leagueName) {
         // The Mini League's own chat, as the chat hub and push notifications open it.
-        navigation.navigate('Chat2Thread', { leagueId: link.leagueId, name: link.leagueName });
+        navigation.navigate('Chat2Thread', { leagueId: target.leagueId, name: target.leagueName });
         return;
       }
-      if (link.leagueId && link.leagueName) {
-        navigation.navigate('LeagueDetail', { leagueId: link.leagueId, name: link.leagueName, initialTab: 'gwTable' });
+      if (target.leagueId && target.leagueName) {
+        navigation.navigate('LeagueDetail', { leagueId: target.leagueId, name: target.leagueName, initialTab: 'gwTable' });
       }
     },
-    [navigation]
+    [gw, navigation, openManualResultsScoreSheetShare]
   );
 
   const gwState = board
@@ -2665,10 +2927,10 @@ export default function MatchCenterScreen() {
     },
   });
 
-  const waiting = feed.length === 1 && feed[0]?.kind === 'waiting';
+  const waiting = feed.some((item) => item.kind === 'waiting');
   const firstKo = firstKoMs;
   const hasLiveGames = fixtures.some((fixture) => {
-    const status = liveByFixtureIndex.get(fixture.fixture_index)?.status;
+    const status = resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId)?.status;
     return status === 'IN_PLAY' || status === 'PAUSED';
   });
 
@@ -2780,21 +3042,31 @@ export default function MatchCenterScreen() {
           hideMatchCenterEntry
         />
       )}
-      {pin && showPin ? (
+      {showAnyPin ? (
         <Reanimated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(180)}
           onLayout={(event) => setPinnedHeight(event.nativeEvent.layout.height)}
-          style={{ paddingHorizontal: t.space[4], paddingTop: 8, paddingBottom: 12, zIndex: 2 }}
+          style={{ paddingHorizontal: t.space[4], paddingTop: 8, paddingBottom: 12, zIndex: 2, gap: 12 }}
         >
-          <GameCentrePinnedCard
-            pin={pin}
-            // Last gameweek's score, when the board is that gameweek.
-            scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
-            busy={advanceTransition.isAnimating}
-            onAction={onPinAction}
-            onDismiss={onPinDismiss}
-          />
+          {showInvitePin && leagueInvite ? (
+            <GameCentreInvitePinnedCard
+              invite={leagueInvite}
+              busy={inviteBusy}
+              onJoin={onInviteJoin}
+              onDismiss={onInviteDismiss}
+            />
+          ) : null}
+          {showPin && pin ? (
+            <GameCentrePinnedCard
+              pin={pin}
+              // Last gameweek's score, when the board is that gameweek.
+              scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
+              busy={advanceTransition.isAnimating}
+              onAction={onPinAction}
+              onDismiss={onPinDismiss}
+            />
+          ) : null}
         </Reanimated.View>
       ) : null}
       <Reanimated.View style={{ flex: 1 }} layout={LinearTransition.duration(220)}>
@@ -2882,7 +3154,7 @@ export default function MatchCenterScreen() {
       />
       </Reanimated.View>
       {newUpdates && !prepping ? (
-        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showPin ? pinnedHeight : 0} />
+        <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showAnyPin ? pinnedHeight : 0} />
       ) : null}
       {social ? (
         <EmojiPicker

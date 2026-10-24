@@ -1,19 +1,29 @@
 import type { Fixture, LiveScore, Pick } from '@totl/domain';
 
 import { buildGoalScorerLines, parseGoalEvents } from '../../lib/goalEvents';
+import { resolveLiveScore } from '../../lib/liveScoreRows';
 import type { GameCentrePost } from './posts';
-import { formatLocalTimeHHmm } from '../../lib/dateTime';
+import { formatCountdownShort, formatLocalTimeHHmm } from '../../lib/dateTime';
 import { fixtureKickoffTimeLabel } from '../../lib/homeFixtureUi';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { normalizeTeamCode } from '../../lib/teamColors';
 import { areTeamNamesSimilar, getMediumName } from '../../../../../src/lib/teamNames';
+import {
+  kickoffCopy,
+  liveCopy,
+  openerCopy,
+  pickCopy,
+  startingSoonCopy,
+  type CopyVersion,
+  type LiveCopyMoment,
+} from './copyBank';
 
 const SAMPLE_EASY_AVATAR = resolveLeagueAvatarUri('ML-avatar-1.png');
 const SAMPLE_FC_AVATAR = resolveLeagueAvatarUri('ML-avatar-3.png');
 
 export type FeedLink = {
   label: string;
-  to: 'league' | 'overall' | 'home' | 'chat';
+  to: 'league' | 'overall' | 'home' | 'chat' | 'leagues' | 'gw' | 'monthly' | 'players' | 'score-sheet';
   leagueId?: string;
   leagueName?: string;
 };
@@ -32,7 +42,13 @@ export type FeedKind =
   | 'rank'
   | 'overall'
   | 'round-up'
-  | 'message';
+  | 'message'
+  | 'fixtures'
+  | 'score-sheet'
+  | 'shout'
+  | 'players-ready'
+  | 'players-nudge'
+  | 'league-event';
 
 /** Cards that take global Fire / Cool / Melt reactions in Match Center. */
 export const MATCH_CENTER_REACTABLE_KINDS: ReadonlySet<FeedKind> = new Set([
@@ -43,6 +59,8 @@ export const MATCH_CENTER_REACTABLE_KINDS: ReadonlySet<FeedKind> = new Set([
   'lineup',
   'xi',
   'ruled-out',
+  'fixtures',
+  'shout',
 ]);
 
 export function isMatchCenterReactable(kind: FeedKind): boolean {
@@ -56,7 +74,7 @@ export function matchCenterReactionCardId(gw: number, itemId: string): string {
 
 /** The fixture a match card belongs to, from its id (goal:9:H1 → 9). Null for gameweek cards. */
 export function fixtureIndexOfCard(itemId: string): number | null {
-  const match = /^(?:xi|xi-sheet|ko|goal|score|ht|sh|ft):(\d+)(?::|$)/.exec(itemId);
+  const match = /^(?:xi|xi-sheet|ko|goal|score|ht|sh|ft|kickoff-soon):(\d+)(?::|$)/.exec(itemId);
   return match ? Number(match[1]) : null;
 }
 
@@ -87,6 +105,8 @@ export type FeedBoard = {
   label: string;
   place: string;
   move: LeagueMove;
+  /** Global leaderboard tab this cell opens. */
+  tab?: 'gw' | 'monthly' | 'overall';
 };
 
 export type FeedItem = {
@@ -118,6 +138,25 @@ export type FeedItem = {
   lineupTop?: FeedLineupTop | null;
   /** Winner lines on a round-up, with faces and a trophy. */
   honours?: FeedHonour[] | null;
+  /** Faces on shout-outs and league events. */
+  faces?: FeedFace[] | null;
+  /** Published fixture list, newest gameweek. */
+  fixtureLines?: string[] | null;
+  /** Your Predictions vs results on the score sheet. */
+  scoreRows?: FeedScoreRow[] | null;
+};
+
+export type FeedFace = {
+  name: string;
+  avatarUrl?: string | null;
+};
+
+export type FeedScoreRow = {
+  home: string;
+  away: string;
+  pick: string;
+  result: string;
+  hit: boolean;
 };
 
 export type FeedHonour = {
@@ -262,6 +301,8 @@ export type LeagueStandingLine = {
   avatarUrl?: string | null;
   /** Season table, shown under the mini-leagues on a rank card. */
   overall?: boolean;
+  /** Opens this mini-league's GW table. */
+  leagueId?: string;
 };
 
 export type OverallReplay = {
@@ -281,6 +322,7 @@ export type LeagueTableSnap = {
   name: string;
   avatarUrl?: string | null;
   rows: Array<{ user_id: string; name: string; score: number; avatarUrl?: string | null }>;
+  submittedUserIds?: string[];
 };
 
 type Side = 'H' | 'A';
@@ -304,25 +346,24 @@ function matchLabel(fixture: Fixture): string {
   return `${teamLabel(fixture, 'home')} v ${teamLabel(fixture, 'away')}`;
 }
 
+/** Kickoff card copy — conversation starter lives here, not as its own 15-minute card. */
+export function kickoffConversationBody(fixture?: Fixture, seed: string | number = 'kickoff'): string {
+  const match = fixture ? matchLabel(fixture) : 'This one';
+  return pickCopy(kickoffCopy(match), seed).line;
+}
+
 function outcome(home: number, away: number): Pick {
   if (home > away) return 'H';
   if (away > home) return 'A';
   return 'D';
 }
 
-function positiveLine(seed: number, finalWhistle: boolean): string {
-  const live = ['Going your way! ✨', 'Still with you 💪', 'Your pick is looking good 👀'];
-  const done = ['You had it!! 🎉', 'Called it!! 🏆', 'That one is yours!! 🙌'];
-  const lines = finalWhistle ? done : live;
-  return lines[Math.abs(seed) % lines.length] ?? lines[0];
+function halfTimeTitle(seed: string | number = 'half-time'): string {
+  return pickCopy(liveCopy('half-time', true), seed).title;
 }
 
-function missLine(home: number, away: number): string {
-  return Math.abs(home - away) <= 1 ? 'So close! 😬' : "Didn't go your way 😅";
-}
-
-function halfTimeTitle(): string {
-  return 'Half time';
+function liveMomentCopy(moment: LiveCopyMoment, right: boolean, seed: string | number): CopyVersion {
+  return pickCopy(liveCopy(moment, right), seed);
 }
 
 function gwScoreLine(correct: number, finished: number, remaining: number): string {
@@ -331,11 +372,15 @@ function gwScoreLine(correct: number, finished: number, remaining: number): stri
   return `${tally}, ${remaining === 1 ? '1 more to go' : `${remaining} more to go`}`;
 }
 
-function personalLine(pick: Pick | null, home: number, away: number, finalWhistle: boolean, seed: number): string | null {
+function personalLine(
+  pick: Pick | null,
+  home: number,
+  away: number,
+  moment: LiveCopyMoment,
+  seed: string | number
+): string | null {
   if (!pick) return null;
-  if (pick === outcome(home, away)) return positiveLine(seed, finalWhistle);
-  if (!finalWhistle) return null;
-  return missLine(home, away);
+  return liveMomentCopy(moment, pick === outcome(home, away), seed).line;
 }
 
 function fixtureMatch(
@@ -501,14 +546,7 @@ function resolveLive(
   liveByFixtureIndex: Map<number, LiveScore>,
   liveByApiMatchId?: Map<number, LiveScore>
 ): LiveScore | undefined {
-  const idx = Number(fixture.fixture_index);
-  if (Number.isInteger(idx)) {
-    const row = liveByFixtureIndex.get(idx);
-    if (row) return row;
-  }
-  const apiMatchId = Number(fixture.api_match_id);
-  if (liveByApiMatchId && Number.isInteger(apiMatchId)) return liveByApiMatchId.get(apiMatchId);
-  return undefined;
+  return resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId);
 }
 
 function kickoffMs(fixture: Fixture): number | null {
@@ -707,18 +745,7 @@ export function isMatchCenterLiveSignalActive(input: {
   });
 }
 
-/** Countdown for the waiting card, always including seconds — e.g. "2h 08m 05s". */
-export function formatCountdownShort(ms: number): string {
-  const totalSec = Math.max(0, Math.ceil(ms / 1000));
-  const hours = Math.floor(totalSec / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  const seconds = totalSec % 60;
-  const mm = String(minutes).padStart(2, '0');
-  const ss = String(seconds).padStart(2, '0');
-  if (hours > 0) return `${hours}h ${mm}m ${ss}s`;
-  if (minutes > 0) return `${minutes}m ${ss}s`;
-  return `${seconds}s`;
-}
+export { formatCountdownShort } from '../../lib/dateTime';
 
 type OutcomeEvent = {
   sortAt: number;
@@ -806,8 +833,10 @@ export function buildMatchFeed(input: {
         stamp: countdown,
         kind: 'waiting',
         eyebrow: `Gameweek ${gw}`,
-        title: `Gameweek ${gw} starting soon!`,
-        body: 'Make sure everybody in your Mini Leagues has made their predictions',
+        ...(() => {
+          const waiting = pickCopy(startingSoonCopy(gw), `waiting:${gw}`);
+          return { title: waiting.title, body: waiting.line };
+        })(),
       },
     ];
   }
@@ -860,11 +889,19 @@ export function buildMatchFeed(input: {
       const id = post.id.slice(prefix.length);
       const stamp = clockStamp(at, '');
       if (post.kind === 'opener') {
-        out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'opener', eyebrow: 'Match Center', title: `Gameweek ${gw}, Here We Go!`, body: 'First teams are out.' });
+        const opener = pickCopy(openerCopy(gw), id);
+        out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'opener', eyebrow: 'Match Center', title: opener.title, body: opener.line });
         continue;
       }
       const fixture = post.fixture_index != null ? byIndex.get(post.fixture_index) : undefined;
       if (!fixture) continue;
+      if (
+        post.api_match_id != null &&
+        fixture.api_match_id != null &&
+        Number(post.api_match_id) !== Number(fixture.api_match_id)
+      ) {
+        continue;
+      }
       const idx = fixture.fixture_index;
       const live = resolve(fixture);
       const pick = picks[String(idx)] ?? null;
@@ -892,7 +929,8 @@ export function buildMatchFeed(input: {
         }
         case 'kickoff': {
           noteOutcome(idx, 0, 0, at, stamp, false, null);
-          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'kickoff', eyebrow: 'Kickoff', title: "We're off", body: matchLabel(fixture), match: board(fixture, pick, null, null, live?.status) });
+          const kickoff = pickCopy(kickoffCopy(matchLabel(fixture)), id);
+          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'kickoff', eyebrow: 'Kickoff', title: kickoff.title, body: kickoff.line, match: board(fixture, pick, null, null, live?.status) });
           break;
         }
         case 'goal': {
@@ -912,7 +950,7 @@ export function buildMatchFeed(input: {
             eyebrow: ruledOut ? 'VAR' : 'Goal',
             title: ruledOut ? 'Goal ruled out' : 'GOAL',
             body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}`),
-            personal: ruledOut ? null : personalLine(pick, score.home, score.away, false, minute ?? 0),
+            personal: personalLine(pick, score.home, score.away, ruledOut ? 'ruled-out' : 'goal', id),
             match: inPlayMoment(board(fixture, pick, score.home, score.away, live?.status, live?.goals, minute ?? undefined), live?.status),
           });
           break;
@@ -927,9 +965,9 @@ export function buildMatchFeed(input: {
             stamp,
             kind: 'half-time',
             eyebrow: 'Half-time',
-            title: halfTimeTitle(),
+            title: halfTimeTitle(id),
             body: '',
-            personal: personalLine(pick, score.home, score.away, false, 45),
+            personal: personalLine(pick, score.home, score.away, 'half-time', id),
             match: board(fixture, pick, score.home, score.away, live?.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live?.goals, 45),
           });
           break;
@@ -946,8 +984,9 @@ export function buildMatchFeed(input: {
             stamp,
             kind: 'second-half',
             eyebrow: 'Second half',
-            title: "They're back",
-            body: 'Second half.',
+            title: liveMomentCopy('second-half', !pick || pick === outcome(halfTime.home, halfTime.away), id).title,
+            body: '',
+            personal: personalLine(pick, halfTime.home, halfTime.away, 'second-half', id),
             match: inPlayMoment(board(fixture, pick, halfTime.home, halfTime.away, live?.status, live?.goals, 45), live?.status),
           });
           break;
@@ -973,7 +1012,7 @@ export function buildMatchFeed(input: {
             eyebrow: 'Full-time',
             title: pick && pick === next ? 'Full-time!!' : 'Full-time',
             body: gwScoreLine(correct, done.length, fixtures.length - done.length),
-            personal: personalLine(pick, score.home, score.away, true, idx),
+            personal: personalLine(pick, score.home, score.away, 'full-time', id),
             match: board(fixture, pick, score.home, score.away, 'FINISHED', live?.goals),
           });
           break;
@@ -1053,8 +1092,8 @@ export function buildMatchFeed(input: {
         stamp: firstTeams.stamp,
         kind: 'opener',
         eyebrow: 'Match Center',
-        title: `Gameweek ${gw}, Here We Go!`,
-        body: 'First teams are out.',
+        title: pickCopy(openerCopy(gw), `gw-open:${gw}`).title,
+        body: pickCopy(openerCopy(gw), `gw-open:${gw}`).line,
       });
     }
 
@@ -1070,8 +1109,8 @@ export function buildMatchFeed(input: {
         timeLabel: formatLocalTimeHHmm(new Date(slot).toISOString()),
         kind: 'kickoff',
         eyebrow: 'Kickoff',
-        title: "We're off",
-        body: matchLabel(fixture),
+        title: pickCopy(kickoffCopy(matchLabel(fixture)), `ko:${fixture.fixture_index}`).title,
+        body: kickoffConversationBody(fixture, `ko:${fixture.fixture_index}`),
         match: board(fixture, picks[String(fixture.fixture_index)] ?? null, null, null, live?.status),
       });
     }
@@ -1114,7 +1153,7 @@ export function buildMatchFeed(input: {
           eyebrow: 'Goal',
           title: 'GOAL',
           body: scoresLine(''),
-          personal: personalLine(pick, homeScore, awayScore, false, minute),
+          personal: personalLine(pick, homeScore, awayScore, 'goal', `score:${fixture.fixture_index}`),
           match: inPlayMoment(board(fixture, pick, homeScore, awayScore, live.status), live.status),
         });
       }
@@ -1157,7 +1196,7 @@ export function buildMatchFeed(input: {
           eyebrow: ruledOut ? 'VAR' : 'Goal',
           title: ruledOut ? 'Goal ruled out' : 'GOAL',
           body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
-          personal: ruledOut ? null : personalLine(pick, shownHome, shownAway, false, minute),
+          personal: personalLine(pick, shownHome, shownAway, ruledOut ? 'ruled-out' : 'goal', `goal:${fixture.fixture_index}:${minute}:${index}`),
           match: inPlayMoment(board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute), live.status),
         });
       });
@@ -1178,9 +1217,9 @@ export function buildMatchFeed(input: {
           stamp: htStamp,
           kind: 'half-time',
           eyebrow: 'Half-time',
-          title: halfTimeTitle(),
+          title: halfTimeTitle(`ht:${fixture.fixture_index}`),
           body: '',
-          personal: personalLine(pick, atBreak.home, atBreak.away, false, 45),
+          personal: personalLine(pick, atBreak.home, atBreak.away, 'half-time', `ht:${fixture.fixture_index}`),
           match: htMatch,
         });
       }
@@ -1194,8 +1233,9 @@ export function buildMatchFeed(input: {
           stamp: shStamp,
           kind: 'second-half',
           eyebrow: 'Second half',
-          title: "They're back",
-          body: 'Second half.',
+          title: liveMomentCopy('second-half', !pick || pick === outcome(boardHome, boardAway), `sh:${fixture.fixture_index}`).title,
+          body: '',
+          personal: personalLine(pick, boardHome, boardAway, 'second-half', `sh:${fixture.fixture_index}`),
           match: inPlayMoment(board(fixture, pick, boardHome, boardAway, live.status, live.goals, minute ?? undefined), live.status),
         });
       }
@@ -1232,7 +1272,7 @@ export function buildMatchFeed(input: {
           eyebrow: 'Full-time',
           title: pick && pick === outcome(boardHome, boardAway) ? 'Full-time!!' : 'Full-time',
           body: gwScoreLine(correct, done.length, fixtures.length - done.length),
-          personal: personalLine(pick, boardHome, boardAway, true, fixture.fixture_index),
+          personal: personalLine(pick, boardHome, boardAway, 'full-time', `ft:${fixture.fixture_index}`),
           match: board(fixture, pick, boardHome, boardAway, 'FINISHED', live.goals),
         });
       }
@@ -1388,15 +1428,20 @@ function placesNow(replay: OverallReplay, outcomes: Map<number, Pick>, userId: s
 }
 
 function boardsFrom(before: PlaceTrio, after: PlaceTrio, monthLabel: string): FeedBoard[] {
-  const cell = (label: string, from: number | null, to: number | null): FeedBoard | null => {
+  const cell = (
+    label: string,
+    from: number | null,
+    to: number | null,
+    tab: NonNullable<FeedBoard['tab']>
+  ): FeedBoard | null => {
     if (!label || to == null) return null;
     const prior = from ?? to;
-    return { label, place: ordinal(to), move: to < prior ? 'up' : to > prior ? 'down' : 'same' };
+    return { label, place: ordinal(to), move: to < prior ? 'up' : to > prior ? 'down' : 'same', tab };
   };
   return [
-    cell('GW', before.gw, after.gw),
-    cell(monthLabel, before.month, after.month),
-    cell('Overall', before.overall, after.overall),
+    cell('GW', before.gw, after.gw, 'gw'),
+    cell(monthLabel, before.month, after.month, 'monthly'),
+    cell('Overall', before.overall, after.overall, 'overall'),
   ].filter((row): row is FeedBoard => row != null);
 }
 
@@ -1434,13 +1479,13 @@ function leagueMomentsFromEvents(
       });
       return;
     }
-    const snapshot: Array<{ name: string; avatarUrl: string | null; before: Standing; after: Standing }> = [];
+    const snapshot: Array<{ id: string; name: string; avatarUrl: string | null; before: Standing; after: Standing }> = [];
     leagues.forEach((league) => {
       const before = previous.get(league.id);
       const after = standingOf(memberTable(league, outcomes), userId);
       if (after) previous.set(league.id, after);
       if (!before || !after) return;
-      snapshot.push({ name: league.name, avatarUrl: league.avatarUrl ?? null, before, after });
+      snapshot.push({ id: league.id, name: league.name, avatarUrl: league.avatarUrl ?? null, before, after });
     });
     const moved = snapshot.filter((row) => standingMoved(row.before, row.after));
     const boards = beforePlaces && afterPlaces ? boardsFrom(beforePlaces, afterPlaces, overall?.monthLabel ?? '') : [];
@@ -1460,6 +1505,7 @@ function leagueMomentsFromEvents(
         avatarUrl: row.avatarUrl,
         place: placeLabel(row.after),
         move: row.after.rank < row.before.rank ? 'up' : row.after.rank > row.before.rank ? 'down' : 'same',
+        leagueId: row.id,
       })),
       boards: boards.length ? boards : null,
       boardAvatar: overall?.userAvatar ?? null,
@@ -1520,6 +1566,7 @@ function dayStandings(
       avatarUrl: league.avatarUrl ?? null,
       place: placeLabel(later),
       move: later.rank < earlier.rank ? 'up' : later.rank > earlier.rank ? 'down' : 'same',
+      leagueId: league.id,
     });
   });
   return lines.length ? lines : null;
@@ -1860,7 +1907,7 @@ export function sampleFeed(): FeedItem[] {
       kind: 'kickoff',
       eyebrow: 'Kickoff',
       title: "We're off",
-      body: 'Arsenal v Coventry',
+      body: kickoffConversationBody(),
       match: { ...SAMPLE_MATCH, homeScore: null, awayScore: null, live: false, finished: false },
     },
     {
@@ -1901,9 +1948,9 @@ export function sampleFeed(): FeedItem[] {
         { name: 'FC Football', place: '2nd', move: 'up', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '4th', move: 'up' },
-        { label: 'Oct', place: '11th', move: 'up' },
-        { label: 'Overall', place: '40th', move: 'up' },
+        { label: 'GW', place: '4th', move: 'up', tab: 'gw' },
+        { label: 'Oct', place: '11th', move: 'up', tab: 'monthly' },
+        { label: 'Overall', place: '40th', move: 'up', tab: 'overall' },
       ],
     },
     {
@@ -1956,9 +2003,9 @@ export function sampleFeed(): FeedItem[] {
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '9th', move: 'down' },
-        { label: 'Oct', place: '11th', move: 'same' },
-        { label: 'Overall', place: '41st', move: 'down' },
+        { label: 'GW', place: '9th', move: 'down', tab: 'gw' },
+        { label: 'Oct', place: '11th', move: 'same', tab: 'monthly' },
+        { label: 'Overall', place: '41st', move: 'down', tab: 'overall' },
       ],
     },
     {
@@ -2017,9 +2064,9 @@ export function sampleFeed(): FeedItem[] {
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '3rd', move: 'up' },
-        { label: 'Oct', place: '8th', move: 'up' },
-        { label: 'Overall', place: '38th', move: 'up' },
+        { label: 'GW', place: '3rd', move: 'up', tab: 'gw' },
+        { label: 'Oct', place: '8th', move: 'up', tab: 'monthly' },
+        { label: 'Overall', place: '38th', move: 'up', tab: 'overall' },
       ],
     },
     {
@@ -2059,9 +2106,9 @@ export function sampleFeed(): FeedItem[] {
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '7th', move: 'down' },
-        { label: 'Oct', place: '9th', move: 'down' },
-        { label: 'Overall', place: '40th', move: 'down' },
+        { label: 'GW', place: '7th', move: 'down', tab: 'gw' },
+        { label: 'Oct', place: '9th', move: 'down', tab: 'monthly' },
+        { label: 'Overall', place: '40th', move: 'down', tab: 'overall' },
       ],
     },
     {
