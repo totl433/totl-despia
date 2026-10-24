@@ -37,6 +37,8 @@ Disallow: /how-to-play
 Disallow: /cookie-policy
 Disallow: /home-experimental
 Disallow: /swipe-card-preview
+Disallow: /copy-bank
+Disallow: /copy-bank.html
 Disallow: /totl-functions/
 Disallow: /notification-docs/
 Disallow: /.netlify/
@@ -63,6 +65,8 @@ Disallow: /how-to-play
 Disallow: /cookie-policy
 Disallow: /home-experimental
 Disallow: /swipe-card-preview
+Disallow: /copy-bank
+Disallow: /copy-bank.html
 Disallow: /totl-functions/
 Disallow: /notification-docs/
 Disallow: /.netlify/

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>TOTL Match Center — copy bank</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #6b6b6b;
+      --line: #e6e6e4;
+      --paper: #fff;
+      --wash: #f3f3f1;
+      --chip: #ececea;
+      --right: #1c7a4a;
+      --wrong: #9a5b12;
+      --right-bg: #f3f8f5;
+      --wrong-bg: #fbf6f0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--wash);
+    }
+    .bar {
+      position: sticky; top: 0; z-index: 20;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 24px;
+      display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+    }
+    .bar h1 { font-size: 16px; margin: 0; flex: 1 1 220px; }
+    .bar label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .bar input[type="text"] {
+      border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 140px;
+    }
+    .bar button, .bar .status {
+      border: 1px solid var(--line); background: #fff; border-radius: 8px;
+      padding: 6px 10px; font: 13px/1.2 inherit; cursor: pointer;
+    }
+    .bar .status { color: var(--muted); cursor: default; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+    .lede { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 36px; }
+    nav a { color: var(--ink); font-size: 13px; }
+    h2 { font-size: 24px; margin: 56px 0 8px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .section-note { color: var(--muted); font-size: 13px; margin: 0 0 28px; }
+    .card-block { margin-bottom: 48px; }
+    .row { display: flex; gap: 28px; align-items: flex-start; }
+    .mock {
+      width: 320px; flex-shrink: 0;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .meta { flex: 1; min-width: 0; padding-top: 4px; }
+    .meta h3 { margin: 0 0 10px; font-size: 18px; }
+    .when { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+    .notes { margin-top: 14px; }
+    .notes .lbl { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .notes li { margin: 2px 0; font-size: 14px; }
+    .mock-h { display: flex; justify-content: space-between; gap: 8px; }
+    .strong { font-weight: 600; font-size: 14px; }
+    .sub { font-size: 13px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .stamp { color: var(--muted); font-size: 12px; }
+    .action {
+      align-self: flex-start; padding: 6px 10px; background: var(--chip);
+      font-size: 12px; font-weight: 600;
+    }
+    .crest {
+      width: 22px; height: 22px; border-radius: 11px; background: var(--chip);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 600;
+    }
+    .crests { display: flex; gap: 6px; }
+    .score { display: flex; align-items: center; gap: 8px; }
+    .score .mid { flex: 1; text-align: center; }
+    .score .n { font-size: 16px; font-weight: 600; }
+    .split { display: flex; gap: 6px; }
+    .split div { flex: 1; text-align: center; font-size: 12px; }
+    .split b { display: block; font-size: 12px; }
+    .barline { height: 4px; margin-top: 4px; background: var(--chip); }
+    .league { display: flex; align-items: center; gap: 6px; }
+    .footer-chips { display: flex; gap: 6px; }
+    .chip { height: 22px; min-width: 28px; padding: 0 8px; background: var(--chip); display: flex; align-items: center; justify-content: center; font-size: 11px; }
+    .addc { height: 22px; border: 1px solid var(--line); color: #b0b0b0; font-size: 10px; display: flex; align-items: center; padding: 0 8px; }
+    .bank {
+      margin-top: 16px; background: var(--paper); border: 1px solid var(--line);
+      border-radius: 14px; padding: 16px 18px;
+    }
+    .bank-h { font-size: 13px; font-weight: 700; margin: 0 0 12px; }
+    .cols { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .cols.split { grid-template-columns: 1fr 1fr; }
+    .col.right { background: var(--right-bg); padding: 12px; border-radius: 10px; }
+    .col.wrong { background: var(--wrong-bg); padding: 12px; border-radius: 10px; }
+    .pill {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
+      text-transform: uppercase; padding: 3px 8px; border-radius: 999px; margin-bottom: 8px;
+    }
+    .pill.right { background: #d9efe3; color: var(--right); }
+    .pill.wrong { background: #f3e4cc; color: var(--wrong); }
+    .opt { display: grid; grid-template-columns: 28px 1fr 72px; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+    .opt:first-of-type { border-top: none; }
+    .letter {
+      width: 22px; height: 22px; border-radius: 999px; background: var(--chip);
+      display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+    }
+    .opt input, .opt textarea, .note-box {
+      width: 100%; border: 1px solid transparent; background: transparent;
+      font: inherit; color: inherit; resize: vertical; padding: 4px 6px; border-radius: 6px;
+    }
+    .opt input { font-weight: 600; }
+    .opt input:focus, .opt textarea:focus, .note-box:focus { outline: none; border-color: #bbb; background: #fff; }
+    .opt textarea { min-height: 38px; }
+    .pick { font-size: 11px; color: var(--muted); align-self: start; padding-top: 4px; }
+    .pick label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+    .note-box { min-height: 44px; border-color: var(--line); background: #fff; margin-top: 10px; }
+    @media (max-width: 800px) {
+      .row { flex-direction: column; }
+      .mock { width: 100%; max-width: 320px; }
+      .cols.split { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <h1>TOTL Match Center — copy bank</h1>
+    <label>Your name <input id="who" type="text" placeholder="Tom" /></label>
+    <span class="status" id="status">Ready</span>
+    <button type="button" id="download">Download my edits</button>
+    <button type="button" id="reset">Reset to originals</button>
+  </div>
+  <div class="wrap">
+    <p class="lede">Same layout as the canvas. Click any title or line to change it. Pick A, B or C as the one to use. Add a note under a card if you want. Always say Predictions, never picks. Name is Jof (one F). A is the current live line.</p>
+    <nav id="nav"></nav>
+    <div id="app"></div>
+  </div>
+  <script>
+    const DATA = [{"section": "GW Management", "note": "Pin sequence after a gameweek finishes, then the feed cards that sit alongside.", "cards": [{"id": "pin-coming-soon", "name": "Pinned: coming soon", "when": "After the last fixture is finished, until the next gameweek is published.", "notes": ["Pinned slot, not a feed post.", "Can dismiss.", "View the round-up only — no move-on yet."], "mock": [{"t": "header", "title": "Gameweek 8 coming soon", "sub": "Gameweek 7: 7/10"}, {"t": "action", "label": "View the round-up"}], "copy": [{"title": "Gameweek 8 coming soon", "line": "Gameweek 7: 7/10"}, {"title": "Gameweek 8 is on the way", "line": "Last week: 7/10"}, {"title": "Next up, Gameweek 8", "line": "You finished Gameweek 7 on 7/10"}]}, {"id": "pin-next-gw", "name": "Pinned: next GW is here", "when": "Once the next gameweek is published, until they tap move on.", "notes": ["Pinned slot, not a feed post.", "Cannot dismiss.", "Same move-on as Predictions."], "mock": [{"t": "header", "title": "Gameweek 8 is here", "sub": "Gameweek 7: 7/10"}, {"t": "action", "label": "Move to Gameweek 8"}], "copy": [{"title": "Gameweek 8 is here", "line": "Gameweek 7: 7/10"}, {"title": "Gameweek 8 is ready", "line": "Last week is done — 7/10"}, {"title": "Time for Gameweek 8", "line": "You banked 7/10 last week"}]}, {"id": "fixture-list", "name": "Fixture list", "when": "When a new gameweek is published.", "notes": ["Feed post, not the pin.", "Lands with Gameweek is here."], "mock": [{"t": "header", "title": "Gameweek 8 fixtures", "sub": "The games are in."}, {"t": "line", "text": "Sat 12:30  Arsenal v Coventry"}, {"t": "line", "text": "Sat 15:00  Chelsea v Brighton"}, {"t": "line", "text": "Sat 17:30  Liverpool v Everton"}, {"t": "line", "text": "Sun 14:00  Man City v Fulham", "muted": true}, {"t": "line", "text": "+6 more", "muted": true}, {"t": "footer"}], "copy": [{"title": "Gameweek 8 fixtures", "line": "The games are in."}, {"title": "Gameweek 8 fixtures", "line": "Here's who plays."}, {"title": "Gameweek 8 fixtures", "line": "New fixtures. Get your Predictions in."}]}, {"id": "pin-deadline", "name": "Pinned: deadline", "when": "After they move on, while Predictions are open and they have not submitted.", "notes": ["Pinned slot, not a feed post.", "Cannot dismiss.", "Submit your Predictions opens Predictions."], "mock": [{"t": "header", "title": "Don't miss the deadline!", "sub": "Predictions close Friday, 18:00"}, {"t": "action", "label": "Submit your Predictions"}], "copy": [{"title": "Don't miss the deadline!", "line": "Predictions close Friday, 18:00"}, {"title": "Get your Predictions in", "line": "They close Friday, 18:00. Don't sit this one out."}, {"title": "Deadline Friday, 18:00", "line": "Predictions still open. Get them in."}]}, {"id": "pin-youre-in", "name": "Pinned: you're in", "when": "After they submit, until 3 hours before first teams.", "notes": ["Pinned slot, not a feed post.", "Can dismiss.", "Your Predictions opens the Predictions page.", "Mini League reminder lives here."], "mock": [{"t": "header", "title": "You're in", "sub": "Make sure everybody in your Mini Leagues has made their Predictions"}, {"t": "action", "label": "Your Predictions"}], "copy": [{"title": "You're in", "line": "Make sure everybody in your Mini Leagues has made their Predictions"}, {"title": "You're in", "line": "Your Mini Leagues are still waiting on a few Predictions"}, {"title": "Locked in", "line": "Nudge your Mini Leagues — there's still time"}]}, {"id": "pin-starting-soon", "name": "Pinned: you're in / starting soon", "when": "From 3 hours before first teams, until the deadline.", "notes": ["Same pin, now with the First teams countdown."], "mock": [{"t": "header", "title": "You're in", "sub": "Gameweek 7 starting soon!"}, {"t": "line", "text": "FIRST TEAMS IN", "muted": true}, {"t": "line", "text": "2h 08m 05s", "strong": true}, {"t": "action", "label": "Your Predictions"}], "copy": [{"title": "You're in", "line": "Gameweek 7 starting soon!"}, {"title": "You're in", "line": "First teams are nearly out"}, {"title": "Locked in", "line": "Gameweek 7 is almost here"}]}, {"id": "starting-soon", "name": "Starting soon", "when": "At the deadline if the first XIs are not in yet.", "notes": ["Feed card, not the pin.", "Countdown only."], "mock": [{"t": "header", "title": "Gameweek 7 starting soon!", "sub": "First teams are almost out."}, {"t": "line", "text": "FIRST TEAMS IN", "muted": true}, {"t": "line", "text": "2h 08m 05s", "strong": true}], "copy": [{"title": "Gameweek 7 starting soon!", "line": "First teams are almost out."}, {"title": "Almost time", "line": "First teams are on the way."}, {"title": "Gameweek 7 is about to start", "line": "Waiting on the first XIs."}]}]}, {"section": "Live game", "cards": [{"id": "opener", "name": "Opener", "when": "When the first official XI lands — about 75 minutes before the first kick-off.", "notes": ["One per gameweek, not per fixture."], "mock": [{"t": "header", "title": "Gameweek 7, Here We Go!", "sub": "First teams are out.", "stamp": "13:45"}, {"t": "footer"}], "copy": [{"title": "Gameweek 7, Here We Go!", "line": "First teams are out."}, {"title": "Gameweek 7, Here We Go!", "line": "The teams are in. We're underway."}, {"title": "Here We Go!", "line": "First XIs are out for Gameweek 7."}]}, {"id": "line-up", "name": "Line-up", "when": "About 75 minutes before that fixture's kick-off.", "notes": ["Prediction split lives on this card and Kick-off."], "mock": [{"t": "header", "title": "Line-up", "sub": "Players are backing Arsenal for the win.", "stamp": "13:46"}, {"t": "line", "text": "Arsenal v Coventry · 15:00"}, {"t": "line", "text": "Form WWWDL · 2nd    Form LDLWW · 14th", "muted": true}, {"t": "split"}, {"t": "footer", "comments": "View all 4 comments"}], "copy": [{"title": "Line-up", "line": "Players are backing Arsenal for the win."}, {"title": "Line-up", "line": "Teams are out. Arsenal, and it's not even close."}, {"title": "Line-up", "line": "Teams are out. Tight one. Arsenal, just about."}]}, {"id": "kickoff", "name": "Kick-off", "when": "When that match starts.", "notes": ["Conversation starter lives on this card — add a comment below."], "mock": [{"t": "header", "title": "We're off", "sub": "Arsenal v Coventry. Let's get the conversation started — add a comment below.", "stamp": "15:00"}, {"t": "score", "home": "A", "away": "C", "score": "0 - 0", "minute": "KO"}, {"t": "split"}, {"t": "footer", "comments": "Add a comment"}], "copy": [{"title": "We're off", "line": "Arsenal v Coventry. Let's get the conversation started — add a comment below."}, {"title": "We're off", "line": "Arsenal v Coventry. Say something. Comments are open."}, {"title": "Kick-off", "line": "Arsenal v Coventry is live. Get in the comments."}]}, {"id": "goal", "name": "Goal", "when": "When a goal is written.", "notes": ["Same fixture thread.", "Can be followed by Goal ruled out."], "mock": [{"t": "header", "title": "Goal!!", "sub": "Going your way", "stamp": "15:23"}, {"t": "score", "home": "A", "away": "C", "score": "1 - 0", "live": true, "minute": "23'"}, {"t": "line", "text": "Saka 23'", "muted": true}, {"t": "split"}, {"t": "footer", "comments": "View all 12 comments"}], "groups": {"Getting it right": [{"title": "Goal!!", "line": "Going your way"}, {"title": "Goal!!", "line": "Still with you"}, {"title": "Goal!!", "line": "Your Prediction is looking good"}], "Getting it wrong": [{"title": "Goal!!", "line": "That's gone against you"}, {"title": "Goal!!", "line": "Not your goal"}, {"title": "Goal!!", "line": "This one's drifting away"}]}}, {"id": "goal-ruled-out", "name": "Goal ruled out", "when": "When that goal post is marked ruled out (VAR).", "mock": [{"t": "header", "title": "Goal ruled out", "sub": "VAR's just done you a favour.", "stamp": "16:16"}, {"t": "score", "home": "A", "away": "C", "score": "1 - 0", "live": true, "minute": "61'"}, {"t": "footer"}], "groups": {"Getting it right": [{"title": "Goal ruled out", "line": "VAR's just done you a favour."}, {"title": "Goal ruled out", "line": "Still with you. VAR wiped that."}, {"title": "Goal ruled out", "line": "That one wasn't standing. Your call is back on."}], "Getting it wrong": [{"title": "Goal ruled out", "line": "That was yours. VAR's had a word."}, {"title": "Goal ruled out", "line": "Unlucky. Goal's gone."}, {"title": "Goal ruled out", "line": "VAR's taken that off you."}]}}, {"id": "half-time", "name": "Half-time", "when": "When the match hits half-time.", "mock": [{"t": "header", "title": "Half-time", "sub": "Still with you", "stamp": "16:00"}, {"t": "score", "home": "A", "away": "C", "score": "1 - 0", "minute": "HT"}, {"t": "split"}, {"t": "footer"}], "groups": {"Getting it right": [{"title": "Half-time", "line": "Still with you"}, {"title": "Half-time", "line": "Holding at the break"}, {"title": "Half-time", "line": "Your call is still on"}], "Getting it wrong": [{"title": "Half-time", "line": "Not your scoreline at the break"}, {"title": "Half-time", "line": "Against you at half-time"}, {"title": "Half-time", "line": "Your Prediction is off at the break"}]}}, {"id": "second-half", "name": "Second half", "when": "When the second half starts.", "mock": [{"t": "header", "title": "Second half", "sub": "They're back. Still with you.", "stamp": "16:01"}, {"t": "score", "home": "A", "away": "C", "score": "1 - 0", "live": true, "minute": "46'"}, {"t": "footer"}], "groups": {"Getting it right": [{"title": "Second half", "line": "They're back. Still with you."}, {"title": "Second half", "line": "Here we go again. Your call is still on."}, {"title": "Second half", "line": "Back out. Plenty of time — you're in front."}], "Getting it wrong": [{"title": "Second half", "line": "They're back. Time to turn this."}, {"title": "Second half", "line": "Here we go again. You need something here."}, {"title": "Second half", "line": "Back out. Not your game yet."}]}}, {"id": "full-time", "name": "Full-time", "when": "When that match is finished.", "mock": [{"t": "header", "title": "Full-time!!", "sub": "You had it", "stamp": "16:52"}, {"t": "score", "home": "A", "away": "C", "score": "2 - 1", "minute": "FT"}, {"t": "split"}, {"t": "footer", "comments": "View all 8 comments"}], "groups": {"Getting it right": [{"title": "Full-time!!", "line": "You had it"}, {"title": "Full-time!!", "line": "Called it. On to the next."}, {"title": "Full-time!!", "line": "That one is yours"}], "Getting it wrong": [{"title": "Full-time!!", "line": "Didn't go your way"}, {"title": "Full-time!!", "line": "So close"}, {"title": "Full-time!!", "line": "Not this one"}]}}]}, {"section": "Round-up", "cards": [{"id": "round-up", "name": "Round-up", "when": "Day wrap after the last full-time of that day. Honours when the last fixture of the gameweek is finished.", "mock": [{"t": "header", "title": "You win · Good day at the office", "sub": "You went 3/4", "stamp": "FT"}, {"t": "line", "text": "You win Easy League", "strong": true}, {"t": "league", "letter": "E", "name": "Easy League", "place": "Top"}], "copy": [{"title": "You win · Good day at the office", "line": "You went 3/4"}, {"title": "You win · That's a proper Gameweek", "line": "You win Easy League"}, {"title": "Round-up", "line": "You went 3/4. Nice work."}]}, {"id": "ml-snapshot", "name": "ML snapshot", "when": "During live, after a goal or full-time that moves your mini-league places.", "mock": [{"t": "header", "title": "Mini-leagues", "sub": "Running the show", "stamp": "22:00"}, {"t": "league", "letter": "E", "name": "Easy League", "place": "Top"}], "copy": [{"title": "Mini-leagues", "line": "Running the show"}, {"title": "Mini-leagues", "line": "Up 12 this gameweek"}, {"title": "Mini-leagues", "line": "A shuffle this gameweek"}]}, {"id": "score-sheet", "name": "Score sheet", "when": "When the gameweek is final.", "mock": [{"t": "header", "title": "Score Sheet", "sub": "Your ten Predictions vs results"}], "copy": [{"title": "Score Sheet", "line": "Your ten Predictions vs results"}, {"title": "Score Sheet", "line": "Here's how your Predictions landed"}, {"title": "Score Sheet", "line": "Ten Predictions. Ten results."}]}]}, {"section": "Game week shout-outs", "cards": [{"id": "gw-shout", "name": "Game week shout out", "when": "First quiet slot after the last fixture is finished.", "mock": [{"t": "header", "title": "Game week shout out", "stamp": "AM"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "Shout out to Carl, Jof, and Tom who won this game week.", "strong": true}, {"t": "footer", "comments": "View all 14 comments"}], "copy": [{"title": "Game week shout out", "line": "Shout out to Carl, Jof, and Tom who won this game week."}, {"title": "Game week shout out", "line": "Game week belongs to Carl, Jof, and Tom."}, {"title": "Game week shout out", "line": "Hats off to Carl, Jof, and Tom — this week's winners."}]}, {"id": "season-shout", "name": "Season shout out", "when": "Once the season table is final.", "mock": [{"t": "header", "title": "Season shout out"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "Shout out to Carl, Jof, and Tom who won the overall season.", "strong": true}, {"t": "footer"}], "copy": [{"title": "Season shout out", "line": "Shout out to Carl, Jof, and Tom who won the overall season."}, {"title": "Season shout out", "line": "Carl, Jof, and Tom take the season."}, {"title": "Season shout out", "line": "Season done. Carl, Jof, and Tom are top of the league."}]}, {"id": "monthly-shout", "name": "Monthly shout out", "when": "Once the last gameweek of that month is finished.", "mock": [{"t": "header", "title": "Monthly shout out"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "Shout out to Carl, Jof, and Tom who won this month.", "strong": true}, {"t": "footer"}], "copy": [{"title": "Monthly shout out", "line": "Shout out to Carl, Jof, and Tom who won this month."}, {"title": "Monthly shout out", "line": "Carl, Jof, and Tom own this month."}, {"title": "Monthly shout out", "line": "Monthly honours: Carl, Jof, and Tom."}]}, {"id": "good-luck", "name": "Good luck shout out", "when": "When only one fixture is left and one or more players already have 9 correct.", "mock": [{"t": "header", "title": "Good luck"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "Carl, Jof, and Tom are on a nine going into the final game. Good luck!", "strong": true}, {"t": "footer"}], "copy": [{"title": "Good luck", "line": "Carl, Jof, and Tom are on a nine going into the final game. Good luck!"}, {"title": "Good luck", "line": "Nine out of nine for Carl, Jof, and Tom. One game left. Good luck!"}, {"title": "Good luck", "line": "Carl, Jof, and Tom are one result from a ten. Don't blow it."}]}, {"id": "midweek-month", "name": "Midweek monthly leader", "when": "Quiet Tuesday during a weekend gameweek.", "mock": [{"t": "header", "title": "Top of the table", "stamp": "Tue"}, {"t": "crests", "letters": ["C"]}, {"t": "line", "text": "Carl's looking pretty at the top of the monthly table. Doing great!", "strong": true}, {"t": "footer"}], "copy": [{"title": "Top of the table", "line": "Carl's looking pretty at the top of the monthly table. Doing great!"}, {"title": "Top of the table", "line": "Carl's topping the month. Keep going."}, {"title": "Top of the table", "line": "Monthly table: Carl's out in front."}]}, {"id": "midweek-overall", "name": "Midweek overall leader", "when": "Quiet Wednesday during a weekend gameweek.", "mock": [{"t": "header", "title": "Top of the table", "stamp": "Wed"}, {"t": "crests", "letters": ["C"]}, {"t": "line", "text": "Carl's looking pretty at the top of the overall table. Doing great!", "strong": true}, {"t": "footer"}], "copy": [{"title": "Top of the table", "line": "Carl's looking pretty at the top of the overall table. Doing great!"}, {"title": "Top of the table", "line": "Carl's sitting pretty overall."}, {"title": "Top of the table", "line": "Overall table: Carl's the one to catch."}]}]}, {"section": "Players daily game", "cards": [{"id": "players-daily", "name": "Daily winner", "when": "Every morning, just before 8am.", "mock": [{"t": "header", "title": "Yesterday's winners"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "Yesterday's winners were Carl, Jof, and Tom.", "strong": true}, {"t": "footer"}], "copy": [{"title": "Yesterday's winners", "line": "Yesterday's winners were Carl, Jof, and Tom."}, {"title": "Yesterday's winners", "line": "Carl, Jof, and Tom won yesterday's Players."}, {"title": "Yesterday's winners", "line": "Yesterday belonged to Carl, Jof, and Tom."}]}, {"id": "players-weekly", "name": "Weekly winner", "when": "End of the Players week, after the daily winner.", "mock": [{"t": "header", "title": "This week's winners"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "This week's winners were Carl, Jof, and Tom.", "strong": true}, {"t": "footer"}], "copy": [{"title": "This week's winners", "line": "This week's winners were Carl, Jof, and Tom."}, {"title": "This week's winners", "line": "Carl, Jof, and Tom take the Players week."}, {"title": "This week's winners", "line": "Weekly honours: Carl, Jof, and Tom."}]}, {"id": "players-monthly", "name": "Monthly winner", "when": "End of the Players month, after daily / weekly.", "mock": [{"t": "header", "title": "This month's winners"}, {"t": "crests", "letters": ["C", "J", "T"]}, {"t": "line", "text": "This month's winners were Carl, Jof, and Tom.", "strong": true}, {"t": "footer"}], "copy": [{"title": "This month's winners", "line": "This month's winners were Carl, Jof, and Tom."}, {"title": "This month's winners", "line": "Carl, Jof, and Tom take the Players month."}, {"title": "This month's winners", "line": "Monthly Players honours: Carl, Jof, and Tom."}]}, {"id": "players-ready", "name": "New game ready", "when": "8am, after the winner cards.", "mock": [{"t": "header", "title": "The Players", "sub": "New game ready for you."}, {"t": "action", "label": "Play today"}], "copy": [{"title": "The Players", "line": "New game ready for you."}, {"title": "The Players", "line": "Today's Players is up."}, {"title": "The Players", "line": "New Players game. Have a go."}]}, {"id": "players-nudge", "name": "Haven't played reminder", "when": "8pm, only if you have not played today's Players game.", "mock": [{"t": "header", "title": "The Players", "sub": "You haven't played today's game yet.", "stamp": "20:00"}, {"t": "action", "label": "Play now"}], "copy": [{"title": "The Players", "line": "You haven't played today's game yet."}, {"title": "The Players", "line": "Still time tonight. Today's Players is waiting."}, {"title": "The Players", "line": "Haven't had a go today? Players is still open."}]}, {"id": "players-shout", "name": "Players shout out", "when": "When someone scores a perfect 10.", "mock": [{"t": "header", "title": "Players shout out"}, {"t": "crests", "letters": ["C"]}, {"t": "line", "text": "Carl scored a perfect 10 on today's players' game!", "strong": true}, {"t": "footer"}], "copy": [{"title": "Players shout out", "line": "Carl scored a perfect 10 on today's players' game!"}, {"title": "Players shout out", "line": "Carl just went 10/10 on Players."}, {"title": "Players shout out", "line": "Perfect 10 for Carl. That's how you do it."}]}]}, {"section": "Mini league", "cards": [{"id": "invite", "name": "Invite", "when": "When someone invites you by username.", "mock": [{"t": "header", "title": "Mini-leagues", "sub": "You've been invited to Easy League"}, {"t": "league", "letter": "E", "name": "Easy League", "place": ""}, {"t": "action", "label": "Join now"}], "copy": [{"title": "Mini-leagues", "line": "You've been invited to Easy League"}, {"title": "Mini-leagues", "line": "Easy League wants you in"}, {"title": "Mini-leagues", "line": "You've got an invite. Easy League."}]}, {"id": "everyone-predicted", "name": "Everyone has predicted", "when": "When the last member of that mini-league submits, before the deadline.", "mock": [{"t": "header", "title": "Easy League", "sub": "Everyone has their Predictions in."}], "copy": [{"title": "Easy League", "line": "Everyone has their Predictions in."}, {"title": "Easy League", "line": "That's everyone. Predictions are in."}, {"title": "Easy League", "line": "Fully in. Everybody's predicted."}]}, {"id": "player-joined", "name": "Player joined", "when": "When someone joins the mini-league.", "mock": [{"t": "header", "title": "Mini-leagues"}, {"t": "crests", "letters": ["S", "E"]}, {"t": "line", "text": "Sam has joined Easy League", "strong": true}], "copy": [{"title": "Mini-leagues", "line": "Sam has joined Easy League"}, {"title": "Mini-leagues", "line": "Sam's in Easy League"}, {"title": "Mini-leagues", "line": "New face: Sam just joined Easy League"}]}]}, {"section": "Admin", "cards": [{"id": "football-chat", "name": "Football chat prompt", "when": "When an admin posts it. Announcement and operational notice are freeform.", "mock": [{"t": "header", "title": "How's everyone feeling?", "sub": "Are you looking forward to the games today?", "stamp": "11:30"}, {"t": "footer", "comments": "View all 18 comments"}], "copy": [{"title": "How's everyone feeling?", "line": "Are you looking forward to the games today?"}, {"title": "How's everyone feeling?", "line": "Who's got a good feeling about today?"}, {"title": "Big afternoon", "line": "How's everyone sitting?"}]}]}, {"section": "Stat moments", "note": "Season totals, never this gameweek. Numbers here are examples.", "cards": [{"id": "most-missed", "name": "Most missed", "when": "During the week, from season Prediction accuracy.", "mock": [{"t": "header", "title": "Most missed"}, {"t": "crests", "letters": ["S"]}, {"t": "line", "text": "Sunderland are currently the team most players get wrong this season. Only 30% of players predict them correctly.", "strong": true}], "copy": [{"title": "Most missed", "line": "Sunderland are currently the team most players get wrong this season. Only 30% of players predict them correctly."}, {"title": "Most missed", "line": "Sunderland are the trap this season. Only 30% get them right."}, {"title": "Most missed", "line": "Careful with Sunderland. Most people miss them — 30% right so far."}]}, {"id": "easiest-team", "name": "Easiest team", "when": "During the week, from season Prediction accuracy.", "mock": [{"t": "header", "title": "Easiest team"}, {"t": "crests", "letters": ["M"]}, {"t": "line", "text": "Man City are running as the easiest team this season so far. People get them right 85% of the time.", "strong": true}], "copy": [{"title": "Easiest team", "line": "Man City are running as the easiest team this season so far. People get them right 85% of the time."}, {"title": "Easiest team", "line": "Man City are the banker this season. 85% of Predictions land."}, {"title": "Easiest team", "line": "If you're stuck, Man City. People get them right 85% of the time."}]}, {"id": "last-minute", "name": "Last minute heroes", "when": "During the week, from season late-goal stats.", "mock": [{"t": "header", "title": "Last minute heroes"}, {"t": "crests", "letters": ["L"]}, {"t": "line", "text": "Liverpool are the last minute heroes this season — they most often draw or win games at 90 plus minutes.", "strong": true}], "copy": [{"title": "Last minute heroes", "line": "Liverpool are the last minute heroes this season — they most often draw or win games at 90 plus minutes."}, {"title": "Last minute heroes", "line": "Liverpool keep nicking it at 90 plus this season."}, {"title": "Last minute heroes", "line": "Don't write Liverpool off. They win or draw late more than anyone."}]}, {"id": "draws", "name": "Draws this season", "when": "While Predictions are open / midweek.", "mock": [{"t": "header", "title": "Draws this season"}, {"t": "line", "text": "Don't forget, 22 percent of games this season are draws. Think about that when you're doing your Predictions.", "strong": true}], "copy": [{"title": "Draws this season", "line": "Don't forget, 22 percent of games this season are draws. Think about that when you're doing your Predictions."}, {"title": "Draws this season", "line": "22 percent of games this season are draws. Worth a look."}, {"title": "Draws this season", "line": "Draws are in play — 22 percent this season. Don't ignore them."}]}, {"id": "away-wins", "name": "Away wins this season", "when": "While Predictions are open / midweek.", "mock": [{"t": "header", "title": "Away wins this season"}, {"t": "line", "text": "Don't forget, 31 percent of games this season are away wins.", "strong": true}], "copy": [{"title": "Away wins this season", "line": "Don't forget, 31 percent of games this season are away wins."}, {"title": "Away wins this season", "line": "Away wins: 31 percent this season. Not rare."}, {"title": "Away wins this season", "line": "Nearly a third of games this season go to the away side."}]}]}];
+    const KEY = "totl-copy-bank-v1";
+    const letters = ["A", "B", "C"];
+
+    function load() {
+      try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; }
+    }
+    function save(state) {
+      localStorage.setItem(KEY, JSON.stringify(state));
+      const who = document.getElementById("who").value.trim();
+      document.getElementById("status").textContent = who ? "Saved locally · " + who : "Saved locally";
+    }
+
+    let state = load();
+    if (state.who) document.getElementById("who").value = state.who;
+
+    function cardState(id) {
+      if (!state[id]) state[id] = { pick: "A", note: "", values: {} };
+      return state[id];
+    }
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function mockHtml(parts) {
+      return (parts || []).map((p) => {
+        if (p.t === "header") {
+          return `<div><div class="mock-h"><div class="strong">${esc(p.title)}</div>${p.stamp ? `<div class="stamp">${esc(p.stamp)}</div>` : ""}</div>${p.sub ? `<div class="sub">${esc(p.sub)}</div>` : ""}</div>`;
+        }
+        if (p.t === "line") return `<div class="${p.strong ? "strong" : ""} ${p.muted ? "muted" : ""}">${esc(p.text)}</div>`;
+        if (p.t === "action") return `<div class="action">${esc(p.label)}</div>`;
+        if (p.t === "crests") return `<div class="crests">${p.letters.map((l) => `<span class="crest">${esc(l)}</span>`).join("")}</div>`;
+        if (p.t === "score") return `<div class="score"><span class="crest">${esc(p.home)}</span><div class="mid"><div class="n">${esc(p.score)}</div><div class="muted">${p.live ? "LIVE " : ""}${esc(p.minute || "")}</div></div><span class="crest">${esc(p.away)}</span></div>`;
+        if (p.t === "split") return `<div class="split"><div>H<b>64%</b><div class="barline"></div></div><div>D<b>22%</b><div class="barline"></div></div><div>A<b>14%</b><div class="barline"></div></div></div>`;
+        if (p.t === "league") return `<div class="league"><span class="crest">${esc(p.letter)}</span><div style="flex:1">${esc(p.name)}</div>${p.place ? `<div class="strong">${esc(p.place)}</div>` : ""}</div>`;
+        if (p.t === "footer") return `<div><div class="footer-chips"><span class="chip">😎</span><span class="chip">🫠</span><span class="chip">🔥</span><span class="chip">+</span></div>${p.comments ? `<div class="muted">${esc(p.comments)}</div>` : ""}<div class="addc">Add your comment</div></div>`;
+        return "";
+      }).join("");
+    }
+
+    function versionsFor(card) {
+      if (card.groups) return card.groups;
+      return { Copy: card.copy };
+    }
+
+    function optHtml(cardId, group, index, version) {
+      const cs = cardState(cardId);
+      const key = group + ":" + letters[index];
+      const stored = cs.values[key] || version;
+      const pickKey = group === "Copy" ? letters[index] : group + ":" + letters[index];
+      const checked = cs.pick === pickKey ? "checked" : "";
+      return `<div class="opt">
+        <div class="letter">${letters[index]}</div>
+        <div>
+          <input data-card="${esc(cardId)}" data-key="${esc(key)}" data-field="title" value="${esc(stored.title)}" />
+          <textarea data-card="${esc(cardId)}" data-key="${esc(key)}" data-field="line">${esc(stored.line)}</textarea>
+        </div>
+        <div class="pick"><label><input type="radio" name="pick-${esc(cardId)}" value="${esc(pickKey)}" ${checked} /> Use this</label></div>
+      </div>`;
+    }
+
+    function render() {
+      const nav = document.getElementById("nav");
+      const app = document.getElementById("app");
+      nav.innerHTML = DATA.map((s, i) => `<a href="#s${i}">${esc(s.section)}</a>`).join("");
+      app.innerHTML = DATA.map((section, i) => {
+        const cards = section.cards.map((card) => {
+          const groups = versionsFor(card);
+          const keys = Object.keys(groups);
+          const split = keys.length > 1;
+          const cols = keys.map((label) => {
+            const tone = label.toLowerCase().includes("wrong") ? "wrong" : (keys.length > 1 ? "right" : "");
+            return `<div class="col ${tone}">${keys.length > 1 ? `<div class="pill ${tone}">${esc(label)}</div>` : ""}${groups[label].map((v, idx) => optHtml(card.id, label, idx, v)).join("")}</div>`;
+          }).join("");
+          const note = cardState(card.id).note || "";
+          return `<article class="card-block" id="${esc(card.id)}">
+            <div class="row">
+              <div class="mock">${mockHtml(card.mock)}</div>
+              <div class="meta">
+                <h3>${esc(card.name)}</h3>
+                <p class="when">Triggered: ${esc(card.when)}</p>
+                ${card.notes && card.notes.length ? `<div class="notes"><div class="lbl">Notes</div><ul>${card.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
+              </div>
+            </div>
+            <div class="bank">
+              <div class="bank-h">Copy bank — rotate A / B / C</div>
+              <div class="cols ${split ? "split" : ""}">${cols}</div>
+              <textarea class="note-box" data-note="${esc(card.id)}" placeholder="Note for this card (optional)">${esc(note)}</textarea>
+            </div>
+          </article>`;
+        }).join("");
+        return `<section id="s${i}"><h2>${esc(section.section)}</h2>${section.note ? `<p class="section-note">${esc(section.note)}</p>` : ""}${cards}</section>`;
+      }).join("");
+    }
+
+    render();
+
+    document.getElementById("who").addEventListener("input", (e) => {
+      state.who = e.target.value;
+      save(state);
+    });
+
+    document.getElementById("app").addEventListener("input", (e) => {
+      const t = e.target;
+      if (t.dataset.note) {
+        cardState(t.dataset.note).note = t.value;
+        save(state);
+        return;
+      }
+      if (!t.dataset.card) return;
+      const cs = cardState(t.dataset.card);
+      if (!cs.values[t.dataset.key]) cs.values[t.dataset.key] = { title: "", line: "" };
+      cs.values[t.dataset.key][t.dataset.field] = t.value;
+      save(state);
+    });
+
+    document.getElementById("app").addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.type === "radio" && t.name.startsWith("pick-")) {
+        cardState(t.name.slice(5)).pick = t.value;
+        save(state);
+      }
+    });
+
+    document.getElementById("download").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify({ who: state.who || "", savedAt: new Date().toISOString(), edits: state }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "totl-copy-bank-edits.json";
+      a.click();
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      if (!confirm("Reset every card to the original A / B / C?")) return;
+      const who = state.who;
+      state = who ? { who } : {};
+      save(state);
+      render();
+    });
+  </script>
+</body>
+</html>
