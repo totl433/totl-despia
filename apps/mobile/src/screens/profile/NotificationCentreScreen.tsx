@@ -216,7 +216,7 @@ export default function NotificationCentreScreen() {
             {
               id: 'daily-game-reminders',
               label: 'Daily Game Reminders',
-              description: 'A nudge at 3pm when the new Players game is ready',
+              description: 'A daily reminder when the new Players game is ready',
             },
             {
               id: 'score-updates',

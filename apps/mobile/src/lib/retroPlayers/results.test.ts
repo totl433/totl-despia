@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { playersWeekStart, shiftPlayersDay } from './day';
+import { playersWeekStart, playersWeekdayIndex, shiftPlayersDay } from './day';
 import {
   markPlayersResultSeen,
   mergePlayersResultsSeen,
@@ -29,6 +29,9 @@ describe('Players calendar', () => {
     expect(playersWeekStart('2026-10-17')).toBe('2026-10-12'); // Saturday
     expect(playersWeekStart('2026-10-18')).toBe('2026-10-12'); // Sunday
     expect(playersWeekStart('2026-10-19')).toBe('2026-10-19');
+    expect(playersWeekdayIndex('2026-10-19')).toBe(0);
+    expect(playersWeekdayIndex('2026-10-24')).toBe(5);
+    expect(playersWeekdayIndex('2026-10-25')).toBe(6);
   });
 
   it('crosses month, year and the October clock change without drifting', () => {

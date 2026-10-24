@@ -144,6 +144,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // env file or EAS secret. Staging remains an inbound legacy domain only.
       EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
       EXPO_PUBLIC_ONESIGNAL_APP_ID: oneSignalAppId,
+      EXPO_PUBLIC_GAME_CENTRE_POSTS: pick('EXPO_PUBLIC_GAME_CENTRE_POSTS') ?? 'off',
     },
   };
 };

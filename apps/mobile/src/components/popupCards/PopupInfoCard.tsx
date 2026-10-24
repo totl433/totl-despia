@@ -1731,7 +1731,7 @@ function NewGameweekCardBody({ eventKey, onClose }: { eventKey?: string; onClose
           Gameweek {nextGw ?? ''} is ready
         </TotlText>
         <TotlText style={{ color: 'rgba(255,255,255,0.82)', textAlign: 'center', marginTop: 12, fontSize: 13, lineHeight: 18, maxWidth: 286 }}>
-          The next set of fixtures is live. Move on when you&apos;re ready and start making your picks.
+          The next set of fixtures is live. Move on when you&apos;re ready and start making your Predictions.
         </TotlText>
 
         <Pressable

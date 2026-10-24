@@ -159,7 +159,7 @@ export default function RetroDailyScoreboardScreen() {
                 color: 'rgba(255,255,255,0.65)',
               }}
             >
-              Cumulative correct picks across every day
+              Cumulative correct Predictions across every day
             </TotlText>
           </>
         )}

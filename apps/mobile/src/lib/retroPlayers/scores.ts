@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '../supabase';
-import { playersMonthKey } from './day';
+import { playersMonthKey, playersWeekStart, shiftPlayersDay } from './day';
+
+/** Monday–Sunday headers on The Players week scoreboard. */
+export const PLAYERS_WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'] as const;
 
 /**
  * Each account keeps its own copy of its scores on the phone, keyed by user id,
@@ -151,6 +154,24 @@ async function publishPlayersScores(userId: string, store: PlayersScoreStore): P
 export function scoreForDay(store: PlayersScoreStore, dayKey: string): number | null {
   const row = store[dayKey];
   return row ? row.correct : null;
+}
+
+/** Monday (GMT) up to and including the given day, matching the weekly result card. */
+export function scoreForWeek(store: PlayersScoreStore, dayKey: string): number | null {
+  const monday = playersWeekStart(dayKey);
+  const keys = Object.keys(store).filter((key) => key >= monday && key <= dayKey);
+  if (!keys.length) return null;
+  return keys.reduce((sum, key) => sum + (store[key]?.correct ?? 0), 0);
+}
+
+/** One cell per weekday this week (Mon–Sun). Days not played yet, or still ahead, are empty. */
+export function scoresForWeekDays(store: PlayersScoreStore, dayKey: string): Array<number | null> {
+  const monday = playersWeekStart(dayKey);
+  return Array.from({ length: 7 }, (_, index) => {
+    const key = shiftPlayersDay(monday, index);
+    if (key > dayKey) return null;
+    return scoreForDay(store, key);
+  });
 }
 
 export function scoreForMonth(store: PlayersScoreStore, dayKey: string): number | null {

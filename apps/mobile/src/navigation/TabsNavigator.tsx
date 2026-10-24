@@ -13,6 +13,7 @@ import BrandedLeaderboardScreen from '../screens/brandedLeaderboards/BrandedLead
 import { api } from '../lib/api';
 import CenteredSpinner from '../components/CenteredSpinner';
 import { useViewerSeason } from '../lib/useViewerSeason';
+import { OpenedFromMenuContext } from './openedFromMenu';
 
 export type RootTabsParamList = {
   Predictions: undefined;
@@ -97,74 +98,80 @@ export default function TabsNavigator() {
   const { seasonLabel } = useViewerSeason();
 
   return (
-    <Tab.Navigator
-      initialRouteName="Predictions"
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: t.color.brand,
-        tabBarInactiveTintColor: '#475569',
-        tabBarStyle: {
-          backgroundColor: t.color.surface,
-          borderTopColor: t.color.border,
-          paddingHorizontal: 28,
-          height: 86,
-        },
-        tabBarItemStyle: {
-          maxWidth: 112,
-          paddingTop: 6,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          lineHeight: 12,
-          fontWeight: '700',
-          marginBottom: 2,
-        },
-        tabBarHideOnKeyboard: true,
-      }}
-    >
-      <Tab.Screen
-        name="Predictions"
-        component={HomeNavigator}
-        options={{
-          title: 'Predictions',
-          tabBarIcon: ({ color }) => <TabSvgIcon xml={PREDICTIONS_SVG} size={35} color={color} />,
-        }}
-        listeners={({ navigation, route }) => ({
-          tabPress: (event) => {
-            const nested = navigation.getState().routes.find((item) => item.key === route.key)?.state;
-            if (!nested || typeof nested.index !== 'number') return;
-            const current = nested.routes[nested.index]?.name;
-            if (!current || current === 'HomeMain') return;
-            event.preventDefault();
-            navigation.navigate('Predictions', { screen: 'HomeMain' });
+    <OpenedFromMenuContext.Provider value>
+      <Tab.Navigator
+        initialRouteName="Predictions"
+        // The side menu replaces the bar. The routes stay, so links and pushes land as before;
+        // back leaves the tabs for the Game Centre rather than stepping between them.
+        tabBar={() => null}
+        backBehavior="none"
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: t.color.brand,
+          tabBarInactiveTintColor: '#475569',
+          tabBarStyle: {
+            backgroundColor: t.color.surface,
+            borderTopColor: t.color.border,
+            paddingHorizontal: 28,
+            height: 86,
           },
-        })}
-      />
-      <Tab.Screen
-        name="Leagues"
-        component={LeaguesNavigator as any}
-        options={{
-          title: 'Mini leagues',
-          tabBarIcon: ({ color }) => <TabSvgIcon xml={MINI_LEAGUES_SVG} size={35} color={color} />,
+          tabBarItemStyle: {
+            maxWidth: 112,
+            paddingTop: 6,
+          },
+          tabBarLabelStyle: {
+            fontSize: 10,
+            lineHeight: 12,
+            fontWeight: '700',
+            marginBottom: 2,
+          },
+          tabBarHideOnKeyboard: true,
         }}
-      />
-      <Tab.Screen
-        name="BrandedLeaderboards"
-        component={BrandedLeaderboardsTabContent}
-        options={{
-          title: 'Leaderboards',
-          tabBarIcon: ({ color }) => <TabSvgIcon xml={BRANDED_LB_SVG} size={35} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Global"
-        component={GlobalScreen}
-        options={{
-          title: seasonLabel,
-          tabBarIcon: ({ color }) => <TabSvgIcon xml={LEADERBOARDS_SVG} size={35} color={color} />,
-        }}
-      />
-    </Tab.Navigator>
+      >
+        <Tab.Screen
+          name="Predictions"
+          component={HomeNavigator}
+          options={{
+            title: 'Predictions',
+            tabBarIcon: ({ color }) => <TabSvgIcon xml={PREDICTIONS_SVG} size={35} color={color} />,
+          }}
+          listeners={({ navigation, route }) => ({
+            tabPress: (event) => {
+              const nested = navigation.getState().routes.find((item) => item.key === route.key)?.state;
+              if (!nested || typeof nested.index !== 'number') return;
+              const current = nested.routes[nested.index]?.name;
+              if (!current || current === 'HomeMain') return;
+              event.preventDefault();
+              navigation.navigate('Predictions', { screen: 'HomeMain' });
+            },
+          })}
+        />
+        <Tab.Screen
+          name="Leagues"
+          component={LeaguesNavigator as any}
+          options={{
+            title: 'Mini leagues',
+            tabBarIcon: ({ color }) => <TabSvgIcon xml={MINI_LEAGUES_SVG} size={35} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="BrandedLeaderboards"
+          component={BrandedLeaderboardsTabContent}
+          options={{
+            title: 'Leaderboards',
+            tabBarIcon: ({ color }) => <TabSvgIcon xml={BRANDED_LB_SVG} size={35} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="Global"
+          component={GlobalScreen}
+          options={{
+            title: seasonLabel,
+            tabBarIcon: ({ color }) => <TabSvgIcon xml={LEADERBOARDS_SVG} size={35} color={color} />,
+          }}
+        />
+      </Tab.Navigator>
+    </OpenedFromMenuContext.Provider>
   );
 }
 
