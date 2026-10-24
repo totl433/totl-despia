@@ -325,17 +325,60 @@ export type DerivedFeedExtras = {
 };
 
 export async function fetchAdminFeedPosts(): Promise<AdminFeedPost[]> {
-  const { data, error } = await supabase
+  const dedicated = await supabase
     .from('game_centre_admin_posts')
-    .select('id, title, body, published_at')
+    .select('id, title, body, comments, reacts, published_at')
     .order('published_at', { ascending: true })
-    .limit(20);
-  if (error || !data) return [];
-  return (data as Array<{ id: string; title?: string | null; body?: string | null; published_at?: string | null }>).flatMap((row) => {
+    .limit(50);
+  if (!dedicated.error && dedicated.data?.length) {
+    return (dedicated.data as Array<{
+      id: string;
+      title?: string | null;
+      body?: string | null;
+      comments?: boolean | null;
+      reacts?: boolean | null;
+      published_at?: string | null;
+    }>).flatMap((row) => {
+      const publishedAtMs = row.published_at ? Date.parse(row.published_at) : Number.NaN;
+      const body = String(row.body ?? '').trim();
+      if (!Number.isFinite(publishedAtMs) || !body) return [];
+      return [
+        {
+          id: String(row.id).split('admin:').pop() || String(row.id),
+          title: String(row.title ?? 'Announcement').trim() || 'Announcement',
+          body,
+          publishedAtMs,
+          comments: row.comments !== false,
+          reacts: row.reacts !== false,
+        },
+      ];
+    });
+  }
+
+  const fallback = await supabase
+    .from('game_centre_posts')
+    .select('id, details, published_at')
+    .like('id', '%:admin:%')
+    .order('published_at', { ascending: true })
+    .limit(50);
+  if (fallback.error || !fallback.data) return [];
+  return (fallback.data as Array<{ id: string; details?: Record<string, unknown> | null; published_at?: string | null }>).flatMap((row) => {
+    const details = row.details && typeof row.details === 'object' ? row.details : {};
+    if (details.broadcast !== true) return [];
     const publishedAtMs = row.published_at ? Date.parse(row.published_at) : Number.NaN;
-    const body = String(row.body ?? '').trim();
-    if (!Number.isFinite(publishedAtMs) || !body) return [];
-    return [{ id: String(row.id), title: String(row.title ?? 'Announcement').trim() || 'Announcement', body, publishedAtMs }];
+    const body = String(details.body ?? '').trim();
+    const title = String(details.title ?? '').trim();
+    if (!Number.isFinite(publishedAtMs) || !body || !title) return [];
+    return [
+      {
+        id: String(row.id).split('admin:').pop() || String(row.id),
+        title,
+        body,
+        publishedAtMs,
+        comments: details.comments !== false,
+        reacts: details.reacts !== false,
+      },
+    ];
   });
 }
 

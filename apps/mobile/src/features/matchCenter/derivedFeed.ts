@@ -85,6 +85,8 @@ export type AdminFeedPost = {
   title: string;
   body: string;
   publishedAtMs: number;
+  comments?: boolean;
+  reacts?: boolean;
 };
 
 function teamName(fixture: Fixture, side: 'home' | 'away'): string {
@@ -641,10 +643,11 @@ export function adminFeedItems(posts: AdminFeedPost[], nowMs: number): FeedItem[
         sortAt: post.publishedAtMs,
         kind: 'shout',
         eyebrow: 'TotL',
-        title: 'TotL',
+        title: post.title,
         body: post.body,
         stamp: formatLocalStamp(post.publishedAtMs),
-        personal: post.title,
+        comments: post.comments !== false,
+        reacts: post.reacts !== false,
         link: null,
       })
     );

@@ -140,6 +140,10 @@ export type FeedItem = {
   honours?: FeedHonour[] | null;
   /** Faces on shout-outs and league events. */
   faces?: FeedFace[] | null;
+  /** Admin broadcast: hide the comment footer when false. */
+  comments?: boolean;
+  /** Admin broadcast: hide reactions when false. */
+  reacts?: boolean;
   /** Published fixture list, newest gameweek. */
   fixtureLines?: string[] | null;
   /** Your Predictions vs results on the score sheet. */
@@ -872,7 +876,7 @@ export function buildMatchFeed(input: {
     const prefix = `mc:gw${gw}:`;
     const byIndex = new Map(fixtures.map((fixture) => [fixture.fixture_index, fixture]));
     const ordered = posts
-      .filter((post) => post.status !== 'void' && post.id.startsWith(prefix))
+      .filter((post) => post.status !== 'void' && post.id.startsWith(prefix) && !post.id.includes(':admin:'))
       .map((post) => ({ post, at: Date.parse(post.published_at) }))
       .filter(({ at }) => Number.isFinite(at))
       .sort((a, b) => a.at - b.at || a.post.id.localeCompare(b.post.id));

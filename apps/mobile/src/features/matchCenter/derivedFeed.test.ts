@@ -186,7 +186,7 @@ describe('season stat cards', () => {
 describe('admin posts', () => {
   it('turns a published admin row into a TotL card', () => {
     const items = adminFeedItems([{ id: '1', title: 'Announcement', body: 'Football is crazy right now!', publishedAtMs: KO }], KO);
-    expect(items[0]?.title).toBe('TotL');
+    expect(items[0]?.title).toBe('Announcement');
     expect(items[0]?.body).toBe('Football is crazy right now!');
   });
 });

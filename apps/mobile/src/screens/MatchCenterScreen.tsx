@@ -24,6 +24,7 @@ import { TEAM_BADGES } from '../lib/teamBadges';
 
 import AppTopHeader from '../components/AppTopHeader';
 import HeaderLiveScore from '../components/HeaderLiveScore';
+import HeaderTotlLogo from '../components/HeaderTotlLogo';
 import { api } from '../lib/api';
 import { inviteErrorMessage, leagueInviteApi } from '../lib/leagueInviteApi';
 import { supabase } from '../lib/supabase';
@@ -639,7 +640,8 @@ function FeedCardView({
   const youWin = item.kind === 'round-up' && (item.title === 'You win' || item.title === 'Take a bow');
   const rainbow = cardWasCorrect(item);
   const canOpen = Boolean(item.link && (item.link.to === 'overall' || item.link.leagueId));
-  const canReact = gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
+  const canReact = item.reacts !== false && gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
+  const canComment = item.comments !== false && !!social;
   const onDark = youWin || item.kind === 'round-up';
   const shell = youWin
     ? { backgroundColor: '#0F766E' }
@@ -840,6 +842,7 @@ function FeedCardView({
           title={header.title}
           subtitle={header.subtitle}
           stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
+          leading={item.id.startsWith('admin:') ? <HeaderTotlLogo width={26} height={23} /> : undefined}
           onDark={onDark}
           onPress={
             item.kind === 'rank'
@@ -853,7 +856,7 @@ function FeedCardView({
       footer={
         item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge' || item.kind === 'score-sheet') ? (
           <GameCentreCardButton label={item.link.label} onPress={() => onOpen(item)} />
-        ) : canReact && social ? (
+        ) : canReact && canComment ? (
           <>
             <GameCentreReactionBar
               chips={gameCentreReactionChips(reactions)}
@@ -892,6 +895,33 @@ function FeedCardView({
               }}
             />
           </>
+        ) : canComment ? (
+          <>
+            <View style={{ paddingHorizontal: 16 }}>
+              <TotlText style={{ fontSize: 14, lineHeight: 18, color: 'rgba(60,60,67,0.6)' }}>
+                {social.commentCount === 0
+                  ? 'Add a comment'
+                  : social.commentCount === 1
+                    ? 'View 1 comment'
+                    : `View all ${social.commentCount} comments`}
+              </TotlText>
+            </View>
+            <GameCentreReplyInput
+              placeholder="Add your comment"
+              value={commentDraft}
+              onChangeText={setCommentDraft}
+              sending={sendingComment}
+              onSend={() => {
+                const text = commentDraft.trim();
+                if (!text || sendingComment) return;
+                setSendingComment(true);
+                void social.onComment(item, text).then((sent) => {
+                  if (sent) setCommentDraft('');
+                  setSendingComment(false);
+                });
+              }}
+            />
+          </>
         ) : canReact ? (
           <View style={{ paddingBottom: 20 }}>
             <GameCentreReactionBar chips={gameCentreReactionChips(reactions)} onReact={(emoji) => onReact?.(emoji)} />
@@ -904,7 +934,7 @@ function FeedCardView({
   );
   // Tapping a public card opens its comments (its buttons and comment box keep their own taps).
   const tappable =
-    canReact && social ? (
+    canComment ? (
       <Pressable accessibilityRole="button" accessibilityHint="Opens the comments" onPress={() => social.onOpenComments(item)}>
         {card}
       </Pressable>
@@ -1251,7 +1281,7 @@ function buildTickerFixtures(
         homeScore: started ? home : null,
         awayScore: started ? away : null,
         statusLabel,
-        live: status === 'IN_PLAY',
+        live: status === 'IN_PLAY' || status === 'PAUSED',
         finished: status === 'FINISHED',
         pick: pick === 'H' || pick === 'D' || pick === 'A' ? pick : null,
       };
@@ -1382,6 +1412,9 @@ function FixtureTicker({
   leagues: TickerLeague[];
   boards: TickerBoard[];
 }) {
+  const holdOneLiveGame = leagues.length === 0 && boards.length === 0 && games.length > 0 && games.length <= 2;
+  const liveOnlyScroll = !holdOneLiveGame && leagues.length === 0 && boards.length === 0;
+  const gameGap = 36;
   const t = useTokens();
   const shift = useSharedValue(0);
   const [loopWidth, setLoopWidth] = React.useState(0);
@@ -1395,6 +1428,11 @@ function FixtureTicker({
   const loopWidthRef = React.useRef(0);
 
   React.useEffect(() => {
+    if (holdOneLiveGame) {
+      cancelAnimation(shift);
+      shift.value = 0;
+      return;
+    }
     if (loopWidth <= 0) return;
     const structureChanged = structureRef.current !== structureKey;
     structureRef.current = structureKey;
@@ -1433,13 +1471,13 @@ function FixtureTicker({
       );
     });
     return () => cancelAnimation(shift);
-  }, [structureKey, loopWidth, shift]);
+  }, [holdOneLiveGame, structureKey, loopWidth, shift]);
 
   const trackStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shift.value }],
   }));
 
-  const renderChips = (copy: string) =>
+  const renderChips = (copy: string, centered = false) =>
     games.map((item) => {
       const hasScore = item.homeScore !== null && item.awayScore !== null;
       const outcome = !hasScore ? null : item.homeScore! > item.awayScore! ? 'H' : item.awayScore! > item.homeScore! ? 'A' : 'D';
@@ -1447,7 +1485,7 @@ function FixtureTicker({
       const correct = known && item.pick === outcome;
       const bar = item.pick ? <TickerPickBar correct={!known || correct} finished={item.finished && correct} /> : null;
       return (
-        <View key={`${copy}-${item.key}`} style={{ flexDirection: 'row', alignItems: 'flex-start', marginRight: 32 }}>
+        <View key={`${copy}-${item.key}`} style={{ flexDirection: 'row', alignItems: 'flex-start', marginRight: centered ? 0 : 32 }}>
           <View style={{ width: 32, alignItems: 'center' }}>
             <View style={{ height: 32, alignItems: 'center', justifyContent: 'center' }}>
               <Crest code={item.homeCode} size={32} />
@@ -1492,6 +1530,13 @@ function FixtureTicker({
         </View>
       );
     });
+
+  const loopRule = (name: string) => (
+    <View
+      key={name}
+      style={{ width: 1, height: 28, borderRadius: 1, backgroundColor: '#94A3B8', alignSelf: 'center' }}
+    />
+  );
 
   const renderStrip = (copy: string) => {
     const sectionRule = (name: string) => (
@@ -1559,24 +1604,46 @@ function FixtureTicker({
         end={{ x: 1, y: 0 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.45 }}
       />
-      <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'center' }, trackStyle]}>
-        <View
-          style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}
-          onLayout={(event) => {
-            const width = event.nativeEvent.layout.width;
-            // Ignore tiny reflows from live score/minute text so the loop does not hitch.
-            setLoopWidth((current) => {
-              if (current === 0) return width;
-              if (Math.abs(current - width) < 4) return current;
-              return width;
-            });
-          }}
-        >
-          {renderStrip('a')}
+      {holdOneLiveGame ? (
+        <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', columnGap: gameGap }}>
+          {renderChips('live', true)}
         </View>
-        {/* Identical copy — same padding — so the loop seam is invisible */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}>{renderStrip('b')}</View>
-      </Reanimated.View>
+      ) : (
+        <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'center' }, trackStyle]}>
+          <View
+            style={{ flexDirection: 'row', alignItems: 'center', columnGap: liveOnlyScroll ? gameGap : 0, paddingLeft: liveOnlyScroll ? gameGap : 16 }}
+            onLayout={(event) => {
+              const width = event.nativeEvent.layout.width;
+              // Ignore tiny reflows from live score/minute text so the loop does not hitch.
+              setLoopWidth((current) => {
+                if (current === 0) return width;
+                if (Math.abs(current - width) < 4) return current;
+                return width;
+              });
+            }}
+          >
+            {liveOnlyScroll ? (
+              <>
+                {renderChips('a', true)}
+                {loopRule('loop-a')}
+              </>
+            ) : (
+              renderStrip('a')
+            )}
+          </View>
+          {/* Identical copy — same padding — so the loop seam is invisible */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: liveOnlyScroll ? gameGap : 0, paddingLeft: liveOnlyScroll ? gameGap : 16 }}>
+            {liveOnlyScroll ? (
+              <>
+                {renderChips('b', true)}
+                {loopRule('loop-b')}
+              </>
+            ) : (
+              renderStrip('b')
+            )}
+          </View>
+        </Reanimated.View>
+      )}
     </View>
   );
 }
@@ -2764,10 +2831,13 @@ export default function MatchCenterScreen() {
     () => buildTickerFixtures(board?.fixtures ?? [], liveByFixtureIndex, liveByApiMatchId, (board?.userPicks ?? {}) as Record<string, Pick | undefined>),
     [board?.fixtures, board?.userPicks, liveByApiMatchId, liveByFixtureIndex]
   );
+  const liveTickerFixtures = React.useMemo(() => tickerFixtures.filter((game) => game.live), [tickerFixtures]);
+  const gamesLive = liveTickerFixtures.length > 0;
 
-  // ML + Overall/Monthly/GW ranks only join the ticker once the first game has kicked off.
+  // ML + Overall/Monthly/GW ranks only join the ticker once the first game has kicked off,
+  // and never while a match is still live.
   const firstKoMs = firstKickoffMs(fixtures);
-  const rankingsOnTicker = firstKoMs != null && clockMs >= firstKoMs;
+  const rankingsOnTicker = !gamesLive && firstKoMs != null && clockMs >= firstKoMs;
 
   // Previous-GW ranks for ticker "move" arrows — rarely change once the previous GW is closed.
   // A plain object, not a Map: query results are saved to the phone as JSON, which turns a Map
@@ -3171,7 +3241,7 @@ export default function MatchCenterScreen() {
       (tickerFixtures.length ||
         (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null)))) ? (
         <FixtureTicker
-          games={tickerFixtures}
+          games={gamesLive ? liveTickerFixtures : tickerFixtures}
           leagues={rankingsOnTicker ? tickerLeagues ?? [] : []}
           boards={rankingsOnTicker ? tickerBoards ?? [] : []}
         />

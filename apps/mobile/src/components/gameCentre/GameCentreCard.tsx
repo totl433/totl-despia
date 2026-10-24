@@ -73,6 +73,7 @@ export function GameCentreCardHeader({
   title,
   subtitle,
   stamp,
+  leading,
   accessory,
   onDark = false,
   onPress,
@@ -80,24 +81,46 @@ export function GameCentreCardHeader({
   title: string;
   subtitle?: string | null;
   stamp?: string | null;
+  /** Top-left mark, e.g. the TOTL logo on an admin broadcast. */
+  leading?: React.ReactNode;
   /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
   accessory?: React.ReactNode;
   onDark?: boolean;
   onPress?: () => void;
 }) {
   const ink = onDark ? ON_DARK : INK;
-  const heading = (
-    <View style={{ paddingHorizontal: 16, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
-        <TotlText accessibilityRole="header" style={[titleText, { flex: 1, color: ink.primary }]}>
-          {title}
-        </TotlText>
-        {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
-        {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
-      </View>
+  const titleRow = (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+      <TotlText accessibilityRole="header" style={[titleText, { flex: 1, color: ink.primary }]}>
+        {title}
+      </TotlText>
+      {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
+      {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
+    </View>
+  );
+  const copy = (
+    <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+      {titleRow}
       {subtitle ? (
         <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
       ) : null}
+    </View>
+  );
+  const heading = (
+    <View style={{ paddingHorizontal: 16, gap: 8 }}>
+      {leading ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+          {leading as any}
+          {copy}
+        </View>
+      ) : (
+        <>
+          {titleRow}
+          {subtitle ? (
+            <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
+          ) : null}
+        </>
+      )}
     </View>
   );
   if (onPress) {

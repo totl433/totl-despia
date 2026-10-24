@@ -11,6 +11,10 @@ const ADMIN_IDS = new Set<string>([
   '9c0bcf50-370d-412d-8826-95371a72b4fe',
 ]);
 
+export function isTotlAdmin(userId: string): boolean {
+  return ADMIN_IDS.has(userId);
+}
+
 function calculatePercentile(userValue: number, allValues: number[]): number {
   if (allValues.length === 0) return 50;
   const rank = allValues.filter((v) => v <= userValue).length;

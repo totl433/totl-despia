@@ -367,6 +367,44 @@ export function createApiClient(opts: ApiClientOptions) {
       });
     },
 
+    async listMatchCenterAdminPosts(): Promise<{
+      posts: Array<{
+        id: string;
+        title: string;
+        body: string;
+        comments: boolean;
+        shareable: boolean;
+        reacts: boolean;
+        publishedAt: string;
+      }>;
+    }> {
+      return requestJson(opts, `/v1/match-center/admin-posts`, { method: 'GET' });
+    },
+
+    async postMatchCenterBroadcast(input: {
+      title: string;
+      body: string;
+      comments: boolean;
+      shareable: boolean;
+      reacts: boolean;
+    }): Promise<{
+      ok: true;
+      post: {
+        id: string;
+        title: string;
+        body: string;
+        comments: boolean;
+        shareable: boolean;
+        reacts: boolean;
+        publishedAt: string;
+      };
+    }> {
+      return requestJson(opts, `/v1/admin/match-center/broadcast`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+
     async submitGameCentreCommentReport(input: { commentId: string; reason: string }): Promise<{ ok: true }> {
       return requestJson<{ ok: true }>(opts, `/v1/game-centre/comment-reports`, {
         method: 'POST',
