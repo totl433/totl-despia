@@ -1,7 +1,12 @@
 import { computeLiveGwScoresForGw, rankUserInGwLiveScores } from './liveGwScores.js';
 import { resolveLeagueStartGw } from './leagueStart.js';
 import { upsertSubscriber, unsubscribeSubscriber } from './mailerlite.js';
-import { isLeftoverPriorSeasonLastCompleted, resolveStatsHeadlineGws } from './profileStatsHeadline.js';
+import {
+  countTrailingPlayedWeeks,
+  isLeftoverPriorSeasonLastCompleted,
+  playedGwSet,
+  resolveStatsHeadlineGws,
+} from './profileStatsHeadline.js';
 import { applySeasonFilter, getSeasonTables, resolveSeasonCtx } from './seasonStack.js';
 
 const ADMIN_IDS = new Set<string>([
@@ -350,15 +355,19 @@ export type ProfileSummary = {
 export async function getProfileSummary(opts: { userId: string; supa: any; accessToken: string; rootSupabase: any }) {
   const { userId, supa, accessToken, rootSupabase } = opts;
 
-  const [userRowRes, ocpRes, leaguesCountRes, latestGwRes, gwPointsRes, submissionsRes, authRes] = await Promise.all([
-    (supa as any).from('users').select('name, avatar_url').eq('id', userId).maybeSingle(),
-    (supa as any).from('app_v_ocp_overall').select('ocp').eq('user_id', userId).maybeSingle(),
-    (supa as any).from('league_members').select('league_id', { count: 'exact', head: true }).eq('user_id', userId),
-    (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: false }).limit(1).maybeSingle(),
-    (supa as any).from('app_v_gw_points').select('gw').eq('user_id', userId),
-    (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
-    (rootSupabase as any).auth.getUser(accessToken),
-  ]);
+  const seasonCtx = await resolveSeasonCtx(supa as any, userId);
+
+  const [userRowRes, ocpRes, leaguesCountRes, latestGwRes, gwPointsRes, submissionsRes, authRes, runtimeRes] =
+    await Promise.all([
+      (supa as any).from('users').select('name, avatar_url').eq('id', userId).maybeSingle(),
+      (supa as any).from('app_v_ocp_overall').select('ocp').eq('user_id', userId).maybeSingle(),
+      (supa as any).from('league_members').select('league_id', { count: 'exact', head: true }).eq('user_id', userId),
+      (supa as any).from('app_gw_results').select('gw').order('gw', { ascending: false }).limit(1).maybeSingle(),
+      (supa as any).from('app_v_gw_points').select('gw').eq('user_id', userId),
+      (supa as any).from('app_gw_submissions').select('gw').eq('user_id', userId),
+      (rootSupabase as any).auth.getUser(accessToken),
+      (supa as any).from('app_season_runtime').select('current_season_id, current_gw').eq('id', 1).maybeSingle(),
+    ]);
 
   if (userRowRes.error) throw userRowRes.error;
   if (ocpRes.error) throw ocpRes.error;
@@ -368,23 +377,56 @@ export async function getProfileSummary(opts: { userId: string; supa: any; acces
   if (submissionsRes.error) throw submissionsRes.error;
   if (authRes.error) throw authRes.error;
 
-  const latestGw: number = Number(latestGwRes.data?.gw ?? 0);
-  const gwPointsSet = new Set<number>((gwPointsRes.data ?? []).map((r: any) => Number(r.gw)));
-  const submissionsSet = new Set<number>((submissionsRes.data ?? []).map((r: any) => Number(r.gw)));
+  const seasonId =
+    (seasonCtx.useSeasonStack && seasonCtx.seasonId) ||
+    (typeof runtimeRes.data?.current_season_id === 'string' ? runtimeRes.data.current_season_id : null) ||
+    seasonCtx.seasonId ||
+    null;
 
-  let anchorGw = latestGw;
-  gwPointsSet.forEach((g) => {
-    if (g > anchorGw) anchorGw = g;
-  });
-  submissionsSet.forEach((g) => {
-    if (g > anchorGw) anchorGw = g;
-  });
+  let seasonOcp = 0;
+  const seasonPlayed = new Set<number>();
+  let seasonThroughGw = 0;
 
-  let weeksStreak = 0;
-  for (let gw = anchorGw; gw >= 1; gw--) {
-    if (gwPointsSet.has(gw) || submissionsSet.has(gw)) weeksStreak++;
-    else break;
+  if (seasonId) {
+    const [seasonOcpRes, seasonPointsRes, seasonSubsRes, seasonLastRes] = await Promise.all([
+      (supa as any)
+        .from('app_v_season_ocp_overall')
+        .select('ocp')
+        .eq('user_id', userId)
+        .eq('season_id', seasonId)
+        .maybeSingle(),
+      (supa as any).from('app_v_season_gw_points').select('gw').eq('user_id', userId).eq('season_id', seasonId),
+      (supa as any).from('app_season_submissions').select('gw').eq('user_id', userId).eq('season_id', seasonId),
+      (supa as any)
+        .from('app_season_results')
+        .select('gw')
+        .eq('season_id', seasonId)
+        .order('gw', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (seasonOcpRes.error) throw seasonOcpRes.error;
+    if (seasonPointsRes.error) throw seasonPointsRes.error;
+    if (seasonSubsRes.error) throw seasonSubsRes.error;
+    if (seasonLastRes.error) throw seasonLastRes.error;
+    seasonOcp = Number(seasonOcpRes.data?.ocp ?? 0);
+    playedGwSet(seasonPointsRes.data).forEach((gw) => seasonPlayed.add(gw));
+    playedGwSet(seasonSubsRes.data).forEach((gw) => seasonPlayed.add(gw));
+    const last = Number(seasonLastRes.data?.gw ?? 0);
+    seasonThroughGw = Number.isFinite(last) && last > 0 ? last : 0;
   }
+
+  const priorPlayed = playedGwSet([...(gwPointsRes.data ?? []), ...(submissionsRes.data ?? [])]);
+  let priorThroughGw = Number(latestGwRes.data?.gw ?? 0);
+  if (!Number.isFinite(priorThroughGw) || priorThroughGw < 1) {
+    priorThroughGw = priorPlayed.size ? Math.max(...priorPlayed) : 0;
+  }
+  if (priorThroughGw > CURRENT_CAMPAIGN_END_GW) priorThroughGw = CURRENT_CAMPAIGN_END_GW;
+
+  const weeksStreak = countTrailingPlayedWeeks([
+    { played: priorPlayed, throughGw: priorThroughGw },
+    { played: seasonPlayed, throughGw: seasonThroughGw },
+  ]);
 
   const name = (userRowRes.data?.name as string | null) ?? 'User';
   const email = (authRes.data?.user?.email as string | null) ?? null;
@@ -394,7 +436,7 @@ export async function getProfileSummary(opts: { userId: string; supa: any; acces
     email,
     avatar_url: (userRowRes.data?.avatar_url as string | null) ?? null,
     isAdmin: ADMIN_IDS.has(userId),
-    ocp: Number(ocpRes.data?.ocp ?? 0),
+    ocp: Number(ocpRes.data?.ocp ?? 0) + seasonOcp,
     miniLeaguesCount: Number(leaguesCountRes.count ?? 0),
     weeksStreak,
   };

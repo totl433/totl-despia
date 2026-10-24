@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isLeftoverPriorSeasonLastCompleted, resolveStatsHeadlineGws } from './profileStatsHeadline';
+import {
+  countTrailingPlayedWeeks,
+  isLeftoverPriorSeasonLastCompleted,
+  resolveStatsHeadlineGws,
+} from './profileStatsHeadline';
 
 describe('resolveStatsHeadlineGws', () => {
   it('uses the current season last completed week during results', () => {
@@ -29,6 +33,32 @@ describe('resolveStatsHeadlineGws', () => {
       lastCompletedGw: null,
       highlightGw: 8,
     });
+  });
+});
+
+describe('countTrailingPlayedWeeks', () => {
+  const all = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+
+  it('adds this season onto a complete prior-season run', () => {
+    expect(
+      countTrailingPlayedWeeks([
+        { played: all(38), throughGw: 38 },
+        { played: all(8), throughGw: 8 },
+      ])
+    ).toBe(46);
+  });
+
+  it('breaks when this season skipped a week', () => {
+    expect(
+      countTrailingPlayedWeeks([
+        { played: all(38), throughGw: 38 },
+        { played: [2, 3, 4, 5, 6, 7, 8], throughGw: 8 },
+      ])
+    ).toBe(7);
+  });
+
+  it('keeps last season only when this season has no completed weeks', () => {
+    expect(countTrailingPlayedWeeks([{ played: all(38), throughGw: 38 }, { played: [1], throughGw: 0 }])).toBe(38);
   });
 });
 

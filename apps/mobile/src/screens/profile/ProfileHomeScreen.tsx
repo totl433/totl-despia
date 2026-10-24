@@ -7,7 +7,12 @@ import { Button, Card, Screen, TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../lib/api';
+import { fetchProfileCareerTotals } from '../../lib/profileSummaryCareer';
+import { playersDayKey } from '../../lib/retroPlayers/day';
+import { readSharedPlayersScores } from '../../lib/retroPlayers/scores';
+import { playersStreak } from '../../lib/retroPlayers/stats';
 import { signOutWithPushCleanup } from '../../lib/signOut';
+import { supabase } from '../../lib/supabase';
 import PageHeader from '../../components/PageHeader';
 import CenteredSpinner from '../../components/CenteredSpinner';
 import { TotlRefreshControl } from '../../lib/refreshControl';
@@ -36,9 +41,31 @@ export default function ProfileHomeScreen() {
   }, [navigation]);
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
-    queryKey: ['profile-summary'],
+    queryKey: ['profile-summary', 'v2'],
     queryFn: () => api.getProfileSummary(),
   });
+  const userIdQ = useQuery({
+    queryKey: ['session-user-id'],
+    queryFn: async () => (await supabase.auth.getSession()).data.session?.user?.id ?? null,
+    staleTime: 5 * 60_000,
+  });
+  const userId = userIdQ.data ?? null;
+  const careerQ = useQuery({
+    queryKey: ['profile-summary-career', 'v1', userId],
+    enabled: !!userId,
+    queryFn: () => fetchProfileCareerTotals(userId!),
+    staleTime: 60_000,
+  });
+  const playersScoresQ = useQuery({
+    queryKey: ['players-shared-scores', userId],
+    enabled: !!userId,
+    queryFn: readSharedPlayersScores,
+    staleTime: 60_000,
+  });
+  const playersStreakDays = React.useMemo(
+    () => (userId && playersScoresQ.data ? playersStreak(playersScoresQ.data[userId] ?? {}, playersDayKey()) : 0),
+    [playersScoresQ.data, userId]
+  );
 
   const name = data?.name ?? 'User';
   const email = data?.email ?? null;
@@ -156,7 +183,16 @@ export default function ProfileHomeScreen() {
             FLOATING_TAB_BAR_SCROLL_BOTTOM_PADDING +
             (Platform.OS === 'android' ? insets.bottom + t.space[4] : 0),
         }}
-        refreshControl={<TotlRefreshControl refreshing={isRefetching} onRefresh={() => refetch()} />}
+        refreshControl={
+          <TotlRefreshControl
+            refreshing={isRefetching || careerQ.isRefetching || playersScoresQ.isRefetching}
+            onRefresh={() => {
+              void refetch();
+              void careerQ.refetch();
+              void playersScoresQ.refetch();
+            }}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         {error ? (
@@ -217,7 +253,9 @@ export default function ProfileHomeScreen() {
           <View style={{ gap: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">OCP</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>{String(Math.round(Number(data?.ocp ?? 0)))}</TotlText>
+              <TotlText style={{ fontWeight: '900' }}>
+                {String(Math.round(Number(careerQ.data?.ocp ?? data?.ocp ?? 0)))}
+              </TotlText>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Mini Leagues</TotlText>
@@ -225,7 +263,11 @@ export default function ProfileHomeScreen() {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TotlText variant="muted">Streak</TotlText>
-              <TotlText style={{ fontWeight: '900' }}>{String(data?.weeksStreak ?? 0)}</TotlText>
+              <TotlText style={{ fontWeight: '900' }}>{String(careerQ.data?.weeksStreak ?? data?.weeksStreak ?? 0)}</TotlText>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <TotlText variant="muted">The Players streak</TotlText>
+              <TotlText style={{ fontWeight: '900' }}>{String(playersStreakDays)}</TotlText>
             </View>
           </View>
 

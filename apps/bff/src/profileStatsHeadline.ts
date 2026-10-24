@@ -20,6 +20,41 @@ export function resolveStatsHeadlineGws(args: {
   return { lastCompletedGw, highlightGw };
 }
 
+/**
+ * Trailing participation across season folders (oldest → newest).
+ * Each folder is GW1..throughGw; a missing week breaks the run.
+ */
+export function countTrailingPlayedWeeks(
+  seasons: ReadonlyArray<{ played: Iterable<number>; throughGw: number }>
+): number {
+  const flags: boolean[] = [];
+  for (const season of seasons) {
+    const through = Math.floor(Number(season.throughGw));
+    if (!Number.isFinite(through) || through < 1) continue;
+    const played = new Set<number>();
+    for (const raw of season.played) {
+      const gw = Number(raw);
+      if (Number.isFinite(gw) && gw >= 1 && gw <= through) played.add(gw);
+    }
+    for (let gw = 1; gw <= through; gw++) flags.push(played.has(gw));
+  }
+  let streak = 0;
+  for (let i = flags.length - 1; i >= 0; i--) {
+    if (flags[i]) streak++;
+    else break;
+  }
+  return streak;
+}
+
+export function playedGwSet(rows: Array<{ gw?: unknown } | null | undefined> | null | undefined): Set<number> {
+  const out = new Set<number>();
+  for (const row of rows ?? []) {
+    const gw = Number(row?.gw);
+    if (Number.isFinite(gw) && gw >= 1) out.add(gw);
+  }
+  return out;
+}
+
 /** True when max(results.gw) is leftover from a closed season after current_gw reset. */
 export function isLeftoverPriorSeasonLastCompleted(
   lastCompletedGw: number | null | undefined,
