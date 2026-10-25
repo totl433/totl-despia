@@ -73,6 +73,8 @@ export function GameCentreCardHeader({
   title,
   subtitle,
   stamp,
+  kicker,
+  kickerFontFamily,
   leading,
   accessory,
   onDark = false,
@@ -81,6 +83,9 @@ export function GameCentreCardHeader({
   title: string;
   subtitle?: string | null;
   stamp?: string | null;
+  /** Brand line above the title, e.g. THE PLAYERS. */
+  kicker?: string | null;
+  kickerFontFamily?: string;
   /** Top-left mark, e.g. the TOTL logo on an admin broadcast. */
   leading?: React.ReactNode;
   /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
@@ -89,6 +94,19 @@ export function GameCentreCardHeader({
   onPress?: () => void;
 }) {
   const ink = onDark ? ON_DARK : INK;
+  const kickerLine = kicker ? (
+    <TotlText
+      style={{
+        fontFamily: kickerFontFamily,
+        fontSize: 20,
+        lineHeight: 24,
+        letterSpacing: 0.2,
+        color: ink.primary,
+      }}
+    >
+      {kicker}
+    </TotlText>
+  ) : null;
   const titleRow = (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
       <TotlText accessibilityRole="header" style={[titleText, { flex: 1, color: ink.primary }]}>
@@ -100,6 +118,7 @@ export function GameCentreCardHeader({
   );
   const copy = (
     <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+      {kickerLine}
       {titleRow}
       {subtitle ? (
         <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
@@ -115,6 +134,7 @@ export function GameCentreCardHeader({
         </View>
       ) : (
         <>
+          {kickerLine}
           {titleRow}
           {subtitle ? (
             <TotlText style={{ fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: ink.primary }}>{subtitle}</TotlText>
@@ -127,7 +147,7 @@ export function GameCentreCardHeader({
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
+        accessibilityLabel={kicker && subtitle ? `${kicker}. ${title}. ${subtitle}` : kicker ? `${kicker}. ${title}` : subtitle ? `${title}. ${subtitle}` : title}
         onPress={onPress}
         style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
       >

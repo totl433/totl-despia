@@ -60,7 +60,8 @@ import {
   formatHeaderScoreLabel,
 } from '../lib/headerLiveScore';
 import EmojiGlyph, { hasEmojiBitmap } from '../features/matchCenter/EmojiGlyph';
-import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips } from '../features/gameCentre/cards';
+import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, isPlayersFeedItem } from '../features/gameCentre/cards';
+import { PLAYERS_FONTS } from '../components/retroPlayers/playersTheme';
 import GameCentreCard, {
   GameCentreAuthorHeader,
   GameCentreCardButton,
@@ -842,6 +843,8 @@ function FeedCardView({
           title={header.title}
           subtitle={header.subtitle}
           stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
+          kicker={isPlayersFeedItem(item) ? 'THE PLAYERS' : undefined}
+          kickerFontFamily={isPlayersFeedItem(item) ? PLAYERS_FONTS.display : undefined}
           leading={item.id.startsWith('admin:') ? <HeaderTotlLogo width={26} height={23} /> : undefined}
           onDark={onDark}
           onPress={

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, predictionsClosesLine } from './cards';
+import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, isPlayersFeedItem, predictionsClosesLine } from './cards';
 
 describe('card types', () => {
   it('splits match events, league chat and personal cards', () => {
@@ -25,6 +25,14 @@ describe('card types', () => {
   });
 });
 
+describe('players cards', () => {
+  it('marks daily shout and play cards as The Players', () => {
+    expect(isPlayersFeedItem({ id: 'players:daily:2026-10-24', kind: 'shout' })).toBe(true);
+    expect(isPlayersFeedItem({ id: 'players:ready:2026-10-25', kind: 'players-ready' })).toBe(true);
+    expect(isPlayersFeedItem({ id: 'goal:1', kind: 'goal' })).toBe(false);
+  });
+});
+
 describe('card header', () => {
   it('names a goal and moves the scorer line up', () => {
     expect(gameCentreCardHeader({ kind: 'goal', eyebrow: 'Goal', title: 'GOAL', body: 'Keane Lewis-Potter Scores!!! ⚽' })).toEqual({
@@ -43,6 +51,21 @@ describe('card header', () => {
     expect(gameCentreCardHeader({ kind: 'second-half', eyebrow: 'Second half', title: "They're back", body: 'Second half.' })).toEqual({
       title: 'Second half',
       subtitle: "They're back",
+      body: null,
+    });
+  });
+
+  it('keeps the Players shout headline when the eyebrow is THE PLAYERS', () => {
+    expect(
+      gameCentreCardHeader({
+        kind: 'shout',
+        eyebrow: 'THE PLAYERS',
+        title: "Yesterday's winners",
+        body: 'Yesterday belonged to hdmell.',
+      })
+    ).toEqual({
+      title: "Yesterday's winners",
+      subtitle: 'Yesterday belonged to hdmell.',
       body: null,
     });
   });

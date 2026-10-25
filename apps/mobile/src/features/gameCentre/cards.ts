@@ -25,6 +25,10 @@ const PUBLIC_KINDS: ReadonlySet<FeedKind> = new Set([
   'shout',
 ]);
 
+export function isPlayersFeedItem(item: Pick<FeedItem, 'id' | 'kind'>): boolean {
+  return item.id.startsWith('players:') || item.kind === 'players-ready' || item.kind === 'players-nudge';
+}
+
 export function gameCentreCardType(kind: FeedKind): GameCentreCardType {
   if (kind === 'message') return 'league';
   return PUBLIC_KINDS.has(kind) ? 'public' : 'personal';
