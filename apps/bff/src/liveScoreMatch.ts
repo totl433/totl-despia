@@ -6,8 +6,8 @@ function apiId(value: unknown): number | null {
 }
 
 export function liveScoreBelongsToFixture(
-  fixture: { api_match_id?: number | null; kickoff_time?: string | null },
-  row: { api_match_id?: number | null; kickoff_time?: string | null }
+  fixture: { api_match_id?: number | null; fixture_index?: number | null; kickoff_time?: string | null },
+  row: { api_match_id?: number | null; fixture_index?: number | null; kickoff_time?: string | null }
 ): boolean {
   const fixtureApi = apiId(fixture.api_match_id);
   const rowApi = apiId(row.api_match_id);

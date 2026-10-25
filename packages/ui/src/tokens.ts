@@ -38,6 +38,10 @@ export const tokens = {
     // On mobile, these are loaded via `expo-font` in the Expo app.
     body: 'Gramatika-Regular',
     heading: 'Gramatika-Bold',
+    // Weights by name. Screens already use these; until now they were undefined and fell back to System.
+    regular: 'Gramatika-Regular',
+    medium: 'Gramatika-Medium',
+    bold: 'Gramatika-Bold',
     mono: 'PressStart2P-Regular',
   },
 } as const;

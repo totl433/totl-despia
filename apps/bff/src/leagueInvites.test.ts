@@ -4,6 +4,7 @@ import {
   LEAGUE_INVITES_PREF_KEY,
   LEAGUE_INVITES_SENT_PREF_KEY,
   collectLeagueInvitees,
+  matchesSentInvite,
   mergeProtectedPreferences,
   pendingInvites,
   publicPreferences,
@@ -93,5 +94,19 @@ describe('league invite storage', () => {
       ['Thomas', 'declined'],
       ['Carl', 'joined'],
     ]);
+  });
+});
+
+describe('matchesSentInvite', () => {
+  const sent = [{ id: 'inv-1', leagueId: 'lg-1', inviteeId: 'u-2', inviteeName: 'sam', createdAt: invite.createdAt }];
+
+  it('accepts an invite the inviter sent to this player', () => {
+    expect(matchesSentInvite(invite, sent, 'u-2')).toBe(true);
+  });
+
+  it('rejects an invite the inviter has no record of', () => {
+    expect(matchesSentInvite({ ...invite, id: 'forged' }, sent, 'u-2')).toBe(false);
+    expect(matchesSentInvite({ ...invite, leagueId: 'lg-other' }, sent, 'u-2')).toBe(false);
+    expect(matchesSentInvite(invite, sent, 'u-3')).toBe(false);
   });
 });

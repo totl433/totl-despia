@@ -8,6 +8,7 @@ import {
   LEAGUE_INVITES_PREF_KEY,
   LEAGUE_INVITES_SENT_PREF_KEY,
   collectLeagueInvitees,
+  matchesSentInvite,
   normalizeUsername,
   pendingInvites,
   readSentInvites,
@@ -210,6 +211,17 @@ export function registerLeagueInviteRoutes(app: FastifyInstance, env: Env) {
     const invite = invites.find((row) => row.id === inviteId && row.status === 'pending');
     if (!invite) throw Object.assign(new Error('This invite is no longer available.'), { statusCode: 404 });
 
+    // The invitee's row is writable by the invitee, so check the inviter sent it and is still in the league.
+    const { data: inviterMembership } = await admin
+      .from('league_members')
+      .select('user_id')
+      .eq('league_id', invite.leagueId)
+      .eq('user_id', invite.invitedById)
+      .maybeSingle();
+    if (!inviterMembership || !matchesSentInvite(invite, await loadSentInvites(env, invite.invitedById), userId)) {
+      throw Object.assign(new Error('This invite is no longer available.'), { statusCode: 404 });
+    }
+
     const joined = await joinLeague(admin, userId, invite);
     await saveInvites(env, userId, setInviteStatus(invites, inviteId, 'accepted'));
     return { ok: true, league: joined };
@@ -310,5 +322,6 @@ async function joinLeague(
     .upsert({ league_id: invite.leagueId, user_id: userId }, { onConflict: 'league_id,user_id' });
   if (joinError) throw Object.assign(new Error('Could not join this mini league.'), { statusCode: 500 });
 
-  return { id: invite.leagueId, name: invite.leagueName, code: invite.leagueCode };
+  const { data: league } = await admin.from('leagues').select('name, code').eq('id', invite.leagueId).maybeSingle();
+  return { id: invite.leagueId, name: String(league?.name ?? invite.leagueName), code: String(league?.code ?? invite.leagueCode) };
 }
