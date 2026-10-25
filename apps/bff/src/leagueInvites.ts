@@ -116,6 +116,15 @@ export function upsertSentInvite(sent: SentLeagueInvite[], invite: SentLeagueInv
   return [...sent, invite];
 }
 
+/**
+ * True when the inviter's own sent list holds this invite. Players can write their own
+ * preferences row directly (its RLS allows it), so an invite in the invitee's row alone
+ * is not proof that anyone sent it.
+ */
+export function matchesSentInvite(invite: LeagueInvite, sent: SentLeagueInvite[], inviteeId: string): boolean {
+  return sent.some((row) => row.id === invite.id && row.leagueId === invite.leagueId && row.inviteeId === inviteeId);
+}
+
 export function pickInviteForLeague(invites: LeagueInvite[], leagueId: string): LeagueInvite | undefined {
   const forLeague = invites.filter((row) => row.leagueId === leagueId);
   return (
