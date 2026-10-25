@@ -166,6 +166,63 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues`, { method: 'GET' });
     },
 
+    async searchUsers(query: string): Promise<{
+      users: Array<{ id: string; name: string; avatarUrl: string | null }>;
+    }> {
+      return requestJson(opts, `/v1/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+    },
+
+    async listLeagueInvites(): Promise<{
+      invites: Array<{
+        id: string;
+        leagueId: string;
+        leagueName: string;
+        leagueCode: string;
+        leagueAvatar: string | null;
+        invitedById: string;
+        invitedByName: string;
+        createdAt: string;
+        status: 'pending' | 'accepted' | 'dismissed';
+      }>;
+    }> {
+      return requestJson(opts, `/v1/league-invites`, { method: 'GET' });
+    },
+
+    async listLeagueInvitees(leagueId: string): Promise<{
+      invitees: Array<{
+        userId: string;
+        name: string;
+        avatarUrl: string | null;
+        status: 'waiting' | 'joined' | 'declined';
+        invitedAt: string;
+      }>;
+    }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, { method: 'GET' });
+    },
+
+    async inviteToLeague(leagueId: string, username: string): Promise<{ ok: true }> {
+      return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+        validate: (data) => OkResponseSchema.parse(data),
+      });
+    },
+
+    async acceptLeagueInvite(inviteId: string): Promise<{ ok: true; league: { id: string; name: string; code: string } }> {
+      return requestJson(opts, `/v1/league-invites/${encodeURIComponent(inviteId)}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    },
+
+    async dismissLeagueInvite(inviteId: string): Promise<{ ok: true }> {
+      return requestJson(opts, `/v1/league-invites/${encodeURIComponent(inviteId)}/dismiss`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+        validate: (data) => OkResponseSchema.parse(data),
+      });
+    },
+
     async getLeague(
       leagueId: string
     ): Promise<{ league: any; members: Array<{ id: string; name: string; avatar_url?: string | null; created_at?: string | null }> }> {
@@ -304,6 +361,52 @@ export function createApiClient(opts: ApiClientOptions) {
 
     async submitChatMessageReport(input: { messageId: string; reason: string }): Promise<{ ok: true }> {
       return requestJson<{ ok: true }>(opts, `/v1/chat/reports`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
+      });
+    },
+
+    async listMatchCenterAdminPosts(): Promise<{
+      posts: Array<{
+        id: string;
+        title: string;
+        body: string;
+        comments: boolean;
+        shareable: boolean;
+        reacts: boolean;
+        publishedAt: string;
+      }>;
+    }> {
+      return requestJson(opts, `/v1/match-center/admin-posts`, { method: 'GET' });
+    },
+
+    async postMatchCenterBroadcast(input: {
+      title: string;
+      body: string;
+      comments: boolean;
+      shareable: boolean;
+      reacts: boolean;
+    }): Promise<{
+      ok: true;
+      post: {
+        id: string;
+        title: string;
+        body: string;
+        comments: boolean;
+        shareable: boolean;
+        reacts: boolean;
+        publishedAt: string;
+      };
+    }> {
+      return requestJson(opts, `/v1/admin/match-center/broadcast`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+
+    async submitGameCentreCommentReport(input: { commentId: string; reason: string }): Promise<{ ok: true }> {
+      return requestJson<{ ok: true }>(opts, `/v1/game-centre/comment-reports`, {
         method: 'POST',
         body: JSON.stringify(input),
         validate: (data) => (OkResponseSchema.parse(data) as unknown) as { ok: true },
