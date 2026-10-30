@@ -59,6 +59,7 @@ describe('fixture list', () => {
     expect(card?.fixtureLines?.at(-1)).toBe('+2 more');
     // Every game, in kick-off order, for the club-pill rows.
     expect(card?.fixtureRows).toHaveLength(2 + extras.length);
+    expect(card?.fixtureRows?.every((row) => typeof row.kickoff === 'string')).toBe(true);
     expect(card?.season).toMatch(/^\d{4}\/\d{2}$/);
   });
 });

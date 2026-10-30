@@ -87,7 +87,14 @@ export function fixtureEngagementId(gw: number, itemId: string): string {
   return idx == null ? matchCenterReactionCardId(gw, itemId) : `mc:gw${gw}:fixture:${idx}`;
 }
 
-export type FeedFixtureRow = { homeCode: string; awayCode: string; homeName: string; awayName: string };
+export type FeedFixtureRow = {
+  homeCode: string;
+  awayCode: string;
+  homeName: string;
+  awayName: string;
+  /** ISO kick-off, or null while it's not set. */
+  kickoff: string | null;
+};
 
 export type FeedMatch = {
   homeCode: string;

@@ -225,6 +225,7 @@ export function fixtureListItem(input: { gw: number; fixtures: Fixture[]; nowMs:
       awayCode: fixture.away_code ?? '',
       homeName: teamName(fixture, 'home'),
       awayName: teamName(fixture, 'away'),
+      kickoff: fixture.kickoff_time ?? null,
     })),
     season: seasonOf(first),
     link: null,

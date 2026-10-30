@@ -6,10 +6,11 @@ import { TotlText } from '@totl/ui';
 
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import type { FeedFixtureRow } from '../../features/matchCenter/feed';
+import { groupFixturesByDay } from '../../features/matchCenter/fixtureDays';
 
 const CLIPBOARD = Asset.fromModule(require('../../../assets/icons/fixtures-clipboard.svg')).uri;
 
-/** Figma 390:88272: the Gameweek fixtures card is green, with pale pills either side of a dark VS. */
+/** Figma 390:88272: the Gameweek fixtures card is green, with pale pills either side of a dark tile. */
 export const FIXTURES_CARD = {
   background: '#118578',
   kicker: '#E6FA81',
@@ -74,26 +75,60 @@ function Side({ code, name, align }: { code: string; name: string; align: 'home'
 }
 
 /**
- * Every game in the gameweek (Figma 390:88317): home club in a pill on the left, crest inside,
- * VS in the middle, away club mirrored on the right. 4pt between rows.
+ * Every game in the gameweek (Figma 390:88317), grouped by day. Home club in a pill on the left,
+ * the kick-off in a dark tile where the Figma has VS, away club mirrored on the right. 4pt
+ * between rows, 8pt under a day's heading and 16pt before the next day.
  */
 export function FixtureRows({ rows }: { rows: FeedFixtureRow[] }) {
+  const days = React.useMemo(() => groupFixturesByDay(rows), [rows]);
   return (
-    <View style={{ gap: 4 }}>
-      {rows.map((row, index) => (
-        <View
-          key={`${row.homeCode}-${row.awayCode}-${index}`}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-          accessible
-          accessibilityLabel={`${row.homeName} versus ${row.awayName}`}
-        >
-          <Side code={row.homeCode} name={row.homeName} align="home" />
-          <View style={{ width: 45, alignItems: 'center', justifyContent: 'center', padding: 4 }}>
-            <TotlText style={{ fontFamily: 'Gramatika-Black', fontSize: 12, lineHeight: 14, color: FIXTURES_CARD.vs }}>VS</TotlText>
+    <View style={{ gap: 16 }}>
+      {days.map((day) => (
+        <View key={day.key} style={{ gap: 8 }}>
+          <TotlText accessibilityRole="header" style={dayText}>
+            {day.label}
+          </TotlText>
+          <View style={{ gap: 4 }}>
+            {day.rows.map((row, index) => (
+              <View
+                key={`${row.homeCode}-${row.awayCode}-${index}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                accessible
+                accessibilityLabel={`${row.homeName} versus ${row.awayName}, ${day.key === 'tbc' ? 'kick-off to be confirmed' : `${day.label.split(' ')[0]} ${row.time}`}`}
+              >
+                <Side code={row.homeCode} name={row.homeName} align="home" />
+                <View style={timeTile}>
+                  <TotlText style={timeText}>{row.time}</TotlText>
+                </View>
+                <Side code={row.awayCode} name={row.awayName} align="away" />
+              </View>
+            ))}
           </View>
-          <Side code={row.awayCode} name={row.awayName} align="away" />
         </View>
       ))}
     </View>
   );
 }
+
+/** Quieter than the lime season line, so the card reads season, title, day, games. */
+const dayText = { fontFamily: 'Gramatika-Medium', fontSize: 12, lineHeight: 14, color: 'rgba(247,246,246,0.7)' };
+
+/**
+ * The kick-off sits where the Figma's VS is, on a tile in the VS green: light text on dark reads
+ * clearly, where dark text straight on the card green would not. Same height as the pills.
+ */
+const timeTile = {
+  width: 45,
+  height: 36,
+  borderRadius: 4,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+  backgroundColor: FIXTURES_CARD.vs,
+};
+const timeText = {
+  fontFamily: 'Gramatika-Medium',
+  fontSize: 12,
+  lineHeight: 14,
+  color: FIXTURES_CARD.text,
+  fontVariant: ['tabular-nums' as const],
+};
