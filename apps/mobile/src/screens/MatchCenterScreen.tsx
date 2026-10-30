@@ -3089,10 +3089,11 @@ export default function MatchCenterScreen() {
 
   return (
     <GameweekAdvanceTransition controller={advanceTransition}>
-    <Screen fullBleed>
+    <Screen fullBleed backgroundColor={t.color.feedBackground}>
       {menu ? (
         // New header (Figma 272:33554): menu on the left, chat on the right.
         <AppTopHeader
+          backgroundColor={t.color.feedBackground}
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           hasLiveGames={hasLiveGames}
@@ -3103,6 +3104,7 @@ export default function MatchCenterScreen() {
         />
       ) : (
         <AppTopHeader
+          backgroundColor={t.color.feedBackground}
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => {
             navigation.navigate('HomeMain');

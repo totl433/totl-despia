@@ -46,12 +46,15 @@ export default function GameCentreCard({
 }) {
   const t = useTokens();
   const hasContent = React.Children.toArray(children).length > 0;
+  // Only white cards get the border; themed cards (round-up, overall) keep their own colour edge to edge.
+  const white = !backgroundColor || backgroundColor === t.color.surface;
   return (
     <View
       style={[
         {
           borderRadius: 16,
           backgroundColor: backgroundColor ?? t.color.surface,
+          ...(white ? { borderWidth: 1, borderColor: t.color.cardBorder } : null),
           paddingTop: 20,
           paddingBottom: footer ? 0 : 20,
           gap,

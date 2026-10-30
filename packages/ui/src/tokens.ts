@@ -10,6 +10,9 @@ export const tokens = {
     text: '#F8FAFC',
     muted: '#94A3B8',
     border: 'rgba(148,163,184,0.25)',
+    // Game Centre feed. Dark mode keeps the screen background and borderless cards.
+    feedBackground: '#0F172A',
+    cardBorder: 'transparent',
     danger: '#DC2626',
     warning: '#F59E0B',
     success: '#10B981',
