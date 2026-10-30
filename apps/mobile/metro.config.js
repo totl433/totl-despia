@@ -31,8 +31,23 @@ config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, '..', '..', 'node_modules'),
 ];
 
+const storybookEnabled = process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true';
+
+// With Storybook off, `App.tsx`'s `require('./storybook')` still pulled the stories into the dev
+// bundle. A hot update to anything they import then re-ran them against Storybook's disabled stub
+// ("start is not a function"). Resolve it to an empty module instead.
+if (!storybookEnabled) {
+  const resolveRequest = config.resolver.resolveRequest;
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (moduleName === './storybook' && context.originModulePath === path.join(__dirname, 'App.tsx')) {
+      return { type: 'empty' };
+    }
+    return resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
+  };
+}
+
 module.exports = withStorybook(config, {
-  enabled: process.env.EXPO_PUBLIC_STORYBOOK_ENABLED === 'true',
+  enabled: storybookEnabled,
   configPath: './storybook',
 });
 
