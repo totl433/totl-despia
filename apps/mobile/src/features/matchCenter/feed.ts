@@ -89,6 +89,14 @@ export function fixtureEngagementId(gw: number, itemId: string): string {
 
 /** Share of submitted picks per outcome, and how many picks that is. */
 export type PickPercents = { H: number; D: number; A: number; votes?: number };
+export type FeedFixtureRow = {
+  homeCode: string;
+  awayCode: string;
+  homeName: string;
+  awayName: string;
+  /** ISO kick-off, or null while it's not set. */
+  kickoff: string | null;
+};
 
 export type FeedMatch = {
   homeCode: string;
@@ -149,6 +157,10 @@ export type FeedItem = {
   reacts?: boolean;
   /** Published fixture list, newest gameweek. */
   fixtureLines?: string[] | null;
+  /** The fixtures card's games in kick-off order, for the club-pill rows. */
+  fixtureRows?: FeedFixtureRow[] | null;
+  /** Season the card belongs to, e.g. "2026/27" (the fixtures card shows it above its title). */
+  season?: string | null;
   /** Your Predictions vs results on the score sheet. */
   scoreRows?: FeedScoreRow[] | null;
 };
