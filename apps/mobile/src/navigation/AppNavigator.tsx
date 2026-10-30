@@ -7,6 +7,7 @@ import TabsNavigator from './TabsNavigator';
 import GameCentreScreen from '../screens/GameCentreScreen';
 import GameweekResultsModalScreen from '../screens/GameweekResultsModalScreen';
 import LeagueDetailScreen from '../screens/LeagueDetailScreen';
+import MissingPicksScreen from '../screens/MissingPicksScreen';
 import LeagueChatScreen from '../screens/LeagueChatScreen';
 import CreateLeagueScreen from '../screens/CreateLeagueScreen';
 import ChatThreadScreen from '../screens/ChatThreadScreen';
@@ -47,6 +48,7 @@ export type RootStackParamList = {
   BrandedLeaderboardList: undefined;
   JoinLeaderboard: { leaderboardId?: string; leaderboardName?: string; code?: string };
   JoinMiniLeague: { code: string };
+  MissingPicks: { gw: number };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -188,6 +190,7 @@ export default function AppNavigator() {
         <Stack.Screen name="GameCentre" component={GameCentreScreen} />
         <Stack.Screen name="Tabs" component={TabsNavigator} />
         <Stack.Screen name="LeagueDetail" component={LeagueDetailScreen} />
+        <Stack.Screen name="MissingPicks" component={MissingPicksScreen} />
         <Stack.Screen
           name="LeagueChat"
           component={LeagueChatScreen}

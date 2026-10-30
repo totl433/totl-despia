@@ -91,6 +91,21 @@ describe('pinned card copy', () => {
       action: 'viewPicks',
       actionLabel: 'Your Predictions',
     });
+    const locked = { kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE } as const;
+    expect(pinnedCardCopy(locked, before, null, { leagueCount: 3, missingCount: 2 })).toMatchObject({
+      subtitle: 'Make sure everybody in your Mini Leagues has made their predictions',
+      action: 'seeMissing',
+      actionLabel: "See who's missing",
+    });
+    expect(pinnedCardCopy(locked, before, null, { leagueCount: 3, missingCount: 0 })).toMatchObject({
+      subtitle: 'Everyone in your Mini Leagues is in',
+      action: 'viewPicks',
+      actionLabel: 'Your Predictions',
+    });
+    // No mini-leagues to check: the plain card.
+    expect(pinnedCardCopy(locked, before, null, { leagueCount: 0, missingCount: 0 })).toMatchObject({ action: 'viewPicks' });
+    // Only the version before the countdown changes.
+    expect(pinnedCardCopy(locked, DEADLINE - 2 * 3_600_000, null, { leagueCount: 3, missingCount: 2 })).toMatchObject({ action: 'viewPicks', countdownLabel: 'FIRST TEAMS IN' });
     expect(pinnedCardCopy({ kind: 'locked', gw: 8, kickoffMs: KO, deadlineMs: DEADLINE }, DEADLINE - 2 * 3_600_000, null)).toMatchObject({
       title: "You're in",
       subtitle: 'Gameweek 8 starting soon!',
