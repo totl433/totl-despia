@@ -33,6 +33,7 @@ export declare const tokens: {
     readonly font: {
         readonly body: "Gramatika-Regular";
         readonly heading: "Gramatika-Bold";
+        readonly light: "Gramatika-Light";
         readonly regular: "Gramatika-Regular";
         readonly medium: "Gramatika-Medium";
         readonly bold: "Gramatika-Bold";

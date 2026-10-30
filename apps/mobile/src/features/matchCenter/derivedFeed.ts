@@ -7,7 +7,7 @@ import type { PlayersScoreStore } from '../../lib/retroPlayers/scores';
 import { scoreForDay, scoreForMonth, scoreForWeek } from '../../lib/retroPlayers/scores';
 import { resolveLiveScore } from '../../lib/liveScoreRows';
 import { getMediumName } from '../../../../../src/lib/teamNames';
-import { firstKickoffMs, type FeedFace, type FeedItem, type FeedScoreRow, type LeaguePickSnap, type LeagueTableSnap } from './feed';
+import { firstKickoffMs, type FeedFace, type FeedItem, type FeedScoreRow, type LeaguePickSnap, type LeagueTableSnap, type PickPercents } from './feed';
 import {
   awayWinsCopy,
   drawsCopy,
@@ -89,7 +89,7 @@ export type DerivedFeedInput = {
   people: Map<string, FeedPerson> | Record<string, FeedPerson>;
   playersScores: Record<string, PlayersScoreStore>;
   nextHereWeGoMs: number | null;
-  percents?: Map<number, { H: number; D: number; A: number }>;
+  percents?: Map<number, PickPercents>;
   adminPosts?: AdminFeedPost[];
   seasonStats?: SeasonStatFacts | null;
 };

@@ -39,6 +39,7 @@ export const tokens = {
         body: 'Gramatika-Regular',
         heading: 'Gramatika-Bold',
         // Weights by name. Screens already use these; until now they were undefined and fell back to System.
+        light: 'Gramatika-Light',
         regular: 'Gramatika-Regular',
         medium: 'Gramatika-Medium',
         bold: 'Gramatika-Bold',
