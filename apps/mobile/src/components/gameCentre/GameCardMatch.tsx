@@ -37,13 +37,13 @@ const INK = {
   away: '#2458B8',
 };
 /**
- * Figma's 175° rainbow (percentage picker, Variant3). Its later stops sit past the end of the chip,
+ * Figma's 173.76° rainbow (percentage picker, Variant3). Its later stops sit past the end of the chip,
  * so the last colour here is the gradient's value at 100%.
  */
 const RAINBOW = { colors: ['#F2BC20', '#E4716C', '#DB5281', '#D34E8D'] as const, locations: [0, 0.4351, 0.8412, 1] as const };
 /**
  * Mobile/12/Medium. Figma trims the 22pt line to the cap height, so these sit in tighter boxes than
- * the line height suggests: 14pt keeps the 16pt chips and the 12pt gaps at their Figma size.
+ * the line height suggests: 14pt keeps the chips and the 12pt gaps at their Figma size.
  */
 const label12 = { fontSize: 12, lineHeight: 14, fontFamily: 'Gramatika-Medium' };
 const REVEAL_MS = 700;
@@ -204,14 +204,15 @@ export function PickBar({ match, cardId }: { match: FeedMatch; cardId: string })
 
 /**
  * One share under the bar (Figma 367:46660, "percentage picker"): plain grey, your pick in lime
- * with a tick, or your pick in rainbow once the score matches it. 16pt tall, 4pt padding.
+ * with a tick, or your pick in rainbow once the score matches it. 4pt padding at the sides and
+ * 6pt top and bottom around the 8pt cap height: 20pt tall.
  */
 function PercentagePicker({ label, variant }: { label: string; variant: 'plain' | 'picked' | 'correct' }) {
   const ink = variant === 'correct' ? '#F7F6F6' : variant === 'picked' ? INK.pickInk : INK.muted;
   return (
     <View
       style={{
-        height: 16,
+        height: 20,
         paddingHorizontal: 4,
         flexDirection: 'row',
         alignItems: 'center',
@@ -226,8 +227,8 @@ function PercentagePicker({ label, variant }: { label: string; variant: 'plain' 
         <LinearGradient
           colors={RAINBOW.colors}
           locations={RAINBOW.locations}
-          start={{ x: 0.46, y: 0 }}
-          end={{ x: 0.54, y: 1 }}
+          start={{ x: 0.446, y: 0 }}
+          end={{ x: 0.554, y: 1 }}
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
         />
       ) : null}
