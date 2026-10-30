@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -3188,6 +3188,8 @@ export default function MatchCenterScreen() {
           ) : undefined
         }
         keyboardShouldPersistTaps="handled"
+        // Drag the feed down to pull the keyboard away with your finger (iOS); Android closes it on drag.
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={{
           paddingHorizontal: t.space[4],
