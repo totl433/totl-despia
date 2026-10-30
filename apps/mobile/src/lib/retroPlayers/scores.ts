@@ -19,9 +19,37 @@ const storageKey = (userId: string) => `totl.players.dailyScores.v3.${userId}`;
 export type PlayersDayScore = {
   correct: number;
   total: number;
+  /** False while the attempt is being played. Missing means finished. */
+  finished?: boolean;
 };
 
 export type PlayersScoreStore = Record<string, PlayersDayScore>;
+
+/**
+ * Raises the day's attempt to `score`, finishing it if `finished`. A day with no
+ * attempt yet starts one. A finished day never changes, and a score never goes down.
+ */
+export function recordPlayersProgress(
+  store: PlayersScoreStore,
+  dayKey: string,
+  score: { correct: number; total: number },
+  finished: boolean
+): PlayersScoreStore {
+  const current = store[dayKey];
+  if (current && current.finished !== false) return store;
+  const correct = Math.max(current?.correct ?? 0, Math.min(score.correct, current?.total ?? score.total));
+  const next: PlayersDayScore = { correct, total: current?.total ?? score.total };
+  if (!finished) next.finished = false;
+  return { ...store, [dayKey]: next };
+}
+
+/** Attempts left unfinished (the app was closed mid-game) keep the score they had. */
+export function settlePlayersAttempts(store: PlayersScoreStore): PlayersScoreStore {
+  if (!Object.values(store).some((score) => score?.finished === false)) return store;
+  const next: PlayersScoreStore = {};
+  for (const [day, score] of Object.entries(store)) next[day] = { correct: score.correct, total: score.total };
+  return next;
+}
 
 async function signedInUserId(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
@@ -43,9 +71,27 @@ async function writeLocal(userId: string, store: PlayersScoreStore): Promise<voi
   await AsyncStorage.setItem(storageKey(userId), JSON.stringify(store));
 }
 
+/** Read-modify-writes of the phone's copy run one at a time, so answers saved in quick succession don't overwrite each other. */
+let localQueue: Promise<unknown> = Promise.resolve();
+function updateLocal(userId: string, change: (store: PlayersScoreStore) => PlayersScoreStore): Promise<PlayersScoreStore> {
+  const run = localQueue.then(async () => {
+    const store = await readLocal(userId);
+    const next = change(store);
+    if (next !== store) await writeLocal(userId, next);
+    return next;
+  });
+  localQueue = run.catch(() => undefined);
+  return run;
+}
+
 function toScore(row: { correct: unknown; total: unknown }): PlayersDayScore | null {
   const score = { correct: Number(row.correct), total: Number(row.total) };
   return Number.isFinite(score.correct) && Number.isFinite(score.total) ? score : null;
+}
+
+/** The database functions from supabase/sql/players_daily_scores_attempts.sql aren't there yet. */
+function missingFunction(error: { code?: string } | null): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
 }
 
 /**
@@ -65,19 +111,21 @@ export async function readPlayersScores(): Promise<PlayersScoreStore> {
     console.error('[players scores] read own:', error.message);
     return local;
   }
-  const merged: PlayersScoreStore = { ...local };
-  for (const row of data ?? []) {
-    const score = toScore(row);
-    if (score) merged[String(row.day_key)] = score;
-  }
-  await writeLocal(userId, merged);
-  return merged;
+  return updateLocal(userId, (current) => {
+    const merged: PlayersScoreStore = { ...current };
+    for (const row of data ?? []) {
+      const score = toScore(row);
+      // A game being played on this phone keeps its own copy.
+      if (score && merged[String(row.day_key)]?.finished !== false) merged[String(row.day_key)] = score;
+    }
+    return merged;
+  });
 }
 
 /**
- * Whether the signed-in player already has a saved score for the day, on any device.
- * A score in their copy on this phone is uploaded if the server does not have it yet.
- * A score already on the server is copied onto the phone.
+ * Whether the signed-in player already has an attempt for the day, on any device.
+ * An attempt in their copy on this phone is uploaded if the server does not have it yet.
+ * An attempt already on the server is copied onto the phone.
  */
 export async function playersDayAlreadySaved(dayKey: string): Promise<boolean> {
   const userId = await signedInUserId();
@@ -96,21 +144,66 @@ export async function playersDayAlreadySaved(dayKey: string): Promise<boolean> {
   if (error || !data) return false;
   const score = toScore(data);
   if (!score) return false;
-  local[dayKey] = score;
-  await writeLocal(userId, local);
+  await updateLocal(userId, (current) => (current[dayKey] ? current : { ...current, [dayKey]: score }));
   return true;
 }
 
-/** First finish of a Players day is the one that counts. Later writes are ignored. */
-export async function savePlayersDayScore(dayKey: string, score: PlayersDayScore): Promise<void> {
+/**
+ * Finishes any attempt this phone left unfinished, with the score it had. Call when
+ * The Players opens, before a game can be in progress.
+ */
+export async function settlePlayersAttemptsOnPhone(): Promise<void> {
   const userId = await signedInUserId();
   if (!userId) return;
-  const store = await readLocal(userId);
-  if (!store[dayKey]) {
-    store[dayKey] = score;
-    await writeLocal(userId, store);
+  const before = await readLocal(userId);
+  const unfinished = Object.fromEntries(Object.entries(before).filter(([, score]) => score?.finished === false));
+  if (!Object.keys(unfinished).length) return;
+  const settled = await updateLocal(userId, settlePlayersAttempts);
+  await publishPlayersScores(userId, Object.fromEntries(Object.keys(unfinished).map((day) => [day, settled[day]])));
+}
+
+/**
+ * Starts the day's scored game. It is saved before the first question, so closing
+ * the app can't wipe it. False if this account already has an attempt for the day,
+ * here or on another device. Offline, the copy on this phone counts and is uploaded later.
+ */
+export async function startPlayersDay(dayKey: string, total: number): Promise<boolean> {
+  const userId = await signedInUserId();
+  if (!userId) return true;
+  let hadAttempt = false;
+  await updateLocal(userId, (store) => {
+    hadAttempt = !!store[dayKey];
+    return hadAttempt ? store : recordPlayersProgress(store, dayKey, { correct: 0, total }, false);
+  });
+  if (hadAttempt) return false;
+  const { data, error } = await supabase.rpc('players_start_day', { p_day_key: dayKey, p_total: total });
+  if (error) {
+    // Older database: the score is saved at the end, as before. Offline: the phone's copy stands.
+    if (!missingFunction(error)) console.error('[players scores] start:', error.message);
+    return true;
   }
-  await publishPlayersScores(userId, { [dayKey]: store[dayKey] });
+  if (data === false) {
+    // Already played on another device. Its attempt is the one that counts.
+    await updateLocal(userId, (store) => {
+      const { [dayKey]: _ours, ...rest } = store;
+      return rest;
+    });
+    await playersDayAlreadySaved(dayKey);
+    return false;
+  }
+  return true;
+}
+
+/** Saves the day's attempt after an answer. `finished` once the game is over. */
+export async function savePlayersDayProgress(
+  dayKey: string,
+  score: { correct: number; total: number },
+  finished: boolean
+): Promise<void> {
+  const userId = await signedInUserId();
+  if (!userId) return;
+  const store = await updateLocal(userId, (current) => recordPlayersProgress(current, dayKey, score, finished));
+  if (store[dayKey]) await publishPlayersScores(userId, { [dayKey]: store[dayKey] });
 }
 
 /** Scores for every player this account can see, including this account's offline ones. */
@@ -137,18 +230,30 @@ export async function readSharedPlayersScores(): Promise<Record<string, PlayersS
   return shared;
 }
 
-/** Uploads only ever go under the account whose copy they came from. */
+/**
+ * Uploads only ever go under the account whose copy they came from. New days are
+ * added; an attempt in progress is raised; a finished day on the server never changes.
+ */
 async function publishPlayersScores(userId: string, store: PlayersScoreStore): Promise<void> {
   const rows = Object.entries(store).flatMap(([day_key, score]) => {
     if (!score || !Number.isFinite(score.correct) || !Number.isFinite(score.total)) return [];
-    return [{ user_id: userId, day_key, correct: score.correct, total: score.total }];
+    return [{ day_key, correct: score.correct, total: score.total, finished: score.finished !== false }];
   });
   if (!rows.length) return;
-  const { error } = await supabase.from('players_daily_scores').upsert(rows, {
+  const { error } = await supabase.rpc('players_record_days', { p_rows: rows });
+  if (!error) return;
+  if (!missingFunction(error)) {
+    console.error('[players scores] publish:', error.message);
+    return;
+  }
+  // Older database: insert finished days only, as before.
+  const finishedRows = rows.filter((row) => row.finished).map(({ finished: _f, ...row }) => ({ user_id: userId, ...row }));
+  if (!finishedRows.length) return;
+  const { error: insertError } = await supabase.from('players_daily_scores').upsert(finishedRows, {
     onConflict: 'user_id,day_key',
     ignoreDuplicates: true,
   });
-  if (error) console.error('[players scores] publish:', error.message);
+  if (insertError) console.error('[players scores] publish:', insertError.message);
 }
 
 export function scoreForDay(store: PlayersScoreStore, dayKey: string): number | null {
