@@ -49,6 +49,8 @@ import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFi
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
 import { gameweekPin, getGameweekStateFromSnapshot, predictionsDeadlineMs, type GameweekPin } from '../lib/gameweekState';
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
+import { markCardsSeen } from '../features/matchCenter/cardVisibility';
 import { FIXTURES_CARD, FixtureRows, FixturesCardIcon, fixturesKickerStyle } from '../components/gameCentre/GameCentreFixtures';
 import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
@@ -220,59 +222,6 @@ function LineupBoard({ item }: { item: FeedItem }) {
   );
 }
 
-function PickSplit({ match }: { match: FeedMatch }) {
-  const t = useTokens();
-  if (!match.pick && !match.percents) return null;
-  const outcome = pickOutcome(match.homeScore, match.awayScore);
-  // Rainbow whenever the score on the card matches your pick, as the card's rainbow border.
-  const shinySide = match.pick && outcome && match.pick === outcome ? outcome : null;
-  return (
-    <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-      {(['H', 'D', 'A'] as const).map((side) => {
-        const active = match.pick === side;
-        const shiny = shinySide === side;
-        const code = side === 'H' ? match.homeCode : side === 'A' ? match.awayCode : '';
-        const pct = match.percents?.[side];
-        const label = pct != null ? (side === 'D' ? `Draw ${pct}%` : `${pct}%`) : side === 'D' ? 'Draw' : 'Win';
-        const light = shiny || active;
-        return (
-          <View
-            key={side}
-            style={{
-              flex: 1,
-              height: 46,
-              borderRadius: 11,
-              borderWidth: shiny ? 0 : 1,
-              borderColor: shiny ? 'transparent' : active ? 'rgba(28,131,118,0.4)' : t.color.border,
-              backgroundColor: shiny ? 'transparent' : active ? t.color.brand : t.color.surface2,
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              overflow: 'hidden',
-              paddingHorizontal: 4,
-            }}
-          >
-            {shiny ? (
-              <LinearGradient
-                colors={['#FACC15', '#F97316', '#EC4899', '#9333EA']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-              />
-            ) : null}
-            {code ? <Crest code={code} size={18} /> : null}
-            {label ? (
-              <TotlText style={{ marginLeft: code ? 5 : 0, fontSize: 13, fontWeight: '700', color: light ? '#FFFFFF' : t.color.text }} numberOfLines={1}>
-                {label}
-              </TotlText>
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 function Scoreboard({ item }: { item: FeedItem }) {
   const t = useTokens();
   const match = item.match;
@@ -295,34 +244,11 @@ function Scoreboard({ item }: { item: FeedItem }) {
   }
   if (!match) return null;
   const kickoff = item.kind === 'kickoff';
-  const hasScore = match.homeScore !== null && match.awayScore !== null;
   const homeScorers = match.homeScorers ?? [];
   const awayScorers = match.awayScorers ?? [];
   return (
-    <View style={{ marginBottom: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <View style={{ flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-          <Crest code={match.homeCode} size={48} />
-        </View>
-        <View style={{ width: 92, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-          {kickoff || hasScore ? (
-            <TotlText style={{ fontSize: 28, lineHeight: 32, fontWeight: '800', letterSpacing: 0.6, color: t.color.text }}>
-              {kickoff ? '0 - 0' : `${match.homeScore} - ${match.awayScore}`}
-            </TotlText>
-          ) : (
-            <TotlText style={{ fontSize: 22, fontWeight: '800', color: t.color.text }}>v</TotlText>
-          )}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-            {match.live ? (
-              <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#DC2626', marginRight: 5 }} />
-            ) : null}
-            <TotlText variant="muted" style={{ fontWeight: '700', fontSize: 12 }}>{item.timeLabel}</TotlText>
-          </View>
-        </View>
-        <View style={{ flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-          <Crest code={match.awayCode} size={48} />
-        </View>
-      </View>
+    <View>
+      <GameCardScore match={match} kickoff={kickoff} timeLabel={item.timeLabel} />
       {homeScorers.length || awayScorers.length ? (
         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 6 }}>
@@ -332,7 +258,7 @@ function Scoreboard({ item }: { item: FeedItem }) {
               </TotlText>
             ))}
           </View>
-          <View style={{ width: 92 }} />
+          <View style={{ width: 120 }} />
           <View style={{ flex: 1, alignItems: 'flex-start', paddingLeft: 6 }}>
             {awayScorers.map((line) => (
               <TotlText key={line} numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'left', color: t.color.text }}>
@@ -716,7 +642,7 @@ function FeedCardView({
   if (item.match) {
     content.push(
       <View key="split" style={{ marginTop: item.kind === 'lineup' ? 14 : 0 }}>
-        <PickSplit match={item.match} />
+        <PickBar match={item.match} cardId={item.id} />
       </View>
     );
   }
@@ -1680,6 +1606,12 @@ function GameweekDivider({ gw }: { gw: number }) {
       </View>
     </View>
   );
+}
+
+/** A card counts as seen once half of it is on screen; that starts its pick bar's first fill. */
+const FEED_VIEWABILITY = { itemVisiblePercentThreshold: 50 };
+function onFeedViewable({ viewableItems }: { viewableItems: Array<{ item: TimelineRow }> }) {
+  markCardsSeen(viewableItems.flatMap(({ item }) => (item.type === 'item' ? [item.item.id] : [])));
 }
 
 export default function MatchCenterScreen() {
@@ -3170,6 +3102,8 @@ export default function MatchCenterScreen() {
         data={prepping ? [] : rows}
         keyExtractor={(row) => (mode === 'play' ? `${playRun}-${row.key}` : row.key)}
         renderItem={renderFeedItem}
+        onViewableItemsChanged={onFeedViewable}
+        viewabilityConfig={FEED_VIEWABILITY}
         initialNumToRender={6}
         maxToRenderPerBatch={4}
         windowSize={9}

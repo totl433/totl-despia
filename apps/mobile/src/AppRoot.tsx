@@ -51,6 +51,8 @@ export default function AppRoot() {
       setFontsReady(true);
     }, 8_000);
     Font.loadAsync({
+      // TRIAL file (Gramatika Trial Light): swap for the licensed Light before release.
+      'Gramatika-Light': require('../../../public/Fonts/Gramatika-Light.ttf'),
       'Gramatika-Regular': require('../../../public/Fonts/Gramatika-Regular.ttf'),
       'Gramatika-Medium': require('../../../public/Fonts/Gramatika-Medium.ttf'),
       'Gramatika-Bold': require('../../../public/Fonts/Gramatika-Bold.ttf'),

@@ -8,7 +8,7 @@ import { fetchAllSupabaseRows } from '../../lib/profileStreakRows';
 import { VOLLEY_USER_ID } from '../../lib/volley';
 import { playersDayKey, shiftPlayersDay } from '../../lib/retroPlayers/day';
 import { readSharedPlayersScores, scoreForDay, scoreForMonth, scoreForWeek, type PlayersScoreStore } from '../../lib/retroPlayers/scores';
-import { chatMessageItem, type FeedItem, type LeaguePickSnap, type LeagueTableSnap, type OverallReplay } from './feed';
+import { chatMessageItem, type FeedItem, type LeaguePickSnap, type LeagueTableSnap, type OverallReplay, type PickPercents } from './feed';
 import type { AdminFeedPost, FeedPerson, LeagueJoin } from './derivedFeed';
 import { buildSeasonStatFacts, seasonPickKey, type SeasonFixture, type SeasonStatFacts } from './seasonStatFacts';
 
@@ -114,13 +114,14 @@ export function pickPercentsFrom(rows: Array<{ fixture_index: number; pick: stri
     current.total += 1;
     counts.set(row.fixture_index, current);
   });
-  const out = new Map<number, { H: number; D: number; A: number }>();
+  const out = new Map<number, PickPercents>();
   counts.forEach((count, fixtureIndex) => {
     if (count.total <= 0) return;
     out.set(fixtureIndex, {
       H: Math.round((count.H / count.total) * 100),
       D: Math.round((count.D / count.total) * 100),
       A: Math.round((count.A / count.total) * 100),
+      votes: count.total,
     });
   });
   return out;

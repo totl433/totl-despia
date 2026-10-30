@@ -87,6 +87,8 @@ export function fixtureEngagementId(gw: number, itemId: string): string {
   return idx == null ? matchCenterReactionCardId(gw, itemId) : `mc:gw${gw}:fixture:${idx}`;
 }
 
+/** Share of submitted picks per outcome, and how many picks that is. */
+export type PickPercents = { H: number; D: number; A: number; votes?: number };
 export type FeedFixtureRow = {
   homeCode: string;
   awayCode: string;
@@ -107,7 +109,7 @@ export type FeedMatch = {
   homeScorers?: string[];
   awayScorers?: string[];
   /** Share of submitted picks, same rounding as the home page. */
-  percents?: { H: number; D: number; A: number } | null;
+  percents?: PickPercents | null;
 };
 
 export type FeedBoard = {
@@ -780,7 +782,7 @@ export function buildMatchFeed(input: {
   liveByFixtureIndex: Map<number, LiveScore>;
   liveByApiMatchId?: Map<number, LiveScore>;
   picks: Record<string, Pick>;
-  percents?: Map<number, { H: number; D: number; A: number }>;
+  percents?: Map<number, PickPercents>;
   teamForms?: Record<string, string>;
   teamPositions?: Record<string, number>;
   nowMs: number;
