@@ -22,11 +22,14 @@ const PINNED_GAP = 20;
 function GameCentrePinnedCard({
   pin,
   scoreLabel,
+  leagues = null,
   busy = false,
   onAction,
   onDismiss,
 }: {
   pin: GameweekPin;
+  /** Your mini-leagues still waiting on someone this gameweek, for the "See who's missing" card. */
+  leagues?: { leagueCount: number; missingCount: number } | null;
   /** Last gameweek's score ("6/10") for the coming-soon and ready cards. */
   scoreLabel: string | null;
   /** True while moving on, so the button can't be tapped twice. */
@@ -55,7 +58,7 @@ function GameCentrePinnedCard({
     };
   }, [needsSeconds]);
 
-  const copy = pinnedCardCopy(pin, nowMs, scoreLabel);
+  const copy = pinnedCardCopy(pin, nowMs, scoreLabel, leagues);
   const expired = pin.kind === 'predict' && pin.deadlineMs != null && nowMs >= pin.deadlineMs;
   const dismiss = !!onDismiss && pinDismissible(pin);
   return (

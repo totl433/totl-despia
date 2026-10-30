@@ -31,6 +31,7 @@ import { buildHeaderExpandedStats, buildHeaderScoreSummary, buildHeaderTickerEve
 import { useLiveScores } from '../hooks/useLiveScores';
 import usePopupCards from '../hooks/usePopupCards';
 import type { LeaguesStackParamList } from '../navigation/LeaguesNavigator';
+import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 type LeagueSummary = LeaguesResponse['leagues'][number];
@@ -426,6 +427,13 @@ export default function LeaguesScreen() {
   const listRef = React.useRef<FlatList<LeagueSummary> | null>(null);
   useScrollToTop(listRef as any);
   const queryClient = useQueryClient();
+  // Opened as "See who's missing" (MissingPicksScreen): only leagues still waiting on someone this gameweek.
+  const missingPicksGw =
+    (route.name as string) === 'MissingPicks' && typeof (route.params as { gw?: unknown } | undefined)?.gw === 'number'
+      ? ((route.params as { gw: number }).gw)
+      : null;
+  const missingPicksMode = missingPicksGw != null;
+  const missingPicks = useLeaguesMissingPicks(missingPicksGw, missingPicksMode);
   const { unreadByLeagueId, meId: unreadMeId } = useLeagueUnreadCounts();
   const [hasAccessToken, setHasAccessToken] = React.useState<boolean | null>(null);
   const [pullRefreshing, setPullRefreshing] = React.useState(false);
@@ -482,6 +490,7 @@ export default function LeaguesScreen() {
     return sortLeaguesByUnread(data?.leagues ?? [], unreadByLeagueId);
   }, [data?.leagues, unreadByLeagueId]);
   const listLeagues = React.useMemo(() => {
+    if (missingPicksMode) return sortedLeagues.filter((l) => !!missingPicks?.missingLeagueIds.has(String(l.id)));
     if (!__DEV__) return sortedLeagues;
     const fake = {
       id: DEV_FAKE_LEAGUE_ID,
@@ -489,7 +498,7 @@ export default function LeaguesScreen() {
       avatar: null,
     } as unknown as LeagueSummary;
     return [fake, ...sortedLeagues.filter((l) => String(l.id) !== DEV_FAKE_LEAGUE_ID)];
-  }, [sortedLeagues]);
+  }, [sortedLeagues, missingPicksMode, missingPicks]);
 
   const sortedLeaguesRef = React.useRef<LeagueSummary[]>([]);
   React.useEffect(() => {
@@ -553,8 +562,9 @@ export default function LeaguesScreen() {
     [effectiveCurrentGw, home?.fixtures, home?.liveScores, liveByFixtureIndexRealtime, viewingGw]
   );
   /** GW whose submission status we show on list avatars — mirrors what users are predicting for. */
-  const submissionPreviewGw =
-    typeof viewingGw === 'number' ? viewingGw : typeof leagueTableGw === 'number' ? leagueTableGw : null;
+  const submissionPreviewGw = missingPicksMode
+    ? missingPicksGw
+    : typeof viewingGw === 'number' ? viewingGw : typeof leagueTableGw === 'number' ? leagueTableGw : null;
   /** For footer legend copy; falls back when preview Gw is unresolved. */
   const submissionLegendGameweek =
     submissionPreviewGw ?? viewingGw ?? effectiveCurrentGw ?? null;
@@ -581,7 +591,7 @@ export default function LeaguesScreen() {
     []
   );
   const showTablesView =
-    showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
+    !missingPicksMode && showTopLiveRail && (gwState === 'LIVE' || gwState === 'RESULTS_PRE_GW' || showReadyToMoveOn);
   const showListView = !showTablesView;
   const canToggleLiveLayout = showTopLiveRail && showTablesView && listLeagues.length > 2;
   const wasShowingTablesViewRef = React.useRef(showTablesView);
@@ -815,9 +825,9 @@ export default function LeaguesScreen() {
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           avatarUrl={avatarUrl}
-          title={showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
+          title={missingPicksMode ? "Who's missing" : showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
           centerContent={
-            showLiveHeaderScore && headerScoreLabel ? (
+            missingPicksMode ? undefined : showLiveHeaderScore && headerScoreLabel ? (
               <HeaderLiveScore
                 scoreLabel={headerScoreLabel}
                 fill
@@ -836,7 +846,7 @@ export default function LeaguesScreen() {
               />
             ) : undefined
           }
-          rightAction={renderCreateJoinHeaderButton()}
+          rightAction={missingPicksMode ? undefined : renderCreateJoinHeaderButton()}
           hasLiveGames={gwState === 'LIVE'}
           showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
         />
@@ -906,9 +916,9 @@ export default function LeaguesScreen() {
         onPressChat={() => navigation.navigate('ChatHub')}
         onPressProfile={() => navigation.navigate('Profile')}
         avatarUrl={avatarUrl}
-        title={showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
+        title={missingPicksMode ? "Who's missing" : showLiveHeaderScore || showStaticResultsHeaderScore || showHeaderTotlLogo ? undefined : 'Mini Leagues'}
         centerContent={
-          showLiveHeaderScore && headerScoreLabel ? (
+          missingPicksMode ? undefined : showLiveHeaderScore && headerScoreLabel ? (
             <HeaderLiveScore
               scoreLabel={headerScoreLabel}
               fill
@@ -927,7 +937,7 @@ export default function LeaguesScreen() {
             />
           ) : undefined
         }
-        rightAction={renderCreateJoinHeaderButton()}
+        rightAction={missingPicksMode ? undefined : renderCreateJoinHeaderButton()}
         hasLiveGames={gwState === 'LIVE'}
         showLeftLiveBadge={!showLiveHeaderScore && !showStaticResultsHeaderScore}
       />
@@ -1100,7 +1110,18 @@ export default function LeaguesScreen() {
           </>
         }
         ListEmptyComponent={
-          showListView && !isLoading && !error ? (
+          missingPicksMode ? (
+            missingPicks ? (
+              <Card>
+                <TotlText variant="heading" style={{ marginBottom: 6 }}>
+                  Everyone's in
+                </TotlText>
+                <TotlText variant="muted">Everybody in your Mini Leagues has made their predictions.</TotlText>
+              </Card>
+            ) : (
+              <CenteredSpinner loading />
+            )
+          ) : showListView && !isLoading && !error ? (
             <Card>
               <TotlText variant="heading" style={{ marginBottom: 6 }}>
                 No leagues yet
@@ -1118,6 +1139,7 @@ export default function LeaguesScreen() {
                     <MiniLeaguesSubmissionLegend gameweek={submissionLegendGameweek} />
                   </View>
                 ) : null}
+                {missingPicksMode ? null : (
                 <View style={{ marginBottom: 6 }}>
                   <Pressable
                     onPress={() => {
@@ -1139,6 +1161,7 @@ export default function LeaguesScreen() {
                     </TotlText>
                   </Pressable>
                 </View>
+                )}
               </>
             ) : null}
             {__DEV__ ? (
