@@ -46,12 +46,15 @@ export default function GameCentreCard({
 }) {
   const t = useTokens();
   const hasContent = React.Children.toArray(children).length > 0;
+  // Only white cards get the border; themed cards (round-up, overall) keep their own colour edge to edge.
+  const white = !backgroundColor || backgroundColor === t.color.surface;
   return (
     <View
       style={[
         {
           borderRadius: 16,
           backgroundColor: backgroundColor ?? t.color.surface,
+          ...(white ? { borderWidth: 1, borderColor: t.color.cardBorder } : null),
           paddingTop: 20,
           paddingBottom: footer ? 0 : 20,
           gap,
@@ -94,26 +97,36 @@ export function GameCentreCardHeader({
   onPress?: () => void;
 }) {
   const ink = onDark ? ON_DARK : INK;
+  // The stamp (or accessory) always sits on the card's first line, so it lines up across cards.
+  const corner = (
+    <>
+      {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
+      {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
+    </>
+  );
   const kickerLine = kicker ? (
-    <TotlText
-      style={{
-        fontFamily: kickerFontFamily,
-        fontSize: 20,
-        lineHeight: 24,
-        letterSpacing: 0.2,
-        color: ink.primary,
-      }}
-    >
-      {kicker}
-    </TotlText>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
+      <TotlText
+        style={{
+          flex: 1,
+          fontFamily: kickerFontFamily,
+          fontSize: 20,
+          lineHeight: 24,
+          letterSpacing: 0.2,
+          color: ink.primary,
+        }}
+      >
+        {kicker}
+      </TotlText>
+      {corner}
+    </View>
   ) : null;
   const titleRow = (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
       <TotlText accessibilityRole="header" style={[titleText, { flex: 1, color: ink.primary }]}>
         {title}
       </TotlText>
-      {stamp ? <TotlText style={[stampText, { marginTop: 4, color: ink.secondary }]}>{stamp}</TotlText> : null}
-      {accessory ? <View style={{ width: 33, alignItems: 'flex-end', marginTop: 4 }}>{accessory as any}</View> : null}
+      {kicker ? null : corner}
     </View>
   );
   const copy = (

@@ -28,6 +28,7 @@ export default function AppTopHeader({
   isRefreshing = false,
   hideProfile = false,
   hideChat = false,
+  backgroundColor,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
@@ -43,6 +44,8 @@ export default function AppTopHeader({
   isRefreshing?: boolean;
   hideProfile?: boolean;
   hideChat?: boolean;
+  /** Defaults to the screen background. */
+  backgroundColor?: string;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -82,7 +85,7 @@ export default function AppTopHeader({
         // iOS: no extra gap under the status bar, so the icons sit nearer a native nav bar.
         paddingTop: embedded ? 4 : insets.top + (Platform.OS === 'ios' ? 0 : 4),
         paddingHorizontal: t.space[4],
-        backgroundColor: t.color.background,
+        backgroundColor: backgroundColor ?? t.color.background,
       }}
     >
       {/* 60pt on Android (Material top bar); 52pt on iOS still fits the 46pt live score pill. */}
