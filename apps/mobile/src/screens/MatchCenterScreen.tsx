@@ -49,6 +49,7 @@ import { formToDotColors, normalizeTeamForms, ordinalLabel } from '../lib/homeFi
 import { fetchTeamPositionsWithFallback, normalizeTeamPositions } from '../lib/teamPositions';
 import { gameweekPin, getGameweekStateFromSnapshot, predictionsDeadlineMs, type GameweekPin } from '../lib/gameweekState';
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
+import { FIXTURES_CARD, FixtureRows, FixturesCardIcon, fixturesKickerStyle } from '../components/gameCentre/GameCentreFixtures';
 import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
@@ -644,8 +645,11 @@ function FeedCardView({
   const canOpen = Boolean(item.link && (item.link.to === 'overall' || item.link.leagueId));
   const canReact = item.reacts !== false && gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
   const canComment = item.comments !== false && !!social;
-  const onDark = youWin || item.kind === 'round-up';
-  const shell = youWin
+  const fixturesCard = item.kind === 'fixtures' && !!item.fixtureRows?.length;
+  const onDark = youWin || item.kind === 'round-up' || fixturesCard;
+  const shell = fixturesCard
+    ? { backgroundColor: FIXTURES_CARD.background }
+    : youWin
     ? { backgroundColor: '#0F766E' }
     : item.kind === 'round-up'
       ? { backgroundColor: '#1E293B' }
@@ -725,7 +729,9 @@ function FeedCardView({
       </View>
     );
   }
-  if (item.fixtureLines?.length) {
+  if (fixturesCard) {
+    content.push(<FixtureRows key="fixtures" rows={item.fixtureRows!} />);
+  } else if (item.fixtureLines?.length) {
     content.push(
       <View key="fixtures" style={{ gap: 6 }}>
         {item.fixtureLines.map((line) => (
@@ -843,9 +849,11 @@ function FeedCardView({
         <GameCentreCardHeader
           title={header.title}
           subtitle={header.subtitle}
-          stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
-          kicker={isPlayersFeedItem(item) ? 'THE PLAYERS' : undefined}
+          stamp={item.kind === 'waiting' || fixturesCard ? null : item.stamp || item.timeLabel}
+          kicker={isPlayersFeedItem(item) ? 'THE PLAYERS' : fixturesCard ? item.season : undefined}
           kickerFontFamily={isPlayersFeedItem(item) ? PLAYERS_FONTS.display : undefined}
+          kickerStyle={fixturesCard ? fixturesKickerStyle : undefined}
+          accessory={fixturesCard ? <FixturesCardIcon /> : undefined}
           leading={item.id.startsWith('admin:') ? <HeaderTotlLogo width={26} height={23} /> : undefined}
           onDark={onDark}
           onPress={

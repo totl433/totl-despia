@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Pressable, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { TotlText, useTokens } from '@totl/ui';
 
@@ -78,6 +78,7 @@ export function GameCentreCardHeader({
   stamp,
   kicker,
   kickerFontFamily,
+  kickerStyle,
   leading,
   accessory,
   onDark = false,
@@ -89,6 +90,8 @@ export function GameCentreCardHeader({
   /** Brand line above the title, e.g. THE PLAYERS. */
   kicker?: string | null;
   kickerFontFamily?: string;
+  /** Overrides for the kicker line, e.g. the fixtures card's lime season. */
+  kickerStyle?: TextStyle;
   /** Top-left mark, e.g. the TOTL logo on an admin broadcast. */
   leading?: React.ReactNode;
   /** Shown where the time stamp goes, e.g. the pin on a pinned card. */
@@ -114,6 +117,7 @@ export function GameCentreCardHeader({
           lineHeight: 24,
           letterSpacing: 0.2,
           color: ink.primary,
+          ...kickerStyle,
         }}
       >
         {kicker}

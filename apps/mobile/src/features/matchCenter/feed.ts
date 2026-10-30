@@ -87,6 +87,15 @@ export function fixtureEngagementId(gw: number, itemId: string): string {
   return idx == null ? matchCenterReactionCardId(gw, itemId) : `mc:gw${gw}:fixture:${idx}`;
 }
 
+export type FeedFixtureRow = {
+  homeCode: string;
+  awayCode: string;
+  homeName: string;
+  awayName: string;
+  /** ISO kick-off, or null while it's not set. */
+  kickoff: string | null;
+};
+
 export type FeedMatch = {
   homeCode: string;
   awayCode: string;
@@ -146,6 +155,10 @@ export type FeedItem = {
   reacts?: boolean;
   /** Published fixture list, newest gameweek. */
   fixtureLines?: string[] | null;
+  /** The fixtures card's games in kick-off order, for the club-pill rows. */
+  fixtureRows?: FeedFixtureRow[] | null;
+  /** Season the card belongs to, e.g. "2026/27" (the fixtures card shows it above its title). */
+  season?: string | null;
   /** Your Predictions vs results on the score sheet. */
   scoreRows?: FeedScoreRow[] | null;
 };
