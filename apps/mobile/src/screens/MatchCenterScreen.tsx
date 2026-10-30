@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +51,7 @@ import { gameweekPin, getGameweekStateFromSnapshot, predictionsDeadlineMs, type 
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
 import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
+import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
 import { useGameweekAdvanceTransition } from '../hooks/useGameweekAdvanceTransition';
@@ -1957,6 +1958,12 @@ export default function MatchCenterScreen() {
   // Pinned card on the Game Centre home: where you are in the gameweek, from `home` (your
   // gameweek, not the board). It follows submitting and moving on through the snapshot.
   const pin = menu && mode === 'live' ? gameweekPin(home, clockMs) : null;
+  // Only the "You're in" card needs it: which mini-leagues still have someone to submit.
+  const pinLeagues = useLeaguesMissingPicks(pin?.kind === 'locked' ? pin.gw : null);
+  const pinLeagueCounts = React.useMemo(
+    () => (pinLeagues ? { leagueCount: pinLeagues.leagueCount, missingCount: pinLeagues.missingLeagueIds.size } : null),
+    [pinLeagues]
+  );
   const [pinnedHeight, setPinnedHeight] = React.useState(0);
   // Moving on plays the Predictions page's full-screen GAMEWEEK transition.
   const advanceTransition = useGameweekAdvanceTransition({ totalMs: 1050 });
@@ -2024,6 +2031,10 @@ export default function MatchCenterScreen() {
     (action: PinnedCardAction, current: GameweekPin) => {
       if (action === 'predict' || action === 'viewPicks') {
         navigation.navigate('PredictionsFlow');
+        return;
+      }
+      if (action === 'seeMissing') {
+        navigation.navigate('MissingPicks', { gw: current.gw });
         return;
       }
       if (action === 'roundUp') {
@@ -3021,10 +3032,11 @@ export default function MatchCenterScreen() {
 
   return (
     <GameweekAdvanceTransition controller={advanceTransition}>
-    <Screen fullBleed>
+    <Screen fullBleed backgroundColor={t.color.feedBackground}>
       {menu ? (
         // New header (Figma 272:33554): menu on the left, chat on the right.
         <AppTopHeader
+          backgroundColor={t.color.feedBackground}
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => navigation.navigate('Profile')}
           hasLiveGames={hasLiveGames}
@@ -3035,6 +3047,7 @@ export default function MatchCenterScreen() {
         />
       ) : (
         <AppTopHeader
+          backgroundColor={t.color.feedBackground}
           onPressChat={() => navigation.navigate('ChatHub')}
           onPressProfile={() => {
             navigation.navigate('HomeMain');
@@ -3067,6 +3080,7 @@ export default function MatchCenterScreen() {
               pin={pin}
               // Last gameweek's score, when the board is that gameweek.
               scoreLabel={board === home && scoreSummary ? formatHeaderScoreLabel(scoreSummary, false) : null}
+              leagues={pinLeagueCounts}
               busy={advanceTransition.isAnimating}
               onAction={onPinAction}
               onDismiss={onPinDismiss}
@@ -3108,6 +3122,8 @@ export default function MatchCenterScreen() {
           ) : undefined
         }
         keyboardShouldPersistTaps="handled"
+        // Drag the feed down to pull the keyboard away with your finger (iOS); Android closes it on drag.
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={{
           paddingHorizontal: t.space[4],

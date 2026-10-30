@@ -7,6 +7,8 @@ export declare const tokens: {
         readonly text: "#F8FAFC";
         readonly muted: "#94A3B8";
         readonly border: "rgba(148,163,184,0.25)";
+        readonly feedBackground: "#0F172A";
+        readonly cardBorder: "transparent";
         readonly danger: "#DC2626";
         readonly warning: "#F59E0B";
         readonly success: "#10B981";

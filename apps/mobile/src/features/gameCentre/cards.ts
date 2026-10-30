@@ -162,7 +162,7 @@ export function dayAndTime(ms: number): string {
   return `${day}, ${time}`;
 }
 
-export type PinnedCardAction = 'predict' | 'viewPicks' | 'roundUp' | 'moveOn';
+export type PinnedCardAction = 'predict' | 'viewPicks' | 'seeMissing' | 'roundUp' | 'moveOn';
 
 /** First teams land at the deadline; the combined pin starts 3 hours before that. */
 export const FIRST_TEAMS_COUNTDOWN_MS = 3 * 60 * 60 * 1000;
@@ -191,7 +191,12 @@ export function pinDismissKey(userId: string, pin: GameweekPin): string {
 export function pinnedCardCopy(
   pin: GameweekPin,
   nowMs: number,
-  scoreLabel: string | null
+  scoreLabel: string | null,
+  /**
+   * Your mini-leagues for this gameweek: how many count (two or more members) and how many still
+   * have someone to submit. Null until known, which keeps the plain "You're in" card.
+   */
+  leagues: { leagueCount: number; missingCount: number } | null = null
 ): {
   title: string;
   subtitle: string;
@@ -223,6 +228,16 @@ export function pinnedCardCopy(
         };
       }
       const picksStillOpen = pin.deadlineMs != null && nowMs < pin.deadlineMs;
+      if (picksStillOpen && leagues && leagues.leagueCount > 0) {
+        return leagues.missingCount > 0
+          ? {
+              title: "You're in",
+              subtitle: 'Make sure everybody in your Mini Leagues has made their predictions',
+              action: 'seeMissing',
+              actionLabel: "See who's missing",
+            }
+          : { title: "You're in", subtitle: 'Everyone in your Mini Leagues is in', action: 'viewPicks', actionLabel: 'Your Predictions' };
+      }
       return {
         title: "You're in",
         subtitle: picksStillOpen
