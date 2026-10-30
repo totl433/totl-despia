@@ -191,12 +191,19 @@ function shoutCard(input: {
   });
 }
 
+/** The Premier League season a kick-off falls in: August starts a new one ("2026/27"). */
+export function seasonOf(ms: number): string {
+  const d = new Date(ms);
+  const start = d.getUTCMonth() >= 7 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+  return `${start}/${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
 export function fixtureListItem(input: { gw: number; fixtures: Fixture[]; nowMs: number; sortAt?: number }): FeedItem | null {
   if (!input.fixtures.length) return null;
   const first = firstKickoffMs(input.fixtures);
   if (first == null || input.nowMs < first - 21 * 24 * 3_600_000) return null;
-  const lines = [...input.fixtures]
-    .sort((a, b) => Date.parse(a.kickoff_time ?? '') - Date.parse(b.kickoff_time ?? ''))
+  const ordered = [...input.fixtures].sort((a, b) => Date.parse(a.kickoff_time ?? '') - Date.parse(b.kickoff_time ?? ''));
+  const lines = ordered
     .map((fixture) => {
       const day = fixtureDateLabel(fixture.kickoff_time);
       const time = fixtureKickoffTimeLabel(fixture.kickoff_time);
@@ -213,6 +220,13 @@ export function fixtureListItem(input: { gw: number; fixtures: Fixture[]; nowMs:
     title: pickCopy(fixturesCopy(input.gw), `fixtures:${input.gw}`).title,
     body: pickCopy(fixturesCopy(input.gw), `fixtures:${input.gw}`).line,
     fixtureLines: shown,
+    fixtureRows: ordered.map((fixture) => ({
+      homeCode: fixture.home_code ?? '',
+      awayCode: fixture.away_code ?? '',
+      homeName: teamName(fixture, 'home'),
+      awayName: teamName(fixture, 'away'),
+    })),
+    season: seasonOf(first),
     link: null,
   });
 }

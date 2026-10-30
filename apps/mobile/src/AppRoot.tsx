@@ -52,6 +52,8 @@ export default function AppRoot() {
     }, 8_000);
     Font.loadAsync({
       'Gramatika-Regular': require('../../../public/Fonts/Gramatika-Regular.ttf'),
+      // TRIAL file (Gramatika Trial Black, used for the fixtures card's VS): swap for the licensed Black before release.
+      'Gramatika-Black': require('../../../public/Fonts/Gramatika-Black.ttf'),
       'Gramatika-Medium': require('../../../public/Fonts/Gramatika-Medium.ttf'),
       'Gramatika-Bold': require('../../../public/Fonts/Gramatika-Bold.ttf'),
       'Gramatika-Italic': require('../../../public/Fonts/Gramatika-Italic.ttf'),

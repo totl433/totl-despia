@@ -12,6 +12,7 @@ import {
   adminFeedItems,
   everyonePredictedItems,
   fixtureListItem,
+  seasonOf,
   goodLuckItem,
   joinNames,
   lastFinishedMs,
@@ -56,6 +57,9 @@ describe('fixture list', () => {
     expect(card?.title).toBe('Gameweek 8 fixtures');
     expect(card?.fixtureLines?.some((line) => line.includes('Arsenal'))).toBe(true);
     expect(card?.fixtureLines?.at(-1)).toBe('+2 more');
+    // Every game, in kick-off order, for the club-pill rows.
+    expect(card?.fixtureRows).toHaveLength(2 + extras.length);
+    expect(card?.season).toMatch(/^\d{4}\/\d{2}$/);
   });
 });
 
@@ -281,5 +285,14 @@ describe('helpers', () => {
         liveByFixtureIndex: new Map([[0, { api_match_id: 1, gw: 8, fixture_index: 0, status: 'FINISHED', updated_at: '2026-10-24T16:00:00Z' }]]),
       })
     ).toBeNull();
+  });
+});
+
+describe('seasonOf', () => {
+  it('starts a new season in August', () => {
+    expect(seasonOf(Date.parse('2026-10-31T13:30:00Z'))).toBe('2026/27');
+    expect(seasonOf(Date.parse('2027-05-23T15:00:00Z'))).toBe('2026/27');
+    expect(seasonOf(Date.parse('2027-08-14T11:30:00Z'))).toBe('2027/28');
+    expect(seasonOf(Date.parse('2099-09-01T12:00:00Z'))).toBe('2099/00');
   });
 });
