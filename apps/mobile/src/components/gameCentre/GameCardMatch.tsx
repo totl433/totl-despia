@@ -36,8 +36,16 @@ const INK = {
   home: '#37373D',
   away: '#2458B8',
 };
-const RAINBOW = ['#FACC15', '#F97316', '#EC4899', '#9333EA'] as const;
-const label12 = { fontSize: 12, lineHeight: 22, fontFamily: 'Gramatika-Medium' };
+/**
+ * Figma's 175° rainbow (percentage picker, Variant3). Its later stops sit past the end of the chip,
+ * so the last colour here is the gradient's value at 100%.
+ */
+const RAINBOW = { colors: ['#F2BC20', '#E4716C', '#DB5281', '#D34E8D'] as const, locations: [0, 0.4351, 0.8412, 1] as const };
+/**
+ * Mobile/12/Medium. Figma trims the 22pt line to the cap height, so these sit in tighter boxes than
+ * the line height suggests: 14pt keeps the 16pt chips and the 12pt gaps at their Figma size.
+ */
+const label12 = { fontSize: 12, lineHeight: 14, fontFamily: 'Gramatika-Medium' };
 const REVEAL_MS = 700;
 
 function Crest({ code, size }: { code: string; size: number }) {
@@ -186,31 +194,45 @@ export function PickBar({ match, cardId }: { match: FeedMatch; cardId: string })
           .map((side) => `${percents ? `${percents[side]}% ` : ''}${side === 'H' ? match.homeCode : side === 'A' ? match.awayCode : 'draw'}${match.pick === side ? ', your pick' : ''}`)
           .join('; ')}
       >
-        {(['H', 'D', 'A'] as const).map((side) => {
-          const mine = match.pick === side;
-          const shiny = shinySide === side;
-          if (!mine) {
-            return (
-              <View key={side} style={{ padding: 4 }}>
-                <TotlText style={[label12, { color: INK.muted }]}>{labelFor(side)}</TotlText>
-              </View>
-            );
-          }
-          const ink = shiny ? '#FFFFFF' : INK.pickInk;
-          return (
-            <View
-              key={side}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4, borderRadius: 4, overflow: 'hidden', backgroundColor: shiny ? undefined : INK.pickBg }}
-            >
-              {shiny ? (
-                <LinearGradient colors={RAINBOW} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
-              ) : null}
-              <Ionicons name="checkmark" size={12} color={ink} />
-              <TotlText style={[label12, { color: ink }]}>{labelFor(side)}</TotlText>
-            </View>
-          );
-        })}
+        {(['H', 'D', 'A'] as const).map((side) => (
+          <PercentagePicker key={side} label={labelFor(side)} variant={shinySide === side ? 'correct' : match.pick === side ? 'picked' : 'plain'} />
+        ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * One share under the bar (Figma 367:46660, "percentage picker"): plain grey, your pick in lime
+ * with a tick, or your pick in rainbow once the score matches it. 16pt tall, 4pt padding.
+ */
+function PercentagePicker({ label, variant }: { label: string; variant: 'plain' | 'picked' | 'correct' }) {
+  const ink = variant === 'correct' ? '#F7F6F6' : variant === 'picked' ? INK.pickInk : INK.muted;
+  return (
+    <View
+      style={{
+        height: 16,
+        paddingHorizontal: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        borderRadius: 4,
+        overflow: 'hidden',
+        backgroundColor: variant === 'picked' ? INK.pickBg : undefined,
+      }}
+    >
+      {variant === 'correct' ? (
+        <LinearGradient
+          colors={RAINBOW.colors}
+          locations={RAINBOW.locations}
+          start={{ x: 0.46, y: 0 }}
+          end={{ x: 0.54, y: 1 }}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+        />
+      ) : null}
+      {variant === 'plain' ? null : <Ionicons name="checkmark" size={11} color={ink} />}
+      <TotlText style={[label12, { color: ink, includeFontPadding: false }]}>{label}</TotlText>
     </View>
   );
 }
