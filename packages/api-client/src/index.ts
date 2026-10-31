@@ -200,10 +200,11 @@ export function createApiClient(opts: ApiClientOptions) {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, { method: 'GET' });
     },
 
-    async inviteToLeague(leagueId: string, username: string): Promise<{ ok: true }> {
+    /** Invites by id when given (names can change and be long); the name is a fallback for older servers. */
+    async inviteToLeague(leagueId: string, username: string, userId?: string): Promise<{ ok: true }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, {
         method: 'POST',
-        body: JSON.stringify({ username }),
+        body: JSON.stringify(userId ? { userId, username } : { username }),
         validate: (data) => OkResponseSchema.parse(data),
       });
     },

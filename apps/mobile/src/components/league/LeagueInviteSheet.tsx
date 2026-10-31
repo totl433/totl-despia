@@ -183,10 +183,10 @@ export default function LeagueInviteSheet({
     try {
       for (const player of selected) {
         try {
-          await leagueInviteApi.invite(leagueId, player.name);
+          await leagueInviteApi.invite(leagueId, player.name, player.id);
           sent.push(player.name);
         } catch (error) {
-          failed.push(inviteErrorMessage(error, `Could not invite ${player.name}.`));
+          failed.push(inviteErrorMessage(error, `Could not invite ${player.name}. Try again, or share the code below.`));
         }
       }
       if (failed.length === 0) {
