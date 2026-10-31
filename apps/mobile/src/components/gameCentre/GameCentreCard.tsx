@@ -19,8 +19,8 @@ const INK = {
 };
 const ON_DARK = { primary: '#FFFFFF', secondary: 'rgba(255,255,255,0.65)' };
 const SECTION_GAP = 28;
-/** The Players lime (Figma 413:82128) with near-black text. */
-const LIME_BUTTON = { background: '#E6FA81', text: '#19191C' };
+/** On dark cards (The Players): white with brand green text. */
+const WHITE_BUTTON = { background: '#FFFFFF' };
 const CHIP_HEIGHT = 24;
 const CHIP_ROW_GAP = 8;
 /** Between the footer's parts: reactions, comment link, text box (Figma 250:43162). */
@@ -203,8 +203,8 @@ export function GameCentreCardButton({
 }: {
   /** Leave out for a footer with only the quiet button. */
   label?: string | null;
-  /** `lime` for dark cards (The Players), where the brand fill would disappear. */
-  tone?: 'brand' | 'lime';
+  /** `white` for dark cards (The Players), where the brand fill would disappear. */
+  tone?: 'brand' | 'white';
   onPress?: () => void;
   disabled?: boolean;
   secondary?: { label: string; onPress: () => void } | null;
@@ -220,7 +220,7 @@ export function GameCentreCardButton({
           onPress={onPress}
           hitSlop={6}
           style={({ pressed }) => ({
-            backgroundColor: disabled ? '#94A3B8' : tone === 'lime' ? LIME_BUTTON.background : t.color.brand,
+            backgroundColor: disabled ? '#94A3B8' : tone === 'white' ? WHITE_BUTTON.background : t.color.brand,
             borderRadius: t.radius.sm,
             paddingVertical: t.space[2],
             paddingHorizontal: t.space[3],
@@ -228,7 +228,7 @@ export function GameCentreCardButton({
           })}
         >
           <TotlText
-            style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: tone === 'lime' ? LIME_BUTTON.text : '#FFFFFF' }}
+            style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: tone === 'white' ? t.color.brand : '#FFFFFF' }}
           >
             {label}
           </TotlText>

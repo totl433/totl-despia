@@ -814,7 +814,7 @@ function FeedCardView({
       footer={
         playersCard ? (
           playersButton ? (
-            <GameCentreCardButton tone="lime" label={item.link!.label} onPress={() => onOpen(item)} />
+            <GameCentreCardButton tone="white" label={item.link!.label} onPress={() => onOpen(item)} />
           ) : canReact ? (
             // Figma 413:82135: the Players cards end on the reactions.
             <GameCentreReactionBar
