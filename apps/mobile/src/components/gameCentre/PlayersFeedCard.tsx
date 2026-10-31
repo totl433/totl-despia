@@ -90,7 +90,8 @@ export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
   const rows: FeedFace[][] = [];
   for (let i = 0; i < faces.length; i += columns) rows.push(faces.slice(i, i + columns));
   return (
-    <View style={{ gap: 8 }}>
+    // 8pt more under the tiles than over them: the title's line box makes the top gap read larger.
+    <View style={{ gap: 8, marginBottom: 8 }}>
       {rows.map((row, r) => (
         <View key={r} style={{ flexDirection: 'row', gap: 8 }}>
           {row.map((face, i) => (
