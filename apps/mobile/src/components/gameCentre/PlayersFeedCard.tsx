@@ -103,8 +103,10 @@ export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
               style={{
                 flex: 1,
                 minWidth: 0,
-                height: 100,
+                // 2pt more at the top so the avatar sits clear of the tile's edge.
+                height: 102,
                 padding: 8,
+                paddingTop: 10,
                 gap: 12,
                 borderRadius: 8,
                 alignItems: 'center',
