@@ -29,6 +29,11 @@ export function isPlayersFeedItem(item: Pick<FeedItem, 'id' | 'kind'>): boolean 
   return item.id.startsWith('players:') || item.kind === 'players-ready' || item.kind === 'players-nudge';
 }
 
+/** The season-stat cards (`stat:*` in derivedFeed.ts), shown as Insights cards (Figma 415:92300). */
+export function isInsightsFeedItem(item: Pick<FeedItem, 'id'>): boolean {
+  return item.id.startsWith('stat:');
+}
+
 export function gameCentreCardType(kind: FeedKind): GameCentreCardType {
   if (kind === 'message') return 'league';
   return PUBLIC_KINDS.has(kind) ? 'public' : 'personal';
