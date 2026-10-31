@@ -246,27 +246,35 @@ export function winnerShoutCopy(
   ];
 }
 
-export function playersDailyCopy(names: string): CopyVersion[] {
+/** "winner" for one person, "winners" for more. */
+function winnersWord(count: number): string {
+  return count === 1 ? 'winner' : 'winners';
+}
+
+export function playersDailyCopy(names: string, count: number): CopyVersion[] {
+  const title = `Yesterday's ${winnersWord(count)}`;
   return [
-    { title: "Yesterday's winners", line: `Yesterday's winners were ${names}.` },
-    { title: "Yesterday's winners", line: `${names} won yesterday's Players.` },
-    { title: "Yesterday's winners", line: `Yesterday belonged to ${names}.` },
+    { title, line: count === 1 ? `Yesterday's winner was ${names}.` : `Yesterday's winners were ${names}.` },
+    { title, line: `${names} won yesterday's Players.` },
+    { title, line: `Yesterday belonged to ${names}.` },
   ];
 }
 
-export function playersWeeklyCopy(names: string): CopyVersion[] {
+export function playersWeeklyCopy(names: string, count: number): CopyVersion[] {
+  const title = `This week's ${winnersWord(count)}`;
   return [
-    { title: "This week's winners", line: `This week's winners were ${names}.` },
-    { title: "This week's winners", line: `${names} take the Players week.` },
-    { title: "This week's winners", line: `Weekly honours: ${names}.` },
+    { title, line: count === 1 ? `This week's winner was ${names}.` : `This week's winners were ${names}.` },
+    { title, line: count === 1 ? `${names} takes the Players week.` : `${names} take the Players week.` },
+    { title, line: `Weekly honours: ${names}.` },
   ];
 }
 
-export function playersMonthlyCopy(names: string): CopyVersion[] {
+export function playersMonthlyCopy(names: string, count: number): CopyVersion[] {
+  const title = `This month's ${winnersWord(count)}`;
   return [
-    { title: "This month's winners", line: `This month's winners were ${names}.` },
-    { title: "This month's winners", line: `${names} take the Players month.` },
-    { title: "This month's winners", line: `Monthly Players honours: ${names}.` },
+    { title, line: count === 1 ? `This month's winner was ${names}.` : `This month's winners were ${names}.` },
+    { title, line: count === 1 ? `${names} takes the Players month.` : `${names} take the Players month.` },
+    { title, line: `Monthly Players honours: ${names}.` },
   ];
 }
 
@@ -288,9 +296,9 @@ export function playersNudgeCopy(): CopyVersion[] {
 
 export function playersPerfectCopy(name: string): CopyVersion[] {
   return [
-    { title: 'Players shout out', line: `${name} scored a perfect 10 on today's players' game!` },
-    { title: 'Players shout out', line: `${name} just went 10/10 on Players.` },
-    { title: 'Players shout out', line: `Perfect 10 for ${name}. That's how you do it.` },
+    { title: 'A perfect 10 today', line: `${name} scored a perfect 10 on today's Players.` },
+    { title: 'A perfect 10 today', line: `${name} just went 10/10 on Players.` },
+    { title: 'A perfect 10 today', line: `Perfect 10 for ${name}. That's how you do it.` },
   ];
 }
 

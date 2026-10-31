@@ -19,6 +19,8 @@ const INK = {
 };
 const ON_DARK = { primary: '#FFFFFF', secondary: 'rgba(255,255,255,0.65)' };
 const SECTION_GAP = 28;
+/** The Players lime (Figma 413:82128) with near-black text. */
+const LIME_BUTTON = { background: '#E6FA81', text: '#19191C' };
 const CHIP_HEIGHT = 24;
 const CHIP_ROW_GAP = 8;
 /** Between the footer's parts: reactions, comment link, text box (Figma 250:43162). */
@@ -33,13 +35,19 @@ export default function GameCentreCard({
   children,
   footer,
   backgroundColor,
+  background,
   gap = SECTION_GAP,
+  paddingBottom = 20,
   style,
 }: {
   header: React.ReactNode;
   children?: React.ReactNode;
   footer?: React.ReactNode;
   backgroundColor?: string;
+  /** Drawn behind everything, clipped to the card's corners (e.g. The Players pattern). */
+  background?: React.ReactNode;
+  /** Under the content when there is no footer, or under the footer when there is. */
+  paddingBottom?: number;
   /** Space between header, content and footer. */
   gap?: number;
   style?: StyleProp<ViewStyle>;
@@ -47,7 +55,7 @@ export default function GameCentreCard({
   const t = useTokens();
   const hasContent = React.Children.toArray(children).length > 0;
   // Only white cards get the border; themed cards (round-up, overall) keep their own colour edge to edge.
-  const white = !backgroundColor || backgroundColor === t.color.surface;
+  const white = (!backgroundColor || backgroundColor === t.color.surface) && !background;
   return (
     <View
       style={[
@@ -56,12 +64,18 @@ export default function GameCentreCard({
           backgroundColor: backgroundColor ?? t.color.surface,
           ...(white ? { borderWidth: 1, borderColor: t.color.cardBorder } : null),
           paddingTop: 20,
-          paddingBottom: footer ? 0 : 20,
+          paddingBottom: footer && !background ? 0 : paddingBottom,
           gap,
+          ...(background ? { overflow: 'hidden' as const } : null),
         },
         style,
       ]}
     >
+      {background ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}>
+          {background as any}
+        </View>
+      ) : null}
       {header as any}
       {hasContent ? <View style={{ paddingHorizontal: 16 }}>{children as any}</View> : null}
       {footer ? <View style={{ gap: FOOTER_GAP }}>{footer as any}</View> : null}
@@ -185,9 +199,12 @@ export function GameCentreCardButton({
   onPress,
   disabled = false,
   secondary,
+  tone = 'brand',
 }: {
   /** Leave out for a footer with only the quiet button. */
   label?: string | null;
+  /** `lime` for dark cards (The Players), where the brand fill would disappear. */
+  tone?: 'brand' | 'lime';
   onPress?: () => void;
   disabled?: boolean;
   secondary?: { label: string; onPress: () => void } | null;
@@ -203,14 +220,18 @@ export function GameCentreCardButton({
           onPress={onPress}
           hitSlop={6}
           style={({ pressed }) => ({
-            backgroundColor: disabled ? '#94A3B8' : t.color.brand,
+            backgroundColor: disabled ? '#94A3B8' : tone === 'lime' ? LIME_BUTTON.background : t.color.brand,
             borderRadius: t.radius.sm,
             paddingVertical: t.space[2],
             paddingHorizontal: t.space[3],
             opacity: pressed ? 0.85 : 1,
           })}
         >
-          <TotlText style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: '#FFFFFF' }}>{label}</TotlText>
+          <TotlText
+            style={{ fontFamily: 'Gramatika-Medium', fontSize: 16, lineHeight: 16, color: tone === 'lime' ? LIME_BUTTON.text : '#FFFFFF' }}
+          >
+            {label}
+          </TotlText>
         </Pressable>
       ) : null}
       {secondary ? (

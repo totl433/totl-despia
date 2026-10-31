@@ -445,28 +445,28 @@ export function playersStackItems(input: {
   const eightAm = localHourOnDay(input.nowMs, 8);
   if (input.nowMs < eightAm) return playersEveningAndPerfect({ ...input, people }, today);
   const items: FeedItem[] = [];
-  const daily = topPlayers(input.scores, people, (store) => scoreForDay(store, yesterday));
+  const daily = topPlayers(input.scores, people, (store) => scoreForDay(store, yesterday), Infinity);
   if (daily.length) {
     items.push(
       shoutCard({
         id: `players:daily:${yesterday}`,
         sortAt: eightAm,
-        title: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name))), `players:daily:${yesterday}`).title,
-        body: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name))), `players:daily:${yesterday}`).line,
+        title: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name)), daily.length), `players:daily:${yesterday}`).title,
+        body: pickCopy(playersDailyCopy(joinNames(daily.map((row) => row.name)), daily.length), `players:daily:${yesterday}`).line,
         faces: facesFor(daily, people),
       })
     );
   }
   const weekClosed = yesterday === shiftPlayersDay(playersWeekStart(today), 6);
   if (weekClosed) {
-    const weekly = topPlayers(input.scores, people, (store) => scoreForWeek(store, yesterday));
+    const weekly = topPlayers(input.scores, people, (store) => scoreForWeek(store, yesterday), Infinity);
     if (weekly.length) {
       items.push(
         shoutCard({
           id: `players:weekly:${yesterday}`,
           sortAt: eightAm + 30_000,
-          title: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name))), `players:weekly:${yesterday}`).title,
-          body: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name))), `players:weekly:${yesterday}`).line,
+          title: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name)), weekly.length), `players:weekly:${yesterday}`).title,
+          body: pickCopy(playersWeeklyCopy(joinNames(weekly.map((row) => row.name)), weekly.length), `players:weekly:${yesterday}`).line,
           faces: facesFor(weekly, people),
         })
       );
@@ -474,14 +474,14 @@ export function playersStackItems(input: {
   }
   const monthClosed = yesterday === `${playersMonthKey(yesterday)}-${String(playersDaysInMonth(yesterday)).padStart(2, '0')}`;
   if (monthClosed) {
-    const monthly = topPlayers(input.scores, people, (store) => scoreForMonth(store, yesterday));
+    const monthly = topPlayers(input.scores, people, (store) => scoreForMonth(store, yesterday), Infinity);
     if (monthly.length) {
       items.push(
         shoutCard({
           id: `players:monthly:${yesterday}`,
           sortAt: eightAm + 60_000,
-          title: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name))), `players:monthly:${yesterday}`).title,
-          body: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name))), `players:monthly:${yesterday}`).line,
+          title: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name)), monthly.length), `players:monthly:${yesterday}`).title,
+          body: pickCopy(playersMonthlyCopy(joinNames(monthly.map((row) => row.name)), monthly.length), `players:monthly:${yesterday}`).line,
           faces: facesFor(monthly, people),
         })
       );
