@@ -123,6 +123,31 @@ describe('people lookup', () => {
   });
 });
 
+describe('Players winners cards', () => {
+  const nowMs = Date.parse('2026-10-24T18:00:00Z');
+  const score = (correct: number) => ({ '2026-10-23': { correct, total: 10 } });
+  const daily = (scores: Record<string, unknown>, names: string[]) =>
+    playersStackItems({
+      nowMs,
+      userId: 'me',
+      scores: scores as any,
+      people: Object.fromEntries(names.map((name) => [name, { id: name, name, avatarUrl: null }])),
+    }).find((item) => item.id.startsWith('players:daily:'));
+
+  it('says winner for one person', () => {
+    const item = daily({ carl: score(9), jof: score(4) }, ['carl', 'jof']);
+    expect(item?.title).toBe("Yesterday's winner");
+    expect(item?.faces?.map((face) => face.name)).toEqual(['carl']);
+  });
+
+  it('says winners and shows everyone tied at the top', () => {
+    const names = ['a', 'b', 'c', 'd', 'e'];
+    const item = daily(Object.fromEntries(names.map((name) => [name, score(7)])), names);
+    expect(item?.title).toBe("Yesterday's winners");
+    expect(item?.faces).toHaveLength(5);
+  });
+});
+
 describe('Players play cards', () => {
   const kinds = (nowIso: string, mine: Record<string, unknown>) =>
     playersStackItems({

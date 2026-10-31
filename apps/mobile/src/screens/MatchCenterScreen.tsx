@@ -52,6 +52,12 @@ import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard'
 import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
 import { FIXTURES_CARD, FixtureRows, FixturesCardIcon, fixturesKickerStyle } from '../components/gameCentre/GameCentreFixtures';
+import {
+  PLAYERS_FEED_CARD,
+  PlayersFeedBackground,
+  PlayersFeedCardHeader,
+  PlayersWinnerGrid,
+} from '../components/gameCentre/PlayersFeedCard';
 import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
@@ -572,8 +578,12 @@ function FeedCardView({
   const canReact = item.reacts !== false && gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
   const canComment = item.comments !== false && !!social;
   const fixturesCard = item.kind === 'fixtures' && !!item.fixtureRows?.length;
-  const onDark = youWin || item.kind === 'round-up' || fixturesCard;
-  const shell = fixturesCard
+  const playersCard = isPlayersFeedItem(item);
+  const playersButton = playersCard && !!item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge');
+  const onDark = youWin || item.kind === 'round-up' || fixturesCard || playersCard;
+  const shell = playersCard
+    ? { backgroundColor: PLAYERS_FEED_CARD.background }
+    : fixturesCard
     ? { backgroundColor: FIXTURES_CARD.background }
     : youWin
     ? { backgroundColor: '#0F766E' }
@@ -646,7 +656,9 @@ function FeedCardView({
       </View>
     );
   }
-  if (item.faces?.length) {
+  if (playersCard && item.faces?.length) {
+    content.push(<PlayersWinnerGrid key="faces" faces={item.faces} />);
+  } else if (item.faces?.length) {
     content.push(
       <View key="faces" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
         {item.faces.map((face, index) => (
@@ -771,7 +783,14 @@ function FeedCardView({
   const card = (
     <GameCentreCard
       backgroundColor={shell.backgroundColor}
+      background={playersCard ? <PlayersFeedBackground /> : undefined}
+      gap={playersCard ? 24 : undefined}
+      paddingBottom={playersCard ? (playersButton ? 0 : 16) : undefined}
       header={
+        playersCard ? (
+          // Ready and nudge cards carry their message in the body; winners cards in the title.
+          <PlayersFeedCardHeader line={(playersButton ? item.body : item.title) ?? ''} />
+        ) : (
         <GameCentreCardHeader
           title={header.title}
           subtitle={header.subtitle}
@@ -790,9 +809,21 @@ function FeedCardView({
                 : undefined
           }
         />
+        )
       }
       footer={
-        item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge' || item.kind === 'score-sheet') ? (
+        playersCard ? (
+          playersButton ? (
+            <GameCentreCardButton tone="white" label={item.link!.label} onPress={() => onOpen(item)} />
+          ) : canReact ? (
+            // Figma 413:82135: the Players cards end on the reactions.
+            <GameCentreReactionBar
+              chips={gameCentreReactionChips(reactions)}
+              onReact={(emoji) => onReact?.(emoji)}
+              onMore={social ? () => social.onMore(item) : undefined}
+            />
+          ) : null
+        ) : item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge' || item.kind === 'score-sheet') ? (
           <GameCentreCardButton label={item.link.label} onPress={() => onOpen(item)} />
         ) : canReact && canComment ? (
           <>
