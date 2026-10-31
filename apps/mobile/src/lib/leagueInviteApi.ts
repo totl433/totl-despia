@@ -54,7 +54,8 @@ export const leagueInviteApi = {
     }
   },
   listInvitees: (leagueId: string) => withInviteBff((client) => client.listLeagueInvitees(leagueId)),
-  invite: (leagueId: string, username: string) => withInviteBff((client) => client.inviteToLeague(leagueId, username)),
+  invite: (leagueId: string, username: string, userId?: string) =>
+    withInviteBff((client) => client.inviteToLeague(leagueId, username, userId)),
   accept: async (inviteId: string) => {
     try {
       return await withInviteBff((client) => client.acceptLeagueInvite(inviteId));
