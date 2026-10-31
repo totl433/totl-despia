@@ -27,7 +27,8 @@ export function InsightsFeedBackground() {
 
 /**
  * INSIGHTS eyebrow, title and line, with the sparkle badge top right. No time: a season stat
- * isn't news. Figma trims the 16pt gaps to the cap height; 8pt between 26pt and 20pt lines matches.
+ * isn't news. Figma trims its gaps to the cap height, so its 20pt under the eyebrow is 12pt here
+ * and its 16pt between title and line is 8pt.
  */
 export function InsightsFeedCardHeader({ title, body }: { title: string; body?: string | null }) {
   const t = useTokens();
@@ -37,16 +38,18 @@ export function InsightsFeedCardHeader({ title, body }: { title: string; body?: 
       accessibilityLabel={body ? `Insights. ${title}. ${body}` : `Insights. ${title}`}
       style={{ paddingHorizontal: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 4 }}
     >
-      <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
         <TotlText style={{ fontFamily: t.font.bold, fontSize: 12, lineHeight: 14, color: INSIGHTS_FEED_CARD.eyebrow }}>INSIGHTS</TotlText>
-        <TotlText accessibilityRole="header" style={{ fontFamily: t.font.regular, fontSize: 22, lineHeight: 26, letterSpacing: 0.22, color: INSIGHTS_FEED_CARD.text }}>
-          {title}
-        </TotlText>
-        {body ? (
-          <TotlText style={{ fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: INSIGHTS_FEED_CARD.text }}>
-            {body}
+        <View style={{ gap: 8 }}>
+          <TotlText accessibilityRole="header" style={{ fontFamily: t.font.regular, fontSize: 22, lineHeight: 26, letterSpacing: 0.22, color: INSIGHTS_FEED_CARD.text }}>
+            {title}
           </TotlText>
-        ) : null}
+          {body ? (
+            <TotlText style={{ fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: INSIGHTS_FEED_CARD.text }}>
+              {body}
+            </TotlText>
+          ) : null}
+        </View>
       </View>
       <View
         style={{
