@@ -1,5 +1,6 @@
 /**
- * The Players daily reminder: one generic nudge at 9:30am London time.
+ * The Players daily reminder: one generic nudge at 9:30am London time, skipping anyone
+ * who has already played that day.
  *
  * Netlify cron runs in UTC, so the function is scheduled for both 08:30 and 09:30 UTC
  * and only sends on the run that lands at 9:30 in London (BST in summer, GMT in winter).
@@ -47,6 +48,42 @@ export function playersDailyEventId(dayKey: string): string {
 /** On unless Daily Game Reminders is switched off. */
 export function wantsPlayersDaily(prefs: Record<string, unknown> | null | undefined): boolean {
   return prefs?.[DAILY_GAME_PREF] !== false;
+}
+
+export type PlayersReminderDevice = {
+  user_id: string;
+  player_id: string | null;
+  subscribed: boolean | null;
+  invalid: boolean | null;
+};
+
+/**
+ * Who gets today's reminder: every live device of a user who hasn't switched it off and
+ * hasn't already started today's game (any row in players_daily_scores, finished or not).
+ */
+export function playersReminderRecipients(
+  devices: PlayersReminderDevice[],
+  prefsByUser: Map<string, Record<string, unknown> | null>,
+  playedUserIds: Set<string>,
+): { playerIds: string[]; userIds: Set<string>; optedOut: Set<string>; alreadyPlayed: Set<string> } {
+  const playerIds = new Set<string>();
+  const userIds = new Set<string>();
+  const optedOut = new Set<string>();
+  const alreadyPlayed = new Set<string>();
+  devices.forEach((device) => {
+    if (!device.player_id || device.subscribed === false || device.invalid === true) return;
+    if (!wantsPlayersDaily(prefsByUser.get(device.user_id))) {
+      optedOut.add(device.user_id);
+      return;
+    }
+    if (playedUserIds.has(device.user_id)) {
+      alreadyPlayed.add(device.user_id);
+      return;
+    }
+    playerIds.add(device.player_id);
+    userIds.add(device.user_id);
+  });
+  return { playerIds: [...playerIds], userIds, optedOut, alreadyPlayed };
 }
 
 export function chunk<T>(items: T[], size: number): T[][] {
