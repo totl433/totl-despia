@@ -1394,18 +1394,6 @@ function standingMoved(before: Standing, after: Standing): boolean {
   return before.rank !== after.rank || before.sole !== after.sole || before.points !== after.points;
 }
 
-function roundupHeadline(rows: Array<{ before: Standing; after: Standing }>): string {
-  const climbed = rows.some((row) => row.after.rank < row.before.rank || (row.after.sole && !row.before.sole));
-  const dropped = rows.some((row) => row.after.rank > row.before.rank || (row.before.sole && !row.after.sole && row.after.rank > 1));
-  const allTop = rows.length > 0 && rows.every((row) => row.after.rank === 1);
-  if (allTop && !dropped) return 'Running the show';
-  if (climbed && !dropped) return 'On the up';
-  if (dropped && !climbed) return 'A little wobble';
-  if (climbed && dropped) return 'A proper shuffle';
-  if (rows.every((row) => row.after.sole)) return 'Still the one';
-  return 'Where you stand';
-}
-
 function gwPointsNow(replay: OverallReplay, outcomes: Map<number, Pick>): Map<string, number> {
   const ids = new Set<string>([
     ...Object.keys(replay.beforeGw),
@@ -1516,8 +1504,8 @@ function leagueMomentsFromEvents(
       timeLabel: event.stamp,
       stamp: event.stamp,
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: roundupHeadline(moved.length ? moved : snapshot),
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: snapshot.map((row): LeagueStandingLine => ({
         name: row.name,
@@ -1959,8 +1947,8 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: "23'",
       stamp: '15:23',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'On the up',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: 'Top', move: 'up', avatarUrl: SAMPLE_EASY_AVATAR },
@@ -2014,8 +2002,8 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: "63'",
       stamp: '16:18',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'A little wobble',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: '2nd', move: 'down', avatarUrl: SAMPLE_EASY_AVATAR },
@@ -2075,8 +2063,8 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: 'FT',
       stamp: '16:52',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'On the up',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: 'Top', move: 'up', avatarUrl: SAMPLE_EASY_AVATAR },
@@ -2117,8 +2105,8 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: 'FT',
       stamp: '16:54',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'A little wobble',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: '2nd', move: 'down', avatarUrl: SAMPLE_EASY_AVATAR },
