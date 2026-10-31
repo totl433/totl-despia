@@ -14,12 +14,12 @@ import {
   isPlayersReminderTime,
   playersDailyEventId,
   playersDayKey,
-  wantsPlayersDaily,
+  playersReminderRecipients,
 } from './lib/notifications/playersDaily';
 
 /**
  * The Players daily reminder, sent once a day at 9:30am London time to everyone who
- * hasn't switched it off. Scheduled in netlify.toml for 08:30 and 09:30 UTC; only the run
+ * hasn't switched it off and hasn't already played that day. Scheduled in netlify.toml for 08:30 and 09:30 UTC; only the run
  * that lands at 9:30 in London sends.
  *
  * One push for everyone, so it sends in bulk: a single daily lock in notification_send_log
@@ -66,7 +66,7 @@ export const handler: Handler = async () => {
 
   try {
     const supabase = getSupabase();
-    const [devices, prefRows] = await Promise.all([
+    const [devices, prefRows, playedRows] = await Promise.all([
       readAll<{ user_id: string; player_id: string | null; subscribed: boolean | null; invalid: boolean | null }>(
         (from, to) =>
           supabase
@@ -83,23 +83,22 @@ export const handler: Handler = async () => {
           .order('user_id', { ascending: true })
           .range(from, to),
       ),
+      // Anyone with today's attempt (finished or still in progress) has played.
+      readAll<{ user_id: string }>((from, to) =>
+        supabase
+          .from('players_daily_scores')
+          .select('user_id')
+          .eq('day_key', day)
+          .order('user_id', { ascending: true })
+          .range(from, to),
+      ),
     ]);
 
     const prefsByUser = new Map(prefRows.map((row) => [row.user_id, row.preferences]));
-    const optedOut = new Set<string>();
-    const playerIds = new Set<string>();
-    const userIds = new Set<string>();
-    devices.forEach((device) => {
-      if (!device.player_id || device.subscribed === false || device.invalid === true) return;
-      if (!wantsPlayersDaily(prefsByUser.get(device.user_id))) {
-        optedOut.add(device.user_id);
-        return;
-      }
-      playerIds.add(device.player_id);
-      userIds.add(device.user_id);
-    });
+    const played = new Set(playedRows.map((row) => row.user_id));
+    const { playerIds, userIds, optedOut, alreadyPlayed } = playersReminderRecipients(devices, prefsByUser, played);
 
-    const batches = chunk([...playerIds], BATCH);
+    const batches = chunk(playerIds, BATCH);
     const sent: Array<{ notification_id?: string; recipients?: number }> = [];
     const errors: unknown[] = [];
     for (const ids of batches) {
@@ -123,8 +122,9 @@ export const handler: Handler = async () => {
       target_type: 'player_ids',
       targeting_summary: {
         users: userIds.size,
-        devices: playerIds.size,
+        devices: playerIds.length,
         opted_out_users: optedOut.size,
+        already_played_users: alreadyPlayed.size,
         batches: batches.length,
         recipients,
         notification_ids: sent.map((batch) => batch.notification_id),
@@ -134,13 +134,14 @@ export const handler: Handler = async () => {
     });
 
     console.log(
-      `[sendPlayersDailyReminder] ${day}: ${userIds.size} users, ${playerIds.size} devices, ${recipients} recipients, ${optedOut.size} opted out, ${errors.length} failed batches`,
+      `[sendPlayersDailyReminder] ${day}: ${userIds.size} users, ${playerIds.length} devices, ${recipients} recipients, ${optedOut.size} opted out, ${alreadyPlayed.size} already played, ${errors.length} failed batches`,
     );
     return json(errors.length && !sent.length ? 500 : 200, {
       ok: errors.length === 0,
       event_id: eventId,
       users: userIds.size,
-      devices: playerIds.size,
+      devices: playerIds.length,
+      already_played: alreadyPlayed.size,
       recipients,
       failed_batches: errors.length,
     });

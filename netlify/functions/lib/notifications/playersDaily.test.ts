@@ -6,6 +6,7 @@ import {
   londonClock,
   playersDailyEventId,
   playersDayKey,
+  playersReminderRecipients,
   wantsPlayersDaily,
 } from './playersDaily';
 
@@ -36,6 +37,32 @@ describe('players daily reminder', () => {
     expect(wantsPlayersDaily({ 'chat-messages': false })).toBe(true);
     expect(wantsPlayersDaily({ 'daily-game-reminders': true })).toBe(true);
     expect(wantsPlayersDaily({ 'daily-game-reminders': false })).toBe(false);
+  });
+
+  it('skips anyone who has already played today, and anyone who switched it off', () => {
+    const device = (user_id: string, player_id: string) => ({ user_id, player_id, subscribed: true, invalid: false });
+    const result = playersReminderRecipients(
+      [device('fresh', 'p1'), device('played', 'p2'), device('played', 'p3'), device('off', 'p4')],
+      new Map([['off', { 'daily-game-reminders': false }]]),
+      new Set(['played']),
+    );
+    expect(result.playerIds).toEqual(['p1']);
+    expect([...result.userIds]).toEqual(['fresh']);
+    expect([...result.alreadyPlayed]).toEqual(['played']);
+    expect([...result.optedOut]).toEqual(['off']);
+  });
+
+  it('skips dead devices', () => {
+    const result = playersReminderRecipients(
+      [
+        { user_id: 'a', player_id: null, subscribed: true, invalid: false },
+        { user_id: 'b', player_id: 'p', subscribed: false, invalid: false },
+        { user_id: 'c', player_id: 'q', subscribed: true, invalid: true },
+      ],
+      new Map(),
+      new Set(),
+    );
+    expect(result.playerIds).toEqual([]);
   });
 
   it('splits devices into OneSignal-sized batches', () => {
