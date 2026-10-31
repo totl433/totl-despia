@@ -101,7 +101,7 @@ export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
               style={{
                 flex: 1,
                 minWidth: 0,
-                minHeight: 100,
+                height: 100,
                 padding: 8,
                 gap: 12,
                 borderRadius: 8,
@@ -111,24 +111,28 @@ export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
               }}
             >
               <WinnerAvatar face={face} />
-              <TotlText
-                numberOfLines={2}
-                style={{
-                  alignSelf: 'stretch',
-                  textAlign: 'center',
-                  fontFamily: PLAYERS_FONTS.medium,
-                  fontSize: 12,
-                  lineHeight: 14,
-                  color: PLAYERS_FEED_CARD.lime,
-                }}
-              >
-                {face.name}
-              </TotlText>
+              {/* Room for two lines in every tile, so the avatars line up across a row. */}
+              <View style={{ alignSelf: 'stretch', height: 24, justifyContent: 'center' }}>
+                <TotlText
+                  // A single long word truncates rather than breaking mid-word (Figma 413:82131).
+                  numberOfLines={/\s/.test(face.name.trim()) ? 2 : 1}
+                  style={{
+                    textAlign: 'center',
+                    fontFamily: PLAYERS_FONTS.medium,
+                    fontSize: 12,
+                    lineHeight: 12,
+                    color: PLAYERS_FEED_CARD.lime,
+                  }}
+                >
+                  {face.name}
+                </TotlText>
+              </View>
             </View>
           ))}
           {/* Keeps a short row's tiles a third wide, like the full rows. */}
           {Array.from({ length: columns - row.length }, (_, i) => (
-            <View key={`gap-${i}`} style={{ flex: 1 }} />
+            // Same padding as a tile: flex shares out the space left after padding.
+            <View key={`gap-${i}`} style={{ flex: 1, paddingHorizontal: 8 }} />
           ))}
         </View>
       ))}
