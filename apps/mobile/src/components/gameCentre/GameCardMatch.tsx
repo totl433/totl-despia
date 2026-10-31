@@ -15,7 +15,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import type { Pick } from '@totl/domain';
-import { TotlText, useTokens } from '@totl/ui';
+import { TotlText, tokens, useTokens } from '@totl/ui';
 
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { TEAM_COLORS } from '../../lib/teamColors';
@@ -44,8 +44,9 @@ const RAINBOW = { colors: ['#F2BC20', '#E4716C', '#DB5281', '#D34E8D'] as const,
 /**
  * Mobile/12/Medium. Figma trims the 22pt line to the cap height, so these sit in tighter boxes than
  * the line height suggests: 14pt keeps the chips and the 12pt gaps at their Figma size.
+ * Figma's Trial Medium is heavier than our Medium file, and it has no % sign, so Bold stands in.
  */
-const label12 = { fontSize: 12, lineHeight: 14, fontFamily: 'Gramatika-Medium' };
+const label12 = { fontSize: 12, lineHeight: 14, fontFamily: tokens.font.bold };
 const REVEAL_MS = 700;
 
 function Crest({ code, size }: { code: string; size: number }) {
