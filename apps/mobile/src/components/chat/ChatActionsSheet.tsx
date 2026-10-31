@@ -17,6 +17,7 @@ export default function ChatActionsSheet({
   onClose,
   onReply,
   onReact,
+  onBlock,
   reportReason,
   reportState = 'idle',
   reportError,
@@ -26,7 +27,10 @@ export default function ChatActionsSheet({
   open: boolean;
   onClose: () => void;
   onReply: () => void;
-  onReact: (emoji: string) => void;
+  /** Leave out to hide the emoji row (comments have no reactions). */
+  onReact?: (emoji: string) => void;
+  /** Shown beside Report when given: hides this person's messages for you. */
+  onBlock?: () => void;
   reportReason: string;
   reportState?: ReportState;
   reportError?: string | null;
@@ -206,19 +210,34 @@ export default function ChatActionsSheet({
           <>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <TotlText variant="caption" style={{ color: t.color.muted, fontWeight: '900' }}>
-                React
+                {onReact ? 'React' : 'Comment'}
               </TotlText>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Report message"
-                onPress={() => setStep('reportForm')}
-                style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, paddingVertical: 2 })}
-              >
-                <TotlText style={{ color: t.color.brand, fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 18, fontWeight: '700' }}>
-                  Report
-                </TotlText>
-              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 18 }}>
+                {onBlock ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Block this person"
+                    onPress={onBlock}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, paddingVertical: 2 })}
+                  >
+                    <TotlText style={{ color: t.color.brand, fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 18, fontWeight: '700' }}>
+                      Block
+                    </TotlText>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Report message"
+                  onPress={() => setStep('reportForm')}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, paddingVertical: 2 })}
+                >
+                  <TotlText style={{ color: t.color.brand, fontFamily: 'Gramatika-Medium', fontSize: 14, lineHeight: 18, fontWeight: '700' }}>
+                    Report
+                  </TotlText>
+                </Pressable>
+              </View>
             </View>
+            {onReact ? (
             <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
               {EMOJIS.map((e) => (
                 <Pressable
@@ -249,6 +268,7 @@ export default function ChatActionsSheet({
                 </Pressable>
               ))}
             </View>
+            ) : null}
 
             <View style={{ height: 14 }} />
 

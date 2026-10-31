@@ -155,9 +155,9 @@ export const TrophyCabinetSchema = z.preprocess((raw) => {
 })
     .nullable());
 export const UserStatsDataSchema = z.object({
-    /** Highest GW with any finalized result row in `app_gw_results` (used for results navigation). */
+    /** Highest completed GW in the *active* season pile (not leftover 2025/26 rows after a reset). */
     lastCompletedGw: z.number().int().positive().nullable(),
-    /** Latest GW reflected in stats UI — max(lastCompletedGw, app_meta.current_gw when set). */
+    /** Latest GW reflected in stats UI — max(active lastCompletedGw, active current_gw). */
     highlightGw: z.number().int().positive().nullable().optional(),
     /** Percentile for `highlightGw` after merging live scores into GW points (matches leaderboards). */
     lastCompletedGwPercentile: z.number().nullable(),
@@ -195,6 +195,7 @@ export const UserStatsDataSchema = z.object({
         .array(z.object({
         gw: z.number().int().positive(),
         points: z.number().nullable(),
+        seasonLabel: z.string().min(1).optional(),
     }))
         .nullable()
         .optional(),

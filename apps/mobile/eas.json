@@ -19,6 +19,12 @@
     },
     "production": {
       "autoIncrement": false
+    },
+    "testflight-team": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_GAME_CENTRE_POSTS": "on"
+      }
     }
   },
   "submit": {
@@ -30,7 +36,11 @@
       "ios": {
         "ascAppId": "6754661450"
       }
+    },
+    "testflight-team": {
+      "ios": {
+        "ascAppId": "6754661450"
+      }
     }
   }
 }
-

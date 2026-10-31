@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { TotlText, useTokens } from '@totl/ui';
 
-type Row = { gw: number; userPoints: number; averagePoints: number };
+type Row = { gw: number; userPoints: number; averagePoints: number; seasonLabel?: string };
 
 const GRAPH_HEIGHT = 120;
 const BAR_WIDTH = 48;
@@ -71,22 +71,21 @@ export function WeeklyParChartToggle({
 
 function ParColumn({
   data,
-  latestGw,
+  isLatest,
   range,
   showInfo,
   brandHex,
 }: {
   data: Row;
-  latestGw: number | null;
+  isLatest: boolean;
   range: number;
   showInfo: boolean;
   brandHex: string;
 }) {
   const t = useTokens();
-  const { gw, userPoints, averagePoints } = data;
+  const { gw, userPoints, averagePoints, seasonLabel } = data;
   const minValue = 0;
   const diff = userPoints - averagePoints;
-  const isLatest = latestGw !== null && gw === latestGw;
   const isAbovePar = diff > 0;
   const isBelowPar = diff < 0;
 
@@ -235,7 +234,7 @@ function ParColumn({
             color: isLatest ? brandHex : t.color.text,
           }}
         >
-          {`GW${gw}`}
+          {seasonLabel && seasonLabel !== '2025/26' ? `${seasonLabel.slice(2)} ${gw}` : `GW${gw}`}
         </TotlText>
         {showInfo ? (
           <TotlText style={{ fontSize: 9, fontWeight: '600', color: t.color.muted, marginTop: 2 }}>
@@ -269,8 +268,9 @@ export default function StatsParChart({
   const scrollRef = React.useRef<ScrollView>(null);
   const brandHex = String(t.color.brand);
 
+  const last = weeklyData[weeklyData.length - 1];
   const weeklySig =
-    weeklyData.length === 0 ? '' : `${weeklyData.length}:${weeklyData[weeklyData.length - 1]!.gw}`;
+    weeklyData.length === 0 ? '' : `${weeklyData.length}:${last?.seasonLabel ?? ''}:${last?.gw}`;
   React.useEffect(() => {
     if (!weeklySig) return;
     const id = requestAnimationFrame(() => {
@@ -300,8 +300,17 @@ export default function StatsParChart({
       }}
     >
       {weeklyData.map((data, idx) => (
-        <View key={data.gw} style={{ marginRight: idx < weeklyData.length - 1 ? GAP : 0 }}>
-          <ParColumn data={data} latestGw={latestGw} range={range} showInfo={showInfo} brandHex={brandHex} />
+        <View
+          key={`${data.seasonLabel ?? ''}|${data.gw}|${idx}`}
+          style={{ marginRight: idx < weeklyData.length - 1 ? GAP : 0 }}
+        >
+          <ParColumn
+            data={data}
+            isLatest={idx === weeklyData.length - 1}
+            range={range}
+            showInfo={showInfo}
+            brandHex={brandHex}
+          />
         </View>
       ))}
     </ScrollView>

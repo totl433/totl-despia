@@ -1,6 +1,7 @@
 import type { Fixture, LiveScore, LiveStatus, Pick } from '@totl/domain';
 
 import { formatGoalMinuteForTicker, parseGoalEvents } from './goalEvents';
+import { resolveLiveScore } from './liveScoreRows';
 import { TEAM_BADGES } from './teamBadges';
 
 export type HeaderScoreSummary = {
@@ -127,7 +128,7 @@ export function buildHeaderScoreSummary({
     const fixtureIndex = fixture.fixture_index;
     const pick = userPicks[String(fixtureIndex)];
 
-    const liveScore = liveByFixtureIndex.get(fixtureIndex);
+    const liveScore = resolveLiveScore(fixture, liveByFixtureIndex);
     const status: LiveStatus = liveScore?.status ?? 'SCHEDULED';
     const finalResult = resultByFixtureIndex.get(fixtureIndex);
     const hasFinalResult = finalResult === 'H' || finalResult === 'D' || finalResult === 'A';

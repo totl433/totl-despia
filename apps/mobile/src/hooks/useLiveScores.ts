@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LiveScore } from '@totl/domain';
+import type { Fixture, LiveScore } from '@totl/domain';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { indexLiveScoresByFixture, isStaleLiveRow } from '../lib/liveScoreRows';
 
 type Options = {
   /**
@@ -9,6 +10,8 @@ type Options = {
    * This should be for the same GW as `gw`.
    */
   initial?: LiveScore[] | null | undefined;
+  /** When set, index rows by this week's fixtures so last season's gw=N is ignored. */
+  fixtures?: Fixture[] | null | undefined;
 };
 
 type UseLiveScoresResult = {
@@ -51,6 +54,7 @@ function scoreChanged(a: LiveScore | undefined, b: LiveScore): boolean {
  */
 export function useLiveScores(gw: number | null | undefined, options?: Options): UseLiveScoresResult {
   const initial = options?.initial ?? null;
+  const fixtures = options?.fixtures ?? null;
 
   // Store as a map keyed by api_match_id so updates are stable and de-duped.
   const [byApiMatchId, setByApiMatchId] = useState<Map<number, LiveScore>>(() => {
@@ -117,6 +121,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
           rows.forEach((ls) => {
             if (!isNumber(ls.api_match_id)) return;
             const prevLs = prev.get(ls.api_match_id);
+            if (isStaleLiveRow(prevLs, ls)) return;
             if (scoreChanged(prevLs, ls)) {
               next.set(ls.api_match_id, ls);
               changed = true;
@@ -205,6 +210,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
               const incoming = payload.new as LiveScore;
               if (!isNumber(incoming.api_match_id)) return prev;
               const prevRow = prev.get(incoming.api_match_id);
+              if (isStaleLiveRow(prevRow, incoming)) return prev;
               // Merge so a slim realtime payload can't wipe lineups we already have.
               const newRow: LiveScore = {
                 ...(prevRow ?? ({} as LiveScore)),
@@ -256,6 +262,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
   const liveScores = useMemo(() => Array.from(byApiMatchId.values()), [byApiMatchId]);
 
   const liveByFixtureIndex = useMemo(() => {
+    if (fixtures && fixtures.length > 0) return indexLiveScoresByFixture(fixtures, liveScores);
     const m = new Map<number, LiveScore>();
     liveScores.forEach((ls) => {
       const raw = (ls as { fixture_index?: unknown }).fixture_index;
@@ -263,7 +270,7 @@ export function useLiveScores(gw: number | null | undefined, options?: Options):
       if (Number.isInteger(idx) && idx >= 0) m.set(idx, ls);
     });
     return m;
-  }, [liveScores]);
+  }, [fixtures, liveScores]);
 
   return {
     liveScores,

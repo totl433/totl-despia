@@ -185,8 +185,10 @@ export default function ChatThreadScreen() {
           <LeagueInviteSheet
             open={inviteOpen}
             onClose={() => setInviteOpen(false)}
+            leagueId={leagueId}
             leagueName={leagueName}
             leagueCode={leagueCode}
+            memberCount={members.length}
             title={inviteMode === 'chat' ? 'Invite to chat' : 'Invite to mini league'}
             shareTextOverride={inviteMode === 'chat' ? `Join the chat for "${leagueName || 'my mini league'}" on TotL!` : undefined}
             urlOverride={

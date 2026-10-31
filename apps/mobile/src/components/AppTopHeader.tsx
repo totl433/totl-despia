@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, Platform } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { TotlText, useTokens } from '@totl/ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RoundIconButton from './home/RoundIconButton';
@@ -9,6 +10,7 @@ import HeaderTotlLogo from './HeaderTotlLogo';
 import LiveSignalIcon from './LiveSignalIcon';
 import { useLeagueUnreadCounts } from '../hooks/useLeagueUnreadCounts';
 import { useMatchCenterLiveSignal } from '../hooks/useMatchCenterLiveSignal';
+import { OpenedFromMenuContext } from '../navigation/openedFromMenu';
 
 export default function AppTopHeader({
   onPressChat,
@@ -26,6 +28,7 @@ export default function AppTopHeader({
   isRefreshing = false,
   hideProfile = false,
   hideChat = false,
+  backgroundColor,
 }: {
   onPressChat: () => void;
   onPressProfile: () => void;
@@ -41,6 +44,8 @@ export default function AppTopHeader({
   isRefreshing?: boolean;
   hideProfile?: boolean;
   hideChat?: boolean;
+  /** Defaults to the screen background. */
+  backgroundColor?: string;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -59,30 +64,44 @@ export default function AppTopHeader({
   const matchCenterLive = useMatchCenterLiveSignal();
   // Stay visible for the whole MC window (until round-up), even when the center LIVE score pill is on.
   // Only hide on Match Center itself.
-  const showLiveSignal = !hideMatchCenterEntry && matchCenterLive;
+  // Screens opened from the side menu sit over the Game Centre, so they get a way back.
+  const openedFromMenu = React.useContext(OpenedFromMenuContext);
+  const showBack = openedFromMenu && navigation.canGoBack();
+  // Back already returns to the Game Centre, so the live shortcut to it would only crowd the header.
+  const showLiveSignal = !hideMatchCenterEntry && matchCenterLive && !showBack;
   void hasLiveGames;
   void showLeftLiveBadge;
   void isRefreshing;
 
   const openMatchCenter = React.useCallback(() => {
-    // Works from any tab: Predictions stack hosts Match Center.
-    navigation.navigate('Predictions', {
-      screen: 'MatchCenter',
-      params: { entry: 'current' },
-    });
+    // The Game Centre is the home screen, under everything else.
+    navigation.navigate('GameCentre');
   }, [navigation]);
 
   return (
     <View
       style={{
         marginTop: embedded ? 0 : -insets.top,
-        paddingTop: embedded ? 4 : insets.top + 4,
+        // iOS: no extra gap under the status bar, so the icons sit nearer a native nav bar.
+        paddingTop: embedded ? 4 : insets.top + (Platform.OS === 'ios' ? 0 : 4),
         paddingHorizontal: t.space[4],
-        backgroundColor: t.color.background,
+        backgroundColor: backgroundColor ?? t.color.background,
       }}
     >
-      <View style={{ height: 60, justifyContent: 'center', alignItems: 'center' }}>
+      {/* 60pt on Android (Material top bar); 52pt on iOS still fits the 46pt live score pill. */}
+      <View style={{ height: Platform.OS === 'ios' ? 52 : 60, justifyContent: 'center', alignItems: 'center' }}>
         <View style={{ position: 'absolute', left: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {showBack ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              onPress={() => navigation.goBack()}
+              hitSlop={10}
+              style={({ pressed }) => ({ marginLeft: -6, opacity: pressed ? 0.6 : 1 })}
+            >
+              <Ionicons name="chevron-back" size={28} color={t.color.text} />
+            </Pressable>
+          ) : null}
           {!hideProfile && (
             <RoundIconButton
               onPress={onPressProfile}

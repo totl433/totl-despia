@@ -9,6 +9,9 @@ const EnvSchema = z.object({
   EXPO_PUBLIC_SITE_URL: z.string().url().default('https://playtotl.com'),
   // Optional OneSignal App ID for native push integration.
   EXPO_PUBLIC_ONESIGNAL_APP_ID: z.string().min(1).optional(),
+  // Stored Game Centre posts (game_centre_posts): comments, any-emoji reactions and the pinned
+  // gameweek card. On in every build, as the cards are designed; set 'off' only to switch them off.
+  EXPO_PUBLIC_GAME_CENTRE_POSTS: z.enum(['on', 'off']).catch('on').default('on'),
 });
 
 export type MobileEnv = z.infer<typeof EnvSchema>;
@@ -39,6 +42,7 @@ function readRawEnv() {
     EXPO_PUBLIC_BFF_URL: getExtraValue('EXPO_PUBLIC_BFF_URL'),
     EXPO_PUBLIC_SITE_URL: getExtraValue('EXPO_PUBLIC_SITE_URL'),
     EXPO_PUBLIC_ONESIGNAL_APP_ID: getExtraValue('EXPO_PUBLIC_ONESIGNAL_APP_ID'),
+    EXPO_PUBLIC_GAME_CENTRE_POSTS: getExtraValue('EXPO_PUBLIC_GAME_CENTRE_POSTS'),
   } as const;
 }
 
@@ -64,5 +68,6 @@ export const env: MobileEnv = parsed.success
       EXPO_PUBLIC_BFF_URL: 'http://localhost:8787',
       EXPO_PUBLIC_SITE_URL: 'https://playtotl.com',
       EXPO_PUBLIC_ONESIGNAL_APP_ID: undefined,
+      EXPO_PUBLIC_GAME_CENTRE_POSTS: 'off',
     };
 

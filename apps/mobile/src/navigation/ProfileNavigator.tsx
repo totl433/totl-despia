@@ -9,6 +9,7 @@ import EmailPreferencesScreen from '../screens/profile/EmailPreferencesScreen';
 import EditAvatarScreen from '../screens/profile/EditAvatarScreen';
 import AdminHomeScreen from '../screens/profile/AdminHomeScreen';
 import AdminHomeSimulatorScreen from '../screens/profile/AdminHomeSimulatorScreen';
+import AdminMatchCenterBroadcastScreen from '../screens/profile/AdminMatchCenterBroadcastScreen';
 import PushDiagnosticsScreen from '../screens/profile/PushDiagnosticsScreen';
 import HowToPlayScreen from '../screens/profile/HowToPlayScreen';
 import ContactUsScreen from '../screens/profile/ContactUsScreen';
@@ -25,6 +26,7 @@ export type ProfileStackParamList = {
   EditAvatar: undefined;
   AdminHome: undefined;
   AdminHomeSimulator: undefined;
+  AdminMatchCenterBroadcast: undefined;
   PushDiagnostics: undefined;
   HowToPlay: undefined;
   ContactUs: undefined;
@@ -52,6 +54,7 @@ export default function ProfileNavigator() {
       <Stack.Screen name="EditAvatar" component={EditAvatarScreen} />
       <Stack.Screen name="AdminHome" component={AdminHomeScreen} />
       <Stack.Screen name="AdminHomeSimulator" component={AdminHomeSimulatorScreen} />
+      <Stack.Screen name="AdminMatchCenterBroadcast" component={AdminMatchCenterBroadcastScreen} />
       <Stack.Screen name="PushDiagnostics" component={PushDiagnosticsScreen} />
       <Stack.Screen name="HowToPlay" component={HowToPlayScreen} />
       <Stack.Screen name="ContactUs" component={ContactUsScreen} />

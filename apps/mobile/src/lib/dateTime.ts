@@ -7,6 +7,19 @@
  * - We keep a consistent 24h clock for the UI (per spec).
  */
 
+/** Countdown that always includes seconds — e.g. "2h 08m 05s". */
+export function formatCountdownShort(ms: number): string {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  if (hours > 0) return `${hours}h ${mm}m ${ss}s`;
+  if (minutes > 0) return `${minutes}m ${ss}s`;
+  return `${seconds}s`;
+}
+
 export function formatLocalTimeHHmm(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);

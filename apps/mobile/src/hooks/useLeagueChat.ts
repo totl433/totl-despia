@@ -268,6 +268,8 @@ export function useLeagueChat({
   isFetchingOlder: boolean;
   isLoading: boolean;
   error: string | null;
+  retry: () => unknown;
+  isRetrying: boolean;
   sendMessage: (args: { userId: string; senderName: string; content: string; replyToMessageId?: string | null }) => Promise<void>;
 } {
   const queryClient = useQueryClient();
@@ -477,6 +479,9 @@ export function useLeagueChat({
     isFetchingOlder: q.isFetchingNextPage,
     isLoading: q.isLoading,
     error: q.error ? String((q.error as any)?.message ?? q.error) : null,
+    /** Load again after a failure, e.g. a dropped connection. */
+    retry: q.refetch,
+    isRetrying: q.isFetching && !!q.error,
     sendMessage,
   };
 }

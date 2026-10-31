@@ -14,6 +14,7 @@ function topPlayersSentence(pct: number | null | undefined): string {
 export default function StatsHeroVisual({
   stats,
   statsGwCompletion,
+  liveScore,
   onPressViewRoundUp,
   onPressViewLeaderboards,
   overallLabel = 'Overall',
@@ -22,7 +23,9 @@ export default function StatsHeroVisual({
 }: {
   stats: UserStatsData | null;
   statsGwCompletion?: StatsGwCompletionContext | null;
-  /** Score sheet then Results for `lastCompletedGw` — same as streak strip. */
+  /** Live GW points while the headline week is still in play. */
+  liveScore?: number | null;
+  /** Score sheet then Results for the latest completed week only. */
   onPressViewRoundUp?: () => void;
   /** Opens main tab leaderboards (2025/26 / Global) */
   onPressViewLeaderboards?: () => void;
@@ -34,27 +37,31 @@ export default function StatsHeroVisual({
   const t = useTokens();
   const heroGw = stats?.highlightGw ?? stats?.lastCompletedGw ?? null;
   const resultsSheetGw = stats?.lastCompletedGw ?? null;
-  const headlineGw = stats?.highlightGw ?? stats?.lastCompletedGw ?? null;
-  const legacyRoundUpVisible =
-    !(
-      typeof stats?.highlightGw === 'number' &&
-      typeof stats?.lastCompletedGw === 'number' &&
-      stats.highlightGw > stats.lastCompletedGw
-    );
   const showHeroRoundUp =
     !!resultsSheetGw &&
     !!onPressViewRoundUp &&
-    headlineGw != null &&
     (statsGwCompletion
       ? isGwFullyCompleteForStatsRoundUp({
-          gw: headlineGw,
+          gw: resultsSheetGw,
           currentGw: statsGwCompletion.currentGw,
           probeHome: statsGwCompletion.probeHome,
           probeGw: statsGwCompletion.probeGw,
           lastCompletedGw: statsGwCompletion.lastCompletedGw,
           probeLoading: statsGwCompletion.probeLoading,
         })
-      : legacyRoundUpVisible);
+      : true);
+  const heroGwLive =
+    typeof heroGw === 'number' &&
+    !!statsGwCompletion &&
+    !isGwFullyCompleteForStatsRoundUp({
+      gw: heroGw,
+      currentGw: statsGwCompletion.currentGw,
+      probeHome: statsGwCompletion.probeHome,
+      probeGw: statsGwCompletion.probeGw,
+      lastCompletedGw: statsGwCompletion.lastCompletedGw,
+      probeLoading: statsGwCompletion.probeLoading,
+    });
+  const livePts = heroGwLive && typeof liveScore === 'number' && Number.isFinite(liveScore) ? liveScore : null;
 
   return (
     <View
@@ -72,12 +79,35 @@ export default function StatsHeroVisual({
       <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 20 }}>
         <View style={{ flexDirection: 'row' }}>
           <View style={{ flex: 1, paddingRight: 14 }}>
-            <TotlText variant="muted" style={{ fontSize: 13, fontWeight: '600' }}>
-              {heroGw ? `Gameweek ${heroGw}` : 'Last gameweek'}
-            </TotlText>
-            <TotlText style={{ marginTop: 8, fontSize: 19, lineHeight: 24, fontWeight: '900', color: t.color.text }}>
-              {topPlayersSentence(stats?.lastCompletedGwPercentile ?? null)}
-            </TotlText>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              {heroGwLive ? (
+                <View
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                  style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }}
+                />
+              ) : null}
+              <TotlText variant="muted" style={{ fontSize: 13, fontWeight: '600' }}>
+                {heroGw ? `Gameweek ${heroGw}` : 'Last gameweek'}
+              </TotlText>
+            </View>
+            {livePts != null ? (
+              <View
+                style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}
+                accessibilityLabel={`Gameweek ${heroGw}, ${livePts} points, live`}
+              >
+                <TotlText style={{ fontSize: 40, lineHeight: 46, fontWeight: '900', color: t.color.text }}>
+                  {String(livePts)}
+                </TotlText>
+                <TotlText style={{ fontSize: 16, lineHeight: 22, fontWeight: '800', color: t.color.text, marginLeft: 6 }}>
+                  pts
+                </TotlText>
+              </View>
+            ) : (
+              <TotlText style={{ marginTop: 8, fontSize: 19, lineHeight: 24, fontWeight: '900', color: t.color.text }}>
+                {topPlayersSentence(stats?.lastCompletedGwPercentile ?? null)}
+              </TotlText>
+            )}
             {showHeroRoundUp ? (
               <Pressable
                 onPress={onPressViewRoundUp}

@@ -122,6 +122,8 @@ function StackCard({
   dismissProgress,
   onClose,
   onSwipeDismiss,
+  skipDecorativeAnimations = false,
+  useTintedShell = false,
 }: {
   card: PopupCardDescriptor;
   cardWidth: number;
@@ -137,6 +139,8 @@ function StackCard({
   dismissProgress: SharedValue<number>;
   onClose: () => void;
   onSwipeDismiss: () => void;
+  skipDecorativeAnimations?: boolean;
+  useTintedShell?: boolean;
 }) {
   const dragTranslateX = useSharedValue(0);
   const dragTranslateY = useSharedValue(0);
@@ -226,15 +230,17 @@ function StackCard({
   }, [baseRotationDeg, baseTranslateX, baseTranslateY, cardWidth, isClosing, isTopCard]);
 
   const isChampionKind = CHAMPION_CARD_KINDS.has(card.kind);
-  /** Stacked champion cards only show a tinted shell — full foil/SVG on every slot freezes the device. */
+  const isPersonalWinnerKind = card.kind === 'personalWinner';
+  /** Stacked foil cards only show a tinted shell — full SVG on every slot freezes the device. */
   const cardFace =
-    isTopCard || !isChampionKind ? (
+    isTopCard || (!isChampionKind && !useTintedShell) ? (
       <PopupInfoCard
         kind={card.kind}
         title={card.title}
         eventKey={card.eventKey}
         payload={card.payload}
         isTopCard={isTopCard}
+        skipDecorativeAnimations={skipDecorativeAnimations}
         onClose={isTopCard ? onClose : undefined}
         secondaryActionLabel={card.secondaryActionLabel}
         onSecondaryAction={card.onSecondaryAction}
@@ -245,7 +251,13 @@ function StackCard({
           flex: 1,
           borderRadius: 28,
           overflow: 'hidden',
-          backgroundColor: card.kind === 'championOverall' ? '#334155' : '#B45309',
+          backgroundColor: isPersonalWinnerKind
+            ? parsePersonalWinnerTypeFromEventKey(card.eventKey) === 'monthly'
+              ? '#4F46E5'
+              : '#EC4899'
+            : card.kind === 'championOverall'
+              ? '#334155'
+              : '#B45309',
         }}
       />
     );
@@ -291,6 +303,7 @@ export default function PopupCardStack({
   visible,
   initialShareCardId,
   closeStackOnShareClose = false,
+  skipConfetti = false,
   onDismissTop,
   onCloseAll,
 }: {
@@ -298,6 +311,7 @@ export default function PopupCardStack({
   visible: boolean;
   initialShareCardId?: string;
   closeStackOnShareClose?: boolean;
+  skipConfetti?: boolean;
   onDismissTop: () => void;
   onCloseAll: () => void;
 }) {
@@ -393,7 +407,7 @@ export default function PopupCardStack({
     ) {
       return;
     }
-    if (closingCardId === topCard.id || firedConfettiCardIdRef.current === topCard.id) return;
+    if (skipConfetti || closingCardId === topCard.id || firedConfettiCardIdRef.current === topCard.id) return;
     firedConfettiCardIdRef.current = topCard.id;
     const champion = topCard.kind === 'championMiniLeague' || topCard.kind === 'championOverall';
     // Let the card layout paint first — co-starting confetti with champion SVG foil freezes the UI.
@@ -415,7 +429,7 @@ export default function PopupCardStack({
     return () => {
       task.cancel();
     };
-  }, [closingCardId, topCard, visible]);
+  }, [closingCardId, skipConfetti, topCard, visible]);
 
   React.useEffect(() => {
     if (!confettiShot) return;
@@ -583,6 +597,10 @@ export default function PopupCardStack({
                     dismissProgress={dismissProgress}
                     onClose={dismissTop}
                     onSwipeDismiss={dismissTopAfterSwipe}
+                    skipDecorativeAnimations={skipConfetti}
+                    useTintedShell={
+                      skipConfetti && (CHAMPION_CARD_KINDS.has(card.kind) || card.kind === 'personalWinner')
+                    }
                   />
                 );
               })}
@@ -656,7 +674,7 @@ export default function PopupCardStack({
             <PopupCardShareTray card={shareCard} cardWidth={cardWidth} cardHeight={cardHeight} onClose={closeShareTray} />
           </View>
         ) : null}
-        {confettiShot ? (
+        {confettiShot && !skipConfetti ? (
           <View
             pointerEvents="none"
             style={[StyleSheet.absoluteFillObject, { zIndex: 1000, elevation: 1000, overflow: 'hidden' }]}
