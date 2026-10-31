@@ -39,6 +39,7 @@ export declare const tokens: {
         readonly regular: "Gramatika-Regular";
         readonly medium: "Gramatika-Medium";
         readonly bold: "Gramatika-Bold";
+        readonly black: "GramatikaTrial-Black";
         readonly mono: "PressStart2P-Regular";
     };
 };
