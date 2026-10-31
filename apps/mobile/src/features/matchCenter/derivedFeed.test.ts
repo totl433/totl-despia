@@ -123,6 +123,26 @@ describe('people lookup', () => {
   });
 });
 
+describe('Players play cards', () => {
+  const kinds = (nowIso: string, mine: Record<string, unknown>) =>
+    playersStackItems({
+      nowMs: Date.parse(nowIso),
+      userId: 'me',
+      scores: { me: mine } as any,
+      people: { me: { id: 'me', name: 'Me', avatarUrl: null } },
+    }).map((item) => item.kind);
+
+  it('shows Play today and Play now until you have played', () => {
+    expect(kinds('2026-10-24T21:00:00Z', {})).toEqual(expect.arrayContaining(['players-ready', 'players-nudge']));
+  });
+
+  it('hides both once today has an attempt, even one still in progress', () => {
+    const played = kinds('2026-10-24T21:00:00Z', { '2026-10-24': { correct: 2, total: 10, finished: false } });
+    expect(played).not.toContain('players-ready');
+    expect(played).not.toContain('players-nudge');
+  });
+});
+
 describe('mini league events', () => {
   it('posts when every member has predicted, before the deadline', () => {
     const items = everyonePredictedItems({
