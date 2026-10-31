@@ -58,6 +58,7 @@ import {
   PlayersFeedCardHeader,
   PlayersWinnerGrid,
 } from '../components/gameCentre/PlayersFeedCard';
+import { INSIGHTS_FEED_CARD, InsightsFeedBackground, InsightsFeedCardHeader } from '../components/gameCentre/InsightsFeedCard';
 import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
 import GameweekAdvanceTransition from '../components/transitions/GameweekAdvanceTransition';
@@ -70,7 +71,7 @@ import {
   formatHeaderScoreLabel,
 } from '../lib/headerLiveScore';
 import EmojiGlyph, { hasEmojiBitmap } from '../features/matchCenter/EmojiGlyph';
-import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, isPlayersFeedItem } from '../features/gameCentre/cards';
+import { gameCentreCardHeader, gameCentreCardType, gameCentreReactionChips, isInsightsFeedItem, isPlayersFeedItem } from '../features/gameCentre/cards';
 import { PLAYERS_FONTS } from '../components/retroPlayers/playersTheme';
 import GameCentreCard, {
   GameCentreAuthorHeader,
@@ -580,9 +581,12 @@ function FeedCardView({
   const fixturesCard = item.kind === 'fixtures' && !!item.fixtureRows?.length;
   const playersCard = isPlayersFeedItem(item);
   const playersButton = playersCard && !!item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge');
-  const onDark = youWin || item.kind === 'round-up' || fixturesCard || playersCard;
+  const insightsCard = isInsightsFeedItem(item);
+  const onDark = youWin || item.kind === 'round-up' || fixturesCard || playersCard || insightsCard;
   const shell = playersCard
     ? { backgroundColor: PLAYERS_FEED_CARD.background }
+    : insightsCard
+    ? { backgroundColor: INSIGHTS_FEED_CARD.background }
     : fixturesCard
     ? { backgroundColor: FIXTURES_CARD.background }
     : youWin
@@ -639,7 +643,8 @@ function FeedCardView({
 
   const header = gameCentreCardHeader(item);
   const content: React.ReactNode[] = [];
-  if (header.body) {
+  // Insights cards carry their line in the header (Figma 415:92300).
+  if (header.body && !insightsCard) {
     content.push(
       <MixedText key="body" style={{ fontSize: 16, lineHeight: 21, marginBottom: 12, color: onDark ? 'rgba(255,255,255,0.88)' : t.color.text }}>
         {header.body}
@@ -783,11 +788,13 @@ function FeedCardView({
   const card = (
     <GameCentreCard
       backgroundColor={shell.backgroundColor}
-      background={playersCard ? <PlayersFeedBackground /> : undefined}
+      background={playersCard ? <PlayersFeedBackground /> : insightsCard ? <InsightsFeedBackground /> : undefined}
       gap={playersCard ? 24 : undefined}
       paddingBottom={playersCard ? (playersButton ? 0 : 16) : undefined}
       header={
-        playersCard ? (
+        insightsCard ? (
+          <InsightsFeedCardHeader title={header.title} body={header.subtitle ?? header.body} />
+        ) : playersCard ? (
           // Ready and nudge cards carry their message in the body; winners cards in the title.
           <PlayersFeedCardHeader line={(playersButton ? item.body : item.title) ?? ''} />
         ) : (
@@ -812,7 +819,7 @@ function FeedCardView({
         )
       }
       footer={
-        playersCard ? (
+        insightsCard ? null : playersCard ? (
           playersButton ? (
             <GameCentreCardButton tone="white" label={item.link!.label} onPress={() => onOpen(item)} />
           ) : canReact ? (
