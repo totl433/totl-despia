@@ -145,6 +145,9 @@ describe('Players winners cards', () => {
     const item = daily(Object.fromEntries(names.map((name) => [name, score(7)])), names);
     expect(item?.title).toBe("Yesterday's winners");
     expect(item?.faces).toHaveLength(5);
+  });
+});
+
 describe('Players play cards', () => {
   const kinds = (nowIso: string, mine: Record<string, unknown>) =>
     playersStackItems({
