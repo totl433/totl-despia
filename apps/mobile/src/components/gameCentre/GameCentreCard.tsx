@@ -334,17 +334,20 @@ function Emoji({ emoji, size }: { emoji: string; size: number }) {
 /**
  * Reaction chips (Figma 250:41941). Your own reaction is marked in brand green.
  * Two rows at most for the first release; `onMore` adds the + chip.
+ * On dark cards (The Players) your chip keeps its solid fill; the green tint would show the card through.
  */
 export function GameCentreReactionBar({
   chips,
   onReact,
   onMore,
   moreOpen = false,
+  onDark = false,
 }: {
   chips: ReactionSummary[];
   onReact: (emoji: string) => void;
   onMore?: () => void;
   moreOpen?: boolean;
+  onDark?: boolean;
 }) {
   const t = useTokens();
   const [width, setWidth] = React.useState(0);
@@ -385,7 +388,7 @@ export function GameCentreReactionBar({
               gap: 4,
               paddingHorizontal: 6,
               borderRadius: 6,
-              backgroundColor: mine ? 'rgba(28,131,118,0.14)' : INK.chip,
+              backgroundColor: mine && !onDark ? 'rgba(28,131,118,0.14)' : INK.chip,
               borderWidth: mine ? 1 : 0,
               borderColor: t.color.brand,
               opacity: pressed ? 0.7 : 1,
