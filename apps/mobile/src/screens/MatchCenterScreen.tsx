@@ -821,6 +821,7 @@ function FeedCardView({
               chips={gameCentreReactionChips(reactions)}
               onReact={(emoji) => onReact?.(emoji)}
               onMore={social ? () => social.onMore(item) : undefined}
+              onDark
             />
           ) : null
         ) : item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge' || item.kind === 'score-sheet') ? (
