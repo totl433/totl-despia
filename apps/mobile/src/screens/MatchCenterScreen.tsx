@@ -789,7 +789,7 @@ function FeedCardView({
       header={
         playersCard ? (
           // Ready and nudge cards carry their message in the body; winners cards in the title.
-          <PlayersFeedCardHeader line={(playersButton ? item.body : item.title) ?? ''} stamp={item.stamp || item.timeLabel} />
+          <PlayersFeedCardHeader line={(playersButton ? item.body : item.title) ?? ''} />
         ) : (
         <GameCentreCardHeader
           title={header.title}

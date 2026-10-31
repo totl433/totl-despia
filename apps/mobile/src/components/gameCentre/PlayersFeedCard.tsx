@@ -16,7 +16,6 @@ export const PLAYERS_FEED_CARD = {
   /** The pattern's darkest green, shown until the image draws. */
   background: '#00241A',
   text: '#F7F6F6',
-  secondary: 'rgba(247,246,246,0.7)',
   lime: '#E6FA81',
   tile: 'rgba(230,250,129,0.2)',
   avatar: '#19191C',
@@ -44,21 +43,13 @@ export function PlayersFeedBackground() {
   );
 }
 
-/**
- * THE PLAYERS lettering (the same artwork as the home card), the card's time on the right,
- * and one 16pt line under it.
- */
-export function PlayersFeedCardHeader({ line, stamp }: { line: string; stamp?: string | null }) {
+/** THE PLAYERS lettering (the same artwork as the home card) and one 16pt line under it. No time: Figma 413:82099. */
+export function PlayersFeedCardHeader({ line }: { line: string }) {
   return (
     <View style={{ paddingHorizontal: 16, gap: 8 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <View accessible accessibilityRole="header" accessibilityLabel="The Players" style={{ flexDirection: 'row', gap: 12 }}>
-          <SvgUri uri={WORD_THE} width={50.3632} height={30.5087} />
-          <SvgUri uri={WORD_PLAYERS} width={128.001} height={30.5087} />
-        </View>
-        {stamp ? (
-          <TotlText style={{ marginTop: 4, fontSize: 14, lineHeight: 17, letterSpacing: 0.14, color: PLAYERS_FEED_CARD.secondary }}>{stamp}</TotlText>
-        ) : null}
+      <View accessible accessibilityRole="header" accessibilityLabel="The Players" style={{ flexDirection: 'row', gap: 12 }}>
+        <SvgUri uri={WORD_THE} width={50.3632} height={30.5087} />
+        <SvgUri uri={WORD_PLAYERS} width={128.001} height={30.5087} />
       </View>
       <TotlText style={{ fontFamily: PLAYERS_FONTS.body, fontSize: 16, lineHeight: 19, letterSpacing: 0.16, color: PLAYERS_FEED_CARD.text }}>
         {line}
@@ -67,11 +58,8 @@ export function PlayersFeedCardHeader({ line, stamp }: { line: string; stamp?: s
   );
 }
 
-/** Up to three across; four sit two by two so no one is left alone on a row. */
-export function playersWinnerColumns(count: number): number {
-  if (count <= 3) return Math.max(1, count);
-  return count === 4 ? 2 : 3;
-}
+/** Tiles are always a third of the card wide (Figma 413:82099), so one winner sits on the left. */
+const WINNER_COLUMNS = 3;
 
 function WinnerAvatar({ face }: { face: FeedFace }) {
   const letter = face.name.trim().charAt(0).toUpperCase() || '?';
@@ -98,7 +86,7 @@ function WinnerAvatar({ face }: { face: FeedFace }) {
 
 /** Everyone who won (Figma 413:82125): a lime tile each, avatar over name, in as many rows as it takes. */
 export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
-  const columns = playersWinnerColumns(faces.length);
+  const columns = WINNER_COLUMNS;
   const rows: FeedFace[][] = [];
   for (let i = 0; i < faces.length; i += columns) rows.push(faces.slice(i, i + columns));
   return (
@@ -138,7 +126,7 @@ export function PlayersWinnerGrid({ faces }: { faces: FeedFace[] }) {
               </TotlText>
             </View>
           ))}
-          {/* Keeps a short last row's tiles the same width as the rows above. */}
+          {/* Keeps a short row's tiles a third wide, like the full rows. */}
           {Array.from({ length: columns - row.length }, (_, i) => (
             <View key={`gap-${i}`} style={{ flex: 1 }} />
           ))}
