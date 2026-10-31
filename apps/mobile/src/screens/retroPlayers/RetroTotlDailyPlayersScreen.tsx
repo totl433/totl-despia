@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -117,6 +118,11 @@ function optionFromSwipe(dx: number, dy: number, options: PlayersClubOption[]): 
  */
 export default function RetroTotlDailyPlayersScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyPlayersStackParamList>>();
+  const queryClient = useQueryClient();
+  /** The feed's copy of everyone's scores: refreshed once this game is saved, so Play today / Play now go. */
+  const refreshFeedScores = React.useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['match-center-derived-extras'] });
+  }, [queryClient]);
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
 
@@ -267,8 +273,9 @@ export default function RetroTotlDailyPlayersScreen() {
       if (!finished) return;
       playedRef.current = true;
       setPlayedToday(true);
+      refreshFeedScores();
     });
-  }, [cards.length, outcomes]);
+  }, [cards.length, outcomes, refreshFeedScores]);
 
   // Result cards come first. The game waits briefly for them, never longer than RESULTS_WAIT_MS.
   React.useEffect(() => {
@@ -557,6 +564,7 @@ export default function RetroTotlDailyPlayersScreen() {
           startedDayRef.current = day;
           playedRef.current = true;
           void startPlayersDay(day, cardsLenRef.current).then((started) => {
+            refreshFeedScores();
             if (started || startedDayRef.current !== day) return;
             // Already played today on another device: back to the intro.
             setPlayedToday(true);
@@ -580,7 +588,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
       if (p === 'reveal') advanceFromReveal();
     },
-    [acknowledgeResult, advanceFromReveal, commitPick, deal, dragX, dragY]
+    [acknowledgeResult, advanceFromReveal, commitPick, deal, dragX, dragY, refreshFeedScores]
   );
 
   const shareScore = React.useCallback(async () => {
