@@ -1772,7 +1772,7 @@ export default function MatchCenterScreen() {
     initial: board?.liveScores ?? [],
     fixtures: board?.fixtures ?? [],
   });
-  // Stored posts (behind EXPO_PUBLIC_GAME_CENTRE_POSTS). Until a gameweek has any, the
+  // Stored posts (EXPO_PUBLIC_GAME_CENTRE_POSTS, on unless a build sets it to 'off'). Until a gameweek has any, the
   // feed keeps building match cards from live scores as before.
   const postsOn = env.EXPO_PUBLIC_GAME_CENTRE_POSTS === 'on' && mode === 'live';
   const { posts: storedPosts } = useGameCentrePosts(typeof gw === 'number' ? gw : null, postsOn);

@@ -9,8 +9,9 @@ const EnvSchema = z.object({
   EXPO_PUBLIC_SITE_URL: z.string().url().default('https://playtotl.com'),
   // Optional OneSignal App ID for native push integration.
   EXPO_PUBLIC_ONESIGNAL_APP_ID: z.string().min(1).optional(),
-  // 'on' reads the Game Centre feed's match events from stored posts (game_centre_posts).
-  EXPO_PUBLIC_GAME_CENTRE_POSTS: z.enum(['on', 'off']).catch('off').default('off'),
+  // Stored Game Centre posts (game_centre_posts): comments, any-emoji reactions and the pinned
+  // gameweek card. On in every build, as the cards are designed; set 'off' only to switch them off.
+  EXPO_PUBLIC_GAME_CENTRE_POSTS: z.enum(['on', 'off']).catch('on').default('on'),
 });
 
 export type MobileEnv = z.infer<typeof EnvSchema>;
