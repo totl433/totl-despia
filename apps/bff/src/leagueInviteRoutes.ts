@@ -21,9 +21,16 @@ import {
 } from './leagueInvites.js';
 import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 
-const InviteBodySchema = z.object({
-  username: z.string().trim().min(3).max(18),
-});
+/**
+ * Who to invite: the player's id (current app), or their display name (older builds).
+ * Names set before the 18-character limit can be longer, so allow up to 64 here.
+ */
+const InviteBodySchema = z
+  .object({
+    userId: z.string().uuid().optional(),
+    username: z.string().trim().min(1).max(64).optional(),
+  })
+  .refine((body) => !!body.userId || !!body.username, { message: 'Choose a player to invite.' });
 
 const InviteIdParamsSchema = z.object({
   inviteId: z.string().min(1),
@@ -139,9 +146,12 @@ export function registerLeagueInviteRoutes(app: FastifyInstance, env: Env) {
     await requireUser(req, createSupabaseClient(env));
     const inviterId = (req as any).userId as string;
     const { leagueId } = LeagueIdParamsSchema.parse((req as any).params);
-    const { username } = InviteBodySchema.parse((req as any).body ?? {});
+    const parsed = InviteBodySchema.safeParse((req as any).body ?? {});
+    if (!parsed.success) {
+      throw Object.assign(new Error(parsed.error.issues[0]?.message ?? 'Choose a player to invite.'), { statusCode: 400 });
+    }
+    const { userId: inviteeIdFromApp, username } = parsed.data;
     const admin = createSupabaseAdminClient(env);
-    const name = normalizeUsername(username);
 
     const { data: membership } = await admin
       .from('league_members')
@@ -165,9 +175,20 @@ export function registerLeagueInviteRoutes(app: FastifyInstance, env: Env) {
       throw Object.assign(new Error('This mini league is full.'), { statusCode: 409 });
     }
 
-    const { data: matches } = await admin.from('users').select('id, name').ilike('name', name).limit(2);
-    const invitee = (matches ?? []).find((row: { name?: string | null }) => normalizeUsername(String(row.name ?? '')) === name);
+    let invitee: { id: string; name: string | null } | null = null;
+    if (inviteeIdFromApp) {
+      const { data } = await admin.from('users').select('id, name').eq('id', inviteeIdFromApp).maybeSingle();
+      invitee = data ? { id: String(data.id), name: typeof data.name === 'string' ? data.name : null } : null;
+    } else {
+      const wanted = normalizeUsername(username ?? '');
+      // ilike treats % and _ as wildcards; escape them so a name only matches itself.
+      const pattern = wanted.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      const { data: matches } = await admin.from('users').select('id, name').ilike('name', pattern).limit(2);
+      const row = (matches ?? []).find((m: { name?: string | null }) => normalizeUsername(String(m.name ?? '')) === wanted);
+      invitee = row ? { id: String(row.id), name: typeof row.name === 'string' ? row.name : null } : null;
+    }
     if (!invitee?.id) throw Object.assign(new Error('No player has that username.'), { statusCode: 404 });
+    const name = normalizeUsername(invitee.name ?? username ?? '') || 'That player';
     if (String(invitee.id) === inviterId) {
       throw Object.assign(new Error('You are already in this mini league.'), { statusCode: 409 });
     }
