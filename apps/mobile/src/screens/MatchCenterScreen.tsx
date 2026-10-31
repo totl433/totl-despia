@@ -51,7 +51,7 @@ import { gameweekPin, getGameweekStateFromSnapshot, predictionsDeadlineMs, type 
 import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard';
 import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
-import { FIXTURES_CARD, FixtureRows, FixturesCardIcon, fixturesKickerStyle } from '../components/gameCentre/GameCentreFixtures';
+import { FIXTURES_CARD, FixtureRows, FixturesCardHeader } from '../components/gameCentre/GameCentreFixtures';
 import {
   PLAYERS_FEED_CARD,
   PlayersFeedBackground,
@@ -673,7 +673,12 @@ function FeedCardView({
     );
   }
   if (fixturesCard) {
-    content.push(<FixtureRows key="fixtures" rows={item.fixtureRows!} />);
+    // Figma 390:88272: 28pt from the last game to the reactions; the card's gap gives 16.
+    content.push(
+      <View key="fixtures" style={{ marginBottom: 12 }}>
+        <FixtureRows rows={item.fixtureRows!} />
+      </View>
+    );
   } else if (item.fixtureLines?.length) {
     content.push(
       <View key="fixtures" style={{ gap: 6 }}>
@@ -789,11 +794,13 @@ function FeedCardView({
     <GameCentreCard
       backgroundColor={shell.backgroundColor}
       background={playersCard ? <PlayersFeedBackground /> : insightsCard ? <InsightsFeedBackground /> : undefined}
-      gap={playersCard ? 24 : undefined}
+      gap={playersCard ? 24 : fixturesCard ? 16 : undefined}
       paddingBottom={playersCard ? (playersButton ? 0 : 16) : undefined}
       header={
         insightsCard ? (
           <InsightsFeedCardHeader title={header.title} body={header.subtitle ?? header.body} />
+        ) : fixturesCard ? (
+          <FixturesCardHeader season={item.season ?? ''} title={header.title} line={header.subtitle} />
         ) : playersCard ? (
           // Ready and nudge cards carry their message in the body; winners cards in the title.
           <PlayersFeedCardHeader line={(playersButton ? item.body : item.title) ?? ''} />
@@ -801,11 +808,9 @@ function FeedCardView({
         <GameCentreCardHeader
           title={header.title}
           subtitle={header.subtitle}
-          stamp={item.kind === 'waiting' || fixturesCard ? null : item.stamp || item.timeLabel}
-          kicker={isPlayersFeedItem(item) ? 'THE PLAYERS' : fixturesCard ? item.season : undefined}
+          stamp={item.kind === 'waiting' ? null : item.stamp || item.timeLabel}
+          kicker={isPlayersFeedItem(item) ? 'THE PLAYERS' : undefined}
           kickerFontFamily={isPlayersFeedItem(item) ? PLAYERS_FONTS.display : undefined}
-          kickerStyle={fixturesCard ? fixturesKickerStyle : undefined}
-          accessory={fixturesCard ? <FixturesCardIcon /> : undefined}
           leading={item.id.startsWith('admin:') ? <HeaderTotlLogo width={26} height={23} /> : undefined}
           onDark={onDark}
           onPress={

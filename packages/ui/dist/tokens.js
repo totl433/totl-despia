@@ -46,6 +46,8 @@ export const tokens = {
         regular: 'Gramatika-Regular',
         medium: 'Gramatika-Medium',
         bold: 'Gramatika-Bold',
+        // Trial cut: digits and letters only (no ':' or '%'), so use it for short labels.
+        black: 'GramatikaTrial-Black',
         mono: 'PressStart2P-Regular',
     },
 };

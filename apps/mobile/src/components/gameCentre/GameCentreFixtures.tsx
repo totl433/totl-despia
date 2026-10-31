@@ -2,11 +2,12 @@ import React from 'react';
 import { Image, View } from 'react-native';
 import { Asset } from 'expo-asset';
 import { SvgUri } from 'react-native-svg';
-import { TotlText } from '@totl/ui';
+import { TotlText, tokens } from '@totl/ui';
 
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import type { FeedFixtureRow } from '../../features/matchCenter/feed';
 import { groupFixturesByDay } from '../../features/matchCenter/fixtureDays';
+import { FeedFeatureHeader } from './FeedFeatureHeader';
 
 const CLIPBOARD = Asset.fromModule(require('../../../assets/icons/fixtures-clipboard.svg')).uri;
 
@@ -19,24 +20,20 @@ export const FIXTURES_CARD = {
   vs: '#09443E',
 };
 
-/** The season above the title (Figma 390:88276): 12pt bold, upper case, lime. */
-export const fixturesKickerStyle = {
-  fontFamily: 'Gramatika-Bold',
-  fontSize: 12,
-  lineHeight: 14,
-  letterSpacing: 0,
-  textTransform: 'uppercase' as const,
-  color: FIXTURES_CARD.kicker,
-  // Figma puts 16pt between the season and the title; the header adds 8.
-  marginBottom: 8,
-};
-
-/** Top right of the fixtures card (Figma 390:90210), sitting on the season line without pushing it down. */
-export function FixturesCardIcon() {
+/** Season eyebrow, title and line, with the clipboard badge (Figma 418:120014, the same header as Insights). */
+export function FixturesCardHeader({ season, title, line }: { season: string; title: string; line?: string | null }) {
   return (
-    <View style={{ height: 14, marginTop: -4, overflow: 'visible' }}>
-      <SvgUri uri={CLIPBOARD} width={32} height={32} accessibilityLabel="Fixtures" />
-    </View>
+    <FeedFeatureHeader
+      eyebrow={season}
+      eyebrowColor={FIXTURES_CARD.kicker}
+      title={title}
+      line={line}
+      // Figma has 12pt between title and line here, against 16pt on Insights.
+      lineGap={4}
+      textColor={FIXTURES_CARD.text}
+      // The artwork carries its own tinted circle (Figma 390:90210).
+      badge={<SvgUri uri={CLIPBOARD} width={32} height={32} />}
+    />
   );
 }
 
@@ -46,7 +43,7 @@ function Crest({ code }: { code: string }) {
   return <Image source={badge} style={{ width: 24, height: 24 }} resizeMode="contain" />;
 }
 
-const teamText = { fontFamily: 'Gramatika-Medium', fontSize: 12, lineHeight: 14, color: FIXTURES_CARD.text };
+const teamText = { fontFamily: tokens.font.medium, fontSize: 12, lineHeight: 14, color: FIXTURES_CARD.text };
 
 function Side({ code, name, align }: { code: string; name: string; align: 'home' | 'away' }) {
   const home = align === 'home';
@@ -76,15 +73,15 @@ function Side({ code, name, align }: { code: string; name: string; align: 'home'
 
 /**
  * Every game in the gameweek (Figma 390:88317), grouped by day. Home club in a pill on the left,
- * the kick-off where the Figma has VS, away club mirrored on the right. 4pt
- * between rows, 8pt under a day's heading and 16pt before the next day.
+ * the kick-off in the middle, away club mirrored on the right. 4pt between rows, a lime day
+ * heading over each day and 12pt before the next.
  */
 export function FixtureRows({ rows }: { rows: FeedFixtureRow[] }) {
   const days = React.useMemo(() => groupFixturesByDay(rows), [rows]);
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: 12 }}>
       {days.map((day) => (
-        <View key={day.key} style={{ gap: 8 }}>
+        <View key={day.key} style={{ gap: 6 }}>
           <TotlText accessibilityRole="header" style={dayText}>
             {day.label}
           </TotlText>
@@ -98,7 +95,7 @@ export function FixtureRows({ rows }: { rows: FeedFixtureRow[] }) {
               >
                 <Side code={row.homeCode} name={row.homeName} align="home" />
                 <View style={timeTile}>
-                  <TotlText style={timeText}>{row.time}</TotlText>
+                  <KickOff time={row.time} />
                 </View>
                 <Side code={row.awayCode} name={row.awayName} align="away" />
               </View>
@@ -110,10 +107,29 @@ export function FixtureRows({ rows }: { rows: FeedFixtureRow[] }) {
   );
 }
 
-/** Quieter than the lime season line, so the card reads season, title, day, games. */
-const dayText = { fontFamily: 'Gramatika-Medium', fontSize: 12, lineHeight: 14, color: 'rgba(247,246,246,0.7)' };
+/**
+ * The kick-off in Gramatika Black, dark green (Figma 418:120033). The trial Black has no colon,
+ * so the colon alone is set in Bold; otherwise iOS would draw it in the system font.
+ */
+function KickOff({ time }: { time: string }) {
+  const [hours, minutes] = time.split(':');
+  return (
+    <TotlText style={timeText}>
+      {minutes == null ? (
+        time
+      ) : (
+        <>
+          {hours}
+          <TotlText style={{ fontFamily: tokens.font.bold }}>:</TotlText>
+          {minutes}
+        </>
+      )}
+    </TotlText>
+  );
+}
 
-/** The kick-off sits where the Figma's VS is, in the day heading's colour, with no tile. */
+const dayText = { fontFamily: tokens.font.medium, fontSize: 12, lineHeight: 14, color: FIXTURES_CARD.kicker };
+
 const timeTile = {
   width: 45,
   height: 36,
@@ -121,9 +137,9 @@ const timeTile = {
   justifyContent: 'center' as const,
 };
 const timeText = {
-  fontFamily: 'Gramatika-Medium',
+  fontFamily: tokens.font.black,
   fontSize: 12,
   lineHeight: 14,
-  color: dayText.color,
+  color: FIXTURES_CARD.vs,
   fontVariant: ['tabular-nums' as const],
 };
