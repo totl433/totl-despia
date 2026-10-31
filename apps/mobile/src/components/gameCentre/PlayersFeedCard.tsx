@@ -46,7 +46,8 @@ export function PlayersFeedBackground() {
 /** THE PLAYERS lettering (the same artwork as the home card) and one 16pt line under it. No time: Figma 413:82099. */
 export function PlayersFeedCardHeader({ line }: { line: string }) {
   return (
-    <View style={{ paddingHorizontal: 16, gap: 8 }}>
+    // 12pt between the lettering and the line (Figma 413:82100).
+    <View style={{ paddingHorizontal: 16, gap: 12 }}>
       <View accessible accessibilityRole="header" accessibilityLabel="The Players" style={{ flexDirection: 'row', gap: 12 }}>
         <SvgUri uri={WORD_THE} width={50.3632} height={30.5087} />
         <SvgUri uri={WORD_PLAYERS} width={128.001} height={30.5087} />

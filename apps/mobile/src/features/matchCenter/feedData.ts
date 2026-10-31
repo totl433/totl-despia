@@ -392,7 +392,8 @@ function topScoreIds(scores: Record<string, PlayersScoreStore>, scoreOf: (store:
     .filter((row): row is { id: string; score: number } => row != null);
   if (!rows.length) return [];
   const best = Math.max(...rows.map((row) => row.score));
-  return rows.filter((row) => row.score === best).map((row) => row.id).slice(0, 5);
+  // Every winner: the Players winners cards show them all.
+  return rows.filter((row) => row.score === best).map((row) => row.id);
 }
 
 export async function fetchDerivedFeedExtras(input: {
