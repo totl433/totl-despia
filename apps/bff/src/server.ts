@@ -16,6 +16,7 @@ import {
   type Pick,
 } from '@totl/domain';
 
+import { liveScoresForFixtures } from './liveScoreMatch.js';
 import { loadEnv } from './env.js';
 import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
 import { requireUser } from './auth.js';
@@ -32,6 +33,9 @@ import {
 } from './profile.js';
 import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reporting.js';
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
+import { registerLeagueInviteRoutes } from './leagueInviteRoutes.js';
+import { registerMatchCenterBroadcastRoutes } from './matchCenterBroadcast.js';
+import { mergeProtectedPreferences, publicPreferences } from './leagueInvites.js';
 import { notifyFinalSubmissionForLeagues } from './finalSubmissionNotifications.js';
 import {
   applySeasonFilter,
@@ -236,6 +240,7 @@ app.get('/v1/home', async (req) => {
     if (parsed.success) liveScores.push(parsed.data);
     else req.log.warn({ issues: parsed.error.issues }, 'dropping invalid live score row');
   }
+  const liveScoresThisWeek = liveScoresForFixtures(fixtures, liveScores);
 
   const gwResults: HomeSnapshot['gwResults'] = [];
   for (const r of (gwResultsRes.data ?? []) as unknown[]) {
@@ -249,7 +254,7 @@ app.get('/v1/home', async (req) => {
     viewingGw,
     fixtures,
     userPicks,
-    liveScores,
+    liveScores: liveScoresThisWeek,
     gwResults,
     hasSubmittedViewingGw: !!submissionRes.data?.submitted_at,
   };
@@ -590,6 +595,92 @@ app.post('/v1/chat/reports', async (req) => {
     });
   } catch (error) {
     req.log.error({ err: error, reportId: reportInsertRes.data.id }, 'chat report email failed after report was stored');
+    captureException(error);
+  }
+
+  return { ok: true };
+});
+
+const GameCentreCommentReportBodySchema = z.object({
+  commentId: z.string().uuid(),
+  reason: z.string().trim().min(1).max(2000),
+});
+
+// Public comments on Game Centre cards: same flow as chat reports. The report is stored,
+// then emailed to the team, who take the comment down by setting removed_at.
+app.post('/v1/game-centre/comment-reports', async (req) => {
+  await requireUser(req, supabase);
+  const { userId, supa } = getAuthedSupa(req as any);
+  const reporterEmail = ((req as any).userEmail as string | null | undefined) ?? null;
+  const body = GameCentreCommentReportBodySchema.parse((req as any).body);
+
+  const { data: comment, error: commentError } = await (supa as any)
+    .from('game_centre_comments')
+    .select('id, card_id, user_id, content, created_at')
+    .eq('id', body.commentId)
+    .maybeSingle();
+  if (commentError) throw commentError;
+  if (!comment) {
+    throw Object.assign(new Error('Reported comment not found'), { statusCode: 404 });
+  }
+
+  const authorId = String(comment.user_id);
+  const [usersRes, reportRes] = await Promise.all([
+    (supa as any).from('users').select('id, name').in('id', [userId, authorId]),
+    (supa as any)
+      .from('game_centre_comment_reports')
+      .insert({
+        reporter_user_id: userId,
+        reporter_email: reporterEmail,
+        comment_id: String(comment.id),
+        card_id: String(comment.card_id),
+        reason: body.reason,
+        reported_comment_content: String(comment.content ?? ''),
+        reported_comment_user_id: authorId,
+        status: 'submitted',
+      })
+      .select('id, created_at')
+      .single(),
+  ]);
+  if (usersRes.error) throw usersRes.error;
+  if (reportRes.error) throw reportRes.error;
+
+  const nameOf = new Map<string, string>(
+    ((usersRes.data ?? []) as Array<{ id: string; name: string | null }>).map((row) => [String(row.id), String(row.name ?? '')])
+  );
+  const reportId = String(reportRes.data.id);
+  try {
+    await sendChatMessageReportEmail({
+      env,
+      subject: `[TOTL] Game Centre comment report ${reportId}`,
+      text: [
+        'A public Game Centre comment has been reported in TOTL.',
+        '',
+        `Report ID: ${reportId}`,
+        `Reported at: ${String(reportRes.data.created_at)}`,
+        '',
+        'Reporter',
+        `- User ID: ${userId}`,
+        `- Name: ${nameOf.get(userId) || 'Unknown'}`,
+        `- Email: ${reporterEmail ?? 'Unknown'}`,
+        '',
+        'Reported comment',
+        `- Comment ID: ${String(comment.id)}`,
+        `- Card: ${String(comment.card_id)}`,
+        `- Created at: ${String(comment.created_at)}`,
+        `- Author user ID: ${authorId}`,
+        `- Author name: ${nameOf.get(authorId) || 'Unknown'}`,
+        `- Content: ${String(comment.content ?? '') || '(empty comment)'}`,
+        '',
+        'Reason',
+        body.reason,
+        '',
+        'To take it down for everyone, in Supabase:',
+        `update game_centre_comments set removed_at = now(), removed_reason = 'reported' where id = '${String(comment.id)}';`,
+      ].join('\n'),
+    });
+  } catch (error) {
+    req.log.error({ err: error, reportId }, 'game centre comment report email failed after report was stored');
     captureException(error);
   }
 
@@ -1095,15 +1186,15 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
     if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
   });
 
-  (liveScoresRes.data ?? []).forEach((ls: any) => {
+  liveScoresForFixtures(fixtures, liveScoresRes.data ?? []).forEach((ls: any) => {
     const status = ls.status;
     const started = status === 'IN_PLAY' || status === 'PAUSED' || status === 'FINISHED';
     if (!started) return;
     const fixtureIndex =
-      typeof ls.fixture_index === 'number'
-        ? ls.fixture_index
-        : typeof ls.api_match_id === 'number'
-          ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+      typeof ls.api_match_id === 'number'
+        ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
+        : typeof ls.fixture_index === 'number'
+          ? ls.fixture_index
           : undefined;
     if (fixtureIndex === undefined) return;
     const hs = Number(ls.home_score ?? 0);
@@ -1196,7 +1287,7 @@ app.get('/v1/notification-prefs', async (req) => {
   if (error) throw error;
 
   return {
-    preferences: data?.preferences ?? {},
+    preferences: publicPreferences(data?.preferences),
     current_viewing_gw: data?.current_viewing_gw ?? null,
   };
 });
@@ -1217,10 +1308,7 @@ app.put('/v1/notification-prefs', async (req) => {
     .eq('user_id', userId)
     .maybeSingle();
 
-  const mergedPrefs = {
-    ...(existing?.preferences ?? {}),
-    ...(body.preferences ?? {}),
-  };
+  const mergedPrefs = mergeProtectedPreferences(existing?.preferences, body.preferences);
 
   const { error } = await (supa as any)
     .from('user_notification_preferences')
@@ -1237,6 +1325,8 @@ app.put('/v1/notification-prefs', async (req) => {
 });
 
 registerBrandedLeaderboardRoutes(app, env);
+registerLeagueInviteRoutes(app, env);
+registerMatchCenterBroadcastRoutes(app, env);
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 

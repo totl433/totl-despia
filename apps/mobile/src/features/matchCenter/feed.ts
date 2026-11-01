@@ -1,18 +1,29 @@
 import type { Fixture, LiveScore, Pick } from '@totl/domain';
 
 import { buildGoalScorerLines, parseGoalEvents } from '../../lib/goalEvents';
-import { formatLocalTimeHHmm } from '../../lib/dateTime';
+import { resolveLiveScore } from '../../lib/liveScoreRows';
+import type { GameCentrePost } from './posts';
+import { formatCountdownShort, formatLocalTimeHHmm } from '../../lib/dateTime';
 import { fixtureKickoffTimeLabel } from '../../lib/homeFixtureUi';
 import { resolveLeagueAvatarUri } from '../../lib/leagueAvatars';
 import { normalizeTeamCode } from '../../lib/teamColors';
-import { getMediumName } from '../../../../../src/lib/teamNames';
+import { areTeamNamesSimilar, getMediumName } from '../../../../../src/lib/teamNames';
+import {
+  kickoffCopy,
+  liveCopy,
+  openerCopy,
+  pickCopy,
+  startingSoonCopy,
+  type CopyVersion,
+  type LiveCopyMoment,
+} from './copyBank';
 
 const SAMPLE_EASY_AVATAR = resolveLeagueAvatarUri('ML-avatar-1.png');
 const SAMPLE_FC_AVATAR = resolveLeagueAvatarUri('ML-avatar-3.png');
 
 export type FeedLink = {
   label: string;
-  to: 'league' | 'overall' | 'home' | 'chat';
+  to: 'league' | 'overall' | 'home' | 'chat' | 'leagues' | 'gw' | 'monthly' | 'players' | 'score-sheet';
   leagueId?: string;
   leagueName?: string;
 };
@@ -31,7 +42,13 @@ export type FeedKind =
   | 'rank'
   | 'overall'
   | 'round-up'
-  | 'message';
+  | 'message'
+  | 'fixtures'
+  | 'score-sheet'
+  | 'shout'
+  | 'players-ready'
+  | 'players-nudge'
+  | 'league-event';
 
 /** Cards that take global Fire / Cool / Melt reactions in Match Center. */
 export const MATCH_CENTER_REACTABLE_KINDS: ReadonlySet<FeedKind> = new Set([
@@ -42,6 +59,8 @@ export const MATCH_CENTER_REACTABLE_KINDS: ReadonlySet<FeedKind> = new Set([
   'lineup',
   'xi',
   'ruled-out',
+  'fixtures',
+  'shout',
 ]);
 
 export function isMatchCenterReactable(kind: FeedKind): boolean {
@@ -52,6 +71,32 @@ export function isMatchCenterReactable(kind: FeedKind): boolean {
 export function matchCenterReactionCardId(gw: number, itemId: string): string {
   return `mc:gw${gw}:${itemId}`;
 }
+
+/** The fixture a match card belongs to, from its id (goal:9:H1 → 9). Null for gameweek cards. */
+export function fixtureIndexOfCard(itemId: string): number | null {
+  const match = /^(?:xi|xi-sheet|ko|goal|score|ht|sh|ft|kickoff-soon):(\d+)(?::|$)/.exec(itemId);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Where a card's comments live: one thread per fixture (mc:gw7:fixture:9), shared by all
+ * of that match's cards. Cards outside a match keep their own thread. Reactions stay per card.
+ */
+export function fixtureEngagementId(gw: number, itemId: string): string {
+  const idx = fixtureIndexOfCard(itemId);
+  return idx == null ? matchCenterReactionCardId(gw, itemId) : `mc:gw${gw}:fixture:${idx}`;
+}
+
+/** Share of submitted picks per outcome, and how many picks that is. */
+export type PickPercents = { H: number; D: number; A: number; votes?: number };
+export type FeedFixtureRow = {
+  homeCode: string;
+  awayCode: string;
+  homeName: string;
+  awayName: string;
+  /** ISO kick-off, or null while it's not set. */
+  kickoff: string | null;
+};
 
 export type FeedMatch = {
   homeCode: string;
@@ -64,13 +109,15 @@ export type FeedMatch = {
   homeScorers?: string[];
   awayScorers?: string[];
   /** Share of submitted picks, same rounding as the home page. */
-  percents?: { H: number; D: number; A: number } | null;
+  percents?: PickPercents | null;
 };
 
 export type FeedBoard = {
   label: string;
   place: string;
   move: LeagueMove;
+  /** Global leaderboard tab this cell opens. */
+  tab?: 'gw' | 'monthly' | 'overall';
 };
 
 export type FeedItem = {
@@ -102,6 +149,33 @@ export type FeedItem = {
   lineupTop?: FeedLineupTop | null;
   /** Winner lines on a round-up, with faces and a trophy. */
   honours?: FeedHonour[] | null;
+  /** Faces on shout-outs and league events. */
+  faces?: FeedFace[] | null;
+  /** Admin broadcast: hide the comment footer when false. */
+  comments?: boolean;
+  /** Admin broadcast: hide reactions when false. */
+  reacts?: boolean;
+  /** Published fixture list, newest gameweek. */
+  fixtureLines?: string[] | null;
+  /** The fixtures card's games in kick-off order, for the club-pill rows. */
+  fixtureRows?: FeedFixtureRow[] | null;
+  /** Season the card belongs to, e.g. "2026/27" (the fixtures card shows it above its title). */
+  season?: string | null;
+  /** Your Predictions vs results on the score sheet. */
+  scoreRows?: FeedScoreRow[] | null;
+};
+
+export type FeedFace = {
+  name: string;
+  avatarUrl?: string | null;
+};
+
+export type FeedScoreRow = {
+  home: string;
+  away: string;
+  pick: string;
+  result: string;
+  hit: boolean;
 };
 
 export type FeedHonour = {
@@ -246,6 +320,8 @@ export type LeagueStandingLine = {
   avatarUrl?: string | null;
   /** Season table, shown under the mini-leagues on a rank card. */
   overall?: boolean;
+  /** Opens this mini-league's GW table. */
+  leagueId?: string;
 };
 
 export type OverallReplay = {
@@ -265,6 +341,7 @@ export type LeagueTableSnap = {
   name: string;
   avatarUrl?: string | null;
   rows: Array<{ user_id: string; name: string; score: number; avatarUrl?: string | null }>;
+  submittedUserIds?: string[];
 };
 
 type Side = 'H' | 'A';
@@ -274,8 +351,24 @@ function teamLabel(fixture: Fixture, side: 'home' | 'away'): string {
   return fixture.away_name || fixture.away_team || fixture.away_code || 'Away';
 }
 
+/** Both clubs as a match thread shows them: short names, codes and crests. */
+export function fixtureSides(fixture: Fixture) {
+  const side = (which: 'home' | 'away') => ({
+    name: getMediumName(teamLabel(fixture, which)),
+    code: normalizeTeamCode(fixture[`${which}_code`]) ?? (String(fixture[`${which}_code`] ?? '').toUpperCase() || null),
+    crest: fixture[`${which}_crest`] ?? null,
+  });
+  return { home: side('home'), away: side('away') };
+}
+
 function matchLabel(fixture: Fixture): string {
   return `${teamLabel(fixture, 'home')} v ${teamLabel(fixture, 'away')}`;
+}
+
+/** Kickoff card copy — conversation starter lives here, not as its own 15-minute card. */
+export function kickoffConversationBody(fixture?: Fixture, seed: string | number = 'kickoff'): string {
+  const match = fixture ? matchLabel(fixture) : 'This one';
+  return pickCopy(kickoffCopy(match), seed).line;
 }
 
 function outcome(home: number, away: number): Pick {
@@ -284,19 +377,12 @@ function outcome(home: number, away: number): Pick {
   return 'D';
 }
 
-function positiveLine(seed: number, finalWhistle: boolean): string {
-  const live = ['Going your way! ✨', 'Still with you 💪', 'Your pick is looking good 👀'];
-  const done = ['You had it!! 🎉', 'Called it!! 🏆', 'That one is yours!! 🙌'];
-  const lines = finalWhistle ? done : live;
-  return lines[Math.abs(seed) % lines.length] ?? lines[0];
+function halfTimeTitle(seed: string | number = 'half-time'): string {
+  return pickCopy(liveCopy('half-time', true), seed).title;
 }
 
-function missLine(home: number, away: number): string {
-  return Math.abs(home - away) <= 1 ? 'So close! 😬' : "Didn't go your way 😅";
-}
-
-function halfTimeTitle(): string {
-  return 'Half time';
+function liveMomentCopy(moment: LiveCopyMoment, right: boolean, seed: string | number): CopyVersion {
+  return pickCopy(liveCopy(moment, right), seed);
 }
 
 function gwScoreLine(correct: number, finished: number, remaining: number): string {
@@ -305,11 +391,15 @@ function gwScoreLine(correct: number, finished: number, remaining: number): stri
   return `${tally}, ${remaining === 1 ? '1 more to go' : `${remaining} more to go`}`;
 }
 
-function personalLine(pick: Pick | null, home: number, away: number, finalWhistle: boolean, seed: number): string | null {
+function personalLine(
+  pick: Pick | null,
+  home: number,
+  away: number,
+  moment: LiveCopyMoment,
+  seed: string | number
+): string | null {
   if (!pick) return null;
-  if (pick === outcome(home, away)) return positiveLine(seed, finalWhistle);
-  if (!finalWhistle) return null;
-  return missLine(home, away);
+  return liveMomentCopy(moment, pick === outcome(home, away), seed).line;
 }
 
 function fixtureMatch(
@@ -337,6 +427,14 @@ function fixtureMatch(
   };
 }
 
+/**
+ * A card for a moment during a match (a goal, the second half starting) shows the score
+ * then, never as a final result; the live dot still follows the match as it is now.
+ */
+function inPlayMoment(match: FeedMatch, statusNow: string | null | undefined): FeedMatch {
+  return { ...match, finished: false, live: statusNow === 'IN_PLAY' || statusNow === 'PAUSED' };
+}
+
 function normalize(value: string | null | undefined): string {
   return String(value ?? '')
     .toLowerCase()
@@ -351,27 +449,46 @@ function ruledOutGoal(goal: { type?: string | null }): boolean {
 }
 
 /** Score from goals on or before a minute. Later goals stay off older cards. */
-function scoreThroughMinute(fixture: Fixture, goals: Array<{ team?: string | null; minute?: number | null; type?: string | null }>, upTo: number): { home: number; away: number } {
+function scoreThroughMinute(
+  fixture: Fixture,
+  goals: Array<{ team?: string | null; minute?: number | null; type?: string | null }>,
+  upTo: number,
+  live?: LiveScore | null
+): { home: number; away: number } {
   let home = 0;
   let away = 0;
   goals.forEach((goal) => {
     if (typeof goal.minute !== 'number' || goal.minute > upTo || ruledOutGoal(goal)) return;
-    const side = sideForGoal(fixture, goal.team);
+    const side = sideForGoal(fixture, goal.team, live);
     if (side === 'H') home += 1;
     else if (side === 'A') away += 1;
   });
   return { home, away };
 }
 
-function sideForGoal(fixture: Fixture, team: string | null | undefined): Side | null {
+/**
+ * Which side a goal belongs to. The provider names goals with its own short names
+ * ("Spurs"), so check the live row's team names (same source) first, then our fixture
+ * names, then known aliases — the same matcher the scorer lines use.
+ */
+export function sideForGoal(fixture: Fixture, team: string | null | undefined, live?: LiveScore | null): Side | null {
   const value = normalize(team);
   if (!value) return null;
+  if (live) {
+    if (value === normalize(live.home_team)) return 'H';
+    if (value === normalize(live.away_team)) return 'A';
+  }
   const home = [fixture.home_name, fixture.home_team, fixture.home_code].map(normalize).filter(Boolean);
   const away = [fixture.away_name, fixture.away_team, fixture.away_code].map(normalize).filter(Boolean);
   const hit = (candidates: string[]) =>
     candidates.some((candidate) => value === candidate || value.includes(candidate) || candidate.includes(value));
   if (hit(home)) return 'H';
   if (hit(away)) return 'A';
+  const similar = (candidates: Array<string | null | undefined>) =>
+    candidates.some((candidate) => !!candidate && areTeamNamesSimilar(String(team), String(candidate)));
+  const homeAlias = similar([fixture.home_name, fixture.home_team, live?.home_team]);
+  const awayAlias = similar([fixture.away_name, fixture.away_team, live?.away_team]);
+  if (homeAlias !== awayAlias) return homeAlias ? 'H' : 'A';
   return null;
 }
 
@@ -448,14 +565,7 @@ function resolveLive(
   liveByFixtureIndex: Map<number, LiveScore>,
   liveByApiMatchId?: Map<number, LiveScore>
 ): LiveScore | undefined {
-  const idx = Number(fixture.fixture_index);
-  if (Number.isInteger(idx)) {
-    const row = liveByFixtureIndex.get(idx);
-    if (row) return row;
-  }
-  const apiMatchId = Number(fixture.api_match_id);
-  if (liveByApiMatchId && Number.isInteger(apiMatchId)) return liveByApiMatchId.get(apiMatchId);
-  return undefined;
+  return resolveLiveScore(fixture, liveByFixtureIndex, liveByApiMatchId);
 }
 
 function kickoffMs(fixture: Fixture): number | null {
@@ -654,18 +764,7 @@ export function isMatchCenterLiveSignalActive(input: {
   });
 }
 
-/** Countdown for the waiting card, always including seconds — e.g. "2h 08m 05s". */
-export function formatCountdownShort(ms: number): string {
-  const totalSec = Math.max(0, Math.ceil(ms / 1000));
-  const hours = Math.floor(totalSec / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  const seconds = totalSec % 60;
-  const mm = String(minutes).padStart(2, '0');
-  const ss = String(seconds).padStart(2, '0');
-  if (hours > 0) return `${hours}h ${mm}m ${ss}s`;
-  if (minutes > 0) return `${minutes}m ${ss}s`;
-  return `${seconds}s`;
-}
+export { formatCountdownShort } from '../../lib/dateTime';
 
 type OutcomeEvent = {
   sortAt: number;
@@ -683,7 +782,7 @@ export function buildMatchFeed(input: {
   liveByFixtureIndex: Map<number, LiveScore>;
   liveByApiMatchId?: Map<number, LiveScore>;
   picks: Record<string, Pick>;
-  percents?: Map<number, { H: number; D: number; A: number }>;
+  percents?: Map<number, PickPercents>;
   teamForms?: Record<string, string>;
   teamPositions?: Record<string, number>;
   nowMs: number;
@@ -698,6 +797,11 @@ export function buildMatchFeed(input: {
   lineupArrivalMs?: Map<number, number>;
   /** True once the live feed has already painted once (not the initial catch-up). */
   sessionLive?: boolean;
+  /**
+   * Stored match events (game_centre_posts). When given, match cards come from these: each
+   * post is one card with a permanent id, ordered by when it was first published.
+   */
+  posts?: GameCentrePost[] | null;
 }): FeedItem[] {
   const { gw, fixtures, liveByFixtureIndex, picks, nowMs } = input;
   const resolve = (fixture: Fixture) => resolveLive(fixture, liveByFixtureIndex, input.liveByApiMatchId);
@@ -748,8 +852,10 @@ export function buildMatchFeed(input: {
         stamp: countdown,
         kind: 'waiting',
         eyebrow: `Gameweek ${gw}`,
-        title: `Gameweek ${gw} starting soon!`,
-        body: 'Make sure everybody in your Mini Leagues has made their predictions',
+        ...(() => {
+          const waiting = pickCopy(startingSoonCopy(gw), `waiting:${gw}`);
+          return { title: waiting.title, body: waiting.line };
+        })(),
       },
     ];
   }
@@ -778,259 +884,431 @@ export function buildMatchFeed(input: {
       scorer,
     });
   };
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    const xi = parseStoredLineup(live?.lineups);
-    const ko = kickoffMs(fixture);
-    if (!xi || ko === null || nowMs < ko - lineupLeadMs) continue;
-    const announced = ko - lineupLeadMs;
-    const idx = fixture.fixture_index;
-    if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
-      // Catch-up open: keep story order at the official XI window.
-      // Mid-session arrival: wall-clock so the cards appear at the live end.
-      input.lineupArrivalMs.set(idx, input.sessionLive ? nowMs : announced);
-    }
-    const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
-    const top = lineupTopFor(fixture);
-    const match = board(
-      fixture,
-      picks[String(fixture.fixture_index)] ?? null,
-      live && started(live.status) ? (live.home_score ?? null) : null,
-      live && started(live.status) ? (live.away_score ?? null) : null,
-      live?.status
-    );
-    const stamp = clockStamp(arrived, 'XI');
-    const pairAt = arrived + fixture.fixture_index * 2;
-    items.push({
-      id: `xi:${fixture.fixture_index}`,
-      sortAt: pairAt,
-      timeLabel: stamp,
-      stamp,
-      kind: 'lineup',
-      eyebrow: 'Line-up',
-      title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, fixture.fixture_index),
-      body: '',
-      lineupTop: top,
-      match,
-    });
-    items.push({
-      id: `xi-sheet:${fixture.fixture_index}`,
-      sortAt: pairAt + 1,
-      timeLabel: stamp,
-      stamp,
-      kind: 'xi',
-      eyebrow: 'The teams',
-      title: '',
-      body: '',
-      xi: {
-        ...xi,
-        homeCode: match.homeCode,
-        awayCode: match.awayCode,
-        homeName: top.homeName,
-        awayName: top.awayName,
-      },
-    });
-  }
 
-  const firstTeams = items
-    .filter((item) => item.kind === 'lineup')
-    .sort((a, b) => a.sortAt - b.sortAt)[0];
-  if (firstTeams) {
-    items.push({
-      id: `gw-open:${gw}`,
-      sortAt: firstTeams.sortAt - 0.5,
-      timeLabel: firstTeams.timeLabel,
-      stamp: firstTeams.stamp,
-      kind: 'opener',
-      eyebrow: 'Match Center',
-      title: `Gameweek ${gw}, Here We Go!`,
-      body: 'First teams are out.',
+  /** Match cards from stored posts: the post id is the card id, published_at its time. */
+  function matchItemsFromPosts(posts: GameCentrePost[]): FeedItem[] {
+    const out: FeedItem[] = [];
+    const prefix = `mc:gw${gw}:`;
+    const byIndex = new Map(fixtures.map((fixture) => [fixture.fixture_index, fixture]));
+    const ordered = posts
+      .filter((post) => post.status !== 'void' && post.id.startsWith(prefix) && !post.id.includes(':admin:'))
+      .map((post) => ({ post, at: Date.parse(post.published_at) }))
+      .filter(({ at }) => Number.isFinite(at))
+      .sort((a, b) => a.at - b.at || a.post.id.localeCompare(b.post.id));
+    const finishedAt = new Map<number, number>();
+    ordered.forEach(({ post, at }) => {
+      if (post.kind === 'full-time' && post.fixture_index != null) finishedAt.set(post.fixture_index, at);
     });
-  }
+    const scoreOf = (value: unknown): { home: number; away: number } | null => {
+      const score = value as { home?: unknown; away?: unknown } | null | undefined;
+      return score && typeof score.home === 'number' && typeof score.away === 'number' ? { home: score.home, away: score.away } : null;
+    };
 
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    const ko = kickoffMs(fixture);
-    const hasStarted = started(live?.status) || (ko !== null && nowMs >= ko && live != null);
-    if (!hasStarted || ko === null) continue;
-    const slot = Math.floor(ko / 60000) * 60000;
-    items.push({
-      id: `ko:${fixture.fixture_index}`,
-      sortAt: slot,
-      timeLabel: formatLocalTimeHHmm(new Date(slot).toISOString()),
-      kind: 'kickoff',
-      eyebrow: 'Kickoff',
-      title: "We're off",
-      body: matchLabel(fixture),
-      match: board(fixture, picks[String(fixture.fixture_index)] ?? null, null, null, live?.status),
-    });
-  }
-
-  for (const fixture of fixtures) {
-    const live = resolve(fixture);
-    if (!live || !started(live.status)) continue;
-    const ko = kickoffMs(fixture) ?? 0;
-    const pick = picks[String(fixture.fixture_index)] ?? null;
-    const goals = parseGoalEvents(live.goals).slice().sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
-    const homeScore = live.home_score ?? 0;
-    const awayScore = live.away_score ?? 0;
-    if (goals.length === 0) {
-      if (live.status !== 'FINISHED') {
-        const minute = typeof live.minute === 'number' ? live.minute : 0;
-        const wallMs = goalWallMs({ ko, goalMinute: minute || 1, live, nowMs, isLatestGoal: true });
-        noteOutcome(
-          fixture.fixture_index,
-          homeScore,
-          awayScore,
-          wallMs,
-          formatLocalTimeHHmm(new Date(wallMs).toISOString()),
-          homeScore + awayScore > 0,
-          null
-        );
+    for (const { post, at } of ordered) {
+      const id = post.id.slice(prefix.length);
+      const stamp = clockStamp(at, '');
+      if (post.kind === 'opener') {
+        const opener = pickCopy(openerCopy(gw), id);
+        out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'opener', eyebrow: 'Match Center', title: opener.title, body: opener.line });
+        continue;
       }
-    } else {
-      noteOutcome(fixture.fixture_index, 0, 0, ko, formatLocalTimeHHmm(new Date(ko).toISOString()), false, null);
-    }
-    if (goals.length === 0 && (homeScore > 0 || awayScore > 0)) {
-      const minute = typeof live.minute === 'number' ? live.minute : 1;
-      const wallMs = goalWallMs({ ko, goalMinute: minute, live, nowMs, isLatestGoal: true });
-      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
-      items.push({
-        id: `score:${fixture.fixture_index}:${homeScore}-${awayScore}`,
-        sortAt: wallMs,
-        timeLabel: typeof live.minute === 'number' ? `${live.minute}'` : 'Live',
-        stamp,
-        kind: 'goal',
-        eyebrow: 'Goal',
-        title: 'GOAL',
-        body: scoresLine(''),
-        personal: personalLine(pick, homeScore, awayScore, false, minute),
-        match: board(fixture, pick, homeScore, awayScore, live.status),
-      });
-    }
-    let home = 0;
-    let away = 0;
-    const lastGoalIndex = goals.length - 1;
-    goals.forEach((goal, index) => {
-      const side = sideForGoal(fixture, goal.team);
-      const ruledOut = ruledOutGoal(goal);
-      if (!ruledOut) {
-        if (side === 'H') home += 1;
-        else if (side === 'A') away += 1;
-        else if ((live.home_score ?? 0) + (live.away_score ?? 0) === index + 1) {
-          home = live.home_score ?? home;
-          away = live.away_score ?? away;
+      const fixture = post.fixture_index != null ? byIndex.get(post.fixture_index) : undefined;
+      if (!fixture) continue;
+      if (
+        post.api_match_id != null &&
+        fixture.api_match_id != null &&
+        Number(post.api_match_id) !== Number(fixture.api_match_id)
+      ) {
+        continue;
+      }
+      const idx = fixture.fixture_index;
+      const live = resolve(fixture);
+      const pick = picks[String(idx)] ?? null;
+      switch (post.kind) {
+        case 'lineup': {
+          const top = lineupTopFor(fixture);
+          const match = board(
+            fixture,
+            pick,
+            live && started(live.status) ? (live.home_score ?? null) : null,
+            live && started(live.status) ? (live.away_score ?? null) : null,
+            live?.status
+          );
+          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'lineup', eyebrow: 'Line-up', title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, idx), body: '', lineupTop: top, match });
+          break;
+        }
+        case 'xi': {
+          const xi = parseStoredLineup(live?.lineups);
+          if (!xi) break;
+          const top = lineupTopFor(fixture);
+          const homeCode = String(fixture.home_code ?? '').toUpperCase();
+          const awayCode = String(fixture.away_code ?? '').toUpperCase();
+          out.push({ id, sortAt: at + 1, timeLabel: stamp, stamp, kind: 'xi', eyebrow: 'The teams', title: '', body: '', xi: { ...xi, homeCode, awayCode, homeName: top.homeName, awayName: top.awayName } });
+          break;
+        }
+        case 'kickoff': {
+          noteOutcome(idx, 0, 0, at, stamp, false, null);
+          const kickoff = pickCopy(kickoffCopy(matchLabel(fixture)), id);
+          out.push({ id, sortAt: at, timeLabel: stamp, stamp, kind: 'kickoff', eyebrow: 'Kickoff', title: kickoff.title, body: kickoff.line, match: board(fixture, pick, null, null, live?.status) });
+          break;
+        }
+        case 'goal': {
+          const score = scoreOf(post.details.score_after);
+          const minute = typeof post.details.minute === 'number' ? post.details.minute : null;
+          if (!score) break;
+          const ruledOut = post.status === 'ruled_out';
+          const scorer = (typeof post.details.scorer === 'string' && post.details.scorer.trim()) || 'Someone';
+          const own = post.details.own_goal === true ? ' (og)' : '';
+          if (!ruledOut) noteOutcome(idx, score.home, score.away, at, stamp, true, scorer);
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: minute != null ? `${minute}'` : stamp,
+            stamp,
+            kind: ruledOut ? 'ruled-out' : 'goal',
+            eyebrow: ruledOut ? 'VAR' : 'Goal',
+            title: ruledOut ? 'Goal ruled out' : 'GOAL',
+            body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}`),
+            personal: personalLine(pick, score.home, score.away, ruledOut ? 'ruled-out' : 'goal', id),
+            match: inPlayMoment(board(fixture, pick, score.home, score.away, live?.status, live?.goals, minute ?? undefined), live?.status),
+          });
+          break;
+        }
+        case 'half-time': {
+          const score = scoreOf(post.details.score);
+          if (!score) break;
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: 'HT',
+            stamp,
+            kind: 'half-time',
+            eyebrow: 'Half-time',
+            title: halfTimeTitle(id),
+            body: '',
+            personal: personalLine(pick, score.home, score.away, 'half-time', id),
+            match: board(fixture, pick, score.home, score.away, live?.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live?.goals, 45),
+          });
+          break;
+        }
+        case 'second-half': {
+          // The match as the second half starts: the half-time score, still in play.
+          const halfTime =
+            scoreOf(ordered.find(({ post: other }) => other.kind === 'half-time' && other.fixture_index === idx)?.post.details.score) ??
+            scoreThroughMinute(fixture, parseGoalEvents(live?.goals), 45, live);
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: "46'",
+            stamp,
+            kind: 'second-half',
+            eyebrow: 'Second half',
+            title: liveMomentCopy('second-half', !pick || pick === outcome(halfTime.home, halfTime.away), id).title,
+            body: '',
+            personal: personalLine(pick, halfTime.home, halfTime.away, 'second-half', id),
+            match: inPlayMoment(board(fixture, pick, halfTime.home, halfTime.away, live?.status, live?.goals, 45), live?.status),
+          });
+          break;
+        }
+        case 'full-time': {
+          const score = scoreOf(post.details.score);
+          if (!score) break;
+          const next = outcome(score.home, score.away);
+          outcomeNow.set(idx, next);
+          outcomeEvents.push({ sortAt: at, stamp, fixtureIndex: idx, outcome: next, announce: true, scorer: null, finalWhistle: true });
+          const done = fixtures.filter((other) => (finishedAt.get(other.fixture_index) ?? Infinity) <= at);
+          const correct = done.filter((other) => {
+            const otherPick = picks[String(other.fixture_index)] ?? null;
+            const otherLive = resolve(other);
+            return !!otherPick && !!otherLive && otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
+          }).length;
+          out.push({
+            id,
+            sortAt: at,
+            timeLabel: 'FT',
+            stamp,
+            kind: 'full-time',
+            eyebrow: 'Full-time',
+            title: pick && pick === next ? 'Full-time!!' : 'Full-time',
+            body: gwScoreLine(correct, done.length, fixtures.length - done.length),
+            personal: personalLine(pick, score.home, score.away, 'full-time', id),
+            match: board(fixture, pick, score.home, score.away, 'FINISHED', live?.goals),
+          });
+          break;
         }
       }
-      const minute = typeof goal.minute === 'number' ? goal.minute : index + 1;
-      const shownHome = side ? home : (live.home_score ?? 0);
-      const shownAway = side ? away : (live.away_score ?? 0);
-      const scorer = goal.scorer?.trim() || 'Someone';
-      const own = goal.isOwnGoal ? ' (og)' : '';
-      const pen = goal.isPenalty ? ' (pen)' : '';
-      // Wall clock for stamp/sort — match minute is only the label (46'), not KO+46'.
-      const wallMs = goalWallMs({
-        ko,
-        goalMinute: minute,
-        live,
-        nowMs,
-        isLatestGoal: index === lastGoalIndex,
-      });
-      const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
-      if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, wallMs, stamp, true, scorer);
-      items.push({
-        id: `goal:${fixture.fixture_index}:${minute}:${index}`,
-        sortAt: wallMs,
-        timeLabel: `${minute}'`,
-        stamp,
-        kind: ruledOut ? 'ruled-out' : 'goal',
-        eyebrow: ruledOut ? 'VAR' : 'Goal',
-        title: ruledOut ? 'Goal ruled out' : 'GOAL',
-        body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
-        personal: ruledOut ? null : personalLine(pick, shownHome, shownAway, false, minute),
-        match: board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute),
-      });
-    });
+    }
+    return out;
+  }
 
-    const minute = typeof live.minute === 'number' ? live.minute : null;
-    const pastHalf = live.status === 'PAUSED' || live.status === 'FINISHED' || (minute !== null && minute >= 46);
-    const boardHome = live.home_score ?? home;
-    const boardAway = live.away_score ?? away;
-    if (pastHalf) {
-      const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45);
-      const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
-      const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
-      const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());
+  if (input.posts) {
+    items.push(...matchItemsFromPosts(input.posts));
+  } else {
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      const xi = parseStoredLineup(live?.lineups);
+      const ko = kickoffMs(fixture);
+      if (!xi || ko === null || nowMs < ko - lineupLeadMs) continue;
+      const announced = ko - lineupLeadMs;
+      const idx = fixture.fixture_index;
+      if (input.lineupArrivalMs && !input.lineupArrivalMs.has(idx)) {
+        // Catch-up open: keep story order at the official XI window.
+        // Mid-session arrival: wall-clock so the cards appear at the live end, but only
+        // before kickoff. A team sheet that loads once the game is on isn't news, so it
+        // keeps its announced time rather than jumping to the top of the feed.
+        input.lineupArrivalMs.set(idx, input.sessionLive && nowMs < ko ? nowMs : announced);
+      }
+      const arrived = input.lineupArrivalMs?.get(idx) ?? announced;
+      const top = lineupTopFor(fixture);
+      const match = board(
+        fixture,
+        picks[String(fixture.fixture_index)] ?? null,
+        live && started(live.status) ? (live.home_score ?? null) : null,
+        live && started(live.status) ? (live.away_score ?? null) : null,
+        live?.status
+      );
+      const stamp = clockStamp(arrived, 'XI');
+      const pairAt = arrived + fixture.fixture_index * 2;
       items.push({
-        id: `ht:${fixture.fixture_index}`,
-        sortAt: htWall,
-        timeLabel: 'HT',
-        stamp: htStamp,
-        kind: 'half-time',
-        eyebrow: 'Half-time',
-        title: halfTimeTitle(),
+        id: `xi:${fixture.fixture_index}`,
+        sortAt: pairAt,
+        timeLabel: stamp,
+        stamp,
+        kind: 'lineup',
+        eyebrow: 'Line-up',
+        title: lineupIntro(top.homeName, top.awayName, match.percents ?? null, fixture.fixture_index),
         body: '',
-        personal: personalLine(pick, atBreak.home, atBreak.away, false, 45),
-        match: htMatch,
+        lineupTop: top,
+        match,
       });
-    }
-    if (live.status === 'IN_PLAY' && minute !== null && minute >= 46) {
-      const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
-      const shStamp = formatLocalTimeHHmm(new Date(shWall).toISOString());
       items.push({
-        id: `sh:${fixture.fixture_index}`,
-        sortAt: shWall,
-        timeLabel: "46'",
-        stamp: shStamp,
-        kind: 'second-half',
-        eyebrow: 'Second half',
-        title: "They're back",
-        body: 'Second half.',
-        match: board(fixture, pick, boardHome, boardAway, 'IN_PLAY', live.goals, minute ?? undefined),
+        id: `xi-sheet:${fixture.fixture_index}`,
+        sortAt: pairAt + 1,
+        timeLabel: stamp,
+        stamp,
+        kind: 'xi',
+        eyebrow: 'The teams',
+        title: '',
+        body: '',
+        xi: {
+          ...xi,
+          homeCode: match.homeCode,
+          awayCode: match.awayCode,
+          homeName: top.homeName,
+          awayName: top.awayName,
+        },
       });
     }
-    if (live.status === 'FINISHED') {
-      const sortAt = ko + 100 * 60_000 + fixture.fixture_index;
-      const next = outcome(boardHome, boardAway);
-      outcomeNow.set(fixture.fixture_index, next);
-      outcomeEvents.push({
-        sortAt,
-        stamp: clockStamp(sortAt, 'FT'),
-        fixtureIndex: fixture.fixture_index,
-        outcome: next,
-        announce: true,
-        scorer: null,
-        finalWhistle: true,
-      });
-      const done = fixtures.filter((other) => {
-        const otherLive = resolve(other);
-        if (!otherLive || otherLive.status !== 'FINISHED') return false;
-        const at = kickoffMs(other);
-        return at !== null && at + 100 * 60_000 <= sortAt;
-      });
-      const correct = done.filter((other) => {
-        const otherLive = resolve(other);
-        const otherPick = picks[String(other.fixture_index)] ?? null;
-        if (!otherPick || !otherLive) return false;
-        return otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
-      }).length;
+
+    const firstTeams = items
+      .filter((item) => item.kind === 'lineup')
+      .sort((a, b) => a.sortAt - b.sortAt)[0];
+    if (firstTeams) {
       items.push({
-        id: `ft:${fixture.fixture_index}`,
-        sortAt,
-        timeLabel: 'FT',
-        kind: 'full-time',
-        eyebrow: 'Full-time',
-        title: pick && pick === outcome(boardHome, boardAway) ? 'Full-time!!' : 'Full-time',
-        body: gwScoreLine(correct, done.length, fixtures.length - done.length),
-        personal: personalLine(pick, boardHome, boardAway, true, fixture.fixture_index),
-        match: board(fixture, pick, boardHome, boardAway, 'FINISHED', live.goals),
+        id: `gw-open:${gw}`,
+        sortAt: firstTeams.sortAt - 0.5,
+        timeLabel: firstTeams.timeLabel,
+        stamp: firstTeams.stamp,
+        kind: 'opener',
+        eyebrow: 'Match Center',
+        title: pickCopy(openerCopy(gw), `gw-open:${gw}`).title,
+        body: pickCopy(openerCopy(gw), `gw-open:${gw}`).line,
       });
     }
+
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      const ko = kickoffMs(fixture);
+      const hasStarted = started(live?.status) || (ko !== null && nowMs >= ko && live != null);
+      if (!hasStarted || ko === null) continue;
+      const slot = Math.floor(ko / 60000) * 60000;
+      items.push({
+        id: `ko:${fixture.fixture_index}`,
+        sortAt: slot,
+        timeLabel: formatLocalTimeHHmm(new Date(slot).toISOString()),
+        kind: 'kickoff',
+        eyebrow: 'Kickoff',
+        title: pickCopy(kickoffCopy(matchLabel(fixture)), `ko:${fixture.fixture_index}`).title,
+        body: kickoffConversationBody(fixture, `ko:${fixture.fixture_index}`),
+        match: board(fixture, picks[String(fixture.fixture_index)] ?? null, null, null, live?.status),
+      });
+    }
+
+    for (const fixture of fixtures) {
+      const live = resolve(fixture);
+      if (!live || !started(live.status)) continue;
+      const ko = kickoffMs(fixture) ?? 0;
+      const pick = picks[String(fixture.fixture_index)] ?? null;
+      const goals = parseGoalEvents(live.goals).slice().sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0));
+      const homeScore = live.home_score ?? 0;
+      const awayScore = live.away_score ?? 0;
+      if (goals.length === 0) {
+        if (live.status !== 'FINISHED') {
+          const minute = typeof live.minute === 'number' ? live.minute : 0;
+          const wallMs = goalWallMs({ ko, goalMinute: minute || 1, live, nowMs, isLatestGoal: true });
+          noteOutcome(
+            fixture.fixture_index,
+            homeScore,
+            awayScore,
+            wallMs,
+            formatLocalTimeHHmm(new Date(wallMs).toISOString()),
+            homeScore + awayScore > 0,
+            null
+          );
+        }
+      } else {
+        noteOutcome(fixture.fixture_index, 0, 0, ko, formatLocalTimeHHmm(new Date(ko).toISOString()), false, null);
+      }
+      if (goals.length === 0 && (homeScore > 0 || awayScore > 0)) {
+        const minute = typeof live.minute === 'number' ? live.minute : 1;
+        const wallMs = goalWallMs({ ko, goalMinute: minute, live, nowMs, isLatestGoal: true });
+        const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
+        items.push({
+          id: `score:${fixture.fixture_index}:${homeScore}-${awayScore}`,
+          sortAt: wallMs,
+          timeLabel: typeof live.minute === 'number' ? `${live.minute}'` : 'Live',
+          stamp,
+          kind: 'goal',
+          eyebrow: 'Goal',
+          title: 'GOAL',
+          body: scoresLine(''),
+          personal: personalLine(pick, homeScore, awayScore, 'goal', `score:${fixture.fixture_index}`),
+          match: inPlayMoment(board(fixture, pick, homeScore, awayScore, live.status), live.status),
+        });
+      }
+      let home = 0;
+      let away = 0;
+      const lastGoalIndex = goals.length - 1;
+      goals.forEach((goal, index) => {
+        const side = sideForGoal(fixture, goal.team, live);
+        const ruledOut = ruledOutGoal(goal);
+        if (!ruledOut) {
+          if (side === 'H') home += 1;
+          else if (side === 'A') away += 1;
+          else if ((live.home_score ?? 0) + (live.away_score ?? 0) === index + 1) {
+            home = live.home_score ?? home;
+            away = live.away_score ?? away;
+          }
+        }
+        const minute = typeof goal.minute === 'number' ? goal.minute : index + 1;
+        const shownHome = side ? home : (live.home_score ?? 0);
+        const shownAway = side ? away : (live.away_score ?? 0);
+        const scorer = goal.scorer?.trim() || 'Someone';
+        const own = goal.isOwnGoal ? ' (og)' : '';
+        const pen = goal.isPenalty ? ' (pen)' : '';
+        // Wall clock for stamp/sort — match minute is only the label (46'), not KO+46'.
+        const wallMs = goalWallMs({
+          ko,
+          goalMinute: minute,
+          live,
+          nowMs,
+          isLatestGoal: index === lastGoalIndex,
+        });
+        const stamp = formatLocalTimeHHmm(new Date(wallMs).toISOString());
+        if (!ruledOut) noteOutcome(fixture.fixture_index, shownHome, shownAway, wallMs, stamp, true, scorer);
+        items.push({
+          id: `goal:${fixture.fixture_index}:${minute}:${index}`,
+          sortAt: wallMs,
+          timeLabel: `${minute}'`,
+          stamp,
+          kind: ruledOut ? 'ruled-out' : 'goal',
+          eyebrow: ruledOut ? 'VAR' : 'Goal',
+          title: ruledOut ? 'Goal ruled out' : 'GOAL',
+          body: ruledOut ? 'VAR has had a word.' : scoresLine(`${scorer}${own}${pen}`),
+          personal: personalLine(pick, shownHome, shownAway, ruledOut ? 'ruled-out' : 'goal', `goal:${fixture.fixture_index}:${minute}:${index}`),
+          match: inPlayMoment(board(fixture, pick, shownHome, shownAway, live.status, live.goals, minute), live.status),
+        });
+      });
+
+      const minute = typeof live.minute === 'number' ? live.minute : null;
+      const pastHalf = live.status === 'PAUSED' || live.status === 'FINISHED' || (minute !== null && minute >= 46);
+      const boardHome = live.home_score ?? home;
+      const boardAway = live.away_score ?? away;
+      if (pastHalf) {
+        const atBreak = live.status === 'PAUSED' && goals.length === 0 ? { home: boardHome, away: boardAway } : scoreThroughMinute(fixture, goals, 45, live);
+        const htMatch = board(fixture, pick, atBreak.home, atBreak.away, live.status === 'PAUSED' ? 'PAUSED' : 'TIMED', live.goals, 45);
+        const htWall = halfTimeWallMs(ko, live, nowMs) + HT_SORT_OFFSET_MS;
+        const htStamp = formatLocalTimeHHmm(new Date(htWall).toISOString());
+        items.push({
+          id: `ht:${fixture.fixture_index}`,
+          sortAt: htWall,
+          timeLabel: 'HT',
+          stamp: htStamp,
+          kind: 'half-time',
+          eyebrow: 'Half-time',
+          title: halfTimeTitle(`ht:${fixture.fixture_index}`),
+          body: '',
+          personal: personalLine(pick, atBreak.home, atBreak.away, 'half-time', `ht:${fixture.fixture_index}`),
+          match: htMatch,
+        });
+      }
+      if (live.status === 'IN_PLAY' && minute !== null && minute >= 46) {
+        const shWall = secondHalfWallMs(ko, live, nowMs) + SECOND_HALF_SORT_OFFSET_MS;
+        const shStamp = formatLocalTimeHHmm(new Date(shWall).toISOString());
+        items.push({
+          id: `sh:${fixture.fixture_index}`,
+          sortAt: shWall,
+          timeLabel: "46'",
+          stamp: shStamp,
+          kind: 'second-half',
+          eyebrow: 'Second half',
+          title: liveMomentCopy('second-half', !pick || pick === outcome(boardHome, boardAway), `sh:${fixture.fixture_index}`).title,
+          body: '',
+          personal: personalLine(pick, boardHome, boardAway, 'second-half', `sh:${fixture.fixture_index}`),
+          match: inPlayMoment(board(fixture, pick, boardHome, boardAway, live.status, live.goals, minute ?? undefined), live.status),
+        });
+      }
+      if (live.status === 'FINISHED') {
+        const sortAt = ko + 100 * 60_000 + fixture.fixture_index;
+        const next = outcome(boardHome, boardAway);
+        outcomeNow.set(fixture.fixture_index, next);
+        outcomeEvents.push({
+          sortAt,
+          stamp: clockStamp(sortAt, 'FT'),
+          fixtureIndex: fixture.fixture_index,
+          outcome: next,
+          announce: true,
+          scorer: null,
+          finalWhistle: true,
+        });
+        const done = fixtures.filter((other) => {
+          const otherLive = resolve(other);
+          if (!otherLive || otherLive.status !== 'FINISHED') return false;
+          const at = kickoffMs(other);
+          return at !== null && at + 100 * 60_000 <= sortAt;
+        });
+        const correct = done.filter((other) => {
+          const otherLive = resolve(other);
+          const otherPick = picks[String(other.fixture_index)] ?? null;
+          if (!otherPick || !otherLive) return false;
+          return otherPick === outcome(otherLive.home_score ?? 0, otherLive.away_score ?? 0);
+        }).length;
+        items.push({
+          id: `ft:${fixture.fixture_index}`,
+          sortAt,
+          timeLabel: 'FT',
+          kind: 'full-time',
+          eyebrow: 'Full-time',
+          title: pick && pick === outcome(boardHome, boardAway) ? 'Full-time!!' : 'Full-time',
+          body: gwScoreLine(correct, done.length, fixtures.length - done.length),
+          personal: personalLine(pick, boardHome, boardAway, 'full-time', `ft:${fixture.fixture_index}`),
+          match: board(fixture, pick, boardHome, boardAway, 'FINISHED', live.goals),
+        });
+      }
+    }
+
   }
 
   if (input.userId && input.leagues?.length) {
     items.push(...leagueMomentsFromEvents(outcomeEvents, input.leagues, input.userId, input.overall));
   }
+  // A day's wrap-up follows that day's real final whistles, where the full-time cards are in.
+  const fullTimeAt = new Map<number, number>();
+  items.forEach((item) => {
+    if (item.kind !== 'full-time') return;
+    const idx = fixtureIndexOfCard(item.id);
+    if (idx != null) fullTimeAt.set(idx, Math.max(fullTimeAt.get(idx) ?? item.sortAt, item.sortAt));
+  });
   items.push(
     ...dayRoundUps({
       fixtures,
@@ -1038,6 +1316,7 @@ export function buildMatchFeed(input: {
       resolve,
       leagues: input.leagues,
       userId: input.userId,
+      fullTimeAt,
     })
   );
 
@@ -1115,18 +1394,6 @@ function standingMoved(before: Standing, after: Standing): boolean {
   return before.rank !== after.rank || before.sole !== after.sole || before.points !== after.points;
 }
 
-function roundupHeadline(rows: Array<{ before: Standing; after: Standing }>): string {
-  const climbed = rows.some((row) => row.after.rank < row.before.rank || (row.after.sole && !row.before.sole));
-  const dropped = rows.some((row) => row.after.rank > row.before.rank || (row.before.sole && !row.after.sole && row.after.rank > 1));
-  const allTop = rows.length > 0 && rows.every((row) => row.after.rank === 1);
-  if (allTop && !dropped) return 'Running the show';
-  if (climbed && !dropped) return 'On the up';
-  if (dropped && !climbed) return 'A little wobble';
-  if (climbed && dropped) return 'A proper shuffle';
-  if (rows.every((row) => row.after.sole)) return 'Still the one';
-  return 'Where you stand';
-}
-
 function gwPointsNow(replay: OverallReplay, outcomes: Map<number, Pick>): Map<string, number> {
   const ids = new Set<string>([
     ...Object.keys(replay.beforeGw),
@@ -1168,15 +1435,20 @@ function placesNow(replay: OverallReplay, outcomes: Map<number, Pick>, userId: s
 }
 
 function boardsFrom(before: PlaceTrio, after: PlaceTrio, monthLabel: string): FeedBoard[] {
-  const cell = (label: string, from: number | null, to: number | null): FeedBoard | null => {
+  const cell = (
+    label: string,
+    from: number | null,
+    to: number | null,
+    tab: NonNullable<FeedBoard['tab']>
+  ): FeedBoard | null => {
     if (!label || to == null) return null;
     const prior = from ?? to;
-    return { label, place: ordinal(to), move: to < prior ? 'up' : to > prior ? 'down' : 'same' };
+    return { label, place: ordinal(to), move: to < prior ? 'up' : to > prior ? 'down' : 'same', tab };
   };
   return [
-    cell('GW', before.gw, after.gw),
-    cell(monthLabel, before.month, after.month),
-    cell('Overall', before.overall, after.overall),
+    cell('GW', before.gw, after.gw, 'gw'),
+    cell(monthLabel, before.month, after.month, 'monthly'),
+    cell('Overall', before.overall, after.overall, 'overall'),
   ].filter((row): row is FeedBoard => row != null);
 }
 
@@ -1194,6 +1466,15 @@ function leagueMomentsFromEvents(
     if (place) previous.set(league.id, place);
   });
   const cards: FeedItem[] = [];
+  // Two moments can share a fixture and a time (a late goal and the final whistle), so the
+  // id counts repeats; the order is fixed above, so each card keeps its id between updates.
+  const idCounts = new Map<string, number>();
+  const cardId = (event: OutcomeEvent): string => {
+    const base = `ml:${event.fixtureIndex}:${event.sortAt}`;
+    const seen = idCounts.get(base) ?? 0;
+    idCounts.set(base, seen + 1);
+    return seen === 0 ? base : `${base}:${seen}`;
+  };
   ordered.forEach((event) => {
     const beforePlaces = overall ? placesNow(overall, outcomes, userId) : null;
     outcomes.set(event.fixtureIndex, event.outcome);
@@ -1205,32 +1486,33 @@ function leagueMomentsFromEvents(
       });
       return;
     }
-    const snapshot: Array<{ name: string; avatarUrl: string | null; before: Standing; after: Standing }> = [];
+    const snapshot: Array<{ id: string; name: string; avatarUrl: string | null; before: Standing; after: Standing }> = [];
     leagues.forEach((league) => {
       const before = previous.get(league.id);
       const after = standingOf(memberTable(league, outcomes), userId);
       if (after) previous.set(league.id, after);
       if (!before || !after) return;
-      snapshot.push({ name: league.name, avatarUrl: league.avatarUrl ?? null, before, after });
+      snapshot.push({ id: league.id, name: league.name, avatarUrl: league.avatarUrl ?? null, before, after });
     });
     const moved = snapshot.filter((row) => standingMoved(row.before, row.after));
     const boards = beforePlaces && afterPlaces ? boardsFrom(beforePlaces, afterPlaces, overall?.monthLabel ?? '') : [];
     if (!snapshot.length && !boards.length) return;
     if (!moved.length && !event.finalWhistle) return;
     cards.push({
-      id: `ml:${event.fixtureIndex}:${event.sortAt}`,
+      id: cardId(event),
       sortAt: event.finalWhistle ? event.sortAt + 0.5 : event.sortAt + 1,
       timeLabel: event.stamp,
       stamp: event.stamp,
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: roundupHeadline(moved.length ? moved : snapshot),
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: snapshot.map((row): LeagueStandingLine => ({
         name: row.name,
         avatarUrl: row.avatarUrl,
         place: placeLabel(row.after),
         move: row.after.rank < row.before.rank ? 'up' : row.after.rank > row.before.rank ? 'down' : 'same',
+        leagueId: row.id,
       })),
       boards: boards.length ? boards : null,
       boardAvatar: overall?.userAvatar ?? null,
@@ -1291,6 +1573,7 @@ function dayStandings(
       avatarUrl: league.avatarUrl ?? null,
       place: placeLabel(later),
       move: later.rank < earlier.rank ? 'up' : later.rank > earlier.rank ? 'down' : 'same',
+      leagueId: league.id,
     });
   });
   return lines.length ? lines : null;
@@ -1302,6 +1585,8 @@ function dayRoundUps(input: {
   resolve: (fixture: Fixture) => LiveScore | undefined;
   leagues?: LeaguePickSnap[];
   userId?: string | null;
+  /** When each match's full-time card landed, by fixture index. */
+  fullTimeAt?: Map<number, number>;
 }): FeedItem[] {
   const groups = new Map<string, { at: number; fixtures: Fixture[] }>();
   input.fixtures.forEach((fixture) => {
@@ -1317,7 +1602,12 @@ function dayRoundUps(input: {
   const cards: FeedItem[] = [];
   groups.forEach((group, key) => {
     if (!group.fixtures.every((fixture) => input.resolve(fixture)?.status === 'FINISHED')) return;
-    const lastWhistle = Math.max(...group.fixtures.map((fixture) => (kickoffMs(fixture) ?? group.at) + 100 * 60_000));
+    // The real final whistle when its full-time card is in; otherwise kickoff + 100 minutes.
+    const lastWhistle = Math.max(
+      ...group.fixtures.map(
+        (fixture) => input.fullTimeAt?.get(fixture.fixture_index) ?? (kickoffMs(fixture) ?? group.at) + 100 * 60_000
+      )
+    );
     const sortAt = lastWhistle + 60_000;
     const dayName = weekdayName(group.at);
     if (group.fixtures.length === 1) {
@@ -1624,7 +1914,7 @@ export function sampleFeed(): FeedItem[] {
       kind: 'kickoff',
       eyebrow: 'Kickoff',
       title: "We're off",
-      body: 'Arsenal v Coventry',
+      body: kickoffConversationBody(),
       match: { ...SAMPLE_MATCH, homeScore: null, awayScore: null, live: false, finished: false },
     },
     {
@@ -1657,17 +1947,17 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: "23'",
       stamp: '15:23',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'On the up',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: 'Top', move: 'up', avatarUrl: SAMPLE_EASY_AVATAR },
         { name: 'FC Football', place: '2nd', move: 'up', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '4th', move: 'up' },
-        { label: 'Oct', place: '11th', move: 'up' },
-        { label: 'Overall', place: '40th', move: 'up' },
+        { label: 'GW', place: '4th', move: 'up', tab: 'gw' },
+        { label: 'Oct', place: '11th', move: 'up', tab: 'monthly' },
+        { label: 'Overall', place: '40th', move: 'up', tab: 'overall' },
       ],
     },
     {
@@ -1712,17 +2002,17 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: "63'",
       stamp: '16:18',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'A little wobble',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: '2nd', move: 'down', avatarUrl: SAMPLE_EASY_AVATAR },
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '9th', move: 'down' },
-        { label: 'Oct', place: '11th', move: 'same' },
-        { label: 'Overall', place: '41st', move: 'down' },
+        { label: 'GW', place: '9th', move: 'down', tab: 'gw' },
+        { label: 'Oct', place: '11th', move: 'same', tab: 'monthly' },
+        { label: 'Overall', place: '41st', move: 'down', tab: 'overall' },
       ],
     },
     {
@@ -1773,17 +2063,17 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: 'FT',
       stamp: '16:52',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'On the up',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: 'Top', move: 'up', avatarUrl: SAMPLE_EASY_AVATAR },
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '3rd', move: 'up' },
-        { label: 'Oct', place: '8th', move: 'up' },
-        { label: 'Overall', place: '38th', move: 'up' },
+        { label: 'GW', place: '3rd', move: 'up', tab: 'gw' },
+        { label: 'Oct', place: '8th', move: 'up', tab: 'monthly' },
+        { label: 'Overall', place: '38th', move: 'up', tab: 'overall' },
       ],
     },
     {
@@ -1815,17 +2105,17 @@ export function sampleFeed(): FeedItem[] {
       timeLabel: 'FT',
       stamp: '16:54',
       kind: 'rank',
-      eyebrow: 'Mini-leagues',
-      title: 'A little wobble',
+      eyebrow: 'Where you stand',
+      title: 'Mini leagues & leaderboard',
       body: '',
       standings: [
         { name: 'Easy League', place: '2nd', move: 'down', avatarUrl: SAMPLE_EASY_AVATAR },
         { name: 'FC Football', place: '2nd', move: 'same', avatarUrl: SAMPLE_FC_AVATAR },
       ],
       boards: [
-        { label: 'GW', place: '7th', move: 'down' },
-        { label: 'Oct', place: '9th', move: 'down' },
-        { label: 'Overall', place: '40th', move: 'down' },
+        { label: 'GW', place: '7th', move: 'down', tab: 'gw' },
+        { label: 'Oct', place: '9th', move: 'down', tab: 'monthly' },
+        { label: 'Overall', place: '40th', move: 'down', tab: 'overall' },
       ],
     },
     {

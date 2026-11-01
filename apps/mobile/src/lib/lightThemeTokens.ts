@@ -10,5 +10,8 @@ export const lightThemeTokens = {
     text: '#0F172A',
     muted: '#64748B',
     border: 'rgba(15,23,42,0.10)',
+    // Game Centre feed (Figma 386:59233).
+    feedBackground: '#FAF8F4',
+    cardBorder: '#E9DFD1',
   },
 } as const;

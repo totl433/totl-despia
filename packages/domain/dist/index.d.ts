@@ -317,6 +317,7 @@ export declare const UserStatsDataSchema: z.ZodObject<{
     gameweekStreak: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodObject<{
         gw: z.ZodNumber;
         points: z.ZodNullable<z.ZodNumber>;
+        seasonLabel: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>>>;
     trophyCabinet: z.ZodPipe<z.ZodTransform<{
         gameweekPodiums: number;

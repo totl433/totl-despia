@@ -33,15 +33,18 @@ export function msUntilNextPlayersDay(now = new Date()): number {
 }
 
 /** Same seed for every player on a given Players day. */
-export function playersDaySeed(now = new Date()): number {
-  const key = playersDayKey(now);
-  const material = RESHUFFLED_DAYS[key] ? `${key}:${RESHUFFLED_DAYS[key]}` : key;
+export function playersDaySeedFromKey(dayKey: string): number {
+  const material = RESHUFFLED_DAYS[dayKey] ? `${dayKey}:${RESHUFFLED_DAYS[dayKey]}` : dayKey;
   let hash = 2166136261;
   for (let i = 0; i < material.length; i++) {
     hash ^= material.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+export function playersDaySeed(now = new Date()): number {
+  return playersDaySeedFromKey(playersDayKey(now));
 }
 
 /** "Next game in 5h 12m" — counts down to midnight GMT. */
@@ -76,6 +79,12 @@ export function playersWeekStart(dayKey: string): string {
   const [y, m, d] = dayKey.split('-').map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return shiftPlayersDay(dayKey, -((weekday + 6) % 7));
+}
+
+/** 0 = Monday … 6 = Sunday, on the GMT Players week. */
+export function playersWeekdayIndex(dayKey: string): number {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
 }
 
 /** Number of days in the month of the given day key. */

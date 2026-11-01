@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase';
 import { useViewerSeason } from '../lib/useViewerSeason';
 import { SEASON_PILE_TABLES, LEGACY_PILE_TABLES } from '../lib/leagueSeasonPile';
 import { useLiveScores } from './useLiveScores';
+import { indexLiveScoresByFixture } from '../lib/liveScoreRows';
+import { predictionsDeadlineMs } from '../lib/gameweekState';
 
 type LeaguesResponse = Awaited<ReturnType<typeof api.listLeagues>>;
 
@@ -24,14 +26,8 @@ function deadlineCountdown(
   fixtures: Fixture[],
   nowMs: number
 ): { text: string; expired: boolean; atMs: number } | null {
-  const firstKickoff = fixtures
-    .map((f) => (f.kickoff_time ? new Date(f.kickoff_time).getTime() : NaN))
-    .filter((t) => Number.isFinite(t))
-    .sort((a, b) => a - b)[0];
-  if (typeof firstKickoff !== 'number') return null;
-
-  const DEADLINE_BUFFER_MINUTES = 75;
-  const deadline = firstKickoff - DEADLINE_BUFFER_MINUTES * 60 * 1000;
+  const deadline = predictionsDeadlineMs(fixtures);
+  if (deadline === null) return null;
   const diffMs = deadline - nowMs;
   if (diffMs <= 0) return { text: '0d 0h 0m', expired: true, atMs: deadline };
 
@@ -152,6 +148,7 @@ export function useHomeData() {
     typeof home?.viewingGw === 'number' ? home.viewingGw : typeof home?.currentGw === 'number' ? home.currentGw : null;
   const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(liveScoresGw, {
     initial: home?.liveScores ?? [],
+    fixtures,
   });
 
   const firstKickoffTimeMs = React.useMemo(() => {
@@ -184,24 +181,9 @@ export function useHomeData() {
   }, [home?.gwResults]);
 
   const liveByFixtureIndex = React.useMemo(() => {
-    const m = new Map<number, LiveScore>();
-    if (!home) return m;
+    if (!home) return new Map<number, LiveScore>();
     if (liveByFixtureIndexRealtime.size > 0) return liveByFixtureIndexRealtime;
-    const apiMatchIdToFixtureIndex = new Map<number, number>();
-    home.fixtures.forEach((f: Fixture) => {
-      if (typeof f.api_match_id === 'number') apiMatchIdToFixtureIndex.set(f.api_match_id, f.fixture_index);
-    });
-    (home.liveScores ?? []).forEach((ls: LiveScore) => {
-      const idx =
-        typeof ls.fixture_index === 'number'
-          ? ls.fixture_index
-          : typeof ls.api_match_id === 'number'
-            ? apiMatchIdToFixtureIndex.get(ls.api_match_id)
-            : undefined;
-      if (typeof idx !== 'number') return;
-      m.set(idx, ls);
-    });
-    return m;
+    return indexLiveScoresByFixture(home.fixtures, home.liveScores ?? []);
   }, [home, liveByFixtureIndexRealtime]);
 
   const viewingGw = home?.viewingGw ?? null;

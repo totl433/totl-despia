@@ -1001,7 +1001,9 @@ export default function LeagueDetailScreen() {
     picksByFixtureIndex: Record<string, Record<string, LeaguePick>>;
   };
 
-  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(browsingArchive ? null : picksGw);
+  const { liveByFixtureIndex: liveByFixtureIndexRealtime } = useLiveScores(browsingArchive ? null : picksGw, {
+    fixtures: home?.fixtures ?? [],
+  });
 
   const {
     data: predictions,
@@ -1945,8 +1947,10 @@ export default function LeagueDetailScreen() {
         <LeagueInviteSheet
           open={inviteOpen}
           onClose={() => setInviteOpen(false)}
+          leagueId={String(params.leagueId)}
           leagueName={String(leagueMeta?.name ?? params.name ?? 'Mini league')}
           leagueCode={String(leagueMeta.code)}
+          memberCount={members.length}
           title={inviteMode === 'chat' ? 'Invite to chat' : 'Invite to mini league'}
           shareTextOverride={
             inviteMode === 'chat'

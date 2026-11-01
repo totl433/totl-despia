@@ -51,6 +51,7 @@ export default function AppRoot() {
       setFontsReady(true);
     }, 8_000);
     Font.loadAsync({
+      'Gramatika-Light': require('../../../public/Fonts/Gramatika-Light.ttf'),
       'Gramatika-Regular': require('../../../public/Fonts/Gramatika-Regular.ttf'),
       'Gramatika-Medium': require('../../../public/Fonts/Gramatika-Medium.ttf'),
       'Gramatika-Bold': require('../../../public/Fonts/Gramatika-Bold.ttf'),
@@ -59,6 +60,7 @@ export default function AppRoot() {
       'BarlowCondensed-Light': require('../../../public/Fonts/BarlowCondensed-Light.ttf'),
       'PressStart2P-Regular': require('../../../public/Fonts/PressStart2P-Regular.ttf'),
       'TourneyCondensed-Bold': require('../assets/fonts/TourneyCondensed-Bold.ttf'),
+      'GramatikaTrial-Black': require('../assets/fonts/GramatikaTrial-Black.ttf'),
     })
       .catch(() => {
         // If fonts fail to load, keep going with system fonts.

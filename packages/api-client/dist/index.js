@@ -76,7 +76,12 @@ async function requestJson(opts, input, init) {
 export function createApiClient(opts) {
     return {
         async getHomeSnapshot(params) {
-            const q = params?.gw ? `?gw=${encodeURIComponent(String(params.gw))}` : '';
+            const search = new URLSearchParams();
+            if (params?.gw)
+                search.set('gw', String(params.gw));
+            if (params?.dataSource === 'legacy')
+                search.set('dataSource', 'legacy');
+            const q = search.toString() ? `?${search.toString()}` : '';
             return requestJson(opts, `/v1/home${q}`, {
                 method: 'GET',
                 validate: (data) => HomeSnapshotSchema.parse(data),
@@ -104,8 +109,41 @@ export function createApiClient(opts) {
         async listLeagues() {
             return requestJson(opts, `/v1/leagues`, { method: 'GET' });
         },
+        async searchUsers(query) {
+            return requestJson(opts, `/v1/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+        },
+        async listLeagueInvites() {
+            return requestJson(opts, `/v1/league-invites`, { method: 'GET' });
+        },
+        async listLeagueInvitees(leagueId) {
+            return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, { method: 'GET' });
+        },
+        /** Invites by id when given (names can change and be long); the name is a fallback for older servers. */
+        async inviteToLeague(leagueId, username, userId) {
+            return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/invites`, {
+                method: 'POST',
+                body: JSON.stringify(userId ? { userId, username } : { username }),
+                validate: (data) => OkResponseSchema.parse(data),
+            });
+        },
+        async acceptLeagueInvite(inviteId) {
+            return requestJson(opts, `/v1/league-invites/${encodeURIComponent(inviteId)}/accept`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+            });
+        },
+        async dismissLeagueInvite(inviteId) {
+            return requestJson(opts, `/v1/league-invites/${encodeURIComponent(inviteId)}/dismiss`, {
+                method: 'POST',
+                body: JSON.stringify({}),
+                validate: (data) => OkResponseSchema.parse(data),
+            });
+        },
         async getLeague(leagueId) {
             return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}`, { method: 'GET' });
+        },
+        async getLeagueSeasonTable(leagueId) {
+            return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/season-table`, { method: 'GET' });
         },
         async getLeagueAdmin(leagueId) {
             return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/admin`, { method: 'GET' });
@@ -168,6 +206,12 @@ export function createApiClient(opts) {
                 validate: (data) => z.object({ unicorns: z.array(UnicornCardSchema) }).parse(data),
             });
         },
+        async deleteAccount() {
+            return requestJson(opts, `/v1/profile/account`, {
+                method: 'DELETE',
+                validate: (data) => OkResponseSchema.parse(data),
+            });
+        },
         async getEmailPreferences() {
             return requestJson(opts, `/v1/email-preferences`, {
                 method: 'GET',
@@ -185,6 +229,22 @@ export function createApiClient(opts) {
         },
         async submitChatMessageReport(input) {
             return requestJson(opts, `/v1/chat/reports`, {
+                method: 'POST',
+                body: JSON.stringify(input),
+                validate: (data) => OkResponseSchema.parse(data),
+            });
+        },
+        async listMatchCenterAdminPosts() {
+            return requestJson(opts, `/v1/match-center/admin-posts`, { method: 'GET' });
+        },
+        async postMatchCenterBroadcast(input) {
+            return requestJson(opts, `/v1/admin/match-center/broadcast`, {
+                method: 'POST',
+                body: JSON.stringify(input),
+            });
+        },
+        async submitGameCentreCommentReport(input) {
+            return requestJson(opts, `/v1/game-centre/comment-reports`, {
                 method: 'POST',
                 body: JSON.stringify(input),
                 validate: (data) => OkResponseSchema.parse(data),

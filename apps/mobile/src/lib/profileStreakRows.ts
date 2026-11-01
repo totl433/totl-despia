@@ -1,7 +1,9 @@
 import type { UserStatsData } from '@totl/domain';
 
 import type { GameweekStreakRow } from './gameweekStreakCount';
-import { withSeasonLabel } from './gameweekStreakCount';
+import { capGameweekStreakRowsAtLastCompleted, withSeasonLabel } from './gameweekStreakCount';
+
+export { capGameweekStreakRowsAtLastCompleted };
 import { SEASON_2025_26_LABEL } from './leaderboardMonths';
 import { supabase } from './supabase';
 
@@ -120,19 +122,6 @@ export function tagStreakRowsWithSeason(
 ): GameweekStreakRow[] | null {
   if (!rows?.length) return rows ?? null;
   return withSeasonLabel(rows, seasonLabel);
-}
-
-/** Drop chips above `lastCompletedGw` so streak reflects finalized gameweeks only (matches BFF streak ladder). */
-export function capGameweekStreakRowsAtLastCompleted(
-  rows: GameweekStreakRow[] | null | undefined,
-  lastCompletedGw: number | null | undefined
-): GameweekStreakRow[] | null {
-  if (!rows?.length) return rows ?? null;
-  const cap =
-    typeof lastCompletedGw === 'number' && lastCompletedGw > 0 ? lastCompletedGw : null;
-  if (cap == null) return rows;
-  const next = rows.filter((r) => r.gw <= cap);
-  return next.length ? next : null;
 }
 
 /**

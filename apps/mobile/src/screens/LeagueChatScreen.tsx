@@ -219,8 +219,10 @@ export default function LeagueChatScreen() {
           <LeagueInviteSheet
             open={inviteOpen}
             onClose={() => setInviteOpen(false)}
+            leagueId={leagueId}
             leagueName={leagueName}
             leagueCode={String(leagueMeta.code)}
+            memberCount={members.length}
             title={inviteMode === 'chat' ? 'Invite to chat' : 'Invite to mini league'}
             shareTextOverride={
               inviteMode === 'chat'

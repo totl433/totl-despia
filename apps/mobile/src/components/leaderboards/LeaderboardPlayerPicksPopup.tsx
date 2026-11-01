@@ -659,7 +659,7 @@ export default function LeaderboardPlayerPicksPopup({
                         textAlign: 'center',
                       }}
                     >
-                      {isSelf ? 'Your picks' : opponentDisplay}
+                      {isSelf ? 'Your Predictions' : opponentDisplay}
                     </TotlText>
                     {!isSelf && (typeof opponentOcp === 'number' || typeof opponentOverallRank === 'number') ? (
                       <TotlText
@@ -690,7 +690,7 @@ export default function LeaderboardPlayerPicksPopup({
                   ) : isError ? (
                     <View style={{ flex: 1, minHeight: 160, paddingHorizontal: 16, justifyContent: 'center' }}>
                       <TotlText style={{ textAlign: 'center', color: secondaryText, fontSize: 14 }}>
-                        {error instanceof Error ? error.message : 'Could not load picks.'}
+                        {error instanceof Error ? error.message : 'Could not load Predictions.'}
                       </TotlText>
                     </View>
                   ) : (

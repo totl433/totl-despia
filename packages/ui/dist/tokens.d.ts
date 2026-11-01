@@ -7,6 +7,8 @@ export declare const tokens: {
         readonly text: "#F8FAFC";
         readonly muted: "#94A3B8";
         readonly border: "rgba(148,163,184,0.25)";
+        readonly feedBackground: "#0F172A";
+        readonly cardBorder: "transparent";
         readonly danger: "#DC2626";
         readonly warning: "#F59E0B";
         readonly success: "#10B981";
@@ -33,6 +35,11 @@ export declare const tokens: {
     readonly font: {
         readonly body: "Gramatika-Regular";
         readonly heading: "Gramatika-Bold";
+        readonly light: "Gramatika-Light";
+        readonly regular: "Gramatika-Regular";
+        readonly medium: "Gramatika-Medium";
+        readonly bold: "Gramatika-Bold";
+        readonly black: "GramatikaTrial-Black";
         readonly mono: "PressStart2P-Regular";
     };
 };

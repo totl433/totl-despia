@@ -10,6 +10,9 @@ export const tokens = {
         text: '#F8FAFC',
         muted: '#94A3B8',
         border: 'rgba(148,163,184,0.25)',
+        // Game Centre feed. Dark mode keeps the screen background and borderless cards.
+        feedBackground: '#0F172A',
+        cardBorder: 'transparent',
         danger: '#DC2626',
         warning: '#F59E0B',
         success: '#10B981',
@@ -38,6 +41,13 @@ export const tokens = {
         // On mobile, these are loaded via `expo-font` in the Expo app.
         body: 'Gramatika-Regular',
         heading: 'Gramatika-Bold',
+        // Weights by name. Screens already use these; until now they were undefined and fell back to System.
+        light: 'Gramatika-Light',
+        regular: 'Gramatika-Regular',
+        medium: 'Gramatika-Medium',
+        bold: 'Gramatika-Bold',
+        // Trial cut: digits and letters only (no ':' or '%'), so use it for short labels.
+        black: 'GramatikaTrial-Black',
         mono: 'PressStart2P-Regular',
     },
 };

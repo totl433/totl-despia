@@ -20,11 +20,11 @@ export default function HowToPlayScreen() {
       title: 'Predictions',
       icon: '🎯',
       intro:
-        'Before each Premier League Gameweek, head to Predictions and make your picks for every match: Home Win, Draw, or Away Win.',
+        'Before each Premier League Gameweek, head to Predictions and make your Predictions for every match: Home Win, Draw, or Away Win.',
       callouts: [
         {
           title: 'Important',
-          body: 'Once the first match kicks off, predictions are locked. Make sure your picks are in before the deadline.',
+          body: 'Once the first match kicks off, Predictions are locked. Make sure your Predictions are in before the deadline.',
         },
         {
           title: 'Scoring',

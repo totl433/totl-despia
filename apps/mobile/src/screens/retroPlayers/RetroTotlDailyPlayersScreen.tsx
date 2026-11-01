@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -19,7 +20,13 @@ import { TotlText } from '@totl/ui';
 import { createPlayersPuzzle, PLAYERS_TIMER_MS, type PlayersClubOption, type PlayersPuzzle } from '../../lib/retroPlayers/buildPuzzle';
 import { msUntilNextPlayersDay, playersDayKey, playersDaySeed, playersNextGameLine } from '../../lib/retroPlayers/day';
 import { loadPlayerClubApps } from '../../lib/retroPlayers/loadPlayerClubApps';
-import { playersDayAlreadySaved, readPlayersScores, savePlayersDayScore } from '../../lib/retroPlayers/scores';
+import {
+  playersDayAlreadySaved,
+  readPlayersScores,
+  savePlayersDayProgress,
+  settlePlayersAttemptsOnPhone,
+  startPlayersDay,
+} from '../../lib/retroPlayers/scores';
 import { playersResultShareMessage } from '../../lib/retroPlayers/results';
 import {
   loadPlayersResultCards,
@@ -111,6 +118,11 @@ function optionFromSwipe(dx: number, dy: number, options: PlayersClubOption[]): 
  */
 export default function RetroTotlDailyPlayersScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RetroTotlDailyPlayersStackParamList>>();
+  const queryClient = useQueryClient();
+  /** The feed's copy of everyone's scores: refreshed once this game is saved, so Play today / Play now go. */
+  const refreshFeedScores = React.useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['match-center-derived-extras'] });
+  }, [queryClient]);
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
 
@@ -124,6 +136,8 @@ export default function RetroTotlDailyPlayersScreen() {
   const dayKey = playersDayKey(new Date(now));
   /** The day the daily puzzle on screen belongs to; its score saves against this day. */
   const dealtDayRef = React.useRef(dayKey);
+  /** Set when the day's scored game starts, so every answer after that is saved straight away. */
+  const startedDayRef = React.useRef<string | null>(null);
   const [puzzle, setPuzzle] = React.useState<PlayersPuzzle | null>(null);
   const [loadError, setLoadError] = React.useState(false);
   const [catalogAttempt, setCatalogAttempt] = React.useState(0);
@@ -221,8 +235,10 @@ export default function RetroTotlDailyPlayersScreen() {
       playedRef.current = false;
       setPlayedToday(false);
     }
-    void playersDayAlreadySaved(today).then((played) => {
+    void playersDayAlreadySaved(today).then((answer) => {
       if (cancelled) return;
+      // A game started while this was loading counts too.
+      const played = answer || startedDayRef.current === today;
       playedRef.current = played;
       setPlayedToday(played);
     });
@@ -238,14 +254,28 @@ export default function RetroTotlDailyPlayersScreen() {
     };
   }, [dayKey]);
 
+  // A game the app was closed in the middle of keeps the score it had.
   React.useEffect(() => {
-    if (phase !== 'score' || practiceRef.current || cards.length === 0) return;
+    void settlePlayersAttemptsOnPhone().catch((error) =>
+      console.error('[RetroTotlDailyPlayers] settle attempts failed:', error)
+    );
+  }, []);
+
+  // Each answer is saved as it's given, so closing the app after a wrong one doesn't
+  // give another go. The game is over at the first miss or after the last card.
+  React.useEffect(() => {
+    const day = startedDayRef.current;
+    if (!day || practiceRef.current || cards.length === 0 || outcomes.length === 0) return;
+    const correct = outcomes.filter((o) => o.correct).length;
+    const finished = outcomes.length >= cards.length || outcomes.some((o) => !o.correct);
     // A game started before midnight still counts for the day it was dealt.
-    void savePlayersDayScore(dealtDayRef.current, { correct: score, total: cards.length }).then(() => {
+    void savePlayersDayProgress(day, { correct, total: cards.length }, finished).then(() => {
+      if (!finished) return;
       playedRef.current = true;
       setPlayedToday(true);
+      refreshFeedScores();
     });
-  }, [cards.length, phase, score]);
+  }, [cards.length, outcomes, refreshFeedScores]);
 
   // Result cards come first. The game waits briefly for them, never longer than RESULTS_WAIT_MS.
   React.useEffect(() => {
@@ -336,6 +366,7 @@ export default function RetroTotlDailyPlayersScreen() {
     timerEpoch.current += 1;
     if (timerRaf.current != null) cancelAnimationFrame(timerRaf.current);
     if (!nextPractice) dealtDayRef.current = playersDayKey();
+    startedDayRef.current = null;
     setReviewing(false);
     setPuzzle(createPlayersPuzzle(rows, nextPractice ? Date.now() : playersDaySeed()));
     setPhase('intro');
@@ -526,7 +557,20 @@ export default function RetroTotlDailyPlayersScreen() {
       }
 
       if (p === 'intro') {
-        if (playedRef.current && !practiceRef.current) return;
+        if ((playedRef.current && !practiceRef.current) || !cardsLenRef.current) return;
+        if (!practiceRef.current) {
+          // Saved before the first question: from here, leaving counts as playing.
+          const day = dealtDayRef.current;
+          startedDayRef.current = day;
+          playedRef.current = true;
+          void startPlayersDay(day, cardsLenRef.current).then((started) => {
+            refreshFeedScores();
+            if (started || startedDayRef.current !== day) return;
+            // Already played today on another device: back to the intro.
+            setPlayedToday(true);
+            deal('daily');
+          });
+        }
         setCountdownStep(0);
         setPhase('countdown');
         setCardKey(`countdown-${Date.now()}`);
@@ -544,7 +588,7 @@ export default function RetroTotlDailyPlayersScreen() {
 
       if (p === 'reveal') advanceFromReveal();
     },
-    [acknowledgeResult, advanceFromReveal, commitPick, dragX, dragY]
+    [acknowledgeResult, advanceFromReveal, commitPick, deal, dragX, dragY, refreshFeedScores]
   );
 
   const shareScore = React.useCallback(async () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { TotlText, useTokens } from '@totl/ui';
@@ -11,23 +11,13 @@ import {
   streakRowKey,
   type GameweekStreakRow,
 } from '../../lib/gameweekStreakCount';
-import {
-  isGwFullyCompleteForStatsRoundUp,
-  isGwStatsLiveDot,
-  type StatsGwCompletionContext,
-} from '../../lib/gameweekState';
+import { isGwStatsLiveDot, type StatsGwCompletionContext } from '../../lib/gameweekState';
 
 export type { GameweekStreakRow };
 
 const STREAK_SCORE_SIZE = 54;
 /** Ionicons measure taller than type at equal pt — keep flame visually shorter than the digits */
 const STREAK_FLAME_SIZE = Math.round(STREAK_SCORE_SIZE * 0.78);
-
-/** When `lastCompletedGw` is unknown, allow Round Up for any scored chip (previous behaviour). */
-function gwHasFinalResultsLegacy(gw: number, lastCompletedGw: number | null | undefined): boolean {
-  if (lastCompletedGw == null || typeof lastCompletedGw !== 'number' || lastCompletedGw <= 0) return true;
-  return gw <= lastCompletedGw;
-}
 
 function gwIsLiveIncompleteLegacy(gw: number, lastCompletedGw: number | null | undefined): boolean {
   return typeof lastCompletedGw === 'number' && lastCompletedGw > 0 && gw > lastCompletedGw;
@@ -45,20 +35,16 @@ export default function StatsGameweekStreakStrip({
   lastCompletedGw,
   statsGwCompletion,
   nestInsideStatCard,
-  onViewScoresheet,
-  /** Live season label e.g. "2026/27". Chips from other seasons always get Round Up when scored. */
   liveSeasonLabel,
 }: {
   rows: GameweekStreakRow[];
   /** Fallback when `statsGwCompletion` is missing (older callers). */
   lastCompletedGw?: number | null;
-  /** Home snapshot probe — aligns Round Up / live with last-fixture-finished (not `app_gw_results` max gw). */
+  /** Home snapshot probe — live dot on the in-progress week. */
   statsGwCompletion?: StatsGwCompletionContext | null;
   /** Flat layout on `StatCard` surface (no inner gradient frame). */
   nestInsideStatCard?: boolean;
-  /** Opens score sheet then Results card for that GW. Labelled “Round Up” in UI. */
-  onViewScoresheet?: (gw: number, seasonLabel?: string | null) => void;
-  /** When set, scored chips from a different season are always eligible for Round Up. */
+  /** Live season label e.g. "2026/27". Prior-season chips never show a live dot. */
   liveSeasonLabel?: string | null;
 }) {
   const t = useTokens();
@@ -133,22 +119,6 @@ export default function StatsGameweekStreakStrip({
                 probeLoading: c.probeLoading,
               })
             : gwIsLiveIncompleteLegacy(row.gw, lastCompletedGw));
-        const showRoundUp = Boolean(
-          onViewScoresheet &&
-            scored &&
-            (priorSeason
-              ? true
-              : c
-                ? isGwFullyCompleteForStatsRoundUp({
-                    gw: row.gw,
-                    currentGw: c.currentGw,
-                    probeHome: c.probeHome,
-                    probeGw: c.probeGw,
-                    lastCompletedGw: c.lastCompletedGw,
-                    probeLoading: c.probeLoading,
-                  })
-                : gwHasFinalResultsLegacy(row.gw, lastCompletedGw))
-        );
         return (
           <View
             key={streakRowKey(row)}
@@ -190,19 +160,6 @@ export default function StatsGameweekStreakStrip({
                 —
               </TotlText>
             )}
-            {showRoundUp ? (
-              <Pressable
-                onPress={() => onViewScoresheet?.(row.gw, row.seasonLabel)}
-                accessibilityRole="button"
-                accessibilityLabel={`View Round Up for gameweek ${row.gw}`}
-                hitSlop={{ top: 6, bottom: 4, left: 4, right: 4 }}
-                style={({ pressed }) => ({ marginTop: 10, opacity: pressed ? 0.72 : 1 })}
-              >
-                <TotlText style={{ fontSize: 11, fontWeight: '800', color: String(t.color.brand), lineHeight: 14 }}>
-                  View Round Up
-                </TotlText>
-              </Pressable>
-            ) : null}
           </View>
         );
       })}
@@ -219,13 +176,16 @@ export default function StatsGameweekStreakStrip({
           <View accessible={false}>
             <Ionicons name="flame" size={STREAK_FLAME_SIZE} color={String(t.color.warning)} />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
             <TotlText
               style={{
                 fontSize: STREAK_SCORE_SIZE,
-                lineHeight: STREAK_SCORE_SIZE + 2,
+                lineHeight: STREAK_SCORE_SIZE + 8,
                 fontWeight: '900',
                 letterSpacing: -2,
+                // iOS clips the last glyph when letterSpacing is negative.
+                paddingRight: 6,
+                includeFontPadding: false,
                 fontFamily: t.font.heading,
                 color: String(t.color.brand),
               }}

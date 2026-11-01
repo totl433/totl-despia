@@ -14,6 +14,7 @@ export declare class ApiError extends Error {
 export declare function createApiClient(opts: ApiClientOptions): {
     getHomeSnapshot(params?: {
         gw?: number;
+        dataSource?: "legacy";
     }): Promise<HomeSnapshot>;
     getHomeRanks(): Promise<HomeRanks>;
     getGwResults(gw: number): Promise<GwResults>;
@@ -31,6 +32,50 @@ export declare function createApiClient(opts: ApiClientOptions): {
             avatar?: string | null;
         }>;
     }>;
+    searchUsers(query: string): Promise<{
+        users: Array<{
+            id: string;
+            name: string;
+            avatarUrl: string | null;
+        }>;
+    }>;
+    listLeagueInvites(): Promise<{
+        invites: Array<{
+            id: string;
+            leagueId: string;
+            leagueName: string;
+            leagueCode: string;
+            leagueAvatar: string | null;
+            invitedById: string;
+            invitedByName: string;
+            createdAt: string;
+            status: "pending" | "accepted" | "dismissed";
+        }>;
+    }>;
+    listLeagueInvitees(leagueId: string): Promise<{
+        invitees: Array<{
+            userId: string;
+            name: string;
+            avatarUrl: string | null;
+            status: "waiting" | "joined" | "declined";
+            invitedAt: string;
+        }>;
+    }>;
+    /** Invites by id when given (names can change and be long); the name is a fallback for older servers. */
+    inviteToLeague(leagueId: string, username: string, userId?: string): Promise<{
+        ok: true;
+    }>;
+    acceptLeagueInvite(inviteId: string): Promise<{
+        ok: true;
+        league: {
+            id: string;
+            name: string;
+            code: string;
+        };
+    }>;
+    dismissLeagueInvite(inviteId: string): Promise<{
+        ok: true;
+    }>;
     getLeague(leagueId: string): Promise<{
         league: any;
         members: Array<{
@@ -38,6 +83,18 @@ export declare function createApiClient(opts: ApiClientOptions): {
             name: string;
             avatar_url?: string | null;
             created_at?: string | null;
+        }>;
+    }>;
+    getLeagueSeasonTable(leagueId: string): Promise<{
+        rows: Array<{
+            user_id: string;
+            name: string;
+            mltPts: number;
+            ocp: number;
+            unicorns: number;
+            wins: number;
+            draws: number;
+            form: Array<"W" | "D" | "L">;
         }>;
     }>;
     getLeagueAdmin(leagueId: string): Promise<{
@@ -104,6 +161,9 @@ export declare function createApiClient(opts: ApiClientOptions): {
     getProfileUnicorns(): Promise<{
         unicorns: UnicornCard[];
     }>;
+    deleteAccount(): Promise<{
+        ok: true;
+    }>;
     getEmailPreferences(): Promise<{
         preferences: EmailPreferences;
     }>;
@@ -113,6 +173,41 @@ export declare function createApiClient(opts: ApiClientOptions): {
     }>;
     submitChatMessageReport(input: {
         messageId: string;
+        reason: string;
+    }): Promise<{
+        ok: true;
+    }>;
+    listMatchCenterAdminPosts(): Promise<{
+        posts: Array<{
+            id: string;
+            title: string;
+            body: string;
+            comments: boolean;
+            shareable: boolean;
+            reacts: boolean;
+            publishedAt: string;
+        }>;
+    }>;
+    postMatchCenterBroadcast(input: {
+        title: string;
+        body: string;
+        comments: boolean;
+        shareable: boolean;
+        reacts: boolean;
+    }): Promise<{
+        ok: true;
+        post: {
+            id: string;
+            title: string;
+            body: string;
+            comments: boolean;
+            shareable: boolean;
+            reacts: boolean;
+            publishedAt: string;
+        };
+    }>;
+    submitGameCentreCommentReport(input: {
+        commentId: string;
         reason: string;
     }): Promise<{
         ok: true;
