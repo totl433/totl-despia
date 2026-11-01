@@ -2709,6 +2709,8 @@ export default function MatchCenterScreen() {
   const feedOffset = React.useRef(0);
   const feedViewport = React.useRef(0);
   const [scrolledDown, setScrolledDown] = React.useState(false);
+  // Set on tap so the button fades straight away, not when the jump reaches the top.
+  const [jumpingToTop, setJumpingToTop] = React.useState(false);
   const onFeedScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     // "At the latest" is the top of the feed when newest is first, the bottom otherwise.
@@ -2720,11 +2722,13 @@ export default function MatchCenterScreen() {
     feedOffset.current = contentOffset.y;
     feedViewport.current = layoutMeasurement.height;
     setScrolledDown(contentOffset.y > SCROLL_TOP_AFTER);
+    if (contentOffset.y <= SCROLL_TOP_AFTER) setJumpingToTop(false);
   }, [newestFirst]);
 
   // Back to the top (newest first only): a calm jump like WhatsApp's. From far down the feed it
   // jumps to a screen below the top without animating, then glides the last stretch.
   const scrollToTop = React.useCallback(() => {
+    setJumpingToTop(true);
     atBottom.current = true;
     setNewUpdates(false);
     const near = feedViewport.current || 600;
@@ -3185,6 +3189,8 @@ export default function MatchCenterScreen() {
         maxToRenderPerBatch={4}
         windowSize={9}
         onScroll={onFeedScroll}
+        // Grabbing the feed mid-jump hands it back to you, button and all.
+        onScrollBeginDrag={() => setJumpingToTop(false)}
         scrollEventThrottle={16}
         onContentSizeChange={holdLastCard}
         maintainVisibleContentPosition={newestFirst ? { minIndexForVisible: 0 } : undefined}
@@ -3260,7 +3266,7 @@ export default function MatchCenterScreen() {
           </>
         }
       />
-      {newestFirst && !prepping ? <FeedScrollTopButton visible={scrolledDown && !newUpdates} onPress={scrollToTop} bottom={tickerShown ? TICKER_HEIGHT + 28 : 28} /> : null}
+      {newestFirst && !prepping ? <FeedScrollTopButton visible={scrolledDown && !newUpdates && !jumpingToTop} onPress={scrollToTop} bottom={tickerShown ? TICKER_HEIGHT + 28 : 28} /> : null}
       </Reanimated.View>
       {newUpdates && !prepping ? (
         <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showAnyPin ? pinnedHeight : 0} />

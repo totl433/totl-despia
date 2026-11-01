@@ -6,7 +6,7 @@ import Reanimated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from
 
 const CHEVRON = Asset.fromModule(require('../../../assets/icons/feed-scroll-up-chevron.svg')).uri;
 
-/** It rises the last 20pt into place as it fades in, and sinks back as it goes (like WhatsApp's). */
+/** It rises the last 20pt into place as it fades in, and sinks back as it fades out on tap (like WhatsApp's). */
 const RISE = 20;
 
 /**
@@ -25,7 +25,8 @@ export default function FeedScrollTopButton({
   const shown = useSharedValue(visible ? 1 : 0);
   React.useEffect(() => {
     shown.value = withTiming(visible ? 1 : 0, {
-      duration: visible ? 240 : 180,
+      // Out is quicker than in: it starts the moment you tap.
+      duration: visible ? 240 : 140,
       easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
     });
   }, [shown, visible]);
