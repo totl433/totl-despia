@@ -58,6 +58,7 @@ import {
   PlayersFeedCardHeader,
   PlayersWinnerGrid,
 } from '../components/gameCentre/PlayersFeedCard';
+import FeedScrollTopButton from '../components/gameCentre/FeedScrollTopButton';
 import { INSIGHTS_FEED_CARD, InsightsFeedBackground, InsightsFeedCardHeader } from '../components/gameCentre/InsightsFeedCard';
 import { useLeaguesMissingPicks } from '../hooks/useLeaguesMissingPicks';
 import GameCentreInvitePinnedCard from '../components/gameCentre/GameCentreInvitePinnedCard';
@@ -1572,7 +1573,7 @@ function FixtureTicker({
         left: 0,
         right: 0,
         bottom: 0,
-        height: 78,
+        height: TICKER_HEIGHT,
         backgroundColor: '#FFF7ED',
         borderTopWidth: 1,
         borderTopColor: t.color.border,
@@ -1651,6 +1652,12 @@ function GameweekDivider({ gw }: { gw: number }) {
     </View>
   );
 }
+
+/** The score ticker along the bottom of the feed; it sits over the list. */
+const TICKER_HEIGHT = 78;
+
+/** The back-to-the-top button shows once the feed has scrolled this far (pt). */
+const SCROLL_TOP_AFTER = 400;
 
 /** A card counts as seen once half of it is on screen; that starts its pick bar's first fill. */
 const FEED_VIEWABILITY = { itemVisiblePercentThreshold: 50 };
@@ -2699,6 +2706,11 @@ export default function MatchCenterScreen() {
     setNewUpdates(true);
   }, [feed.length, mode, newestFirst, prepping]);
 
+  const feedOffset = React.useRef(0);
+  const feedViewport = React.useRef(0);
+  const [scrolledDown, setScrolledDown] = React.useState(false);
+  // Set on tap so the button fades straight away, not when the jump reaches the top.
+  const [jumpingToTop, setJumpingToTop] = React.useState(false);
   const onFeedScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     // "At the latest" is the top of the feed when newest is first, the bottom otherwise.
@@ -2707,7 +2719,26 @@ export default function MatchCenterScreen() {
       : contentSize.height - layoutMeasurement.height - contentOffset.y < 120;
     atBottom.current = nearLatest;
     if (nearLatest) setNewUpdates(false);
+    feedOffset.current = contentOffset.y;
+    feedViewport.current = layoutMeasurement.height;
+    setScrolledDown(contentOffset.y > SCROLL_TOP_AFTER);
+    if (contentOffset.y <= SCROLL_TOP_AFTER) setJumpingToTop(false);
   }, [newestFirst]);
+
+  // Back to the top (newest first only): a calm jump like WhatsApp's. From far down the feed it
+  // jumps to a screen below the top without animating, then glides the last stretch.
+  const scrollToTop = React.useCallback(() => {
+    setJumpingToTop(true);
+    atBottom.current = true;
+    setNewUpdates(false);
+    const near = feedViewport.current || 600;
+    if (feedOffset.current > near * 1.5) {
+      scrollRef.current?.scrollToOffset({ offset: near, animated: false });
+      requestAnimationFrame(() => scrollRef.current?.scrollToOffset({ offset: 0, animated: true }));
+    } else {
+      scrollRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+  }, []);
 
   const jumpToLatest = React.useCallback(() => {
     atBottom.current = true;
@@ -3082,6 +3113,12 @@ export default function MatchCenterScreen() {
     );
   };
 
+  const tickerShown = Boolean(
+    showTicker &&
+      (tickerFixtures.length ||
+        (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))))
+  );
+
   return (
     <GameweekAdvanceTransition controller={advanceTransition}>
     <Screen fullBleed backgroundColor={t.color.feedBackground}>
@@ -3152,6 +3189,8 @@ export default function MatchCenterScreen() {
         maxToRenderPerBatch={4}
         windowSize={9}
         onScroll={onFeedScroll}
+        // Grabbing the feed mid-jump hands it back to you, button and all.
+        onScrollBeginDrag={() => setJumpingToTop(false)}
         scrollEventThrottle={16}
         onContentSizeChange={holdLastCard}
         maintainVisibleContentPosition={newestFirst ? { minIndexForVisible: 0 } : undefined}
@@ -3227,6 +3266,7 @@ export default function MatchCenterScreen() {
           </>
         }
       />
+      {newestFirst && !prepping ? <FeedScrollTopButton visible={scrolledDown && !newUpdates && !jumpingToTop} onPress={scrollToTop} bottom={tickerShown ? TICKER_HEIGHT + 28 : 28} /> : null}
       </Reanimated.View>
       {newUpdates && !prepping ? (
         <NewUpdatesButton onPress={jumpToLatest} atTop={newestFirst} topOffset={showAnyPin ? pinnedHeight : 0} />
@@ -3242,9 +3282,7 @@ export default function MatchCenterScreen() {
           enableRecentlyUsed
         />
       ) : null}
-      {showTicker &&
-      (tickerFixtures.length ||
-        (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null)))) ? (
+      {tickerShown ? (
         <FixtureTicker
           games={gamesLive ? liveTickerFixtures : tickerFixtures}
           leagues={rankingsOnTicker ? tickerLeagues ?? [] : []}
