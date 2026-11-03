@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- Wording that mentions Mates in Mind needs their sign-off. Remove this tag once it's approved. -->
+  <meta name="robots" content="noindex" />
+  <title>TotL x Mates in Mind: join the leaderboard</title>
+  <meta name="description" content="Join the Mates in Mind leaderboard on TotL. Free to play. No odds. No money." />
+  <meta name="theme-color" content="#1a1a1a" />
+  <link rel="canonical" href="https://playtotl.com/mates-in-mind" />
+  <link rel="icon" type="image/svg+xml" href="/assets/badges/totl-logo1.svg" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="TotL" />
+  <meta property="og:locale" content="en_GB" />
+  <meta property="og:url" content="https://playtotl.com/mates-in-mind" />
+  <meta property="og:title" content="Think you know football? Prove it." />
+  <meta property="og:description" content="Join the Mates in Mind leaderboard on TotL. Free to play. No odds. No money." />
+  <meta property="og:image" content="https://playtotl.com/og-image.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="preload" href="/Fonts/Gramatika-Regular.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="preload" href="/Fonts/Gramatika-Bold.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Tourney (width axis): the display face of the playtotl.com landing page. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tourney:wdth,wght@75..125,700&display=swap" />
+
+  <style>
+    @font-face {
+      font-family: 'Gramatika';
+      src: url('/Fonts/Gramatika-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Gramatika';
+      src: url('/Fonts/Gramatika-Bold.ttf') format('truetype');
+      font-weight: 700;
+      font-display: swap;
+    }
+
+    /* Colours and type from the playtotl.com landing page (Figma totl-assets 16:16875). */
+    :root {
+      --ink: #1a1a1a;
+      --green: #1c8376;
+      --green-deep: #0c3731;
+      --white: #ffffff;
+      --body: rgba(0, 0, 0, 0.7);
+      --rail: rgba(0, 0, 0, 0.05);
+      --ring: #f2f2f2;
+      --gutter: 20px;
+      --display: 'Tourney', 'Gramatika', ui-sans-serif, system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--white);
+      color: #000;
+      font-family: 'Gramatika', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
+    img { display: block; max-width: 100%; }
+    a { color: inherit; }
+    :focus-visible { outline: 3px solid #75b6ff; outline-offset: 3px; border-radius: 6px; }
+
+    .display {
+      margin: 0;
+      font-family: var(--display);
+      font-weight: 700;
+      font-variation-settings: 'wdth' 75;
+      text-transform: uppercase;
+      letter-spacing: -0.035em;
+      line-height: 0.9;
+    }
+    .wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter); }
+
+    /* ---------- Hero ---------- */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: var(--ink);
+      color: var(--white);
+      padding-bottom: 56px;
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .hero-swoosh {
+      position: absolute;
+      left: 50%; top: 96px;
+      width: 150%; max-width: 1150px;
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .hero > :not(img) { position: relative; }
+
+    .lockup {
+      display: flex; align-items: center; gap: 14px;
+      padding-top: max(16px, env(safe-area-inset-top));
+      padding-bottom: 16px;
+    }
+    .lockup-x { font-size: 20px; opacity: 0.6; }
+    /* Space for the Mates in Mind logo. Swap the wordmark for their logo file once
+       Danielle sends it and approves its use; keep it about 40px high. */
+    .partner-logo {
+      display: inline-flex; align-items: center;
+      height: 40px; padding: 0 12px;
+      border: 1.5px dashed rgba(255, 255, 255, 0.45);
+      border-radius: 8px;
+      font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
+    }
+
+    .hero-copy {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 24px;
+      padding-top: 28px;
+      text-align: center;
+    }
+    .hero h1 { font-size: clamp(48px, 14.6vw, 150px); }
+    .hero h1 span { display: block; white-space: nowrap; }
+    .hero-line { margin: 0; max-width: 30ch; font-size: 20px; line-height: 1.35; text-wrap: balance; }
+    .hero-line b { display: block; }
+
+    .badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .badges a { display: block; border-radius: 9px; transition: opacity 150ms ease-out; }
+    .badges a:hover { opacity: 0.9; }
+    .badges a:active { opacity: 0.8; }
+    .badges img { height: 48px; width: auto; }
+
+    /* ---------- How to join ---------- */
+    .join { padding: 72px 0 32px; }
+    .join h2, .why h2, .about h2 { font-size: clamp(44px, 12vw, 96px); }
+    .join h2 { text-align: center; }
+
+    .steps {
+      list-style: none;
+      margin: 48px auto 0; padding: 0;
+      max-width: 560px;
+    }
+    .step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      column-gap: 18px;
+      padding-bottom: 44px;
+    }
+    .step:last-child { padding-bottom: 0; }
+    /* The route between steps, as on the playtotl.com feature rows. */
+    .step:not(:last-child)::before {
+      content: '';
+      position: absolute;
+      left: 18px; top: 44px; bottom: 0;
+      width: 8px;
+      background: var(--rail);
+    }
+    .step::after {
+      content: '';
+      position: absolute;
+      left: 18px; top: 44px; bottom: 0;
+      width: 8px;
+      background: var(--green);
+      transform: scaleY(0);
+      transform-origin: top;
+      transition: transform 700ms cubic-bezier(0.33, 1, 0.68, 1) 250ms;
+    }
+    .step:last-child::after { display: none; }
+    .step.is-reached::after { transform: scaleY(1); }
+
+    .ring {
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      border: 8px solid var(--ring);
+      background: var(--white);
+      font-family: var(--display);
+      font-weight: 700;
+      font-variation-settings: 'wdth' 75;
+      font-size: 20px; line-height: 1;
+      transition: border-color 400ms ease-out, color 400ms ease-out;
+    }
+    .step.is-reached .ring { border-color: var(--green); color: var(--green); }
+
+    .step h3 {
+      margin: 6px 0 8px;
+      font-family: var(--display);
+      font-weight: 700;
+      font-variation-settings: 'wdth' 75;
+      text-transform: uppercase;
+      font-size: 32px; line-height: 0.95;
+      letter-spacing: -0.02em;
+    }
+    .step p { margin: 0; color: var(--body); }
+    .step p b { color: #000; }
+    .step p + p { margin-top: 10px; }
+
+    /* The join code: the one thing people must not lose between this page and the app. */
+    .code {
+      margin-top: 18px;
+      display: flex; align-items: stretch;
+      border-radius: 16px;
+      background: var(--green-deep);
+      color: var(--white);
+      overflow: hidden;
+      box-shadow: 0 18px 40px -18px rgba(12, 55, 49, 0.7);
+    }
+    .code-value {
+      flex: 1;
+      padding: 16px 18px 14px;
+      border-right: 2px dashed rgba(255, 255, 255, 0.25);
+    }
+    .code-label { display: block; font-size: 13px; opacity: 0.7; }
+    .code-value strong {
+      display: block;
+      font-family: var(--display);
+      font-weight: 700;
+      font-variation-settings: 'wdth' 75;
+      font-size: 64px; line-height: 0.9;
+      letter-spacing: 0.04em;
+    }
+    .code-copy {
+      appearance: none; border: 0; cursor: pointer;
+      min-width: 108px;
+      padding: 0 18px;
+      background: var(--green);
+      color: var(--white);
+      font: 700 16px/1 'Gramatika', ui-sans-serif, system-ui, sans-serif;
+      transition: background-color 150ms ease-out;
+    }
+    .code-copy:hover { background: #22978a; }
+    .code-copy:focus-visible { outline-offset: -5px; }
+
+    /* ---------- Why play ---------- */
+    .why {
+      position: relative;
+      overflow: hidden;
+      margin-top: 72px;
+      padding: 72px 0 64px;
+      color: var(--white);
+      background: radial-gradient(120% 90% at 50% 40%, #1c8376 0%, #176a5f 25%, #115048 50%, #0c3731 75%, #061d1a 100%);
+    }
+    .why-shape {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .why .wrap { position: relative; }
+    .why-grid { display: grid; gap: 40px; align-items: center; }
+    .why-list { list-style: none; margin: 32px 0 0; padding: 0; }
+    .why-list li { padding: 20px 0; border-top: 1px solid rgba(255, 255, 255, 0.18); }
+    .why-list li:last-child { padding-bottom: 0; }
+    .why-list h3 { margin: 0 0 6px; font-size: 20px; font-weight: 700; line-height: 1.25; }
+    .why-list p { margin: 0; opacity: 0.8; }
+    .why-phone { width: min(100%, 380px); margin: 0 auto; }
+
+    /* ---------- About ---------- */
+    .about { padding: 72px 0; }
+    .about-inner { max-width: 640px; }
+    .about-logos { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+    .about-logos img { height: 40px; width: auto; filter: invert(1); }
+    .about .partner-logo { border-color: rgba(0, 0, 0, 0.3); color: var(--ink); }
+    .about .lockup-x { color: var(--ink); }
+    .about p { margin: 20px 0 0; font-size: 20px; color: var(--body); }
+
+    /* ---------- Footer ---------- */
+    .footer {
+      position: relative;
+      overflow: hidden;
+      background: var(--ink);
+      color: var(--white);
+      padding: 64px 0 max(40px, env(safe-area-inset-bottom));
+      text-align: center;
+    }
+    .footer .hero-bg { opacity: 0.55; }
+    .footer > :not(img) { position: relative; }
+    .footer h2 { font-size: clamp(44px, 12vw, 96px); }
+    .footer .badges { margin-top: 28px; }
+    .pledge {
+      margin: 48px auto 0;
+      max-width: 34ch;
+      font-size: 16px;
+      opacity: 0.75;
+      text-wrap: balance;
+    }
+    .home-link { display: inline-block; margin-top: 14px; font-weight: 700; text-decoration: none; }
+    .home-link:hover { text-decoration: underline; }
+
+    /* ---------- Motion ---------- */
+    /* One load moment: the hero settles in, then each step's ring turns green as you
+       reach it (the same cue as the playtotl.com route). */
+    @keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+    .hero-copy > * { animation: rise 600ms cubic-bezier(0.33, 1, 0.68, 1) both; }
+    .hero-copy > :nth-child(2) { animation-delay: 90ms; }
+    .hero-copy > :nth-child(3) { animation-delay: 180ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero-copy > * { animation: none; }
+      .step::after, .ring { transition: none; }
+    }
+
+    /* ---------- Wider screens ---------- */
+    @media (min-width: 640px) {
+      :root { --gutter: 36px; }
+      .hero { padding-bottom: 96px; }
+      .hero-swoosh { width: 110%; top: 76px; }
+      .hero-line { font-size: 24px; }
+      .badges img { height: 56px; }
+      .step { grid-template-columns: 56px 1fr; column-gap: 24px; }
+      .ring { width: 56px; height: 56px; border-width: 10px; font-size: 24px; }
+      .step::before, .step::after { left: 24px !important; top: 56px !important; }
+      .step h3 { font-size: 40px; }
+    }
+    @media (min-width: 960px) {
+      .why-grid { grid-template-columns: 1fr 1fr; gap: 64px; }
+      .why-phone { order: 2; width: 100%; max-width: 460px; }
+      .join { padding-top: 112px; }
+      .why, .about { padding: 112px 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <img class="hero-bg" src="/mates-in-mind/hero-bg.jpg" alt="" fetchpriority="high" />
+    <img class="hero-swoosh" src="/assets/landing/hero-swoosh.svg" alt="" />
+
+    <div class="wrap lockup">
+      <a href="/" aria-label="TotL home"><img src="/assets/landing/logo.svg" alt="TotL" width="54" height="48" /></a>
+      <span class="lockup-x" aria-hidden="true">×</span>
+      <span class="partner-logo">Mates in Mind</span>
+    </div>
+
+    <div class="wrap hero-copy">
+      <h1 class="display"><span>Think you know</span> <span>football?</span> <span>Prove it.</span></h1>
+      <p class="hero-line">Join the Mates in Mind leaderboard on&nbsp;TotL. <b>Free to play. No odds. No money.</b></p>
+      <div class="badges">
+        <a href="https://apps.apple.com/gb/app/totl-top-of-the-league/id6754661450"><img src="/assets/landing/app-store-badge.svg" alt="Download on the App Store" width="166" height="56" /></a>
+        <a href="https://play.google.com/store/apps/details?id=com.despia.totlnative&amp;referrer=utm_source%3Dmates-in-mind%26utm_medium%3Dqr"><img src="/assets/landing/google-play-badge.svg" alt="Get it on Google Play" width="188" height="56" /></a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="join" aria-labelledby="join-title">
+      <div class="wrap">
+        <h2 class="display" id="join-title">How to join</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="ring" aria-hidden="true">1</span>
+            <div>
+              <h3>Download TotL</h3>
+              <p>Download TotL and create your free account.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="ring" aria-hidden="true">2</span>
+            <div>
+              <h3>Find the leaderboard</h3>
+              <p>Tap Leaderboards in the menu, choose <b>Mates in Mind</b>, and enter the code <b>MIM</b> to join the exclusive league.</p>
+              <div class="code">
+                <div class="code-value">
+                  <span class="code-label">Your code</span>
+                  <strong>MIM</strong>
+                </div>
+                <button class="code-copy" type="button" data-code="MIM" aria-live="polite">Copy code</button>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="ring" aria-hidden="true">3</span>
+            <div>
+              <h3>Make your picks</h3>
+              <p>Home, draw or away for every Premier League game, every gameweek.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="why" aria-labelledby="why-title">
+      <img class="why-shape" src="/assets/landing/green-shape.svg" alt="" loading="lazy" />
+      <div class="wrap why-grid">
+        <img class="why-phone" src="/mates-in-mind/phone.png" alt="The TotL app on an iPhone, showing gameweek predictions" width="760" height="760" loading="lazy" decoding="async" />
+        <div>
+          <h2 class="display" id="why-title">Why play</h2>
+          <ul class="why-list">
+            <li>
+              <h3>Take on your colleagues</h3>
+              <p>See where you rank against everyone else on the Mates in Mind leaderboard.</p>
+            </li>
+            <li>
+              <h3>Start a mini-league</h3>
+              <p>Invite up to 8 mates or workmates, with your own chat to keep the banter going all week.</p>
+            </li>
+            <li>
+              <h3>Hear from Mates in Mind</h3>
+              <p>Updates and news from the team, straight to the leaderboard.</p>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="about" aria-labelledby="about-title">
+      <div class="wrap about-inner">
+        <div class="about-logos">
+          <img src="/assets/landing/logo.svg" alt="TotL" width="54" height="48" />
+          <span class="lockup-x" aria-hidden="true">×</span>
+          <span class="partner-logo">Mates in Mind</span>
+        </div>
+        <h2 class="display" id="about-title">About the partnership</h2>
+        <p>TotL has teamed up with Mates in Mind, the workplace mental health charity, to help people stay connected through football. It starts with a prediction and becomes a conversation.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <img class="hero-bg" src="/mates-in-mind/hero-bg.jpg" alt="" loading="lazy" />
+    <div class="wrap">
+      <h2 class="display">Get your picks in</h2>
+      <div class="badges">
+        <a href="https://apps.apple.com/gb/app/totl-top-of-the-league/id6754661450"><img src="/assets/landing/app-store-badge.svg" alt="Download on the App Store" width="166" height="56" /></a>
+        <a href="https://play.google.com/store/apps/details?id=com.despia.totlnative&amp;referrer=utm_source%3Dmates-in-mind%26utm_medium%3Dqr"><img src="/assets/landing/google-play-badge.svg" alt="Get it on Google Play" width="188" height="56" /></a>
+      </div>
+      <p class="pledge">TotL is free to play. We have never taken money from betting companies, and we never will.</p>
+      <a class="home-link" href="/">playtotl.com</a>
+    </div>
+  </footer>
+
+  <script>
+    // Copy the join code, so it's on the clipboard when they reach the app.
+    document.querySelectorAll('[data-code]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var done = function () {
+          button.textContent = 'Copied';
+          setTimeout(function () { button.textContent = 'Copy code'; }, 2000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(button.dataset.code).then(done, function () {});
+        }
+      });
+    });
+
+    // Each step's ring turns green once it's on screen, and the route grows to the next.
+    var steps = document.querySelectorAll('.step');
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) {
+      steps.forEach(function (step) { step.classList.add('is-reached'); });
+    } else {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('is-reached');
+          io.unobserve(entry.target);
+        });
+      }, { rootMargin: '0px 0px -30% 0px' });
+      steps.forEach(function (step) { io.observe(step); });
+    }
+  </script>
+</body>
+</html>
