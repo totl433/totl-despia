@@ -108,15 +108,9 @@
       padding-bottom: 16px;
     }
     .lockup-x { font-size: 20px; opacity: 0.6; }
-    /* Space for the Mates in Mind logo. Swap the wordmark for their logo file once
-       Danielle sends it and approves its use; keep it about 40px high. */
-    .partner-logo {
-      display: inline-flex; align-items: center;
-      height: 40px; padding: 0 12px;
-      border: 1.5px dashed rgba(255, 255, 255, 0.45);
-      border-radius: 8px;
-      font-weight: 700; font-size: 15px; letter-spacing: 0.01em;
-    }
+    /* Mates in Mind and their Balls & Banter campaign, both round black badges. */
+    .partner-logo { width: 48px; height: 48px; border-radius: 50%; }
+    .hero .partner-logo { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.35); }
 
     .hero-copy {
       display: flex; flex-direction: column; align-items: center;
@@ -238,6 +232,61 @@
     .code-copy:hover { background: #22978a; }
     .code-copy:focus-visible { outline-offset: -5px; }
 
+    /* ---------- Prizes ---------- */
+    .prizes { padding: 32px 0 0; }
+    .prizes .wrap { max-width: 720px; }
+    .prizes-head { display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .prizes h2 { font-size: clamp(44px, 12vw, 96px); }
+    .prizes-kicker { margin: 16px 0 8px; font-size: 16px; font-weight: 700; color: var(--green); }
+    .sponsor-logo { width: 200px; height: auto; }
+    .prize {
+      margin: 32px 0 0;
+      padding: 22px 22px 20px;
+      border-radius: 16px;
+      background: var(--green-deep);
+      color: var(--white);
+      text-align: center;
+      box-shadow: 0 18px 40px -18px rgba(12, 55, 49, 0.7);
+    }
+    .prize p { margin: 0; font-size: 20px; line-height: 1.35; text-wrap: balance; }
+    /* Products: a swipeable row on a phone, a row of three on wider screens. */
+    .products {
+      list-style: none;
+      margin: 28px calc(var(--gutter) * -1) 0;
+      padding: 0 var(--gutter);
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 62%;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scroll-padding: 0 var(--gutter);
+      scrollbar-width: none;
+    }
+    .products::-webkit-scrollbar { display: none; }
+    .products li { scroll-snap-align: start; }
+    .products img {
+      width: 100%; height: auto; aspect-ratio: 4 / 5;
+      border-radius: 12px;
+      object-fit: cover;
+      background: var(--ring);
+    }
+    .prizes-brand { margin: 24px 0 0; color: var(--body); text-align: center; text-wrap: pretty; }
+    .prizes-link {
+      display: flex; justify-content: center; align-items: center;
+      min-height: 52px;
+      margin: 20px auto 0;
+      max-width: 360px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--white);
+      font-weight: 700; font-size: 16px;
+      text-decoration: none;
+      transition: opacity 150ms ease-out;
+    }
+    .prizes-link:hover { opacity: 0.9; }
+    .about .hashtag { margin-top: 16px; font-weight: 700; color: var(--green); }
+
     /* ---------- Why play ---------- */
     .why {
       position: relative;
@@ -265,8 +314,7 @@
     .about { padding: 72px 0; }
     .about-inner { max-width: 640px; }
     .about-logos { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
-    .about-logos img { height: 40px; width: auto; filter: invert(1); }
-    .about .partner-logo { border-color: rgba(0, 0, 0, 0.3); color: var(--ink); }
+    .about-logos img:first-child { height: 40px; width: auto; filter: invert(1); }
     .about .lockup-x { color: var(--ink); }
     .about p { margin: 20px 0 0; font-size: 20px; color: var(--body); }
 
@@ -317,6 +365,7 @@
       .ring { width: 56px; height: 56px; border-width: 10px; font-size: 24px; }
       .step::before, .step::after { left: 24px !important; top: 56px !important; }
       .step h3 { font-size: 40px; }
+      .products { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); margin-left: 0; margin-right: 0; padding: 0; overflow: visible; }
     }
     @media (min-width: 960px) {
       .why-grid { grid-template-columns: 1fr 1fr; gap: 64px; }
@@ -334,7 +383,8 @@
     <div class="wrap lockup">
       <a href="/" aria-label="TotL home"><img src="/assets/landing/logo.svg" alt="TotL" width="54" height="48" /></a>
       <span class="lockup-x" aria-hidden="true">×</span>
-      <span class="partner-logo">Mates in Mind</span>
+      <img class="partner-logo" src="/mates-in-mind/mim-logo.png" alt="Mates in Mind" width="48" height="48" />
+      <img class="partner-logo" src="/mates-in-mind/balls-banter-logo.png" alt="Balls &amp; Banter" width="48" height="48" />
     </div>
 
     <div class="wrap hero-copy">
@@ -363,7 +413,7 @@
             <span class="ring" aria-hidden="true">2</span>
             <div>
               <h3>Join the leaderboard</h3>
-              <p>Tap <b>Leaderboards</b> in the menu, tap <b>Join</b>, then enter the code <b>MATES</b> to get into the Mates in Mind leaderboard.</p>
+              <p>Tap <b>Leaderboards</b> in the menu, choose <b>Join</b> and enter the code <b>MATES</b>.</p>
               <div class="code">
                 <div class="code-value">
                   <span class="code-label">Your code</span>
@@ -381,6 +431,26 @@
             </div>
           </li>
         </ol>
+      </div>
+    </section>
+
+    <section class="prizes" aria-labelledby="prizes-title">
+      <div class="wrap">
+        <div class="prizes-head">
+          <img class="sponsor-logo" src="/mates-in-mind/kts-logo.png" alt="Kick the Stigma" width="280" height="162" />
+          <p class="prizes-kicker">Sponsored by Kick the Stigma</p>
+          <h2 class="display" id="prizes-title">Prizes</h2>
+        </div>
+        <div class="prize">
+          <p>Top the Mates in Mind leaderboard each month to win a <b>50% voucher</b> from Kick the Stigma.</p>
+        </div>
+        <ul class="products" aria-label="Kick the Stigma products">
+          <li><img src="/mates-in-mind/kts-product-1.jpg" alt="Headstrong styling powder, Reset sea salt spray and Mindset matte clay on a bathroom counter" width="800" height="1000" loading="lazy" decoding="async" /></li>
+          <li><img src="/mates-in-mind/kts-product-2.jpg" alt="The Kick the Stigma range on a barbershop counter" width="800" height="800" loading="lazy" decoding="async" /></li>
+          <li><img src="/mates-in-mind/kts-product-3.jpg" alt="Reset sea salt spray by a barbershop window" width="800" height="1000" loading="lazy" decoding="async" /></li>
+        </ul>
+        <p class="prizes-brand">A men's grooming brand on a mission to support mental health. Everyone has a daily morning routine - Kick The Stigma is a daily reminder that you matter.</p>
+        <a class="prizes-link" href="https://kickthestigmastore.com">Visit kickthestigmastore.com</a>
       </div>
     </section>
 
@@ -413,10 +483,12 @@
         <div class="about-logos">
           <img src="/assets/landing/logo.svg" alt="TotL" width="54" height="48" />
           <span class="lockup-x" aria-hidden="true">×</span>
-          <span class="partner-logo">Mates in Mind</span>
+          <img class="partner-logo" src="/mates-in-mind/mim-logo.png" alt="Mates in Mind" width="48" height="48" />
+          <img class="partner-logo" src="/mates-in-mind/balls-banter-logo.png" alt="Balls &amp; Banter" width="48" height="48" />
         </div>
         <h2 class="display" id="about-title">About the partnership</h2>
         <p>TotL has teamed up with Mates in Mind, the workplace mental health charity, to help people stay connected through football. It starts with a prediction and becomes a conversation.</p>
+        <p class="hashtag">#Balls&amp;Banter</p>
       </div>
     </section>
   </main>
