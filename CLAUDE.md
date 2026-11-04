@@ -91,6 +91,7 @@ Only when Carl asks for one.
 - **Admin posts:** from `apps/bff/src/matchCenterBroadcast.ts`.
 - **Every card kind:** see Carl's "Game Centre feed cards" doc. Ask him for the link.
 - **When you add a card kind,** update that doc and the Figma Cards page.
+- **Card codes:** every card type has a permanent code (M05 is Kick-off, P02 is Players weekly winners), listed in `features/matchCenter/feedCardCodes.ts`. When Carl or Jof quote a code, look it up there. A new card takes the next free number in its family; codes are never reused.
 
 ## Skills and plugins we use
 
