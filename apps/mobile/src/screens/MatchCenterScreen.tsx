@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, Easing, FlatList, Image, Linking, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View, type StyleProp, type TextStyle } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +42,7 @@ import {
   useMatchCenterCardReactions,
 } from '../hooks/useMatchCenterCardReactions';
 import usePopupCards from '../hooks/usePopupCards';
+import { setSuppressPopupAutoOpen } from '../lib/popupAutoOpenGate';
 import { useConfetti } from '../lib/confetti';
 import { formatLocalTimeHHmm } from '../lib/dateTime';
 import { resolveLiveScore } from '../lib/liveScoreRows';
@@ -123,9 +124,12 @@ import {
   pickPercentsFrom,
 } from '../features/matchCenter/feedData';
 import { loadPastGameweek, type PastGameweek } from '../features/matchCenter/pastGameweek';
+import { auditEntries, type AuditEntry } from '../features/matchCenter/feedAudit';
+import { FeedAuditLabel, FeedAuditMissing, FeedAuditPin, FeedAuditSection } from '../components/gameCentre/FeedAuditRows';
 import { compareFeedItems, gameweekOpensAtMs, isoOrNull, placeRoundUp, timelineRows, type TimelineRow } from '../features/matchCenter/timeline';
 
-type Mode = 'live' | 'sample' | 'play';
+/** `audit` (dev builds only): every card kind and variation, from `feedAudit.ts`. */
+type Mode = 'live' | 'sample' | 'play' | 'audit';
 
 /** Match Center data cadence — Realtime for scores/chat; BFF polls stay sparse. */
 const MC_TABLE_MS = 60_000;
@@ -537,6 +541,12 @@ const CARD_GAP = 20;
 
 /** No reactions yet. One shared array so memoised cards see the same value each time. */
 const NO_REACTIONS: ReactionSummary[] = [];
+/** Feed audit: a few reactions on public cards, so the footer shows counts as it does live. */
+const AUDIT_REACTIONS: ReactionSummary[] = [
+  { emoji: '😎', count: 3, hasUserReacted: false },
+  { emoji: '🫠', count: 1, hasUserReacted: false },
+  { emoji: '🔥', count: 5, hasUserReacted: true },
+];
 
 // Cards are memoised, and their handlers take the item, so the parent can pass the same
 // functions to every card: a feed of 100+ cards only redraws the ones that changed.
@@ -1675,7 +1685,7 @@ export default function MatchCenterScreen() {
   // The Game Centre reads like X or Threads: newest card on top, older ones further down.
   const newestFirst = !!menu;
   const { useSeasonStack, seasonId, seasonLabel } = useViewerSeason();
-  const { openManualResultsScoreSheetShare, openManualRoundUpStack } = usePopupCards();
+  const { openManualResultsScoreSheetShare, openManualRoundUpStack, dismissAutoOpenedStack } = usePopupCards();
   const [mode, setMode] = React.useState<Mode>(() => (entry === 'example' ? 'play' : 'live'));
   const [week, setWeek] = React.useState<'current' | 'last'>(() => (entry === 'last' ? 'last' : 'current'));
   const [played, setPlayed] = React.useState(1);
@@ -1708,6 +1718,29 @@ export default function MatchCenterScreen() {
     setWeek('current');
     setMode('live');
   }, [entry]);
+
+  // DEV ONLY: `com.despia.totlnative://feed-audit` shows every card (feedAudit.ts);
+  // `?y=1200` scrolls the feed to that offset, and `feed-audit?off` goes back to the live feed.
+  React.useEffect(() => {
+    if (!__DEV__) return;
+    const onUrl = (url: string | null) => {
+      if (!url || !url.includes('feed-audit')) return;
+      if (url.includes('off')) {
+        setSuppressPopupAutoOpen(false);
+        setMode('live');
+        return;
+      }
+      // Results popups would cover the audit; hide them without marking anything seen.
+      setSuppressPopupAutoOpen(true);
+      dismissAutoOpenedStack();
+      setMode('audit');
+      const y = Number(/[?&]y=(\d+)/.exec(url)?.[1]);
+      if (Number.isFinite(y)) scrollRef.current?.scrollToOffset({ offset: y, animated: false });
+    };
+    void Linking.getInitialURL().then(onUrl).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => onUrl(url));
+    return () => sub.remove();
+  }, [dismissAutoOpenedStack]);
 
   const { data: authUser } = useQuery({
     queryKey: ['authUser'],
@@ -2139,7 +2172,26 @@ export default function MatchCenterScreen() {
     seenIds.current = null;
   }
 
+  const audit = React.useMemo(() => {
+    if (mode !== 'audit') return null;
+    const entries = auditEntries();
+    const byId = new Map<string, { entry: AuditEntry; index: number }>();
+    let shown = 0;
+    entries.forEach((entry) => {
+      const counted = entry.type === 'card' || entry.type === 'pin' || entry.type === 'invite';
+      byId.set(entry.id, { entry, index: counted ? ++shown : 0 });
+    });
+    // Non-card rows ride the feed as stand-in items; renderFeedItem draws them from `byId`.
+    const items = entries.map((entry): FeedItem =>
+      entry.type === 'card'
+        ? entry.item
+        : { id: entry.id, sortAt: 0, timeLabel: '', kind: 'shout', eyebrow: '', title: '', body: '' }
+    );
+    return { items, byId };
+  }, [mode]);
+
   const freshFeed = React.useMemo(() => {
+    if (mode === 'audit') return audit?.items ?? [];
     if (mode === 'sample' || mode === 'play') {
       const script = sampleFeed();
       const shown = mode === 'play' ? script.slice(0, played) : script;
@@ -2221,7 +2273,7 @@ export default function MatchCenterScreen() {
       seasonStats,
     });
     return [...match, ...derived, ...extra, ...roundUp, ...serverChat, ...pendingLocal].sort(compareFeedItems);
-  }, [allFinished, board, chatItems, clockMs, derivedExtras, feedPosts, gw, gwResults, home?.fixtures, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, liveTable?.rows, localReplies, mode, month?.endGw, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, seasonStats, teamForms, teamPositions, userId, viewingLast]);
+  }, [allFinished, board, chatItems, clockMs, derivedExtras, feedPosts, gw, gwResults, home?.fixtures, leaguePicks, leagueTables, liveByApiMatchId, liveByFixtureIndex, liveTable?.rows, localReplies, mode, month?.endGw, overallReplay, pickPercents, played, profileSummary?.avatar_url, rankCards, replayOn, seasonStats, teamForms, teamPositions, userId, viewingLast, audit]);
 
   // The feed is rebuilt whenever scores, chat or tables refresh, which makes every card a
   // new object. Keep the previous object for any card whose content is the same, so the
@@ -3035,9 +3087,23 @@ export default function MatchCenterScreen() {
 
   // Only the cards near the screen are drawn; a gameweek's feed runs past 100 cards, and
   // drawing them all at once held up every tap for seconds.
-  const shownFeed = React.useMemo(() => (newestFirst ? [...feed].reverse() : feed), [feed, newestFirst]);
+  const shownFeed = React.useMemo(() => (newestFirst && mode !== 'audit' ? [...feed].reverse() : feed), [feed, mode, newestFirst]);
   const rows = React.useMemo(() => timelineRows(shownFeed, pastPages), [pastPages, shownFeed]);
-  const renderFeedItem = ({ item: row, index: shownIndex }: { item: TimelineRow; index: number }) => {
+  const renderFeedItem = (args: { item: TimelineRow; index: number }) => {
+    const found = audit && args.item.type === 'item' ? audit.byId.get(args.item.item.id) : undefined;
+    if (!found) return renderFeedRow(args);
+    const { entry, index } = found;
+    if (entry.type === 'section') return <FeedAuditSection title={entry.title} />;
+    if (entry.type === 'missing') return <FeedAuditMissing entry={entry} />;
+    if (entry.type === 'pin' || entry.type === 'invite') return <FeedAuditPin entry={entry} index={index} />;
+    return (
+      <View>
+        <FeedAuditLabel meta={entry.meta} index={index} />
+        {renderFeedRow(args)}
+      </View>
+    );
+  };
+  const renderFeedRow = ({ item: row, index: shownIndex }: { item: TimelineRow; index: number }) => {
     if (row.type === 'divider') return <GameweekDivider gw={row.gw} />;
     const item = row.item;
     // Older gameweeks are history: nothing arrives or celebrates there.
@@ -3091,7 +3157,9 @@ export default function MatchCenterScreen() {
         arriveDelay={arriveDelay}
         reactions={
           cardReactable
-            ? week.social
+            ? mode === 'audit'
+              ? localReactions[item.id] ?? AUDIT_REACTIONS
+              : week.social
               ? socialReactions[cardKey] ?? NO_REACTIONS
               : mode === 'live'
                 ? cardReactions[cardKey] ?? NO_REACTIONS
@@ -3100,7 +3168,18 @@ export default function MatchCenterScreen() {
         }
         onReact={cardReactable ? cardHandlers.reactToCard : undefined}
         social={
-          cardReactable && week.social
+          cardReactable && mode === 'audit' && item.comments !== false
+            ? {
+                // Comments are on in every build, so the audit shows the footer the real feed draws.
+                commentCount: (() => {
+                  const meta = audit?.byId.get(item.id)?.entry;
+                  return meta?.type === 'card' ? meta.meta.comments ?? 0 : 0;
+                })(),
+                onMore: () => {},
+                onComment: async () => false,
+                onOpenComments: () => {},
+              }
+            : cardReactable && week.social
             ? {
                 commentCount: week.gw != null ? commentCounts[fixtureEngagementId(week.gw, item.id)] ?? 0 : 0,
                 onMore: cardHandlers.openPicker,
@@ -3114,6 +3193,7 @@ export default function MatchCenterScreen() {
   };
 
   const tickerShown = Boolean(
+    mode !== 'audit' &&
     showTicker &&
       (tickerFixtures.length ||
         (rankingsOnTicker && (tickerLeagues?.length || tickerBoards?.some((board) => board.rank != null))))
