@@ -18,15 +18,22 @@ type Leaderboard = {
 export default function AdminLeaderboards() {
   const navigate = useNavigate();
   const [leaderboards, setLeaderboards] = useState<Leaderboard[]>([]);
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from('branded_leaderboards')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [{ data, error }, membersRes] = await Promise.all([
+        supabase
+          .from('branded_leaderboards')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase.from('branded_leaderboard_memberships').select('leaderboard_id').is('left_at', null),
+      ]);
       if (!error) setLeaderboards(data ?? []);
+      const counts: Record<string, number> = {};
+      for (const m of membersRes.data ?? []) counts[m.leaderboard_id] = (counts[m.leaderboard_id] ?? 0) + 1;
+      setMemberCounts(counts);
       setLoading(false);
     })();
   }, []);
@@ -74,6 +81,7 @@ export default function AdminLeaderboards() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Members</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Visibility</th>
@@ -92,6 +100,7 @@ export default function AdminLeaderboards() {
                       <div className="font-medium text-gray-900">{lb.display_name}</div>
                       <div className="text-sm text-gray-500">{lb.slug}</div>
                     </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{memberCounts[lb.id] ?? 0}</td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor[lb.status] ?? ''}`}>
                         {lb.status}
