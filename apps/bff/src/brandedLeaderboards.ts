@@ -1298,6 +1298,15 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       });
     }
 
+    const { data: existingMembership, error: existingErr } = await (supa as any)
+      .from('branded_leaderboard_memberships')
+      .select('left_at')
+      .eq('leaderboard_id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingErr) throw existingErr;
+    const isNewJoin = !existingMembership || existingMembership.left_at !== null;
+
     const { data: membership, error: memErr } = await (supa as any)
       .from('branded_leaderboard_memberships')
       .upsert(
@@ -1314,10 +1323,16 @@ export function registerBrandedLeaderboardRoutes(app: FastifyInstance, env: Env)
       .single();
     if (memErr) throw memErr;
 
-    await (supa as any)
-      .from('branded_leaderboard_join_codes')
-      .update({ use_count: (codeData.use_count ?? 0) + 1 })
-      .eq('id', codeData.id);
+    // Join codes are admin-write under RLS, so the user's client can't bump use_count.
+    if (isNewJoin && adminSupabase) {
+      const { error: useCountErr } = await (adminSupabase as any)
+        .from('branded_leaderboard_join_codes')
+        .update({ use_count: (codeData.use_count ?? 0) + 1 })
+        .eq('id', codeData.id);
+      if (useCountErr) {
+        req.log.warn({ err: useCountErr, codeId: codeData.id }, 'failed to increment join code use_count');
+      }
+    }
 
     return { membership };
   });
