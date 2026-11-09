@@ -59,6 +59,7 @@ export default function AdminLeaderboardDetail() {
   const [lb, setLb] = useState<Leaderboard | null>(null);
   const [hosts, setHosts] = useState<Host[]>([]);
   const [codes, setCodes] = useState<JoinCode[]>([]);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Host search
@@ -73,10 +74,11 @@ export default function AdminLeaderboardDetail() {
   const [savingCodeId, setSavingCodeId] = useState<string | null>(null);
 
   async function loadData() {
-    const [lbRes, hostsRes, codesRes] = await Promise.all([
+    const [lbRes, hostsRes, codesRes, membersRes] = await Promise.all([
       supabase.from('branded_leaderboards').select('*').eq('id', id!).maybeSingle(),
       supabase.from('branded_leaderboard_hosts').select('*, users:user_id(id, name, avatar_url)').eq('leaderboard_id', id!).order('display_order'),
       supabase.from('branded_leaderboard_join_codes').select('*').eq('leaderboard_id', id!).order('created_at', { ascending: false }),
+      supabase.from('branded_leaderboard_memberships').select('id', { count: 'exact', head: true }).eq('leaderboard_id', id!).is('left_at', null),
     ]);
     if (lbRes.data) setLb(lbRes.data);
     setHosts(
@@ -89,6 +91,7 @@ export default function AdminLeaderboardDetail() {
       }))
     );
     setCodes(codesRes.data ?? []);
+    setMemberCount(membersRes.count ?? null);
     setLoading(false);
   }
 
@@ -245,6 +248,11 @@ export default function AdminLeaderboardDetail() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{lb.display_name}</h1>
               <p className="text-gray-500 mt-1">/{lb.slug}</p>
+              {memberCount !== null && (
+                <p className="text-gray-900 font-semibold mt-2">
+                  {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                </p>
+              )}
               {lb.description && <p className="text-gray-600 mt-2">{lb.description}</p>}
             </div>
             <div className="flex items-center gap-2">
