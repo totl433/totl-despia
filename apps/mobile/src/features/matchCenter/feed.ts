@@ -443,6 +443,10 @@ function normalize(value: string | null | undefined): string {
     .trim();
 }
 
+function withoutGoal(score: { home: number; away: number }, side: 'H' | 'A'): { home: number; away: number } {
+  return side === 'H' ? { home: Math.max(0, score.home - 1), away: score.away } : { home: score.home, away: Math.max(0, score.away - 1) };
+}
+
 function ruledOutGoal(goal: { type?: string | null }): boolean {
   const type = String(goal.type ?? '');
   return type.includes('DISALLOW') || type.includes('CANCEL');
@@ -953,10 +957,12 @@ export function buildMatchFeed(input: {
           break;
         }
         case 'goal': {
-          const score = scoreOf(post.details.score_after);
+          const after = scoreOf(post.details.score_after);
           const minute = typeof post.details.minute === 'number' ? post.details.minute : null;
-          if (!score) break;
+          if (!after) break;
           const ruledOut = post.status === 'ruled_out';
+          // A ruled-out post keeps the details it was posted with, so take its own goal back off.
+          const score = ruledOut ? withoutGoal(after, post.details.side === 'A' ? 'A' : 'H') : after;
           const scorer = (typeof post.details.scorer === 'string' && post.details.scorer.trim()) || 'Someone';
           const own = post.details.own_goal === true ? ' (og)' : '';
           if (!ruledOut) noteOutcome(idx, score.home, score.away, at, stamp, true, scorer);
