@@ -140,6 +140,11 @@ describe('feed from stored posts', () => {
     expect(feed.map((item) => [item.id, item.kind])).toEqual([['goal:9:H1', 'ruled-out']]);
   });
 
+  it('shows the score without the ruled-out goal', () => {
+    const feed = fromPosts([{ ...goal, status: 'ruled_out', revision: 2 }]);
+    expect(feed[0]?.match).toMatchObject({ homeScore: 0, awayScore: 0 });
+  });
+
   it('skips voided posts', () => {
     expect(fromPosts([{ ...goal, status: 'void' }])).toEqual([]);
   });
