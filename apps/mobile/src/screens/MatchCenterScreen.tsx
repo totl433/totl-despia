@@ -53,6 +53,7 @@ import GameCentrePinnedCard from '../components/gameCentre/GameCentrePinnedCard'
 import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
 import { FIXTURES_CARD, FixtureRows, FixturesCardHeader } from '../components/gameCentre/GameCentreFixtures';
+import { ScoreSheetFeedCard } from '../components/gameCentre/GameCentreScoreSheet';
 import {
   PLAYERS_FEED_CARD,
   PlayersFeedBackground,
@@ -558,6 +559,7 @@ function FeedCardView({
   reactions = NO_REACTIONS,
   onReact: reactFor,
   social,
+  youAvatar = null,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem, link?: FeedLink) => void;
@@ -572,6 +574,8 @@ function FeedCardView({
     onComment: (item: FeedItem, text: string) => Promise<boolean>;
     onOpenComments: (item: FeedItem) => void;
   } | null;
+  /** Your avatar, for the score sheet header. */
+  youAvatar?: string | null;
 }) {
   const onReact = reactFor ? (emoji: string) => reactFor(item, emoji) : undefined;
   const [commentDraft, setCommentDraft] = React.useState('');
@@ -590,6 +594,7 @@ function FeedCardView({
   const canReact = item.reacts !== false && gameCentreCardType(item.kind) === 'public' && typeof onReact === 'function';
   const canComment = item.comments !== false && !!social;
   const fixturesCard = item.kind === 'fixtures' && !!item.fixtureRows?.length;
+  const scoreSheetCard = item.kind === 'score-sheet' && !!item.scoreRows?.length;
   const playersCard = isPlayersFeedItem(item);
   const playersButton = playersCard && !!item.link && (item.kind === 'players-ready' || item.kind === 'players-nudge');
   const insightsCard = isInsightsFeedItem(item);
@@ -801,7 +806,16 @@ function FeedCardView({
     );
   }
 
-  const card = (
+  const card = scoreSheetCard ? (
+    <ScoreSheetFeedCard
+      eyebrow={item.eyebrow ?? ''}
+      title={header.title}
+      line={header.subtitle}
+      avatarUrl={youAvatar}
+      rows={item.scoreRows!}
+      shareLabel={item.link?.label}
+    />
+  ) : (
     <GameCentreCard
       backgroundColor={shell.backgroundColor}
       background={playersCard ? <PlayersFeedBackground /> : insightsCard ? <InsightsFeedBackground /> : undefined}
@@ -3151,6 +3165,7 @@ export default function MatchCenterScreen() {
     return (
       <FeedCard
         item={item}
+        youAvatar={item.kind === 'score-sheet' ? profileSummary?.avatar_url ?? null : null}
         onOpen={openItem}
         celebrate={celebrate}
         arriveDelay={arriveDelay}

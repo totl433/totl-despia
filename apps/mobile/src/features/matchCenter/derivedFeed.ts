@@ -253,13 +253,20 @@ export function scoreSheetItem(input: {
         pick: pickLabel(pick, fixture),
         result: pickLabel(result, fixture),
         hit: pick != null && result != null && pick === result,
+        homeCode: fixture.home_code ?? '',
+        awayCode: fixture.away_code ?? '',
+        pickSide: pick === 'H' || pick === 'D' || pick === 'A' ? pick : null,
+        homeScore: typeof live?.home_score === 'number' ? live.home_score : null,
+        awayScore: typeof live?.away_score === 'number' ? live.away_score : null,
       };
     });
+  const first = firstKickoffMs(input.fixtures);
   return card({
     id: `score-sheet:${input.gw}`,
     sortAt: input.lastFtMs + 30_000,
     kind: 'score-sheet',
-    eyebrow: pickCopy(scoreSheetCopy(), `score-sheet:${input.gw}`).title,
+    // Figma 443:59699: the season and gameweek above the title, e.g. "2026/27 · Gameweek 8".
+    eyebrow: first != null ? `${seasonOf(first)} · Gameweek ${input.gw}` : `Gameweek ${input.gw}`,
     title: pickCopy(scoreSheetCopy(), `score-sheet:${input.gw}`).title,
     body: pickCopy(scoreSheetCopy(), `score-sheet:${input.gw}`).line,
     scoreRows: rows,

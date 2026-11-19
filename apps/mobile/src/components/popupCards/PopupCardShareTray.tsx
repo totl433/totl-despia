@@ -1,15 +1,12 @@
 import React from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SvgUri } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
-import { TotlText } from '@totl/ui';
 
 import ShareActionsFooter, { type ShareTarget } from '../share/ShareActionsFooter';
 import ShareAssetTray from '../share/ShareAssetTray';
+import { TotlShareCanvas } from '../share/TotlShareCanvas';
 import PopupInfoCard from './PopupInfoCard';
 import type { PopupCardDescriptor } from './types';
 import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
@@ -73,51 +70,11 @@ function BrandedPopupShareAsset({
   canvasHeight: number;
   scale?: number;
 }) {
-  const totlLogoUri = Asset.fromModule(require('../../../../../public/assets/badges/totl-logo1-black.svg')).uri;
   const displayCardWidth = cardWidth * scale;
   const displayCardHeight = cardHeight * scale;
 
   return (
-    <View
-      collapsable={false}
-      style={{
-        width: canvasWidth,
-        height: canvasHeight,
-        backgroundColor: '#EEF3F2',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: 42,
-        paddingBottom: 34,
-        overflow: 'hidden',
-      }}
-    >
-      <View
-        style={{
-          position: 'absolute',
-          top: 78,
-          left: -118,
-          width: 210,
-          height: 210,
-          borderRadius: 105,
-          backgroundColor: 'rgba(28,131,118,0.09)',
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: -72,
-          bottom: 36,
-          width: 260,
-          height: 260,
-          borderRadius: 130,
-          backgroundColor: 'rgba(28,131,118,0.075)',
-        }}
-      />
-
-      <View style={{ alignItems: 'center' }}>
-        <SvgUri uri={totlLogoUri} width={180} height={87} />
-      </View>
-
+    <TotlShareCanvas width={canvasWidth} height={canvasHeight}>
       <View
         style={{
           width: displayCardWidth,
@@ -146,36 +103,7 @@ function BrandedPopupShareAsset({
           <PopupCardSharePreview card={card} width={cardWidth} height={cardHeight} />
         </View>
       </View>
-
-      <View style={{ alignItems: 'center' }}>
-        <TotlText
-          style={{
-            color: '#0F172A',
-            fontFamily: 'Gramatika-Bold',
-            fontWeight: '900',
-            fontSize: 18,
-            lineHeight: 20,
-          }}
-        >
-          playtotl.com
-        </TotlText>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-          <Ionicons name="logo-instagram" size={17} color="#1C8376" />
-          <TotlText
-            style={{
-              marginLeft: 6,
-              color: '#1C8376',
-              fontFamily: 'Gramatika-Medium',
-              fontWeight: '700',
-              fontSize: 14,
-              lineHeight: 16,
-            }}
-          >
-            @playtotl
-          </TotlText>
-        </View>
-      </View>
-    </View>
+    </TotlShareCanvas>
   );
 }
 
