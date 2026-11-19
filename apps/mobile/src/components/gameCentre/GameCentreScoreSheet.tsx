@@ -8,6 +8,7 @@ import { TotlText, tokens, useTokens } from '@totl/ui';
 
 import { TEAM_BADGES } from '../../lib/teamBadges';
 import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
+import { TotlShareCanvas, TotlShareCardTilt } from '../share/TotlShareCanvas';
 import type { FeedScoreRow } from '../../features/matchCenter/feed';
 
 const CORRECT = Asset.fromModule(require('../../../assets/icons/score-sheet-correct.svg')).uri;
@@ -144,9 +145,12 @@ export function ScoreSheetRows({ rows }: { rows: FeedScoreRow[] }) {
   );
 }
 
+const SHARE_CANVAS_WIDTH = 390;
+const SHARE_CARD_WIDTH = 340;
+
 /**
- * D02 Score sheet (Figma 445:64711). Share captures the header and rows (not the button) as a PNG
- * and hands it to the share sheet.
+ * D02 Score sheet (Figma 445:64711). Share draws the header and rows (not the button) on the TOTL
+ * share image, off screen, captures it as a PNG and hands it to the share sheet.
  */
 export function ScoreSheetFeedCard({
   eyebrow,
@@ -171,6 +175,8 @@ export function ScoreSheetFeedCard({
     if (sharing) return;
     setSharing(true);
     try {
+      // Let the off-screen share image (logo, crests, icons) paint before capture.
+      await new Promise((resolve) => setTimeout(resolve, 500));
       const uri = await shot.current?.capture?.();
       let filePath: string | null = null;
       const baseDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
@@ -186,30 +192,53 @@ export function ScoreSheetFeedCard({
     }
   }, [sharing, title]);
 
+  const sheet = (
+    <View style={{ paddingTop: 20, paddingBottom: 20, gap: 28 }}>
+      <ScoreSheetHeader eyebrow={eyebrow} title={title} line={line} avatarUrl={avatarUrl} />
+      <ScoreSheetRows rows={rows} />
+    </View>
+  );
+
   return (
-    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: t.color.cardBorder, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
-      <ViewShot ref={shot} options={{ format: 'png', quality: 1, result: 'tmpfile' }} style={{ backgroundColor: '#FFFFFF', paddingTop: 20, paddingBottom: 20, gap: 28 }}>
-        <ScoreSheetHeader eyebrow={eyebrow} title={title} line={line} avatarUrl={avatarUrl} />
-        <ScoreSheetRows rows={rows} />
-      </ViewShot>
-      <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Share your score sheet"
-          accessibilityState={{ disabled: sharing, busy: sharing }}
-          disabled={sharing}
-          onPress={() => void share()}
-          style={({ pressed }) => ({
-            height: 48,
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: SCORE_SHEET_CARD.green,
-            opacity: pressed || sharing ? 0.85 : 1,
-          })}
+    <View>
+      {sharing ? (
+        // Off screen, and only while sharing.
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={{ position: 'absolute', top: 0, left: -10000 }}
         >
-          <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 16, color: '#FFFFFF' }}>{shareLabel}</TotlText>
-        </Pressable>
+          <ViewShot ref={shot} options={{ format: 'png', quality: 1, result: 'tmpfile' }}>
+            <TotlShareCanvas width={SHARE_CANVAS_WIDTH}>
+              <TotlShareCardTilt>
+                <View style={{ width: SHARE_CARD_WIDTH, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>{sheet}</View>
+              </TotlShareCardTilt>
+            </TotlShareCanvas>
+          </ViewShot>
+        </View>
+      ) : null}
+      <View style={{ borderRadius: 16, borderWidth: 1, borderColor: t.color.cardBorder, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
+        {sheet}
+        <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share your score sheet"
+            accessibilityState={{ disabled: sharing, busy: sharing }}
+            disabled={sharing}
+            onPress={() => void share()}
+            style={({ pressed }) => ({
+              height: 48,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: SCORE_SHEET_CARD.green,
+              opacity: pressed || sharing ? 0.85 : 1,
+            })}
+          >
+            <TotlText style={{ fontFamily: t.font.medium, fontSize: 16, lineHeight: 16, color: '#FFFFFF' }}>{shareLabel}</TotlText>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
