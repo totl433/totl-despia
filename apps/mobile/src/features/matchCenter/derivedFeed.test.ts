@@ -82,6 +82,10 @@ describe('score sheet', () => {
       expect.objectContaining({ home: 'Arsenal', pick: 'Arsenal', result: 'Arsenal', hit: true }),
       expect.objectContaining({ home: 'Chelsea', pick: 'Brighton', result: 'Draw', hit: false }),
     ]);
+    // The designed card (Figma 445:64711) draws crests, your pick and the final score.
+    expect(card?.scoreRows?.[0]).toMatchObject({ pickSide: 'H', homeScore: 2, awayScore: 0 });
+    expect(card?.scoreRows?.[1]).toMatchObject({ pickSide: 'A', homeScore: 1, awayScore: 1 });
+    expect(card?.eyebrow).toMatch(/^\d{4}\/\d{2} · Gameweek 8$/);
   });
 });
 

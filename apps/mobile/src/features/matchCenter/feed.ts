@@ -176,6 +176,13 @@ export type FeedScoreRow = {
   pick: string;
   result: string;
   hit: boolean;
+  /** Club codes for the crests. */
+  homeCode?: string;
+  awayCode?: string;
+  /** Your Prediction; null when you didn't make one. */
+  pickSide?: Pick | null;
+  homeScore?: number | null;
+  awayScore?: number | null;
 };
 
 export type FeedHonour = {
