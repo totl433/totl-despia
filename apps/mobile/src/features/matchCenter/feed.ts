@@ -26,6 +26,8 @@ export type FeedLink = {
   to: 'league' | 'overall' | 'home' | 'chat' | 'leagues' | 'gw' | 'monthly' | 'players' | 'score-sheet';
   leagueId?: string;
   leagueName?: string;
+  /** Which tab a mini league opens on; the table when left out. */
+  leagueTab?: 'gwTable' | 'predictions' | 'season';
 };
 
 export type FeedKind =
@@ -163,6 +165,8 @@ export type FeedItem = {
   season?: string | null;
   /** Your Predictions vs results on the score sheet. */
   scoreRows?: FeedScoreRow[] | null;
+  /** D03 Everyone has predicted: the league badge ringed by every member. */
+  everyoneIn?: { badgeUrl: string | null; faces: FeedFace[] } | null;
 };
 
 export type FeedFace = {
@@ -349,6 +353,10 @@ export type LeagueTableSnap = {
   avatarUrl?: string | null;
   rows: Array<{ user_id: string; name: string; score: number; avatarUrl?: string | null }>;
   submittedUserIds?: string[];
+  /** Everyone in the league; `rows` only holds those who have submitted. */
+  totalMembers?: number;
+  /** When the league's latest Predictions went in (ms). */
+  lastSubmittedMs?: number | null;
 };
 
 type Side = 'H' | 'A';

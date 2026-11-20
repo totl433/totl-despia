@@ -259,6 +259,8 @@ export function createApiClient(opts: ApiClientOptions) {
       submittedUserIds: string[];
       submittedCount: number;
       totalMembers: number;
+      /** When the league's latest Predictions went in; missing from older servers. */
+      lastSubmittedAt?: string | null;
     }> {
       return requestJson(opts, `/v1/leagues/${encodeURIComponent(leagueId)}/gw/${encodeURIComponent(String(gw))}/table`, { method: 'GET' });
     },

@@ -54,6 +54,7 @@ import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
 import { FIXTURES_CARD, FixtureRows, FixturesCardHeader } from '../components/gameCentre/GameCentreFixtures';
 import { ScoreSheetFeedCard } from '../components/gameCentre/GameCentreScoreSheet';
+import { EveryoneInFeedCard } from '../components/gameCentre/GameCentreEveryoneInCard';
 import {
   PLAYERS_FEED_CARD,
   PlayersFeedBackground,
@@ -806,7 +807,17 @@ function FeedCardView({
     );
   }
 
-  const card = scoreSheetCard ? (
+  const everyoneInCard = !!item.everyoneIn && item.everyoneIn.faces.length >= 2 && !!item.link;
+  const card = everyoneInCard ? (
+    <EveryoneInFeedCard
+      title={item.title}
+      line={item.body}
+      badgeUrl={item.everyoneIn!.badgeUrl}
+      faces={item.everyoneIn!.faces}
+      buttonLabel={item.link!.label}
+      onPress={() => onOpen(item)}
+    />
+  ) : scoreSheetCard ? (
     <ScoreSheetFeedCard
       eyebrow={item.eyebrow ?? ''}
       title={header.title}
@@ -2860,7 +2871,7 @@ export default function MatchCenterScreen() {
         return;
       }
       if (target.leagueId && target.leagueName) {
-        navigation.navigate('LeagueDetail', { leagueId: target.leagueId, name: target.leagueName, initialTab: 'gwTable' });
+        navigation.navigate('LeagueDetail', { leagueId: target.leagueId, name: target.leagueName, initialTab: target.leagueTab ?? 'gwTable' });
       }
     },
     [gw, navigation, openManualResultsScoreSheetShare]

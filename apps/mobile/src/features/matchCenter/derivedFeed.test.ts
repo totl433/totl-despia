@@ -25,6 +25,7 @@ import {
   winnerNames,
   winnerShoutItems,
 } from './derivedFeed';
+import type { LeagueTableSnap } from './feed';
 import { firstWinnerSlot, leftoverQuietSlots, nextWinnerSlot, scheduleStatMoments, scheduleWinnerShouts } from './shoutOutSlots';
 
 const KO = Date.parse('2026-10-24T14:00:00Z');
@@ -175,16 +176,52 @@ describe('Players play cards', () => {
 });
 
 describe('mini league events', () => {
-  it('posts when every member has predicted, before the deadline', () => {
-    const items = everyonePredictedItems({
-      tables: [{ id: 'lg', name: 'Easy League', rows: [{ user_id: 'a', name: 'A', score: 0 }, { user_id: 'b', name: 'B', score: 0 }], submittedUserIds: ['a', 'b'] }],
-      leagues: [],
+  const member = (id: string) => ({ user_id: id, name: id.toUpperCase(), score: 0 });
+  const everyone = (size: number, submitted = size, extra: Partial<LeagueTableSnap> = {}) =>
+    everyonePredictedItems({
+      tables: [
+        {
+          id: 'lg',
+          name: 'Easy League',
+          avatarUrl: 'badge.png',
+          rows: Array.from({ length: submitted }, (_, i) => member(`p${i}`)),
+          submittedUserIds: Array.from({ length: submitted }, (_, i) => `p${i}`),
+          totalMembers: size,
+          lastSubmittedMs: KO - 5 * 3_600_000,
+          ...extra,
+        },
+      ],
       deadlineMs: KO,
       firstKickoffMs: KO + 75 * 60_000,
-      nowMs: KO - 3_600_000,
+      nowMs: KO + 3_600_000,
     });
+
+  it('posts once the last member submits, stamped then, and stays after the deadline', () => {
+    const items = everyone(4);
     expect(items).toHaveLength(1);
+    expect(items[0]?.sortAt).toBe(KO - 5 * 3_600_000);
+    expect(items[0]?.title).toBe('Easy League');
     expect(items[0]?.body).toMatch(/Predictions|predicted/i);
+    expect(items[0]?.everyoneIn?.badgeUrl).toBe('badge.png');
+    expect(items[0]?.everyoneIn?.faces).toHaveLength(4);
+    expect(items[0]?.link).toMatchObject({ label: 'Go to mini league', to: 'league', leagueId: 'lg', leagueTab: 'predictions' });
+    expect(items[0]?.reacts).toBe(false);
+    expect(items[0]?.comments).toBe(false);
+  });
+
+  it('waits for the last member (the table only lists those who have submitted)', () => {
+    expect(everyone(4, 3)).toHaveLength(0);
+  });
+
+  it('only covers leagues of 2 to 8', () => {
+    expect(everyone(1)).toHaveLength(0);
+    expect(everyone(2)).toHaveLength(1);
+    expect(everyone(8)).toHaveLength(1);
+    expect(everyone(9)).toHaveLength(0);
+  });
+
+  it('needs the member count from the server', () => {
+    expect(everyone(3, 3, { totalMembers: undefined })).toHaveLength(0);
   });
 
   it('shows a join to other members in this gameweek window', () => {

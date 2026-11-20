@@ -307,14 +307,20 @@ function derivedCards(nowMs: number): AuditEntry[] {
   const sheet = scoreSheetItem({ gw: GW, fixtures, picks, liveByFixtureIndex: liveRows, lastFtMs: Date.parse('2026-11-10T21:55:00Z') });
   if (sheet) out.push(...copyCards(sheet, scoreSheetCopy(), { code: 'D02', name: 'Score sheet', variant: '', origin: 'Joff' }, (item, copy) => ({ ...item, title: copy.title, body: copy.line })));
 
-  // D03 Everyone has predicted.
-  const tables = [
-    { id: 'lg-easy', name: 'Easy League', avatarUrl: EASY, rows: [
-      { user_id: 'u-me', name: 'You', score: 6 }, { user_id: 'u-carl', name: 'Carl', score: 5 }, { user_id: 'u-sam', name: 'Sam', score: 4 },
-    ], submittedUserIds: ['u-me', 'u-carl', 'u-sam'] },
-  ];
-  const everyone = everyonePredictedItems({ tables, leagues: [], deadlineMs: nowMs + 2 * HOUR, firstKickoffMs: nowMs + 3 * HOUR, nowMs })[0];
-  if (everyone) out.push(...copyCards(everyone, everyonePredictedCopy('Easy League'), { code: 'D03', name: 'Everyone has predicted', variant: '', origin: 'Joff' }, (item, copy) => ({ ...item, title: copy.title, body: copy.line })));
+  // D03 Everyone has predicted: one card per league size, 2 to 8 players.
+  const crew = ['Carl', 'Jof', 'Sam', 'Tom', 'Amy', 'Bea', 'Dan', 'Eve'];
+  for (let size = 2; size <= 8; size += 1) {
+    const rows = crew.slice(0, size).map((name, i) => ({ user_id: `u-${name.toLowerCase()}`, name, score: 8 - i }));
+    const everyone = everyonePredictedItems({
+      tables: [{ id: `lg-easy-${size}`, name: 'Easy League', avatarUrl: EASY, rows, submittedUserIds: rows.map((row) => row.user_id), totalMembers: size, lastSubmittedMs: nowMs - HOUR }],
+      deadlineMs: nowMs + 2 * HOUR,
+      firstKickoffMs: nowMs + 3 * HOUR,
+      nowMs,
+    })[0];
+    if (!everyone) continue;
+    const copies = size === 2 ? everyonePredictedCopy('Easy League') : everyonePredictedCopy('Easy League').slice(0, 1);
+    out.push(...copyCards(everyone, copies, { code: 'D03', name: 'Everyone has predicted', variant: `${size} players`, origin: 'Joff' }, (item, copy) => ({ ...item, title: copy.title, body: copy.line })));
+  }
 
   // D04 Player joined.
   const joined = playerJoinedItems({

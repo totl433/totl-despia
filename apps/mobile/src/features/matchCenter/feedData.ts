@@ -43,6 +43,8 @@ export async function fetchLeagueTables(gw: number, leagues: FeedLeague[]): Prom
         name: league.name,
         avatarUrl: leagueAvatarUri(league),
         submittedUserIds: table.submittedUserIds ?? [],
+        totalMembers: typeof table.totalMembers === 'number' ? table.totalMembers : undefined,
+        lastSubmittedMs: table.lastSubmittedAt ? Date.parse(table.lastSubmittedAt) || null : null,
         rows: table.rows.map((row) => ({
           user_id: row.user_id,
           name: row.name,
