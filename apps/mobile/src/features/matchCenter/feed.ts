@@ -167,6 +167,8 @@ export type FeedItem = {
   scoreRows?: FeedScoreRow[] | null;
   /** D03 Everyone has predicted: the league badge ringed by every member. */
   everyoneIn?: { badgeUrl: string | null; faces: FeedFace[] } | null;
+  /** D04 Player joined: the new player over the league badge. */
+  joined?: { person: FeedFace; badgeUrl: string | null } | null;
 };
 
 export type FeedFace = {
