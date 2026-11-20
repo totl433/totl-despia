@@ -365,8 +365,20 @@ export function goodLuckItem(input: {
   });
 }
 
+/** Most names a winner line spells out; the rest are counted ("…, and 4 others"). */
+const WINNER_NAMES_SHOWN = 5;
+/** Most winner faces on a card (two rows on a phone). */
+const WINNER_FACES_SHOWN = 12;
+
+/** Every name up to five; past that, the first five and a count of the rest. */
+export function winnerNames(names: string[]): string {
+  if (names.length <= WINNER_NAMES_SHOWN) return joinNames(names);
+  const rest = names.length - WINNER_NAMES_SHOWN;
+  return `${names.slice(0, WINNER_NAMES_SHOWN).join(', ')}, and ${rest} ${rest === 1 ? 'other' : 'others'}`;
+}
+
 function winnerCopy(kind: ScheduledShout['kind'], names: string[], seed: string) {
-  return pickCopy(winnerShoutCopy(kind, joinNames(names)), seed);
+  return pickCopy(winnerShoutCopy(kind, winnerNames(names)), seed);
 }
 
 export function winnerShoutItems(input: {
@@ -398,10 +410,11 @@ export function winnerShoutItems(input: {
     ...row,
     score: (input.seasonBefore[row.user_id] ?? 0) + (gwScore.get(row.user_id) ?? 0),
   }));
+  // Winners: everyone tied at the top. Midweek leaders: one name, as their copy is singular.
   const pickRows = (kind: ScheduledShout['kind']) => {
-    if (kind === 'gw') return topByScore(input.liveTable);
-    if (kind === 'monthly' || kind === 'midweek-month') return topByScore(monthRows, kind === 'monthly' ? 3 : 1);
-    return topByScore(seasonRows, kind === 'season' ? 3 : 1);
+    if (kind === 'gw') return topByScore(input.liveTable, Infinity);
+    if (kind === 'monthly' || kind === 'midweek-month') return topByScore(monthRows, kind === 'monthly' ? Infinity : 1);
+    return topByScore(seasonRows, kind === 'season' ? Infinity : 1);
   };
   return scheduled.flatMap((slot) => {
     const rows = pickRows(slot.kind);
@@ -414,7 +427,7 @@ export function winnerShoutItems(input: {
           const shout = winnerCopy(slot.kind, rows.map((row) => row.name), `shout:${slot.kind}:${input.lastFtMs}`);
           return { title: shout.title, body: shout.line };
         })(),
-        faces: facesFor(rows, input.people),
+        faces: facesFor(rows.slice(0, WINNER_FACES_SHOWN), input.people),
       }),
     ];
   });

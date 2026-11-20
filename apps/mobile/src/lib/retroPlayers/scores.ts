@@ -206,6 +206,27 @@ export async function savePlayersDayProgress(
   if (store[dayKey]) await publishPlayersScores(userId, { [dayKey]: store[dayKey] });
 }
 
+type SharedScoreRow = { user_id: unknown; day_key: unknown; correct: unknown; total: unknown };
+
+/** Supabase returns at most 1,000 rows per request, so read every player's scores a page at a time. */
+const SCORE_PAGE_SIZE = 1000;
+
+async function readAllScoreRows(): Promise<{ rows: SharedScoreRow[]; error: { message: string } | null }> {
+  const rows: SharedScoreRow[] = [];
+  for (let from = 0; ; from += SCORE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('players_daily_scores')
+      .select('user_id, day_key, correct, total')
+      .order('user_id', { ascending: true })
+      .order('day_key', { ascending: true })
+      .range(from, from + SCORE_PAGE_SIZE - 1);
+    if (error) return { rows: [], error };
+    const page = (data ?? []) as SharedScoreRow[];
+    rows.push(...page);
+    if (page.length < SCORE_PAGE_SIZE) return { rows, error: null };
+  }
+}
+
 /** Scores for every player this account can see, including this account's offline ones. */
 export async function readSharedPlayersScores(): Promise<Record<string, PlayersScoreStore>> {
   const userId = await signedInUserId();
@@ -213,11 +234,11 @@ export async function readSharedPlayersScores(): Promise<Record<string, PlayersS
   if (userId) await publishPlayersScores(userId, local);
 
   const shared: Record<string, PlayersScoreStore> = {};
-  const { data, error } = await supabase.from('players_daily_scores').select('user_id, day_key, correct, total');
+  const { rows, error } = await readAllScoreRows();
   if (error) {
     console.error('[players scores] read:', error.message);
   } else {
-    for (const row of data ?? []) {
+    for (const row of rows) {
       const score = toScore(row);
       if (!score) continue;
       const id = String(row.user_id);

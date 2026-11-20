@@ -22,6 +22,8 @@ import {
   statMomentItems,
   toPeopleMap,
   topByScore,
+  winnerNames,
+  winnerShoutItems,
 } from './derivedFeed';
 import { firstWinnerSlot, leftoverQuietSlots, nextWinnerSlot, scheduleStatMoments, scheduleWinnerShouts } from './shoutOutSlots';
 
@@ -316,6 +318,41 @@ describe('shout-out slots', () => {
     });
     expect(stats.map((slot) => slot.kind).slice(0, 3)).toEqual(['missed', 'easiest', 'late']);
     expect(stats[0]?.at).toBe(leftover[0]);
+  });
+});
+
+describe('winner shout-outs', () => {
+  const lastFt = Date.parse('2026-11-08T17:20:00Z');
+  const tied = ['Amy', 'Bea', 'Cal', 'Dan', 'Eve', 'Fay', 'Gus'].map((name) => ({ user_id: `u-${name}`, name, score: 9 }));
+  const shouts = winnerShoutItems({
+    lastFtMs: lastFt,
+    nowMs: lastFt + 6 * 24 * 3_600_000,
+    nextHereWeGoMs: null,
+    monthClosed: true,
+    seasonClosed: true,
+    weekendGw: true,
+    liveTable: [...tied, { user_id: 'u-zed', name: 'Zed', score: 4 }],
+    monthBefore: {},
+    seasonBefore: {},
+    people: new Map(),
+  });
+
+  it('counts every tied winner, not just the first three', () => {
+    for (const kind of ['gw', 'monthly', 'season']) {
+      const card = shouts.find((item) => item.id.startsWith(`shout:${kind}:`));
+      expect(card?.faces).toHaveLength(7);
+      expect(card?.body).toContain('Amy, Bea, Cal, Dan, Eve, and 2 others');
+    }
+  });
+
+  it('keeps one name on the midweek leader cards', () => {
+    const leader = shouts.find((item) => item.id.startsWith('shout:midweek-'));
+    expect(leader?.faces).toHaveLength(1);
+  });
+
+  it('spells out up to five names', () => {
+    expect(winnerNames(['Amy', 'Bea', 'Cal'])).toBe('Amy, Bea, and Cal');
+    expect(winnerNames(['Amy', 'Bea', 'Cal', 'Dan', 'Eve', 'Fay'])).toBe('Amy, Bea, Cal, Dan, Eve, and 1 other');
   });
 });
 
