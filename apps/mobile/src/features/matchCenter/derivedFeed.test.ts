@@ -231,7 +231,13 @@ describe('mini league events', () => {
       gwOpenMs: KO - 2 * 3_600_000,
       nowMs: KO,
     });
-    expect(items[0]?.body).toMatch(/Sam.*Easy League/);
+    expect(items[0]?.title).toBe('Easy League');
+    expect(items[0]?.body).toMatch(/Sam/);
+    expect(items[0]?.body).not.toMatch(/Easy League/);
+    expect(items[0]?.joined).toEqual({ person: { name: 'Sam', avatarUrl: null }, badgeUrl: null });
+    expect(items[0]?.link).toMatchObject({ label: 'Go to mini league', to: 'league', leagueId: 'lg' });
+    expect(items[0]?.reacts).toBe(false);
+    expect(items[0]?.comments).toBe(false);
   });
 });
 
