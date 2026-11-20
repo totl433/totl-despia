@@ -328,21 +328,24 @@ export function playerJoinedItems(input: {
   return input.joins
     .filter((join) => join.userId !== input.userId)
     .filter((join) => join.joinedAtMs >= since && join.joinedAtMs <= input.nowMs)
-    .map((join) =>
-      card({
-        id: `joined:${join.leagueId}:${join.userId}`,
+    .map((join) => {
+      const id = `joined:${join.leagueId}:${join.userId}`;
+      const copy = pickCopy(playerJoinedCopy(join.name, join.leagueName), id);
+      const person = { name: join.name, avatarUrl: join.avatarUrl };
+      return card({
+        id,
         sortAt: join.joinedAtMs,
         kind: 'league-event',
-        eyebrow: 'Mini-leagues',
-        title: pickCopy(playerJoinedCopy(join.name, join.leagueName), `joined:${join.leagueId}:${join.userId}`).title,
-        body: pickCopy(playerJoinedCopy(join.name, join.leagueName), `joined:${join.leagueId}:${join.userId}`).line,
-        faces: [
-          { name: join.name, avatarUrl: join.avatarUrl },
-          { name: join.leagueName, avatarUrl: join.leagueAvatar },
-        ],
-        link: { label: join.leagueName, to: 'league', leagueId: join.leagueId, leagueName: join.leagueName },
-      })
-    );
+        eyebrow: copy.title,
+        title: copy.title,
+        body: copy.line,
+        faces: [person, { name: join.leagueName, avatarUrl: join.leagueAvatar }],
+        joined: { person, badgeUrl: join.leagueAvatar },
+        link: { label: 'Go to mini league', to: 'league', leagueId: join.leagueId, leagueName: join.leagueName },
+        comments: false,
+        reacts: false,
+      });
+    });
 }
 
 function personRow(id: string, people: Map<string, FeedPerson>, fallback = 'Someone'): { user_id: string; name: string; score: number } {

@@ -54,7 +54,7 @@ import { GameCardScore, PickBar } from '../components/gameCentre/GameCardMatch';
 import { markCardsSeen } from '../features/matchCenter/cardVisibility';
 import { FIXTURES_CARD, FixtureRows, FixturesCardHeader } from '../components/gameCentre/GameCentreFixtures';
 import { ScoreSheetFeedCard } from '../components/gameCentre/GameCentreScoreSheet';
-import { EveryoneInFeedCard } from '../components/gameCentre/GameCentreEveryoneInCard';
+import { EveryoneInFeedCard, PlayerJoinedFeedCard } from '../components/gameCentre/GameCentreLeagueMomentCard';
 import {
   PLAYERS_FEED_CARD,
   PlayersFeedBackground,
@@ -808,7 +808,17 @@ function FeedCardView({
   }
 
   const everyoneInCard = !!item.everyoneIn && item.everyoneIn.faces.length >= 2 && !!item.link;
-  const card = everyoneInCard ? (
+  const joinedCard = !!item.joined && !!item.link;
+  const card = joinedCard ? (
+    <PlayerJoinedFeedCard
+      title={item.title}
+      line={item.body}
+      badgeUrl={item.joined!.badgeUrl}
+      person={item.joined!.person}
+      buttonLabel={item.link!.label}
+      onPress={() => onOpen(item)}
+    />
+  ) : everyoneInCard ? (
     <EveryoneInFeedCard
       title={item.title}
       line={item.body}
