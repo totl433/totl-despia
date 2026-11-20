@@ -274,35 +274,45 @@ export function scoreSheetItem(input: {
   });
 }
 
+/** Mini leagues hold 2–8 players; a league of one has nobody to wait for. */
+const EVERYONE_IN_MIN = 2;
+const EVERYONE_IN_MAX = 8;
+
+/**
+ * D03: once the last member of a mini league submits, every member sees the league badge ringed by
+ * the whole league. Stamped when that last Prediction went in, and kept for the rest of the gameweek.
+ */
 export function everyonePredictedItems(input: {
   tables: LeagueTableSnap[];
-  leagues: LeaguePickSnap[];
   deadlineMs: number | null;
   firstKickoffMs: number | null;
   nowMs: number;
 }): FeedItem[] {
-  if (input.deadlineMs == null || input.nowMs >= input.deadlineMs) return [];
-  const sortAt = (input.firstKickoffMs ?? input.deadlineMs) - 2 * 3_600_000;
   return input.tables.flatMap((table) => {
+    const members = table.totalMembers;
+    if (typeof members !== 'number' || members < EVERYONE_IN_MIN || members > EVERYONE_IN_MAX) return [];
     const submitted = new Set(table.submittedUserIds ?? []);
-    const members = table.rows.length;
-    if (members < 2) return [];
-    const fromPicks = input.leagues.find((league) => league.id === table.id);
-    const predicted = fromPicks
-      ? fromPicks.members.filter((member) => Object.keys(member.picks).length > 0).length
-      : submitted.size;
-    const allIn = submitted.size > 0 ? submitted.size >= members : predicted >= members;
-    if (!allIn) return [];
+    // `rows` lists those who have submitted, so a full list is everyone.
+    if (submitted.size < members || table.rows.length < members) return [];
+    const fallback = (input.firstKickoffMs ?? input.deadlineMs ?? input.nowMs) - 2 * 3_600_000;
+    const sortAt = Math.min(input.nowMs, table.lastSubmittedMs ?? fallback);
+    const copy = pickCopy(everyonePredictedCopy(table.name), `everyone:${table.id}`);
+    const faces = [...table.rows]
+      .sort((a, b) => a.name.localeCompare(b.name) || a.user_id.localeCompare(b.user_id))
+      .map((row) => ({ name: row.name, avatarUrl: row.avatarUrl ?? null }));
     return [
       card({
         id: `everyone:${table.id}`,
         sortAt,
         kind: 'league-event',
-        eyebrow: pickCopy(everyonePredictedCopy(table.name), `everyone:${table.id}`).title,
-        title: pickCopy(everyonePredictedCopy(table.name), `everyone:${table.id}`).title,
-        body: pickCopy(everyonePredictedCopy(table.name), `everyone:${table.id}`).line,
-        faces: table.rows.slice(0, 3).map((row) => ({ name: row.name, avatarUrl: row.avatarUrl ?? null })),
-        link: { label: table.name, to: 'league', leagueId: table.id, leagueName: table.name },
+        eyebrow: copy.title,
+        title: copy.title,
+        body: copy.line,
+        faces,
+        everyoneIn: { badgeUrl: table.avatarUrl ?? null, faces },
+        link: { label: 'Go to mini league', to: 'league', leagueId: table.id, leagueName: table.name, leagueTab: 'predictions' },
+        comments: false,
+        reacts: false,
       }),
     ];
   });
@@ -710,7 +720,6 @@ export function buildDerivedFeed(input: DerivedFeedInput): FeedItem[] {
   items.push(
     ...everyonePredictedItems({
       tables: input.tables,
-      leagues: input.leagues,
       deadlineMs: input.deadlineMs,
       firstKickoffMs: first,
       nowMs: input.nowMs,
