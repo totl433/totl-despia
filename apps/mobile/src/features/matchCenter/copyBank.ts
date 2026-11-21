@@ -175,11 +175,12 @@ export function everyonePredictedCopy(league: string): CopyVersion[] {
   ];
 }
 
+/** D04: the league's name is the title, so the line leaves it out. */
 export function playerJoinedCopy(name: string, league: string): CopyVersion[] {
   return [
-    { title: 'Mini-leagues', line: `${name} has joined ${league}` },
-    { title: 'Mini-leagues', line: `${name}'s in ${league}` },
-    { title: 'Mini-leagues', line: `New face: ${name} just joined ${league}` },
+    { title: league, line: `${name} has joined` },
+    { title: league, line: `${name}'s in` },
+    { title: league, line: `New face: ${name} just joined` },
   ];
 }
 
