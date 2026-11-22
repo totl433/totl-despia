@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -28,6 +28,8 @@ import {
   startPlayersDay,
 } from '../../lib/retroPlayers/scores';
 import { playersResultShareMessage } from '../../lib/retroPlayers/results';
+import { SHOOTOUTS_QUERY_KEY, shootoutsNeedingYou } from '../../lib/retroPlayers/shootout';
+import { api } from '../../lib/api';
 import {
   loadPlayersResultCards,
   markPlayersResultSeenFor,
@@ -36,10 +38,8 @@ import {
 import type { PlayerClubApp } from '../../lib/retroPlayers/seedApps';
 import { isShareCancelled, shareCapturedImage } from '../../lib/shareToSocial';
 import type { RetroTotlDailyPlayersStackParamList } from '../../navigation/RetroTotlDailyPlayersNavigator';
-import RetroDailySwipeStack, {
-  DRAW_THRESHOLD,
-  SWIPE_THRESHOLD,
-} from '../../components/retroDaily/RetroDailySwipeStack';
+import RetroDailySwipeStack from '../../components/retroDaily/RetroDailySwipeStack';
+import { optionFromSwipe, optionIndexFromSwipe } from '../../lib/retroPlayers/swipePick';
 import type { PlayersRoundOutcome } from '../../components/retroPlayers/RetroPlayersRevealCard';
 import RetroPlayersRulesSheet from '../../components/retroPlayers/RetroPlayersRulesSheet';
 import PlayersReview from '../../components/retroPlayers/PlayersReview';
@@ -93,24 +93,6 @@ const RESULTS_WAIT_MS = 3000;
 
 const BOTTOM_SLOT_H = 93;
 const CARD_TO_SLOT_GAP = 40;
-
-/** Left / down / right → options[0] / [1] / [2] — same thresholds as fixtures H/D/A. */
-function optionIndexFromSwipe(dx: number, dy: number, count: number): number | null {
-  if (count === 0) return null;
-  const absX = Math.abs(dx);
-  const absY = Math.abs(dy);
-  const right = Math.min(2, count - 1);
-  const mid = Math.min(1, count - 1);
-  if (absX >= SWIPE_THRESHOLD && absX > absY * 1.15) return dx > 0 ? right : 0;
-  if (dy >= DRAW_THRESHOLD && dy > absX * 1.05) return mid;
-  if (absX >= absY) return dx >= 0 ? right : 0;
-  return mid;
-}
-
-function optionFromSwipe(dx: number, dy: number, options: PlayersClubOption[]): PlayersClubOption | null {
-  const i = optionIndexFromSwipe(dx, dy, options.length);
-  return i == null ? null : options[i] ?? null;
-}
 
 /**
  * Retro Totl Daily — The Players (admin prototype).
@@ -355,6 +337,18 @@ export default function RetroTotlDailyPlayersScreen() {
 
   const openScoreboard = React.useCallback(() => {
     navigation.navigate('RetroTotlDailyPlayersScoreboard');
+  }, [navigation]);
+
+  // Shootouts waiting on you, for the count on the Shootout link.
+  const { data: shootouts } = useQuery({
+    queryKey: SHOOTOUTS_QUERY_KEY,
+    queryFn: () => api.listPlayersShootouts(),
+    staleTime: 60_000,
+  });
+  const shootoutCount = shootoutsNeedingYou(shootouts?.challenges);
+  const shootoutLabel = shootoutCount ? `Shootout (${shootoutCount})` : 'Shootout';
+  const openShootout = React.useCallback(() => {
+    navigation.navigate('PlayersShootoutHome');
   }, [navigation]);
 
   const deal = React.useCallback((mode: 'daily' | 'practice') => {
@@ -759,6 +753,10 @@ export default function RetroTotlDailyPlayersScreen() {
                 style={[styles.linkRow, { marginTop: LINKS_TOP }]}
               >
                 <PlayersTextLink label="Rules" onPress={() => setRulesOpen(true)} />
+                {/* Once today's played, the Shootout button sits under the card instead. */}
+                {waitingForNext && phase === 'intro' ? null : (
+                  <PlayersTextLink label={shootoutLabel} onPress={openShootout} />
+                )}
                 <PlayersTextLink label="Scoreboard" onPress={openScoreboard} />
               </Animated.View>
             ) : phase === 'score' ? (
@@ -769,6 +767,7 @@ export default function RetroTotlDailyPlayersScreen() {
                 style={[styles.linkRow, { marginTop: LINKS_TOP }]}
               >
                 <PlayersTextLink label="Scoreboard" color={PLAYERS_COLORS.white} onPress={openScoreboard} />
+                <PlayersTextLink label={shootoutLabel} color={PLAYERS_COLORS.white} onPress={openShootout} />
                 <PlayersTextLink label="Practice mode" color={PLAYERS_COLORS.white} onPress={() => deal('practice')} />
               </Animated.View>
             ) : (
@@ -824,8 +823,13 @@ export default function RetroTotlDailyPlayersScreen() {
             ) : null}
 
             {phase === 'intro' && waitingForNext ? (
-              <Animated.View entering={FadeIn.duration(200)}>
-                <PlayersButton label="Practice mode" onPress={() => deal('practice')} />
+              <Animated.View entering={FadeIn.duration(200)} style={styles.splitButtons}>
+                <View style={{ flex: 1 }}>
+                  <PlayersButton label="Practice" onPress={() => deal('practice')} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <PlayersButton label={shootoutCount ? `Shootout · ${shootoutCount}` : 'Shootout'} onPress={openShootout} />
+                </View>
               </Animated.View>
             ) : null}
 
@@ -903,6 +907,10 @@ const styles = StyleSheet.create({
     fontFamily: PLAYERS_FONTS.body,
     fontSize: 16,
     lineHeight: 20.8,
+  },
+  splitButtons: {
+    flexDirection: 'row',
+    gap: 9,
   },
   linkRow: {
     width: '100%',

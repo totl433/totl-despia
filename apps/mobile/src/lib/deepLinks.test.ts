@@ -30,6 +30,11 @@ describe('resolveDeepLinkTarget', () => {
     ['https://playtotl.com/predictions', { type: 'predictions' }],
     ['https://playtotl.com/players', { type: 'players' }],
     ['com.despia.totlnative:///players', { type: 'players' }],
+    [
+      'https://playtotl.com/players/shootout/0b6e4f6a-1f7e-4b47-9a51-0f1f8a1e2c3d',
+      { type: 'playersShootout', id: '0b6e4f6a-1f7e-4b47-9a51-0f1f8a1e2c3d' },
+    ],
+    ['https://playtotl.com/players/shootout', { type: 'playersShootout' }],
     ['https://playtotl.com/match-center', { type: 'matchCenter' }],
     ['com.despia.totlnative:///match-center', { type: 'matchCenter' }],
     ['https://playtotl.com/leagues', { type: 'leagues' }],

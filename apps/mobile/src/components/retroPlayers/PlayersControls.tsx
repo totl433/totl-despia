@@ -94,7 +94,9 @@ export function PlayersButton({
         <ActivityIndicator color={PLAYERS_COLORS.white} />
       ) : (
         <>
-          <TotlText style={styles.buttonLabel}>{label}</TotlText>
+          <TotlText style={styles.buttonLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            {label}
+          </TotlText>
           {arrow ? <ArrowRight /> : null}
         </>
       )}
@@ -126,7 +128,7 @@ export function PlayersButton({
   );
 }
 
-/** Quiet text link (Rules, Scoreboard, Practice mode). */
+/** Quiet text link (Rules, Scoreboard, Shootout, Practice mode). */
 export function PlayersTextLink({
   label,
   onPress,

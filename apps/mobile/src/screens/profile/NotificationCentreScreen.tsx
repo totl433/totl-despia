@@ -219,6 +219,11 @@ export default function NotificationCentreScreen() {
               description: 'A daily reminder when the new Players game is ready',
             },
             {
+              id: 'players-shootout',
+              label: 'Shootout Challenges',
+              description: 'When someone challenges you on The Players, and when it’s your turn',
+            },
+            {
               id: 'score-updates',
               label: 'Match Updates',
               description: 'Get notified about match updates including kickoffs, goals, and scorers',

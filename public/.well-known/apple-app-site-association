@@ -12,7 +12,8 @@
           "/leagues/",
           "/join-league/*",
           "/join/*",
-          "/branded-leaderboards/*"
+          "/branded-leaderboards/*",
+          "/players/shootout/*"
         ]
       }
     ]
