@@ -24,6 +24,7 @@ import {
 } from '@totl/domain';
 import { loadShootoutCatalog } from './playersShootoutCatalog.js';
 import { createSupabaseAdminClient, createSupabaseClient } from './supabase.js';
+import { isTotlAdmin } from './profile.js';
 
 /**
  * The Players Shootout: head-to-head challenges.
@@ -162,8 +163,12 @@ function sendError(reply: any, error: unknown) {
 }
 
 export function registerPlayersShootoutRoutes(app: FastifyInstance, env: Env) {
+  // While Shootout is being tested, only the TOTL admins can use it (same list as the Admin menu).
   const authed = async (req: any) => {
     await requireUser(req, createSupabaseClient(env));
+    if (!isTotlAdmin((req as AuthedRequest).userId)) {
+      throw Object.assign(new Error('Shootout is not available yet.'), { statusCode: 403 });
+    }
     return req as AuthedRequest;
   };
 
@@ -217,6 +222,8 @@ export function registerPlayersShootoutRoutes(app: FastifyInstance, env: Env) {
     try {
       const { opponentId } = CreateBody.parse((req as any).body ?? {});
       if (opponentId === userId) throw new ShootoutError("You can't challenge yourself.", 400);
+      // Testing phase: admins can only challenge other admins, so nobody else gets a Shootout push.
+      if (!isTotlAdmin(opponentId)) throw new ShootoutError('Shootout is only open to the TOTL team for now.', 403);
       const admin = createSupabaseAdminClient(env);
 
       const { data: opponent } = await admin.from('users').select('id').eq('id', opponentId).maybeSingle();
