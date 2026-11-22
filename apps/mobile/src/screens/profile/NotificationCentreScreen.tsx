@@ -18,6 +18,13 @@ export default function NotificationCentreScreen() {
     queryKey: ['notification-prefs'],
     queryFn: () => api.getNotificationPrefs(),
   });
+  // Shootout is admins-only while it's being tested, so its switch is too.
+  const { data: profileSummary } = useQuery({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
+  const shootoutOn = profileSummary?.isAdmin === true;
 
   const [localPrefs, setLocalPrefs] = React.useState<Record<string, boolean>>({});
   React.useEffect(() => {
@@ -218,11 +225,15 @@ export default function NotificationCentreScreen() {
               label: 'Daily Game Reminders',
               description: 'A daily reminder when the new Players game is ready',
             },
-            {
-              id: 'players-shootout',
-              label: 'Shootout Challenges',
-              description: 'When someone challenges you on The Players, and when it’s your turn',
-            },
+            ...(shootoutOn
+              ? [
+                  {
+                    id: 'players-shootout',
+                    label: 'Shootout Challenges',
+                    description: 'When someone challenges you on The Players, and when it’s your turn',
+                  },
+                ]
+              : []),
             {
               id: 'score-updates',
               label: 'Match Updates',
