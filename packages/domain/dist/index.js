@@ -375,3 +375,5 @@ export const UnicornCardSchema = z.object({
     league_names: z.array(z.string()),
 });
 export { computeWebParityMiniLeagueSeasonRows, getLeagueActivationAt, orderCompletedGwsByFirstKickoff, } from './leagueSeasonTableWeb.js';
+export * from './playersShootout.js';
+export * from './playersShootoutDeck.js';

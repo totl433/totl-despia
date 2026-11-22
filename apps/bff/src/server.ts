@@ -35,6 +35,7 @@ import { sendChatMessageReportEmail, sendHostReviewReadyEmail } from './reportin
 import { registerBrandedLeaderboardRoutes } from './brandedLeaderboards.js';
 import { registerLeagueInviteRoutes } from './leagueInviteRoutes.js';
 import { registerMatchCenterBroadcastRoutes } from './matchCenterBroadcast.js';
+import { registerPlayersShootoutRoutes } from './playersShootoutRoutes.js';
 import { mergeProtectedPreferences, publicPreferences } from './leagueInvites.js';
 import { notifyFinalSubmissionForLeagues } from './finalSubmissionNotifications.js';
 import {
@@ -1327,6 +1328,7 @@ app.put('/v1/notification-prefs', async (req) => {
 registerBrandedLeaderboardRoutes(app, env);
 registerLeagueInviteRoutes(app, env);
 registerMatchCenterBroadcastRoutes(app, env);
+registerPlayersShootoutRoutes(app, env);
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 
