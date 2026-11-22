@@ -339,10 +339,19 @@ export default function RetroTotlDailyPlayersScreen() {
     navigation.navigate('RetroTotlDailyPlayersScoreboard');
   }, [navigation]);
 
+  // While Shootout is being tested only the TOTL admins see it (same check as the Admin menu);
+  // everyone else gets the daily game exactly as before.
+  const { data: profileSummary } = useQuery({
+    queryKey: ['profile-summary'],
+    queryFn: () => api.getProfileSummary(),
+    staleTime: 60_000,
+  });
+  const shootoutOn = profileSummary?.isAdmin === true;
   // Shootouts waiting on you, for the count on the Shootout link.
   const { data: shootouts } = useQuery({
     queryKey: SHOOTOUTS_QUERY_KEY,
     queryFn: () => api.listPlayersShootouts(),
+    enabled: shootoutOn,
     staleTime: 60_000,
   });
   const shootoutCount = shootoutsNeedingYou(shootouts?.challenges);
@@ -754,7 +763,7 @@ export default function RetroTotlDailyPlayersScreen() {
               >
                 <PlayersTextLink label="Rules" onPress={() => setRulesOpen(true)} />
                 {/* Once today's played, the Shootout button sits under the card instead. */}
-                {waitingForNext && phase === 'intro' ? null : (
+                {!shootoutOn || (waitingForNext && phase === 'intro') ? null : (
                   <PlayersTextLink label={shootoutLabel} onPress={openShootout} />
                 )}
                 <PlayersTextLink label="Scoreboard" onPress={openScoreboard} />
@@ -767,7 +776,7 @@ export default function RetroTotlDailyPlayersScreen() {
                 style={[styles.linkRow, { marginTop: LINKS_TOP }]}
               >
                 <PlayersTextLink label="Scoreboard" color={PLAYERS_COLORS.white} onPress={openScoreboard} />
-                <PlayersTextLink label={shootoutLabel} color={PLAYERS_COLORS.white} onPress={openShootout} />
+                {shootoutOn ? <PlayersTextLink label={shootoutLabel} color={PLAYERS_COLORS.white} onPress={openShootout} /> : null}
                 <PlayersTextLink label="Practice mode" color={PLAYERS_COLORS.white} onPress={() => deal('practice')} />
               </Animated.View>
             ) : (
@@ -822,7 +831,13 @@ export default function RetroTotlDailyPlayersScreen() {
               />
             ) : null}
 
-            {phase === 'intro' && waitingForNext ? (
+            {phase === 'intro' && waitingForNext && !shootoutOn ? (
+              <Animated.View entering={FadeIn.duration(200)}>
+                <PlayersButton label="Practice mode" onPress={() => deal('practice')} />
+              </Animated.View>
+            ) : null}
+
+            {phase === 'intro' && waitingForNext && shootoutOn ? (
               <Animated.View entering={FadeIn.duration(200)} style={styles.splitButtons}>
                 <View style={{ flex: 1 }}>
                   <PlayersButton label="Practice" onPress={() => deal('practice')} />
