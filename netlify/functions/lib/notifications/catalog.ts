@@ -27,6 +27,22 @@ const catalogData = {
     "deep_links": { "url_format": "/league/{leagueCode}" },
     "rollout": { "enabled": true, "percentage": 100 }
   },
+  "players-shootout": {
+    "notification_key": "players-shootout",
+    "owner": "client-triggered",
+    "status": "active",
+    "channels": ["push"],
+    "audience": "other_shootout_player",
+    "source": "client_post",
+    "trigger": { "name": "players_shootout_move", "event_id_format": "shootout:{challenge_id}:{event}:{version}" },
+    "dedupe": { "scope": "per_user_per_event", "ttl_seconds": 86400 },
+    "cooldown": { "per_user_seconds": 0 },
+    "quiet_hours": { "start": null, "end": null },
+    "preferences": { "preference_key": "players-shootout", "default": true },
+    "onesignal": { "collapse_id_format": "shootout:{challenge_id}", "thread_id_format": "shootout:{challenge_id}", "android_group_format": "totl_players" },
+    "deep_links": { "url_format": "/players/shootout/{challenge_id}" },
+    "rollout": { "enabled": true, "percentage": 100 }
+  },
   "member-join": {
     "notification_key": "member-join",
     "owner": "client-triggered",
