@@ -7,6 +7,7 @@ export type DeepLinkTarget =
   | { type: 'leagues' }
   | { type: 'predictions' }
   | { type: 'players' }
+  | { type: 'playersShootout'; id?: string }
   | { type: 'matchCenter' }
   | { type: 'brandedLeaderboard'; idOrSlug: string; initialTab?: 'broadcast' }
   | {
@@ -75,6 +76,12 @@ export function resolveDeepLinkTarget(rawUrl: string): DeepLinkTarget | null {
 
   if (/^\/predictions\/?$/i.test(pathname)) {
     return { type: 'predictions' };
+  }
+
+  const shootoutMatch = pathname.match(/^\/players\/shootout(?:\/([^/?#]+))?\/?$/i);
+  if (shootoutMatch) {
+    const id = shootoutMatch[1] ? decodeURIComponent(shootoutMatch[1]).trim() : '';
+    return id ? { type: 'playersShootout', id } : { type: 'playersShootout' };
   }
 
   if (/^\/players\/?$/i.test(pathname)) {

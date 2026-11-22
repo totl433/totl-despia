@@ -33,6 +33,19 @@ import {
   type BrandedLeaderboardSubscription,
 } from '@totl/domain';
 
+import type { PlayersShootout } from './playersShootout';
+
+export type {
+  PlayersShootout,
+  PlayersShootoutCard,
+  PlayersShootoutClub,
+  PlayersShootoutGame,
+  PlayersShootoutKick,
+  PlayersShootoutPerson,
+  PlayersShootoutRound,
+  PlayersShootoutStatus,
+} from './playersShootout';
+
 export interface ApiClientOptions {
   baseUrl: string;
   getAccessToken: () => Promise<string | null>;
@@ -525,6 +538,61 @@ export function createApiClient(opts: ApiClientOptions) {
         body: JSON.stringify(input),
       });
     },
+
+    // ── The Players Shootout ────────────────────────────────────────────
+    async listPlayersShootouts(): Promise<{ challenges: PlayersShootout[] }> {
+      return requestJson(opts, `/v1/players/shootouts`, { method: 'GET' });
+    },
+
+    async getPlayersShootout(id: string): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}`, { method: 'GET' });
+    },
+
+    async createPlayersShootout(opponentId: string): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts`, {
+        method: 'POST',
+        body: JSON.stringify({ opponentId }),
+      });
+    },
+
+    async respondToPlayersShootout(id: string, accept: boolean): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ accept }),
+      });
+    },
+
+    async cancelPlayersShootout(id: string): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    },
+
+    /** Quit: in play the other player wins; not yet accepted, it's cancelled or declined. */
+    async leavePlayersShootout(id: string): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    },
+
+    /** Shows your card and starts your 10 seconds. */
+    async revealPlayersShootoutCard(id: string): Promise<{ challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}/reveal`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+    },
+
+    async answerPlayersShootoutCard(
+      id: string,
+      input: { cardId: string; pick: string | null }
+    ): Promise<{ correct: boolean; timedOut: boolean; challenge: PlayersShootout }> {
+      return requestJson(opts, `/v1/players/shootouts/${encodeURIComponent(id)}/answer`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
   };
 }
-

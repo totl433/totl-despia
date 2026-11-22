@@ -19,6 +19,12 @@ export const PLAYERS_COLORS = {
   white: '#FFFFFF',
   goldStart: '#E4CE5B',
   goldEnd: '#FCC036',
+  /** Secondary text on navy or the green card. */
+  whiteSoft: 'rgba(255,255,255,0.75)',
+  /** Hairlines and number badges on navy or the green card. */
+  whiteFaint: 'rgba(255,255,255,0.16)',
+  /** A darker panel inside the green card. */
+  shade: 'rgba(0,0,0,0.22)',
 } as const;
 
 export const PLAYERS_FONTS = {

@@ -465,3 +465,6 @@ export {
   type MiniLeagueSeasonComputeOptions,
   type MiniLeagueSeasonPreload,
 } from './leagueSeasonTableWeb.js';
+
+export * from './playersShootout.js';
+export * from './playersShootoutDeck.js';

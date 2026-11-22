@@ -58,6 +58,12 @@ export default function AdminHomeScreen() {
     parent?.navigate?.('RetroTotlDailyPlayersFlow');
   }, [navigation]);
 
+  /** The Players Shootout against Test Bot, in memory: nothing saved, nobody notified. */
+  const openShootoutSandbox = React.useCallback(() => {
+    const parent = navigation.getParent?.();
+    parent?.navigate?.('RetroTotlDailyPlayersFlow', { screen: 'PlayersShootoutHome', params: { sandbox: true } });
+  }, [navigation]);
+
   const openHpSimulator = React.useCallback(() => {
     navigation.navigate('AdminHomeSimulator');
   }, [navigation]);
@@ -195,6 +201,29 @@ export default function AdminHomeScreen() {
             })}
           >
             <TotlText style={{ fontWeight: '700' }}>Daily Game - The Players</TotlText>
+            <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Players Shootout sandbox"
+            onPress={openShootoutSandbox}
+            style={({ pressed }) => ({
+              paddingVertical: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(148,163,184,0.18)',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <TotlText style={{ fontWeight: '700' }}>The Players - Shootout Sandbox</TotlText>
+              <TotlText variant="muted" style={{ marginTop: 2, fontSize: 12 }}>
+                Try Shootouts against Test Bot and sample players. Nothing is saved.
+              </TotlText>
+            </View>
             <Ionicons name="chevron-forward" size={18} color="rgba(100,116,139,0.8)" />
           </Pressable>
 

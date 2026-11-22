@@ -1,6 +1,12 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  type NavigatorScreenParams,
+  type Theme,
+} from '@react-navigation/native';
 import { useTokens } from '@totl/ui';
 
 import TabsNavigator from './TabsNavigator';
@@ -16,7 +22,7 @@ import CardCommentsScreen, { type CardCommentsParams } from '../screens/CardComm
 import ProfileNavigator from './ProfileNavigator';
 import PredictionsScreen from '../screens/PredictionsScreen';
 import RetroTotlDailyNavigator from './RetroTotlDailyNavigator';
-import RetroTotlDailyPlayersNavigator from './RetroTotlDailyPlayersNavigator';
+import RetroTotlDailyPlayersNavigator, { type RetroTotlDailyPlayersStackParamList } from './RetroTotlDailyPlayersNavigator';
 import Chat2Navigator from './Chat2Navigator';
 import { useThemePreference } from '../context/ThemePreferenceContext';
 import { useJoinIntent } from '../context/JoinIntentContext';
@@ -42,7 +48,7 @@ export type RootStackParamList = {
   PredictionsFlow: undefined;
   PredictionsTestFlow: undefined;
   RetroTotlDailyFlow: undefined;
-  RetroTotlDailyPlayersFlow: undefined;
+  RetroTotlDailyPlayersFlow: NavigatorScreenParams<RetroTotlDailyPlayersStackParamList> | undefined;
   GameweekResults: { gw: number; mode?: 'roundup' | 'fixturesShare' };
   BrandedLeaderboard: { idOrSlug: string; joinCode?: string; initialTab?: 'leaderboard' | 'broadcast' };
   BrandedLeaderboardList: undefined;
@@ -86,6 +92,15 @@ export default function AppNavigator() {
     }
     if (target.type === 'players') {
       navigationRef.navigate('RetroTotlDailyPlayersFlow');
+      return true;
+    }
+    if (target.type === 'playersShootout') {
+      navigationRef.navigate(
+        'RetroTotlDailyPlayersFlow',
+        target.id
+          ? { screen: 'PlayersShootoutMatch', params: { id: target.id } }
+          : { screen: 'PlayersShootoutHome' }
+      );
       return true;
     }
     if (target.type === 'matchCenter') {
