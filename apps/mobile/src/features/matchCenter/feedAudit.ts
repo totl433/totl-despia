@@ -33,6 +33,7 @@ import {
   playersReadyCopy,
   playersWeeklyCopy,
   scoreSheetCopy,
+  scoreSheetVerdict,
   startingSoonCopy,
   winnerShoutCopy,
   type CopyVersion,
@@ -305,7 +306,17 @@ function derivedCards(nowMs: number): AuditEntry[] {
   });
   const picks: Record<string, Pick> = { '1': 'H', '2': 'H', '3': 'H', '4': 'D', '5': 'A', '6': 'D', '7': 'A', '8': 'H', '9': 'H', '10': 'A' };
   const sheet = scoreSheetItem({ gw: GW, fixtures, picks, liveByFixtureIndex: liveRows, lastFtMs: Date.parse('2026-11-10T21:55:00Z') });
-  if (sheet) out.push(...copyCards(sheet, scoreSheetCopy(), { code: 'D02', name: 'Score sheet', variant: '', origin: 'Joff' }, (item, copy) => ({ ...item, title: copy.title, body: copy.line })));
+  if (sheet) {
+    // Every score message (the rows stay this sample's), then a gameweek still in progress.
+    for (const correct of [10, 9, 8, 7, 5, 4, 2, 0]) {
+      out.push(card(
+        { ...sheet, id: `${sheet.id}#${correct}`, scoreTally: { correct, total: 10, message: scoreSheetVerdict(correct, 10) } },
+        { code: 'D02', name: 'Score sheet', variant: `${correct}/10`, origin: 'Joff' },
+      ));
+    }
+    const copy = scoreSheetCopy()[0]!;
+    out.push(card({ ...sheet, id: `${sheet.id}#live`, title: copy.title, body: copy.line, scoreTally: null }, { code: 'D02', name: 'Score sheet', variant: 'results still to come', origin: 'Joff' }));
+  }
 
   // D03 Everyone has predicted: one card per league size, 2 to 8 players.
   const crew = ['Carl', 'Jof', 'Sam', 'Tom', 'Amy', 'Bea', 'Dan', 'Eve'];
