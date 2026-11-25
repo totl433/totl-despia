@@ -833,7 +833,7 @@ function FeedCardView({
   ) : scoreSheetCard ? (
     <ScoreSheetFeedCard
       eyebrow={item.eyebrow ?? ''}
-      playerName={youName ?? ''}
+      playerName={item.playerName ?? youName ?? ''}
       line={header.subtitle}
       tally={item.scoreTally}
       avatarUrl={youAvatar}

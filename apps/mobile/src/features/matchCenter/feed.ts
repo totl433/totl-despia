@@ -167,6 +167,8 @@ export type FeedItem = {
   scoreRows?: FeedScoreRow[] | null;
   /** D02 once every fixture has a result: e.g. 5 of 10 correct, "Not bad!". */
   scoreTally?: { correct: number; total: number; message: string } | null;
+  /** Feed audit only: the name in "<name>'s score sheet" instead of yours. */
+  playerName?: string | null;
   /** D03 Everyone has predicted: the league badge ringed by every member. */
   everyoneIn?: { badgeUrl: string | null; faces: FeedFace[] } | null;
   /** D04 Player joined: the new player over the league badge. */
