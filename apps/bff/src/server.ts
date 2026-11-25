@@ -1118,7 +1118,7 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
   const seasonCtx = await resolveSeasonCtx(supa as any, userId);
   const tables = getSeasonTables(seasonCtx);
 
-  let submissionsQ = (supa as any).from(tables.submissions).select('user_id').eq('gw', gw);
+  let submissionsQ = (supa as any).from(tables.submissions).select('user_id, submitted_at').eq('gw', gw);
   submissionsQ = applySeasonFilter(submissionsQ, seasonCtx);
 
   let picksQ = (supa as any)
@@ -1242,7 +1242,12 @@ app.get('/v1/leagues/:leagueId/gw/:gw/table', async (req) => {
       b.score - a.score || b.unicorns - a.unicorns || a.name.localeCompare(b.name)
   );
   const submittedUserIds = Array.from(submittedIds).map(String).sort();
-  return { leagueId, gw, rows, submittedUserIds, submittedCount: submittedIds.size, totalMembers: members.length };
+  // When the league's latest Predictions went in (the Game Centre "everyone's in" card is stamped with it).
+  const lastSubmittedMs = ((submissionsRes.data ?? []) as Array<{ user_id: string; submitted_at?: string | null }>)
+    .filter((s) => memberIds.has(s.user_id) && s.submitted_at)
+    .reduce((latest, s) => Math.max(latest, Date.parse(String(s.submitted_at)) || 0), 0);
+  const lastSubmittedAt = lastSubmittedMs > 0 ? new Date(lastSubmittedMs).toISOString() : null;
+  return { leagueId, gw, rows, submittedUserIds, submittedCount: submittedIds.size, totalMembers: members.length, lastSubmittedAt };
 });
 
 app.get('/v1/leaderboards/gw/:gw/live', async (req) => {
