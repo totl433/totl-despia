@@ -25,19 +25,91 @@ export const SCORE_SHEET_CARD = {
   score: '#19191C',
 };
 
-/** Score sheet header (Figma 443:59699): season and gameweek, "Only you", then your avatar, title and line. */
-function ScoreSheetHeader({ eyebrow, title, line, avatarUrl }: { eyebrow: string; title: string; line?: string | null; avatarUrl?: string | null }) {
+const TITLE_SUFFIX = '\u2019s score sheet';
+const TITLE_MAX_LINES = 2;
+
+/** "Jof's score sheet", or "Your score sheet" when the name hasn't loaded. */
+export function scoreSheetTitle(name: string): string {
+  const trimmed = name.trim();
+  return trimmed ? `${trimmed}${TITLE_SUFFIX}` : 'Your score sheet';
+}
+
+/**
+ * "Jof's score sheet": wraps naturally, and past two lines shortens the name (never "score sheet").
+ * Each layout pass that runs over trims the name by what spilled, so it settles in a pass or two.
+ */
+function ScoreSheetTitle({ name: rawName }: { name: string }) {
   const t = useTokens();
+  const name = rawName.trim();
+  const [chars, setChars] = React.useState(name.length);
+  React.useEffect(() => setChars(name.length), [name]);
+  const shown = chars >= name.length ? name : `${name.slice(0, Math.max(1, chars)).trimEnd()}\u2026`;
   return (
-    <View style={{ paddingHorizontal: 16, gap: 20 }} accessible accessibilityLabel={[eyebrow, 'Only you', title, line].filter(Boolean).join('. ')}>
+    <TotlText
+      accessibilityRole="header"
+      accessibilityLabel={scoreSheetTitle(name)}
+      onTextLayout={(event) => {
+        const lines = event.nativeEvent.lines;
+        if (lines.length <= TITLE_MAX_LINES || chars <= 1) return;
+        const spill = lines.slice(TITLE_MAX_LINES).reduce((total, line) => total + line.text.length, 0);
+        setChars((current) => Math.max(1, Math.min(current - 1, current - spill - 1)));
+      }}
+      style={{ fontFamily: t.font.regular, fontSize: 22, lineHeight: 26, letterSpacing: 0.22, color: SCORE_SHEET_CARD.text }}
+    >
+      {name ? (
+        <>
+          {shown}
+          {TITLE_SUFFIX}
+        </>
+      ) : (
+        scoreSheetTitle('')
+      )}
+    </TotlText>
+  );
+}
+
+export type ScoreSheetTally = { correct: number; total: number; message: string };
+
+/**
+ * Score sheet header (Figma 443:59699): season and gameweek, "Only you" (on the card, not the share
+ * image), then your avatar centred against the title and the line. Once every result is in, the line
+ * is the score in teal and a word on the gameweek ("5/10 · Not bad!").
+ */
+function ScoreSheetHeader({
+  eyebrow,
+  playerName,
+  line,
+  tally,
+  avatarUrl,
+  onlyYou = true,
+}: {
+  eyebrow: string;
+  playerName: string;
+  line?: string | null;
+  tally?: ScoreSheetTally | null;
+  avatarUrl?: string | null;
+  onlyYou?: boolean;
+}) {
+  const t = useTokens();
+  const lineStyle = { fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: SCORE_SHEET_CARD.muted };
+  const score = tally ? `${tally.correct}/${tally.total}` : null;
+  const spoken = tally ? `${tally.correct} out of ${tally.total}. ${tally.message}` : line;
+  return (
+    <View
+      style={{ paddingHorizontal: 16, gap: 20 }}
+      accessible
+      accessibilityLabel={[eyebrow, onlyYou ? 'Only you' : null, scoreSheetTitle(playerName), spoken].filter(Boolean).join('. ')}
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <TotlText numberOfLines={1} style={{ flexShrink: 1, fontFamily: t.font.bold, fontSize: 12, lineHeight: 14, textTransform: 'uppercase', color: SCORE_SHEET_CARD.green }}>
           {eyebrow}
         </TotlText>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2 }}>
-          <SvgUri uri={EYE} width={13.418} height={14} />
-          <TotlText style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, letterSpacing: 0.12, color: SCORE_SHEET_CARD.muted }}>Only you</TotlText>
-        </View>
+        {onlyYou ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 2 }}>
+            <SvgUri uri={EYE} width={13.418} height={14} />
+            <TotlText style={{ fontFamily: t.font.regular, fontSize: 12, lineHeight: 14, letterSpacing: 0.12, color: SCORE_SHEET_CARD.muted }}>Only you</TotlText>
+          </View>
+        ) : null}
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {avatarUrl ? (
@@ -46,11 +118,14 @@ function ScoreSheetHeader({ eyebrow, title, line, avatarUrl }: { eyebrow: string
           <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: SCORE_SHEET_CARD.pill }} />
         )}
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <TotlText accessibilityRole="header" style={{ fontFamily: t.font.regular, fontSize: 22, lineHeight: 26, letterSpacing: 0.22, color: SCORE_SHEET_CARD.text }}>
-            {title}
-          </TotlText>
-          {line ? (
-            <TotlText style={{ fontFamily: t.font.regular, fontSize: 16, lineHeight: 20, letterSpacing: 0.16, color: SCORE_SHEET_CARD.muted }}>{line}</TotlText>
+          <ScoreSheetTitle name={playerName} />
+          {tally ? (
+            <TotlText style={lineStyle}>
+              <TotlText style={{ fontFamily: t.font.bold, color: SCORE_SHEET_CARD.green }}>{score}</TotlText>
+              {` \u00B7 ${tally.message}`}
+            </TotlText>
+          ) : line ? (
+            <TotlText style={lineStyle}>{line}</TotlText>
           ) : null}
         </View>
       </View>
@@ -154,15 +229,19 @@ const SHARE_CARD_WIDTH = 340;
  */
 export function ScoreSheetFeedCard({
   eyebrow,
-  title,
+  playerName,
   line,
+  tally,
   avatarUrl,
   rows,
-  shareLabel = 'Share',
+  shareLabel = 'Share score sheet',
 }: {
   eyebrow: string;
-  title: string;
+  /** Your display name, for "<name>'s score sheet". */
+  playerName: string;
+  /** Shown until every result is in. */
   line?: string | null;
+  tally?: ScoreSheetTally | null;
   avatarUrl?: string | null;
   rows: FeedScoreRow[];
   shareLabel?: string;
@@ -184,17 +263,18 @@ export function ScoreSheetFeedCard({
         filePath = `${baseDir}score-sheet-${Date.now()}.png`;
         await FileSystem.copyAsync({ from: uri, to: filePath });
       }
-      await shareCapturedImage({ filePath, target: 'more', message: 'Check out my TOTL score sheet.', title: `Share: ${title}` });
+      await shareCapturedImage({ filePath, target: 'more', message: 'Check out my TOTL score sheet.', title: `Share: ${scoreSheetTitle(playerName)}` });
     } catch (error) {
       if (!isShareCancelled(error)) console.error('[ScoreSheetFeedCard] Share failed', error);
     } finally {
       setSharing(false);
     }
-  }, [sharing, title]);
+  }, [playerName, sharing]);
 
-  const sheet = (
+  // The share image leaves out "Only you" (Figma 445:64712).
+  const sheet = (onlyYou: boolean) => (
     <View style={{ paddingTop: 20, paddingBottom: 20, gap: 28 }}>
-      <ScoreSheetHeader eyebrow={eyebrow} title={title} line={line} avatarUrl={avatarUrl} />
+      <ScoreSheetHeader eyebrow={eyebrow} playerName={playerName} line={line} tally={tally} avatarUrl={avatarUrl} onlyYou={onlyYou} />
       <ScoreSheetRows rows={rows} />
     </View>
   );
@@ -212,14 +292,14 @@ export function ScoreSheetFeedCard({
           <ViewShot ref={shot} options={{ format: 'png', quality: 1, result: 'tmpfile' }}>
             <TotlShareCanvas width={SHARE_CANVAS_WIDTH}>
               <TotlShareCardTilt>
-                <View style={{ width: SHARE_CARD_WIDTH, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>{sheet}</View>
+                <View style={{ width: SHARE_CARD_WIDTH, borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF' }}>{sheet(false)}</View>
               </TotlShareCardTilt>
             </TotlShareCanvas>
           </ViewShot>
         </View>
       ) : null}
       <View style={{ borderRadius: 16, borderWidth: 1, borderColor: t.color.cardBorder, backgroundColor: '#FFFFFF', overflow: 'hidden' }}>
-        {sheet}
+        {sheet(true)}
         <View style={{ paddingHorizontal: 12, paddingBottom: 16 }}>
           <Pressable
             accessibilityRole="button"
@@ -227,8 +307,10 @@ export function ScoreSheetFeedCard({
             accessibilityState={{ disabled: sharing, busy: sharing }}
             disabled={sharing}
             onPress={() => void share()}
+            // Button / Primary / Medium (Figma 475:76541): 40pt, the size for card buttons.
             style={({ pressed }) => ({
-              height: 48,
+              height: 40,
+              paddingHorizontal: 20,
               borderRadius: 8,
               alignItems: 'center',
               justifyContent: 'center',

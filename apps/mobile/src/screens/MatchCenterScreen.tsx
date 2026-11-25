@@ -561,6 +561,7 @@ function FeedCardView({
   onReact: reactFor,
   social,
   youAvatar = null,
+  youName = null,
 }: {
   item: FeedItem;
   onOpen: (item: FeedItem, link?: FeedLink) => void;
@@ -577,6 +578,8 @@ function FeedCardView({
   } | null;
   /** Your avatar, for the score sheet header. */
   youAvatar?: string | null;
+  /** Your display name, for "<name>'s score sheet". */
+  youName?: string | null;
 }) {
   const onReact = reactFor ? (emoji: string) => reactFor(item, emoji) : undefined;
   const [commentDraft, setCommentDraft] = React.useState('');
@@ -830,8 +833,9 @@ function FeedCardView({
   ) : scoreSheetCard ? (
     <ScoreSheetFeedCard
       eyebrow={item.eyebrow ?? ''}
-      title={header.title}
+      playerName={item.playerName ?? youName ?? ''}
       line={header.subtitle}
+      tally={item.scoreTally}
       avatarUrl={youAvatar}
       rows={item.scoreRows!}
       shareLabel={item.link?.label}
@@ -3187,6 +3191,7 @@ export default function MatchCenterScreen() {
       <FeedCard
         item={item}
         youAvatar={item.kind === 'score-sheet' ? profileSummary?.avatar_url ?? null : null}
+        youName={item.kind === 'score-sheet' ? profileSummary?.name ?? null : null}
         onOpen={openItem}
         celebrate={celebrate}
         arriveDelay={arriveDelay}

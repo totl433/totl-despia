@@ -33,6 +33,7 @@ import {
   playersReadyCopy,
   playersWeeklyCopy,
   scoreSheetCopy,
+  scoreSheetVerdict,
   startingSoonCopy,
   winnerShoutCopy,
   type CopyVersion,
@@ -305,7 +306,25 @@ function derivedCards(nowMs: number): AuditEntry[] {
   });
   const picks: Record<string, Pick> = { '1': 'H', '2': 'H', '3': 'H', '4': 'D', '5': 'A', '6': 'D', '7': 'A', '8': 'H', '9': 'H', '10': 'A' };
   const sheet = scoreSheetItem({ gw: GW, fixtures, picks, liveByFixtureIndex: liveRows, lastFtMs: Date.parse('2026-11-10T21:55:00Z') });
-  if (sheet) out.push(...copyCards(sheet, scoreSheetCopy(), { code: 'D02', name: 'Score sheet', variant: '', origin: 'Joff' }, (item, copy) => ({ ...item, title: copy.title, body: copy.line })));
+  if (sheet) {
+    // Every score from 0 to 10 (ticks to match), two long names, then a gameweek still in progress.
+    const scored = (correct: number, playerName: string, variant: string) =>
+      card(
+        {
+          ...sheet,
+          id: `${sheet.id}#${variant}`,
+          playerName,
+          scoreRows: sheet.scoreRows?.map((row, i) => ({ ...row, hit: i < correct })),
+          scoreTally: { correct, total: 10, message: scoreSheetVerdict(correct, 10) },
+        },
+        { code: 'D02', name: 'Score sheet', variant, origin: 'Joff' },
+      );
+    for (let correct = 0; correct <= 10; correct += 1) out.push(scored(correct, 'Jof', `${correct}/10`));
+    out.push(scored(6, 'Maximilian Montgomery', 'name on two lines'));
+    out.push(scored(3, 'Bartholomew Christopherson-Montgomery-Wellington', 'name shortened to fit two lines'));
+    const copy = scoreSheetCopy()[0]!;
+    out.push(card({ ...sheet, id: `${sheet.id}#live`, playerName: 'Jof', title: copy.title, body: copy.line, scoreTally: null }, { code: 'D02', name: 'Score sheet', variant: 'results still to come', origin: 'Joff' }));
+  }
 
   // D03 Everyone has predicted: one card per league size, 2 to 8 players.
   const crew = ['Carl', 'Jof', 'Sam', 'Tom', 'Amy', 'Bea', 'Dan', 'Eve'];

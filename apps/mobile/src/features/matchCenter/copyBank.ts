@@ -167,6 +167,20 @@ export function scoreSheetCopy(): CopyVersion[] {
   ];
 }
 
+/** D02: a word on the gameweek, by correct Predictions out of 10 (other totals are scaled to 10). */
+export function scoreSheetVerdict(correct: number, total: number): string {
+  if (total <= 0) return '';
+  if (correct >= total) return 'Perfect gameweek!';
+  if (correct <= 0) return 'One to forget';
+  const outOf10 = total === 10 ? correct : Math.round((correct * 10) / total);
+  if (outOf10 >= 9 || correct === total - 1) return 'So close to perfection!';
+  if (outOf10 >= 8) return 'Great gameweek!';
+  if (outOf10 >= 6) return 'Solid performance';
+  if (outOf10 >= 5) return 'Not bad!';
+  if (outOf10 >= 3) return 'Better luck next week';
+  return 'Tough gameweek';
+}
+
 export function everyonePredictedCopy(league: string): CopyVersion[] {
   return [
     { title: league, line: 'Everyone has their Predictions in.' },

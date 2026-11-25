@@ -26,6 +26,7 @@ import {
   winnerShoutItems,
 } from './derivedFeed';
 import type { LeagueTableSnap } from './feed';
+import { scoreSheetVerdict } from './copyBank';
 import { firstWinnerSlot, leftoverQuietSlots, nextWinnerSlot, scheduleStatMoments, scheduleWinnerShouts } from './shoutOutSlots';
 
 const KO = Date.parse('2026-10-24T14:00:00Z');
@@ -89,6 +90,46 @@ describe('score sheet', () => {
     expect(card?.scoreRows?.[0]).toMatchObject({ pickSide: 'H', homeScore: 2, awayScore: 0 });
     expect(card?.scoreRows?.[1]).toMatchObject({ pickSide: 'A', homeScore: 1, awayScore: 1 });
     expect(card?.eyebrow).toMatch(/^\d{4}\/\d{2} · Gameweek 8$/);
+    expect(card?.scoreTally).toEqual({ correct: 1, total: 2, message: 'So close to perfection!' });
+    expect(card?.link).toMatchObject({ label: 'Share score sheet', to: 'score-sheet' });
+  });
+
+  it('keeps the old line until every result is in', () => {
+    const card = scoreSheetItem({
+      gw: 8,
+      fixtures: [arsenal, chelsea],
+      picks: { '0': 'H', '1': 'A' },
+      liveByFixtureIndex: new Map([[0, { api_match_id: 1, gw: 8, fixture_index: 0, status: 'FINISHED', home_score: 2, away_score: 0 }]]),
+      lastFtMs: KO + 3 * 3_600_000,
+    });
+    expect(card?.scoreTally).toBeNull();
+    expect(card?.body).toBeTruthy();
+  });
+});
+
+describe('score sheet verdict', () => {
+  it('matches the D02 table out of 10', () => {
+    const table: Array<[number, string]> = [
+      [0, 'One to forget'],
+      [1, 'Tough gameweek'],
+      [2, 'Tough gameweek'],
+      [3, 'Better luck next week'],
+      [4, 'Better luck next week'],
+      [5, 'Not bad!'],
+      [6, 'Solid performance'],
+      [7, 'Solid performance'],
+      [8, 'Great gameweek!'],
+      [9, 'So close to perfection!'],
+      [10, 'Perfect gameweek!'],
+    ];
+    for (const [correct, message] of table) expect(scoreSheetVerdict(correct, 10)).toBe(message);
+  });
+
+  it('scales other totals and keeps perfect and one-off exact', () => {
+    expect(scoreSheetVerdict(9, 9)).toBe('Perfect gameweek!');
+    expect(scoreSheetVerdict(8, 9)).toBe('So close to perfection!');
+    expect(scoreSheetVerdict(0, 9)).toBe('One to forget');
+    expect(scoreSheetVerdict(5, 9)).toBe('Solid performance');
   });
 });
 

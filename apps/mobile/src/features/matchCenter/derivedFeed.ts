@@ -26,6 +26,7 @@ import {
   playersReadyCopy,
   playersWeeklyCopy,
   scoreSheetCopy,
+  scoreSheetVerdict,
   winnerShoutCopy,
 } from './copyBank';
 import type { SeasonStatFacts } from './seasonStatFacts';
@@ -261,6 +262,9 @@ export function scoreSheetItem(input: {
       };
     });
   const first = firstKickoffMs(input.fixtures);
+  // The score and its message only once every fixture has a result; until then the line stays.
+  const settled = input.fixtures.every((fixture) => resultOf(resolveLiveScore(fixture, input.liveByFixtureIndex, input.liveByApiMatchId)) != null);
+  const correct = rows.filter((row) => row.hit).length;
   return card({
     id: `score-sheet:${input.gw}`,
     sortAt: input.lastFtMs + 30_000,
@@ -270,7 +274,8 @@ export function scoreSheetItem(input: {
     title: pickCopy(scoreSheetCopy(), `score-sheet:${input.gw}`).title,
     body: pickCopy(scoreSheetCopy(), `score-sheet:${input.gw}`).line,
     scoreRows: rows,
-    link: { label: 'Share', to: 'score-sheet' },
+    scoreTally: settled ? { correct, total: rows.length, message: scoreSheetVerdict(correct, rows.length) } : null,
+    link: { label: 'Share score sheet', to: 'score-sheet' },
   });
 }
 
